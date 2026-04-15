@@ -36,7 +36,7 @@
         <commons-math3.version>3.6.1</commons-math3.version>
         <slf4j.version>1.7.36</slf4j.version>
         <tdigest.version>3.3</tdigest.version>
-        <thymeleaf.version>3.1.2.RELEASE</thymeleaf.version>
+        <thymeleaf.version>3.1.4.RELEASE</thymeleaf.version>
         <auto-service.version>1.1.1</auto-service.version>
         <junit.version>5.10.2</junit.version>
 
