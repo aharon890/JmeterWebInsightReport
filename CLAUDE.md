@@ -1187,8 +1187,9 @@ All four are staged, then renamed into place together. `AtomicFileWriter.stage` 
 `.<target>.<owner>-<pid>-<nonce>.tmp` beside the target — the **owner** is a sanitised,
 filename-safe host/container token, and it is in the name because a pid only means anything
 inside one PID namespace: two containers sharing a bind mount were both pid 296-308, and each
-swept the other's *live* staging files. The sweep skips any name whose owner is not this
-JVM's. `ArtifactPublication` collects the set and
+swept the other's *live* staging files. The sweep never asks about the pid in a name whose owner
+is not this JVM's: such a file is removed only once it is past the six-hour grace below
+(`AtomicFileWriter.isStaleStaging`). `ArtifactPublication` collects the set and
 `publish()` moves them, payload before the HTML that loads it. The set is **not** atomic — no
 filesystem replaces N files at once — so `PublishLock` (a `FileChannel.lock` on
 `<outputDir>/.web-insight-publish.lock`, plus a `ReentrantLock` per path because `FileLock` is

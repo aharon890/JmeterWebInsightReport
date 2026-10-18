@@ -418,7 +418,7 @@ band boxes write them, and as on the Asserts tab. The Asserts tab writes by this
 through the same code: bands as declared, and an Actual on its own side of every band the rule
 declares, from its own base of whole `ms` and `s` and two decimals otherwise. The JUnit XML writes
 the same digits: `max 3.004 s breached > 3 s` in the failure message and `actual:    3.004 s` in
-its body, where two decimals wrote `3.00 s`. So does the reason a server assert carries when its
+its body, where two decimals would write `3.00 s`. So does the reason a server assert carries when its
 load rule FAILED, which quotes the client's measured load beside the load rule's band:
 `load rule 'load:throughput' FAILED: throughput 12.496/s breached < 12.5 /s`, not `12.50/s`.
 
@@ -772,9 +772,8 @@ gives no verdict while the band stands:
 
 An empty box there means *the file's band*, not *no band*. Type a number to replace it, or press **×**
 on the row to remove it. Picking an operator, or typing a number and clearing it again, leaves the
-file's band where it was. Before this fix either gesture removed it: Save was offered, the download
-dropped the band, and the next run judged the assert on its other band alone and exited 0. The Asserts
-tab's editor works the same way.
+file's band where it was, so the download never drops a band you did not remove. The Asserts tab's
+editor works the same way.
 
 The band is saved back as written, and a bare `1e400` as `"Infinity"`, the text the report itself
 writes for it. That holds anywhere in the file, not only in a band: a coverage floor, a component's
@@ -1445,14 +1444,13 @@ worth.
 | `0` | The payload was written, **whatever each series' status**. A failed source, a bad CSV row or an empty query is recorded in the payload, and step 3 decides what it means (`failonerror`) |
 | `1` | Nothing was written: bad arguments (no source flag, or two), an unreadable JTL or annotations file, a file with nothing to collect (no server assert and no component of a catalogue type), an undeclared `--env` or `--component`, an unwritable `--out`, a ramp-up as long as the run, or (from `wir-collect.sh`) no `java` |
 
-There is no other code, on purpose (D27). A collector that exited non-zero on a dead source would
+There is no other code, on purpose. A collector that exited non-zero on a dead source would
 stop a `set -e` script or a Jenkins `sh` step before step 3, and step 3 is the only report that
 gates: the collector would be deciding what a collection failure means, which is the report's call.
 
-A file with catalogue components and no server assert used to exit 1 as "declares no
-serverMetrics.asserts". It now writes a payload of those components' catalogue metrics and exits
-0, under the same rule. If the source holds none of them, the payload has no series and the summary
-line says so. A `custom` component alone still exits 1: it has no catalogue, so there is nothing to
+A file with catalogue components and no server assert writes a payload of those components'
+catalogue metrics and exits 0, under the same rule. If the source holds none of them, the payload
+has no series and the summary line says so. A `custom` component alone still exits 1: it has no catalogue, so there is nothing to
 fetch until an assert writes a query. A file whose every assert is disabled writes an empty payload
 too, and its summary says no enabled server assert had a query to collect.
 
@@ -1527,8 +1525,7 @@ time,component,metric,instance,value
   no-break, zero-width or bidi character) is a bad row of the series that name asks for, not a
   series of its own: `m.csv line 3: metric "connections.used.pct" has an invisible character at
   its end (U+00A0) that is not trimmed like a plain space, so no row written that way is read as
-  this series - delete it`. It used to be read and never looked up, and the series came back empty
-  with no line named.
+  this series - delete it`.
 - A file another tool wrote under other column names, or with no component column, is read with
   `--csv-columns` and `--component`: see [From InfluxDB 2](#from-influxdb-2-csv-columns-and-component).
 
@@ -1579,7 +1576,8 @@ without `--from`. The payload records the tool on the source and, on every serie
 tool's name, that name, its kind and the scale, and the report shows both: the Collection panel's
 source row says the file was read as the tool's export, and an open row's note says
 `read as postgresql.percent_usage_connections (datadog, gauge, x100)`. A collection without `--from`
-writes neither, and keeps the `collectionId` it always had.
+writes neither. The tool enters the `collectionId` only when given: the same file read as a tool's
+export is a different collection, with different numbers.
 
 #### From Grafana: `--layout wide`
 
@@ -1675,7 +1673,7 @@ wir-collect: orders-db/connections.used.pct points are 60s apart but --step is 1
 
 The payload records `"layout": "wide"` and the `"timeZone"` on the source, each only when given, and
 the Collection panel says both beside the source's id — `wide CSV, times without a zone read in UTC`.
-A long collection with no zone writes neither, and keeps the `collectionId` it always had.
+A long collection with no zone writes neither. Each enters the `collectionId` only when given.
 
 #### From InfluxDB 2: `--csv-columns` and `--component`
 
@@ -1805,8 +1803,7 @@ builtin:host.cpu.usage,HOST-0956C3557E9109C1,2026-10-02 14:00:00,19.0
 The payload records `"columns"` — the spec in one spelling, its keys in the order time, component,
 metric, instance, value — and `"component"` on the source, each only when given, and the Collection
 panel says both beside the source's id: `columns time=_time metric=_measurement+_field instance=host
-value=_value, every row in orders-db`. Each enters the `collectionId` only when given, so a long file
-in the reader's own names keeps the id it always had.
+value=_value, every row in orders-db`. Each enters the `collectionId` only when given.
 
 #### From CloudWatch
 
@@ -2006,8 +2003,8 @@ java -cp "%JMETER_HOME%\lib\ext\jmeter-web-insight-report-X.Y.Z.jar;%JMETER_HOME
 
 Keep the quotes. The `*` is the JVM's classpath wildcard, not the shell's.
 
-**The wrapper scripts** are attached to the release beside the JAR (an older release attached the
-JAR alone; they are in its source archive, under `scripts/`):
+**The wrapper scripts** are attached to the release beside the JAR, and are in its source archive,
+under `scripts/`:
 
 - **`wir-collect.sh`** is self-contained. Copy it beside a Jenkinsfile, onto a CI image or into
   `$JMETER_HOME/bin`, and it needs nothing else. Run it as `bash wir-collect.sh ...`: a file
@@ -2041,8 +2038,8 @@ whichever plugin JAR that one holds.
 }
 ```
 
-Unknown keys are ignored and carried through a Save untouched. A key that used to mean something
-is refused ([below](#retired-and-refused-keys)). A container of the wrong shape (`"asserts": {}`,
+Unknown keys are ignored and carried through a Save untouched. A retired key is refused
+([below](#retired-and-refused-keys)). A container of the wrong shape (`"asserts": {}`,
 `"warn": 640`, `"reduce": "max"`) fails the whole annotations file at load, as a client rule's would.
 A written `null` means absent.
 
@@ -2064,12 +2061,11 @@ names a declared one.
 
 ### Credentials stay out of the file
 
-The annotations document is written into every report and sidecar, and since connection details
-moved to `wir-collect`'s flags the file has no place for a credential at all. What is still
-checked:
+The annotations document is written into every report and sidecar. Connection details are
+`wir-collect` flags, so the file has no place for a credential at all. What is checked:
 
 - an `environments.*.vars` value holding a URL with userinfo or a credential parameter is refused;
-- a leftover `sources` block is refused whatever it holds, and never read.
+- a `sources` block is refused whatever it holds, and never read.
 
 The page and the download mask each of those shapes too. A credential in a shape none of them
 recognises, such as text in a `description` or a bare value in a var a query uses, is not detected,
@@ -2142,8 +2138,8 @@ warning too.
 
 ### Retired and refused keys
 
-Each of these used to mean something, so ignoring it would change what is judged. Each is refused
-with a sentence naming the replacement.
+A file that carries one of these keys means something by it, so ignoring the key would change what
+is judged. Each is refused with a sentence naming what to write instead.
 
 **In the block**: a configuration error, exit 1 under `failonerror`:
 

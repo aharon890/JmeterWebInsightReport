@@ -35,8 +35,8 @@ The loop it exists for:
 **run → see every assert and its verdict → tune a limit against the observed number → the
 verdict recomputes as you type → save the file → the next run gates on it.**
 
-Converging on a threshold used to take three runs, because every adjustment was a hand-edit
-against numbers read off a screen. This makes it one.
+Converging on a threshold by hand-editing against numbers read off a screen takes three runs.
+This makes it one.
 
 ---
 
@@ -56,8 +56,7 @@ It carries:
   buckets.
 - **The three worst entries** — a breach with the rule id, the measured number **and the limit
   that rejected it**, or a rule that could not run with the reason it could not. A verdict without
-  the actual-versus-limit is what the old one-word badge gave you: it told you something was wrong
-  and left you to find out what.
+  the actual-versus-limit tells you something is wrong and leaves you to find out what.
 - **Open Asserts →**, which is where the rest of this page happens.
 
 The strip speaks for the **client** rules only. Server asserts are judged separately and never
@@ -171,8 +170,8 @@ evaluating it, and you should still be able to see it is there.
 
 **DISABLED, UNMATCHED, NO VALUE and LOAD NOT ACHIEVED never look like a pass.** They take a
 neutral grey, because they are not verdicts. INVALID borrows the fail colours and adds an outline:
-it counts as a failure, but "this rule could not run" and "this rule failed" should not be
-indistinguishable at a glance.
+it is not a verdict either, but it fails the run under `failonerror`, and "this rule could not
+run" and "this rule failed" should not be indistinguishable at a glance.
 
 **A rule whose target the loader could not read still has a row.** Its kind chip reads
 `INVALID` and the target column holds the problem — "target has more than one form (sampler,
@@ -189,10 +188,11 @@ it.
 It is not dismissible, on purpose. A dismissible banner is one that gets dismissed once, by the
 person who most needed it.
 
-**Why it exists.** A rule that could not run no longer moves the verdict: nothing was measured, so
-there is no performance judgement to make. That is honest, and it removes a safety property — a
-mistyped metric name used to fail your build. This banner is the replacement. The tab cannot be
-read as healthy while a rule is broken, because the first thing on it says which rule and why.
+**Why it exists.** A rule that could not run does not move the verdict: nothing was measured, so
+there is no performance judgement to make. The run still exits non-zero under `failonerror`, but
+the verdict beside a broken rule can read PASS, so the tab needs a louder signal. This banner is
+it: the tab cannot be read as healthy while a rule is broken, because the first thing on it says
+which rule and why.
 
 Only broken rules get a banner. A parked rule was parked deliberately, a metric the run could not
 produce is about the run rather than the file, and an unmatched target already gets a follow-up
@@ -301,8 +301,8 @@ Inline, on the field, not a wall on submit. The editor refuses to save:
 
   An empty box there means *the file's band*, not *no band*: type a number to replace it, or press
   × to remove it. Picking an operator, or typing a number and clearing it again, leaves the file's
-  band where it was. Saving an unrelated change used to drop it, and the next run judged the rule
-  on its other band alone.
+  band where it was, so saving an unrelated change cannot drop it and leave the next run judging
+  the rule on its other band alone.
 
 A **dead warn band** is not refused. Fail is tested first and already decides every run the warn
 band would have, so the rule's verdicts are right. The editor says so under the form and Save stays
@@ -359,10 +359,10 @@ included. A save that dropped what it did not understand is how an editor teache
 trust it. The Notes tab's *Save Annotations* writes the same document.
 
 So is a band the run **could not read**. A rule shown INVALID because its fail band has two
-operators is written back with that band exactly as the file had it. It used to be written without
-it, so a file downloaded with no edits at all came back as a rule the next run judged on its warn
-band alone, and passed. A bare `1e400` comes back as the text `"Infinity"`, which is how the run
-holds it: the next run still refuses it, as text rather than as the number.
+operators is written back with that band exactly as the file had it, so a file downloaded with no
+edits refuses the rule on the next run just as this one did, rather than judging it on its warn
+band alone. A bare `1e400` comes back as the text `"Infinity"`, which is how the run holds it: the
+next run still refuses it, as text rather than as the number.
 
 ### Edit document… — reaching every block
 
@@ -386,8 +386,8 @@ unreachable — which would contradict the promise to preserve them.
 already on screen. The table, the counts and *Client verdict if saved and re-run* all answer for
 **your** data.
 
-This is the shortest way to answer "what would this file have decided?" — which previously
-required running JMeter again with it.
+This is the shortest way to answer "what would this file have decided?" — without running JMeter
+again with it.
 
 A strip names what you are looking at: *Showing other.json evaluated against this run*. The header
 badge does not move, because a file opened after the run is a question, not an answer.
@@ -435,11 +435,10 @@ A cell a rule already judges shows **its own verdict** rather than a bare ⊕ �
 glyph as well as colour so it survives the colourblind palettes. Hovering names the rule and its
 limit; clicking edits that rule.
 
-This is there to stop the commonest mistake in the whole feature. Nothing used to distinguish a
-gated cell from an ungated one, so it was easy to seed a second rule for something already
-covered — and the editor accepts it, quietly naming it `checkout-p95-2`. Two rules, two JUnit
-testcases, one intention. Where a rule exists the ⊕ now reads *"Add another assert on …"*, and
-the marker beside it is the shorter path.
+This is there to stop the commonest mistake in the whole feature: seeding a second rule for
+something already covered. The editor accepts one, quietly naming it `checkout-p95-2` — two rules,
+two JUnit testcases, one intention. Where a rule exists the ⊕ reads *"Add another assert on …"*,
+and the marker beside it is the shorter path.
 
 The inverse is worth as much: read down a column and you can see which samplers are gated on p95
 and which are not. Nothing else in the report shows coverage.

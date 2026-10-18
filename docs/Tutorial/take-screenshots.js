@@ -121,12 +121,6 @@ async function main() {
   // Apdex card
   await shotEl(page, '#apdexCard', '03b-apdex-card');
 
-  // Summary chart + fullscreen button
-  await shotEl(page, '#summary-response-time-chart', '04-summary-chart');
-
-  // Top 5
-  await shotEl(page, '.top-samplers-list', '05-top5-slowest');
-
   // Copy Summary button
   await shotEl(page, 'button:has-text("Copy Summary")', '05b-copy-summary-btn');
 
@@ -160,7 +154,6 @@ async function main() {
 
   // Individual charts
   await shotEl(page, '[data-chart-id="response-time-chart"]', '08-chart-response-time');
-  await shotEl(page, '[data-chart-id="throughput-chart"]', '08b-chart-throughput');
   await shotEl(page, '[data-chart-id="error-rate-chart"]', '08c-chart-error-rate');
   await shotEl(page, '[data-chart-id="heatmap-chart"]', '08d-chart-heatmap');
   await shotEl(page, '[data-chart-id="response-codes-chart"]', '08e-chart-response-codes');
@@ -184,9 +177,6 @@ async function main() {
   await page.locator('#tab-samplers table tbody tr').first().click();
   await page.waitForTimeout(600);
   await shot(page, '11-samplers-detail');
-
-  // Detail chart slots
-  await shotEl(page, '.detail-charts, .sampler-detail-charts', '11b-detail-charts');
 
   // Collapse
   await page.locator('#tab-samplers table tbody tr').first().click();
@@ -247,23 +237,6 @@ async function main() {
   await loadClean(page, 'E11');
 
   await shot(page, '15-asserts-fail');
-  await shotEl(page, '.status-badge', '15b-asserts-fail-badge');
-
-  // Assert badges in samplers table
-  await tab(page, 'samplers');
-  await shot(page, '16-asserts-fail-samplers');
-
-  await c.close();
-
-  // ==========================================
-  // E10: asserts PASS
-  // ==========================================
-  console.log('=== E10: ASSERTS PASS ===');
-  c = await ctx();
-  page = await c.newPage();
-  await loadClean(page, 'E10');
-
-  await shotEl(page, '.status-badge', '15c-asserts-pass-badge');
 
   await c.close();
 
@@ -278,28 +251,14 @@ async function main() {
   // Both rows of summary cards, from a run that gates p95 and p99, so the mini badges are there
   await shotEl(page, '#tab-summary section.report-section:has(.summary-cards)', '03-summary-cards');
 
-  // Assert threshold line on chart
-  await tab(page, 'timeline');
-  await page.waitForTimeout(500);
-  await shotEl(page, '[data-chart-id="response-time-chart"]', '17-asserts-threshold-line');
-
   // Notes tab with rendered markdown: the notes open in their editor, and Preview renders them
   await tab(page, 'notes');
   await page.click('#tab-notes .notes-toolbar button:has-text("Preview")');
   await page.waitForTimeout(300);
   await shot(page, '17b-annotations-notes');
 
-  // Engineer notes on summary
-  await tab(page, 'summary');
-  await shot(page, '17c-summary-with-notes');
-
-  // Assert mini badges on cards: the second row, where P95 and P99 carry them
-  await shotEl(page, '.summary-cards:has(.assert-badge-mini)', '17d-asserts-mini-badges');
-
-  // Timeline markers
   await tab(page, 'timeline');
   await page.waitForTimeout(500);
-  await shotEl(page, '[data-chart-id="response-time-chart"]', '17e-timeline-markers');
 
   // Rule lines on a chart (12-Asserts-Tab.md), last because it leaves the chart on p95 with a
   // sampler unticked. Taken here rather than on E25 with the gate's other shots: E12's p95 bands
@@ -330,27 +289,11 @@ async function main() {
   await tab(page, 'compare');
   await shot(page, '18-compare-overview');
 
-  // Comparison charts
-  await shotEl(page, '#tab-compare .chart-container', '18b-compare-chart');
-
   // Comparison table with badges
   await shotEl(page, '#tab-compare table', '18c-compare-table');
 
   // Regression threshold controls
   await shotEl(page, '#tab-compare .threshold-controls, #tab-compare .regression-controls, #tab-compare [class*="threshold"]', '18d-threshold-controls');
-
-  await c.close();
-
-  // ==========================================
-  // E08: Long names
-  // ==========================================
-  console.log('=== E08: Long names ===');
-  c = await ctx();
-  page = await c.newPage();
-  await loadClean(page, 'E08');
-
-  await tab(page, 'samplers');
-  await shotEl(page, '#tab-samplers table', '19-long-names-table');
 
   await c.close();
 
@@ -375,7 +318,6 @@ async function main() {
   page = await c.newPage();
   await loadClean(page, 'E07');
 
-  await shotEl(page, '.summary-cards', '21-all-errors-cards');
   await tab(page, 'errors');
   await shot(page, '21b-all-errors-tab');
 

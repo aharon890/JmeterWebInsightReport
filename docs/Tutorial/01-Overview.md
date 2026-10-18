@@ -15,7 +15,7 @@ Web Insight Report is an **Apache JMeter plugin** that generates modern, interac
 | Server metrics | Not supported | Server asserts — the values you expect from the servers, compared with the metrics fetched for the run (Prometheus, a recording of it, or a CSV export), on their own tab and with their own status |
 | Baseline comparison | Not supported | Side-by-side comparison with regression detection |
 | Dark mode | No | Full dark theme + colorblind mode |
-| Annotations | No | Markdown notes, timeline markers, verdict, sampler notes |
+| Annotations | No | Markdown notes, timeline markers, sampler notes |
 | CI/CD integration | No | JSON summary + JUnit XML output |
 | Chart export | No | PNG, SVG, CSV per chart/table |
 | Customization | Limited | Palette, line thickness, metric toggle, granularity, presets |
@@ -25,24 +25,32 @@ The report is a **single self-contained HTML file** — no server, no CDN, no in
 ## Requirements
 
 - Apache JMeter **5.6.3+**
-- Java **11+**
+- Java **21+**
 
 ## Installation
 
-### 1. Build
+### 1. Install the JAR
 
-```bash
-mvn clean package -DskipTests
-```
+1. Download `jmeter-web-insight-report-X.Y.Z.jar` from the
+   [latest release](https://github.com/aharon890/JmeterWebInsightReport/releases/latest).
+2. Copy it into `$JMETER_HOME/lib/ext/`, removing any older `jmeter-web-insight-report-*.jar`
+   first. One plugin JAR belongs there, never two — it is self-contained, so nothing else from
+   this project goes beside it.
+3. For `jmeter -g results.jtl -o dir`, register the exporter with one line in
+   `$JMETER_HOME/bin/reportgenerator.properties`:
 
-### 2. Copy JARs to JMeter
+   ```properties
+   jmeter.reportgenerator.exporter.webinsight.classname=com.jmeterwebinsightreport.report.exporter.WebInsightDataExporter
+   ```
 
-```bash
-cp jmeter-report-core/target/jmeter-report-core-1.1.0.jar $JMETER_HOME/lib/ext/
-cp jmeter-web-insight-report/target/jmeter-web-insight-report-1.1.0.jar $JMETER_HOME/lib/ext/
-```
+   The listener (GUI and `jmeter -n -t`) needs no registration.
 
-### 3. Use in JMeter
+**Building from source** instead: `./scripts/build-and-deploy.sh` builds the JAR, installs it and
+registers the exporter in one step. The README's
+[Installation](https://github.com/aharon890/JmeterWebInsightReport#installation) section has the
+details, including installing a built JAR by hand.
+
+### 2. Use in JMeter
 
 **GUI mode:** Add the **Web Insight Report** listener to your test plan (Add → Listener → Web Insight Report).
 
@@ -51,11 +59,14 @@ cp jmeter-web-insight-report/target/jmeter-web-insight-report-1.1.0.jar $JMETER_
 ```bash
 jmeter -n -t test.jmx \
   -Jwebinsight.report.output=/results \
-  -Jwebinsight.report.filename=report_${timestamp}.html \
+  -Jwebinsight.report.filename='report_${timestamp}.html' \
   -Jwebinsight.report.title="My Load Test"
 ```
 
-**From existing JTL (no test plan change):**
+Single-quote the filename: unquoted, the shell expands `${timestamp}` to nothing before JMeter
+sees it.
+
+**From existing JTL (no test plan change)** — needs the exporter line from step 1:
 
 ```bash
 jmeter -g results.jtl -o report-dir/
@@ -68,7 +79,7 @@ See [Export & CI/CD](11-Export-Integration.md) for setup details on the `-g -o` 
 | Property | Default |
 |----------|---------|
 | `webinsight.report.title` | `JMeter Web Insight Report` |
-| `webinsight.report.output` | Working directory |
+| `webinsight.report.output` | The results file's directory, then the [fallbacks the README lists](https://github.com/aharon890/JmeterWebInsightReport#where-the-report-goes-by-default) |
 | `webinsight.report.filename` | `web-insight-report.html` |
 | `webinsight.apdex.threshold` | `500` (ms) |
 | `webinsight.report.junit` | `false` |
@@ -94,10 +105,13 @@ The report has 3 main areas:
 - **Colorblind toggle** (eye icon) — swaps green/red to blue/orange
 - **Dark mode toggle** (moon/sun icon) — full dark theme
 - **Status badge** — shows overall test status:
-  - `ASSERTS PASS` / `ASSERTS WARNING` / `ASSERTS FAIL` (when the run declared asserts)
+  - `ASSERTS PASS` / `ASSERTS WARNING` / `ASSERTS FAIL` (when the run declared asserts) — click
+    it to open the Asserts tab
   - `NO ASSERTS DECLARED` (nothing was declared — reported, not judged)
   - `ASSERTS NOT EVALUATED` (rules were declared and none of them judged anything — a renamed
     sampler, a metric this run could not produce, everything parked)
+  - `SERVER ASSERTS ONLY` (no client rule gave a verdict and the server asserts were judged — the
+    server chip beside it carries their verdict)
 
   The badge answers one question: what did the declared asserts decide. It does **not** report
   errors — an error count is not a verdict, and errors have their own header card and tab.
@@ -117,14 +131,14 @@ Eight tabs organize the report:
 
 | Tab | Purpose |
 |-----|---------|
-| **Summary** | At-a-glance metrics, response time chart, top 5 slowest, notes preview |
+| **Summary** | Asserts and server verdict cards, at-a-glance metrics, response time chart, top 5 slowest |
 | **Timeline** | Full time-series charts (9 chart types) |
 | **Samplers** | Statistics table with sorting, filtering, inline detail charts |
 | **Errors** | Error breakdown charts and detail tables |
-| **Compare** | Baseline vs current comparison (only visible when `baseline.jtl` exists) |
-| **Asserts** | Every declared rule and its verdict; author, tune and save them. Always reachable — it is where you go to *declare*, so hiding it until something had been declared left no way in |
-| **Server** | Server asserts — expected server metrics against what was collected for the run, by gate. Always shown; on a run that declared none it says so (see [Server tab](13-Server-Tab.md)) |
-| **Notes** | Test notes (Markdown), timeline markers, verdict |
+| **Compare** | Baseline vs current comparison (only visible when a baseline was loaded) |
+| **Asserts** | Every declared rule and its verdict; author, tune and save them. Always shown, even on a run that declared nothing — it is where you go to *declare* |
+| **Server** | Server asserts — expected server metrics against what was collected for the run, by component. Always shown; on a run that declared none it says so (see [Server tab](13-Server-Tab.md)) |
+| **Notes** | Test notes (Markdown), timeline markers, the baseline summary |
 
 A **"Filters ▾"** dropdown next to the tabs controls which filter bar rows are visible.
 
@@ -138,7 +152,9 @@ A persistent bar below the tabs with 3 collapsible rows:
 - **Row 2:** Time range display (wall-clock/elapsed toggle), Presets (save/load/delete)
 - **Row 3:** Sampler checkboxes (select/deselect individual samplers, All/None buttons, color dots)
 
-All filter settings affect all tabs globally. Settings persist in browser localStorage.
+The filter settings apply to the charts on every tab; the bar is hidden on the Server tab, whose
+charts it does not affect. Palette, line thickness, custom colours and row visibility persist in
+browser localStorage; save a preset to keep the rest.
 
 ## Output Files
 
@@ -149,4 +165,4 @@ Each report generation produces:
 | `web-insight-report.html` | Self-contained interactive report |
 | `web-insight-report.json` | Machine-readable CI/CD summary |
 | `web-insight-report.xml` | JUnit XML (when enabled) |
-|  `web-insight-data.js` | External chart data (large tests only) |
+| `web-insight-data.js` | External chart data (large tests only; `<name>-data.js` for a report with another name) |

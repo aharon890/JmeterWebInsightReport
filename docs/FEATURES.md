@@ -29,7 +29,7 @@ All charts support:
 - **Pan** — shift+drag to scroll the zoomed view without losing zoom level
 - **Time range slider** — draggable slider at bottom of each chart
 - **Legend toggle** — click legend items to show/hide individual series
-- **Legend truncation** — long sampler names truncated at 35 characters in chart legends; hover tooltip shows full name
+- **Legend truncation** — sampler names longer than 30 characters are cut to 27 and an ellipsis in chart legends; hover tooltip shows full name
 - **Hide/show charts** — hide individual charts via "Hide" button on any tab (Timeline, Errors, Compare); "Show N Hidden Charts" restores them
 - **Drag-and-drop reorder** — drag charts by grip handle to rearrange on any tab; layout persisted per tab in localStorage
 - **Cross-chart synchronization** — hover/zoom one chart, all others follow via echarts.connect()
@@ -212,7 +212,7 @@ A synthetic aggregate row always appears at the top of the statistics table:
 
 ### Click-to-Expand Detail View
 - **Expand indicator** — chevron (▼) on each row hints at expandable detail; flips ▲ and turns blue when expanded
-- **Long name truncation** — sampler names in table truncated at 350px with ellipsis; hover tooltip shows full name
+- **Long name truncation** — the sampler column is capped at 520px (with a 260px floor), and a longer name ends in an ellipsis; hover tooltip shows full name
 - **Compact name cell** — expand icon, sampler name, and hide button merged into a single cell
 
 Click any sampler row to expand an inline detail panel with **configurable mini-charts**:
@@ -323,10 +323,9 @@ A tester declares exactly which checks decide a run:
   it never widens quietly to "all errors". `code=` is case-sensitive. Full grammar:
   [Gating one kind of error](Tutorial/10-Asserts-Apdex.md#gating-one-kind-of-error).
 - **`errorRate` and `errorCount` include HTTP 200s.** An error is any sample JMeter marked
-  `success = false`, which covers assertion and script failures as well as HTTP ones. Correct —
-  a gate ignoring assertion failures would pass a run where every response was wrong — but it was
-  previously undocumented. See
-  [What `errorRate` counts](Tutorial/10-Asserts-Apdex.md#metrics).
+  `success = false`, which covers assertion and script failures as well as HTTP ones. That is
+  deliberate: a gate ignoring assertion failures would pass a run where every response was wrong.
+  See [What `errorRate` counts](Tutorial/10-Asserts-Apdex.md#metrics).
 - **`enabled: false`** parks a rule without deleting it. It is the only modifier: a rule
   either judges or it does not.
 - **An unknown key is not an invalid file.** This plugin parses one specific shape; a key outside
@@ -346,7 +345,7 @@ A tester declares exactly which checks decide a run:
   written, `=false` to opt out. A rule that merely **matched nothing** is not covered: that one
   can legitimately be a plan running a subset.
 - **An Annotations File field in the listener GUI**, so a GUI run can name its asserts file.
-  There was no way to do it before; `-J` still overrides, empty still auto-detects.
+  `-J` overrides it; left empty, the file is auto-detected.
 - **Only what is declared is judged.** A run with no rules reports `assertsEvaluated: false` — it
   was reported, not judged.
 
@@ -371,14 +370,14 @@ Full reference with the meaning and the fix for each:
   for both kinds of gate, so a server assert and a client rule that matched nothing say the same
   word.
 - **`NOT_JUDGED` never moves the verdict in either direction.** It cannot fail a run and cannot
-  pass one. This is a change: `INVALID` used to be a status that outranked `FAIL`, so a mistyped
-  metric name failed a build while no measured number had exceeded anything.
-- **A broken rule is still loud, and now countable on its own.** The finding names it with a
+  pass one. A mistyped metric name never turns the verdict to FAIL when no measured number
+  exceeded anything; it is a configuration error, reported as one.
+- **A broken rule is loud, and countable on its own.** The finding names it with a
   "did you mean", the JUnit skip message carries the sentence, and the CI/CD JSON publishes
   `gate.notJudged.invalidRule`. Strictness is the pipeline's opt-in: the STRICT line under
-  [Gating a pipeline with jq](#gating-a-pipeline-with-jq). (The line that used to stand here,
-  `.gate.failed == 0 and …`, reads false on every run that declared no client rule, because the
-  `gate` block is written only when one was.)
+  [Gating a pipeline with jq](#gating-a-pipeline-with-jq). (A bare `.gate.failed == 0` reads false
+  on every run that declared no client rule, because the `gate` block is written only when one
+  was; both lines there read it as `(.gate.failed // 0)`.)
 - **Two arithmetics, both closed.** `passed + warned + failed + notJudged.total == declared`,
   and `disabled + noMatch + noValue + invalidRule + sourceFailed + lowCoverage + loadNotAchieved
   == notJudged.total`. Both are counted from the enums rather than by hand, so a value added
@@ -386,15 +385,14 @@ Full reference with the meaning and the fix for each:
   server-only keys are always present — zero on a run with no server metrics — because a key
   that appears only when non-zero is a key a sum check cannot rely on.
 - **Every declared rule is counted**, including one whose target is missing, empty, written in
-  two forms at once, or scoped to something other than `overall`. Such a rule used to be dropped
-  at load time — out of `gate.declared`, out of `assertions[]` and out of the JUnit suite — so a
-  file of three rules could report one and go green.
+  two forms at once, or scoped to something other than `overall`. Such a rule is `INVALID_RULE`,
+  and it is in `gate.declared`, in `assertions[]` and in the JUnit suite, so a file of three rules
+  reports three.
 - **FAIL is tested before WARN**, so a value past both bands is a failure, not a warning.
 - **One fold, used twice.** Rule status is the worst JUDGED match; the run verdict is the
   worst judged rule — the same function both times, so a badge and the row it summarises
   cannot be computed by two different rules. A rule that measured eleven samplers and could not
-  measure a twelfth reports the worst of the eleven; it used to report `INVALID` for all of
-  them, erasing a genuine `FAIL`.
+  measure a twelfth reports the worst of the eleven, so a genuine `FAIL` among them stands.
 - **Nothing gated ≠ passed.** A gate of nothing but NOT_JUDGED rules, or no rules at all,
   reports NOT EVALUATED and `assertsEvaluated: false`. It was reported, not judged.
 - **There is deliberately no "inconclusive".** In CI an eighth status must resolve to pass or
@@ -427,8 +425,8 @@ Full reference with the meaning and the fix for each:
   though a PASS at 60 came nearer the fail line. Recomputed in the page, so it follows a
   dragged threshold instead of going stale
 - **Broken-rule banner** — every rule the file got wrong, at the top of the tab, not
-  dismissible, each with the sentence naming the problem and a **Fix** button. This is what
-  replaced the verdict a broken rule used to produce
+  dismissible, each with the sentence naming the problem and a **Fix** button. A broken rule
+  produces this banner, never a verdict
 - **Sampler table** — the worst verdict of the rules judging each sampler, clickable for detail;
   a per-metric verdict marker on every cell a rule judges; ⊕ on every metric cell to seed a rule
   from that number
@@ -456,10 +454,9 @@ Full reference with the meaning and the fix for each:
 
 - **`Edit document…`** — the whole `report-annotations.json` as JSON, validated as you type.
   Reaches every block the rules table does not own: `samplerNotes`, `timelineMarkers`,
-  `comparisonThresholds`, `version`, and any key this build does not model. Before it, one block
-  of ten was editable from the report.
+  `comparisonThresholds`, `version`, and any key this build does not model.
 - **`Open file…`** — load a `report-annotations.json` from disk and evaluate it against the run
-  already on screen, which previously meant running JMeter again. A strip names what you are
+  already on screen, without running JMeter again. A strip names what you are
   looking at. With unsaved changes the file is held back rather than applied, naming what is at
   stake: *would replace 3 unsaved changes you have not downloaded*, with Discard and Keep.
 
@@ -614,10 +611,10 @@ title is hashed into the run's identity, and a payload collected for another ide
   name or a custom assert's `query` text; `instance` may be empty; an empty or `NaN` value is a gap,
   not zero. A bad row fails only the series it belongs to, naming the line, and the collection
   reads `PARTIAL`. Full rules: [Server tab](Tutorial/13-Server-Tab.md).
-- **Retired keys are refused, not ignored.** `sources` and `gates` in the block, `source` and
-  `gate` on an assert, and `failsBuild` on a component are each refused with a sentence naming
-  what replaced them, so a file written for the earlier design cannot quietly judge less than it
-  says.
+- **Retired keys are refused, not ignored.** `sources`, `gates`, `kpis` and `packs` in the block,
+  `source`, `gate`, `onMissing` and `required` on an assert, and `failsBuild` on a component are
+  each refused with a sentence naming what to write instead, so a file carrying one cannot quietly
+  judge less than it says.
 - **Statuses.** The same four as the client side, and the same reasons, plus three that belong to
   server asserts only: `SOURCE_FAILED`, `LOW_COVERAGE` and `LOAD_NOT_ACHIEVED`. Coverage is
   measured over the **collected window**.
@@ -819,8 +816,7 @@ evaluated (so not on the interim report, and not when the payload was refused):
   plus the component's `id`, `label` (its `description`), `type` and the payload's `collectionId`.
   Asserts that named no declared component are reported under a reserved `"(no gate)"` entry,
   which has no `type` and whose `label` is `"(no component)"`, the name the header chip, the
-  console and the Server tab give it. (This array was `serverGates[]`, with a `failsBuild` key, before every
-  component became one that builds.)
+  console and the Server tab give it.
 - **`serverAsserts[]`** — one entry per server assert: what it asked (`component`, `metric` when
   it names a catalogue metric, `query`, `reduce`, `across`, bands), what was measured
   (`actual`, `coverage` of the collected window, `instances`) and its status, with `notJudged` and
@@ -881,15 +877,13 @@ depend on it:
 
 - **The report refuses a foreign chart payload.** See [External Data Mode](#external-data-mode).
 - **Both ingestion paths decide "is the report already here mine?" by identity**, not by
-  filename. The listener and the `-g -o` exporter used to disagree — same directory, listener
-  overwrote, exporter skipped and wrote nothing. The exporter's version of the question was
-  answered by a glob, which cannot tell "the listener in this very run already wrote this" from
-  "somebody else's report is in the way"; one degenerate glob matched JMeter's own
-  `statistics.json` and the run produced no Web Insight report at all, exit 0. The name is still
-  how candidates are *found*; it is no longer how the decision is *made*. Anything that cannot
-  say which run produced it — no `.json`, a truncated one, one from a version before run identity
-  — counts as not ours and is overwritten with an announcement, because a visible overwrite is a
-  far better failure than a run that produces nothing and says nothing.
+  filename, so the listener and the `-g -o` exporter give the same answer in the same directory.
+  A filename cannot tell "the listener in this very run already wrote this" from "somebody else's
+  report is in the way". The name is how candidates are *found*, not how the decision is *made*.
+  Anything that cannot say which run produced it — no `.json`, a truncated one, one with no
+  `runId` — counts as not ours and is overwritten (with a log line naming it, whenever a `.json`
+  was there to ask), because an overwrite is a far better failure than a run that produces
+  nothing and says nothing.
 
 ### Exit Codes and Console Markers
 
@@ -903,8 +897,8 @@ depend on it:
   file), and **a collection that failed** — `SOURCE_FAILED`, `LOW_COVERAGE`, or a payload that was
   missing or refused (another run's, unreadable) while an enabled server assert is declared.
 
-**This is on by default**; `-Jwebinsight.report.failonerror=false` restores the old exit-0
-behaviour. The opt-out buys back the exit code and nothing else — every marker still prints.
+**This is on by default**; `-Jwebinsight.report.failonerror=false` makes these exit 0. The
+opt-out buys back the exit code and nothing else — every marker still prints.
 
 It does **not** cover the verdict. A FAIL gate is a working gate returning an answer, and exits 0
 unless `failonassert` asks otherwise. The line is between "the plugin did not check what you
@@ -926,11 +920,8 @@ band, and WARN never moves the exit code.
 it wrote the payload**, whatever each series' status, and 1 only for a usage, input or
 environment fault. The payload records what failed; the report decides what that means.
 
-It was opt-in and default-off. The measured consequence: every failure mode observed across a
-110-row scenario matrix exited 0, so a pipeline shaped `jmeter -n -t … && publish-report` stayed
-green with nothing to publish. It also made the two paths disagree — the `-g -o` exporter's
-exception propagates and JMeter exits 1, so the identical failure failed the build in one mode
-and passed it in the other.
+It is on by default because, off, a pipeline shaped `jmeter -n -t … && publish-report` stays
+green when the report it publishes was never written.
 
 Four greppable markers, one line each:
 
@@ -957,20 +948,20 @@ Optional JUnit XML report for native CI/CD test result integration. Disabled by 
 **Output:** `web-insight-report.xml` (or matching the HTML filename). Each sampler = test case, assert breaches = test failures with metric details. If nothing was declared, all test cases pass.
 
 The failure message text is `ASSERT FAIL: …`, and CI jobs grep it. It names every failing metric:
-p95, p99, mean and errorRate in the words they always had (`P95 611ms exceeds threshold`), any other
+p95, p99, mean and errorRate in a fixed wording (`P95 611ms exceeds threshold`), any other
 by its measurement and the band it breached (`p50 119.361 ms breached > 119.36 ms`).
 
 **The suites.** The sampler suite, then the client-rule suite and one suite per server component:
 
 | `<testsuite name=…>` | When | One testcase per |
 |---|---|---|
-| `<testName>` | always | sampler — the original suite, unchanged |
+| `<testName>` | always | sampler |
 | `<testName> - assertions` | a client rule was declared | client rule |
 | `<testName> - <componentId>` | server asserts were evaluated, one suite per component | server assert |
 | `<testName> - (no gate)` | a server assert named no declared component | server assert |
 
-The root `<testsuites>` `tests`/`failures` counts are the **sampler suite's only**, as they always
-were; each other suite carries its own counts. In a server suite a FAIL, and a check that could not
+The root `<testsuites>` `tests`/`failures` counts are the **sampler suite's only**; each other
+suite carries its own counts. In a server suite a FAIL, and a check that could not
 run — `SOURCE_FAILED`, `LOW_COVERAGE`, `INVALID_RULE` — is a `<failure>`; the other `NOT_JUDGED`
 reasons are `<skipped>`, and a WARN is a `<system-out>`. Each testcase body names the assert's
 `component:`, its `metric:` when it names a catalogue metric, then `query:`, `reduce:` (when the reducer could be read), `divideBy:`
@@ -1039,12 +1030,10 @@ For very large tests (data exceeding ~10MB), the report automatically switches t
   The summary, sampler and error tables are server-rendered from this run's own data, so they
   stay and are correct.
 
-  This reverses an earlier choice — it used to warn in a banner and chart the foreign data
-  anyway, on the reasoning that stale charts with a banner beat no charts. That was the wrong
-  trade: a chart from another run is *wrong output*, and a banner above a plausible-looking chart
-  is read by nobody once the numbers below it look reasonable. A **missing** payload is a
-  different case and keeps its own message — nothing is wrong there, only absent, so the page
-  still renders what it has.
+  Withholding is deliberate: a chart from another run is *wrong output*, and a banner above a
+  plausible-looking chart is read by nobody once the numbers below it look reasonable. A
+  **missing** payload is a different case and has its own message — nothing is wrong there, only
+  absent, so the page still renders what it has.
 - Missing or foreign, the rules, the server asserts and their verdicts travelled in that file, so
   the Asserts and Server tabs and both Summary cards say **UNAVAILABLE** and why (the Summary
   server card only when the header carries a server chip), and the header's verdicts — rendered
@@ -1091,7 +1080,7 @@ Toggle via the eye icon in the header. Swaps all semantic colors from green/red 
 
 | Path | How | JMX change? | Error bodies? |
 |------|-----|-------------|---------------|
-| **Listener** | Add Web Insight Report listener to JMX | Yes (one-time) | Full (response body, headers, URL) |
+| **Listener** | Add Web Insight Report listener to JMX | Yes (one-time) | Full (response body, URL) |
 | **CLI `-g -o`** | `jmeter -g results.jtl -o report/` | None | Partial (no response body — not in JTL CSV) |
 
 Both paths produce the same interactive Web Insight Report. The listener path captures richer error detail because it has access to the live `SampleResult` object during test execution. The CLI path is ideal for CI/CD pipelines and Docker environments where you can't or don't want to modify the test plan.
@@ -1124,8 +1113,9 @@ jmeter -g results.jtl -o report-dir/ \
 **Collision detection:** The CLI exporter skips generation only when the report already in the
 output directory is **provably this same run's** — its `.json` sibling declares a matching
 `runId`, which happens when the listener wrote it during the same execution. Anything else,
-including a report that cannot say which run produced it, is overwritten with a line saying so.
-Skipping on a name match alone is how a run could produce no report at all and still exit 0.
+including a report that cannot say which run produced it, is overwritten; when its `.json` is
+there but names another run, or none, `jmeter.log` says so. Skipping on a name match alone would
+let a run produce no report at all and still exit 0.
 
 **Note on error details:** When generating from JTL, error records carry the response code, message, thread, and URL — but not the response body, because JTL CSV does not store it. The report shows an informational message when expanding error details that lack this data.
 
@@ -1140,7 +1130,7 @@ Add **Web Insight Report** listener to your test plan (GUI or non-GUI mode). Aut
 
 | Value | Resolves to |
 |-------|-------------|
-| *(empty)* | The first writable of: the results file's directory → the working directory → the `.jmx`'s directory → `~/.jmeter-web-insight-report` → system temp. The chosen one is logged |
+| *(empty)* | The first writable of: the results file's directory → the working directory → the `.jmx`'s directory → `~/.jmeter-web-insight-report` → `web-insight-report` under the system temp directory. The chosen one is logged |
 | `/var/reports` or `D:\reports` | That path (absolute) |
 | `reports` | `{working dir}/reports` (relative) |
 | `../reports` | Parent of working directory |
@@ -1151,14 +1141,14 @@ bug. Each candidate is tested with a real create-and-delete probe, not `File.can
 on Windows reflects only the DOS read-only attribute and returns true for an ACL-denied
 directory.
 
-The old default was the working directory, full stop. In GUI mode that is normally
+The working directory alone would be a poor default. In GUI mode it is normally
 `$JMETER_HOME/bin`, read-only on most managed installs; in a container it may not be writable by
 the run user. A default that commonly fails is not a default.
 
 The working directory sits between the results file and the `.jmx` rather than at either end. A
 results filename is a statement of intent — you named a directory and put this run's output in it
 — so it outranks wherever the JVM happened to be launched. The `.jmx`'s directory is not a
-statement of anything, and ranking it higher moved reports next to the test plans.
+statement of anything, and ranking it higher would move reports next to the test plans.
 
 **Report Filename field:**
 
@@ -1196,7 +1186,7 @@ All settings can be overridden via JMeter `-J` properties. CLI properties take p
 
 `junit`, `externaldata` and `failonerror` accept only `true` or `false`, case-insensitively.
 Anything else warns and is treated as **unset**, so the GUI/JMX field still decides —
-`-Jwebinsight.report.junit=yes` used to match neither branch and silently void a ticked box.
+`-Jwebinsight.report.junit=yes` warns rather than silently voiding a ticked box.
 
 **Metrics & thresholds:**
 
@@ -1281,8 +1271,9 @@ and every sibling follows it: `myreport.json`, `myreport.xml`, `myreport-data.js
 
 ### How the artifacts land
 
-All four are written to per-process staging files named `.<target>.<pid>-<nonce>.tmp` beside
-their target, and only then renamed into place — payload first, then the HTML that loads it, so
+All four are written to per-process staging files named `.<target>.<owner>-<pid>-<nonce>.tmp`
+beside their target, where the owner is the host's (or container's) name, and only then renamed
+into place — payload first, then the HTML that loads it, so
 a reader opening the directory mid-publish never finds a page whose `<script src>` points at a
 file that is not there yet.
 
@@ -1301,10 +1292,11 @@ lock on that inode lets a third process create a fresh file and lock *that* inst
 holders, the one outcome the lock exists to prevent. It is an empty dotfile in a directory that
 already contains the report.
 
-Staging debris left by a killed writer is swept on the next run by **process liveness**, never
-by age: an age predicate deletes a live writer's staging file on a slow disk, which is the bug
-being fixed. A staging file whose pid still resolves to a running process is only removed after
-six hours, as a backstop against pid reuse.
+Staging debris left by a killed writer is swept on the next run by **process liveness**, not by
+age: an age predicate would delete a live writer's staging file on a slow disk. A staging file
+whose pid still resolves to a running process is only removed after six hours, as a backstop
+against pid reuse. So is one another host or container wrote: its pid means nothing here, so
+only age can speak for it.
 
 ---
 

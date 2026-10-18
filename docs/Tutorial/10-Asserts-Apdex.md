@@ -50,8 +50,7 @@ subset is legitimate.
 | `id` | no | Unique. Names the JUnit testcase and appears in every failure message. Derived from the target and metric when omitted. |
 | `target` | **yes** | Exactly one form — see below. |
 | `metric` | **yes** | Case-insensitive. `p95` ≡ `p95.0`, `median` ≡ `p50`. What follows the `p` is read as Java reads a double, so `p95d`, `p+95` and `p9.5e1` are p95 too; the rule is reported under the canonical name, and a percentile below 0.001 is named in E notation: `p0.0001` is reported as `p1.0E-4`. |
-| `fail`, `warn` | **at least one** | Predicates. `fail` is tested first. A rule with neither
-cannot decide anything and is INVALID. |
+| `fail`, `warn` | **at least one** | Predicates. `fail` is tested first. A rule with neither cannot decide anything and is `NOT_JUDGED / INVALID_RULE`. |
 | `enabled` | no | `false` parks a rule without deleting it. |
 | `description` | no | Carried into failure messages and shown in the report. |
 
@@ -89,7 +88,8 @@ Comparisons are strict where they say so: `{"gt": 800}` does not fire at exactly
 There is no corridor operator. A range is **two rules** — `{"lt": 40}` and `{"gt": 80}` — and
 written that way each one says which end was missed, and each can show how far past its own
 limit the run was. A single `outside: [40, 80]` band could do neither: two thresholds have no
-one number to measure against.
+one number to measure against. A band written with `outside` is refused, and the message names
+the two rules to write instead.
 
 ### Metrics
 
@@ -100,14 +100,13 @@ one number to measure against.
 > An error, to this report, is any sample JMeter marked `success = false`. That is JMeter's own
 > failure signal, and it includes a sample failed by a **Response Assertion**, a JSON Assertion,
 > a Duration Assertion, or a JSR223 calling `setSuccessful(false)` — none of which need an HTTP
-> error to fire. A checkout that returns `200 OK` with the wrong body is an error here, and
-> always has been.
+> error to fire. A checkout that returns `200 OK` with the wrong body is an error here.
 >
 > This is the right behaviour: a gate that ignored assertion failures would pass a run where
-> every response was wrong. But it was **never written down**, so a threshold written as "fail
-> above 2% errors" may have been read by its author as "2% HTTP failures" while meaning
-> something broader. Nothing about the numbers has changed — the report can now *show* you the
-> split, via [error classes](05-Errors-Tab.md#error-classes--where-a-failure-was-decided).
+> every response was wrong. But it is easy to miss, so a threshold written as "fail above 2%
+> errors" can be read by its author as "2% HTTP failures" while meaning something broader. The
+> report *shows* you the split, via
+> [error classes](05-Errors-Tab.md#error-classes--where-a-failure-was-decided).
 >
 > If you want a threshold on one kind, say which:
 > `errorRate:class=protocol` for HTTP failures, `errorRate:class=nonProtocol` for the rest.
@@ -184,8 +183,7 @@ Three things worth knowing:
   `errorCount:…` is per-sampler only, exactly as the plain metrics are.
 
 > Selectors are written in the file. The editor's metric dropdown offers the plain names, and an
-> existing qualified rule keeps its own entry when you open it — but a new one is hand-written for
-> now.
+> existing qualified rule keeps its own entry when you open it — but a new one is written by hand.
 
 **Whole run:** `totalSamples` · `errorRate` (%) · `duration` (s) · `maxThreads` · `mean` ·
 `median` · `throughput` (/s) · `apdex` · **p50…p99.99** (ms)
@@ -268,10 +266,10 @@ see [Server tab](13-Server-Tab.md).
 **`INVALID_RULE` is not a verdict, and it still fails the run.** Those are two different
 statements and both are true.
 
-It is not a verdict. It used to be a *status* that outranked `FAIL`, so a mistyped metric name
-produced a red gate while no measured number had exceeded anything — a judgement about
-performance, from a rule that measured no performance. That is gone: a broken rule contributes
-nothing to `gate.status`, and a run whose only problem is a broken rule does not report `FAIL`.
+It is not a verdict. A broken rule contributes nothing to `gate.status`, and a run whose only
+problem is a broken rule does not report `FAIL`: a red gate there would be a judgement about
+performance from a rule that measured no performance. Beside a genuine breach the run reports
+`FAIL`, because the verdict is the worst rule that decided something.
 
 It still fails the run, because the *gate was not built from what the file declared*. Your file
 asked for six checks and five of them never ran. That is the plugin failing to do what it was
@@ -305,22 +303,25 @@ Default off, and it will stay off. It fires on `FAIL` only — not on `WARN`, be
 exists to say "look at this" without stopping anything, and not on `NOT_JUDGED` for any reason.
 The FAIL it folds is the client gate's **or that of any server component**. There is no
 observe-only component: a server metric you only want to watch gets a warn band and no fail band.
-See [Export & CI/CD](11-Export-Integration.md#gating-on-the-gate) and
-[Upgrading — asserts](../UPGRADING-ASSERTS.md).
+
+So, by default: a `FAIL` verdict exits 0, and exits non-zero only under `failonassert=true`; a
+rule the file got wrong is `NOT_JUDGED / INVALID_RULE`, moves the verdict in neither direction,
+and exits non-zero under `failonerror`, which is on unless you set it to `false`. Both flags are
+read the same way by the listener (`-n -t`) and by `jmeter -g … -o`. See
+[Export & CI/CD](11-Export-Integration.md#gating-on-the-gate).
 
 Plus one state that belongs to the run rather than to a rule:
 
 | | |
 |---|---|
-| **NOT EVALUATED** | No rule gated. Either nothing was declared, or everything declared was disabled or skipped. **This is not a pass.** A run with no gate has not passed one — it was reported, not judged, and the CI/CD JSON says `"assertsEvaluated": false`. |
+| **NOT EVALUATED** | No rule gated. Either nothing was declared, or every declared rule is `NOT_JUDGED`. **This is not a pass.** A run with no gate has not passed one — it was reported, not judged. With nothing declared the CI/CD JSON says `"assertsEvaluated": false`; with rules declared and none judged, `gate.status` is `NOT_EVALUATED`. |
 
-> **Why there is no "inconclusive".** It was proposed and rejected. In CI an eighth status has to
-> resolve to pass or fail anyway: if it fails the build it is FAIL with extra vocabulary, and if
-> it passes it is a silent green — the one outcome this whole feature exists to prevent. Where
-> the honest answer is "the question was wrong rather than the system", the report says so as a
-> **fact about the run** — a number, a target and a shortfall — not as a verdict that withholds
-> judgement. And where a rule genuinely cannot be answered, INVALID is correct and the message
-> says which of the reasons above applies.
+> **Why there is no "inconclusive".** In CI such a status has to resolve to pass or fail anyway:
+> if it fails the build it is FAIL with extra vocabulary, and if it passes it is a silent green —
+> the one outcome this whole feature exists to prevent. Where the honest answer is "the question
+> was wrong rather than the system", the report says so as a **fact about the run** — a number, a
+> target and a shortfall — not as a verdict that withholds judgement. And where a rule genuinely
+> cannot be answered, it is `NOT_JUDGED`, and its reason says which of the cases above applies.
 
 ## How a verdict is reached
 
@@ -397,13 +398,13 @@ row already shows the number, the limit and the gap between them.
 `load:<metric>` — editable, disableable, deletable and retunable exactly like a rule written by
 hand. It is *consumed*: a save from the Asserts tab writes the rule and no `loadValidity` block
 at all, so the file never declares the same check twice. Until you save, it is re-created on
-every run, so a tester who never opens the report loses nothing. This replaces the old
-behaviour, where the block produced a rule the report refused to edit, disable or delete.
+every run, so a tester who never opens the report loses nothing.
 
-One consequence worth knowing: a `tolerance` of 1 or more is no longer clamped. `1 − 1` is
-zero, so the clamp produced `lt 0` — a band nothing can breach, the most lenient outcome
-available. The raw value now reaches validation, the rule is `NOT_JUDGED / INVALID_RULE`, and
-the run exits non-zero. A tolerance meant as a percentage is written as a fraction: `0.2`.
+A `tolerance` of 1 or more is not clamped. It puts the band at or below zero (`1 − 1` is zero),
+and a band nothing can breach is refused: the rule is `NOT_JUDGED / INVALID_RULE`, and the run
+exits non-zero under `failonerror`. A tolerance meant as a percentage is written as a fraction:
+`0.2`, not `20`. A `target` or `tolerance` that is not a finite number is refused the same way, in
+a sentence naming the field: `loadValidity.target must be a finite number, not NaN`.
 
 ---
 

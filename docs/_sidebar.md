@@ -21,4 +21,3 @@
 
 - **Reference**
   - [Features](FEATURES.md)
-  - [Upgrading — asserts](UPGRADING-ASSERTS.md)

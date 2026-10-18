@@ -1,6 +1,7 @@
 # Filter Bar
 
-A persistent control bar below the tabs that affects all tabs globally.
+A persistent control bar below the tabs that affects the charts on every tab. It is hidden on the
+Server tab, whose charts it does not affect.
 
 ![Filter Bar](images/06-filter-bar.png)
 
@@ -14,7 +15,7 @@ The filter bar has 3 rows, each independently collapsible:
 | **Row 2** | Time Range display, Timer/Clock toggle, Presets | Visible |
 | **Row 3** | Sampler checkboxes, All/None buttons, color dots | Visible |
 
-**Toggle visibility:** Click **"Filters ▾"** in the tab navigation → dropdown with 3 checkboxes. Uncheck a row to hide it. Hiding a row does NOT reset its settings — all filters remain active.
+**Toggle visibility:** Click **"Filters ▾"** in the tab navigation → dropdown with 3 checkboxes (*Palette / Line / Metric*, *Time Range / Presets*, *Samplers*). Uncheck a row to hide it. Hiding a row does NOT reset its settings — all filters remain active.
 
 **Persistence:** Row visibility state saved to localStorage.
 
@@ -32,7 +33,7 @@ Three built-in color palettes for chart lines:
 | **Okabe-Ito** | Colorblind-friendly (deuteranopia/protanopia safe) | No |
 | **High Contrast** | Maximum visual separation between series | No |
 
-**Behavior:** Click a button → all chart lines update to the new palette colors. Sampler color dots in the filter bar also update. Persists in localStorage.
+**Behavior:** Click a button → all chart lines update to the new palette colors. Sampler color dots in the filter bar also update, and any per-sampler colour override is cleared. Persists in localStorage.
 
 ![Palette Toggle](images/06c-palette-toggle.png)
 
@@ -57,7 +58,7 @@ Three built-in color palettes for chart lines:
 | **P99** | 99th percentile | No |
 | **Max** | Maximum response time | No |
 
-**Behavior:** Affects the Response Time Over Time chart on both Summary and Timeline tabs. Other charts (Throughput, Error Rate, etc.) are unaffected.
+**Behavior:** Affects the Response Time Over Time chart on both Summary and Timeline tabs — and which rules draw their threshold lines there — and the Compare tab's Response Time Comparison. Other charts (Throughput, Error Rate, etc.) are unaffected.
 
 ![Metric Toggle](images/06d-metric-toggle.png)
 
@@ -68,18 +69,21 @@ Dropdown controlling time-series aggregation level:
 | Option | Bucket Size |
 |--------|-------------|
 | **1s** | Raw 1-second data |
-| **5s** | 5-second averages |
-| **10s** | 10-second averages |
-| **30s** | 30-second averages |
-| **1min** | 1-minute averages |
-| **5min** | 5-minute averages |
-| **10min** | 10-minute averages |
+| **5s** | 5-second buckets |
+| **10s** | 10-second buckets |
+| **30s** | 30-second buckets |
+| **1min** | 1-minute buckets |
+| **5min** | 5-minute buckets |
+| **10min** | 10-minute buckets |
+
+Each bucket holds a sample-weighted average for response times, percentiles and error rates, the
+bucket's rate for throughput and bytes, and the maximum for Max.
 
 **Default:** Auto-detected based on test duration (1s for tests under 5 minutes).
 
 ![Granularity](images/06e-granularity.png)
 
-**Behavior:** Changing granularity instantly re-renders all Timeline charts. Underlying data stays at 1-second resolution — only the display aggregation changes. Does NOT affect the Samplers table values.
+**Behavior:** Changing granularity instantly re-renders the time-series charts. Underlying data stays at 1-second resolution — only the display aggregation changes. Does NOT affect the Samplers table values, the heatmap or the percentile bars.
 
 ## Row 2: Time Range / Presets
 
@@ -87,16 +91,16 @@ Dropdown controlling time-series aggregation level:
 
 ![Time Range & Presets](images/06g-time-presets.png)
 
-- **Start/End inputs** — read-only, show the current visible time range
+- **Start/End inputs** — read-only, show the current visible time range as date and wall-clock time
 - **Syncs with chart zoom** — when you zoom into a chart, these update
 - **Reset button** — restores all charts to full time range
 
 ### Timer/Clock Toggle
 
-- **Default:** Wall-clock time (e.g., "14:30:50")
-- **Click toggle** → switches to elapsed time (e.g., "1:20:15")
+- **Default:** Wall-clock time (e.g., "14:30:50"), clock icon
+- **Click toggle** → switches to elapsed time (e.g., "1:20:15"), stopwatch icon
 - **Click again** → back to wall-clock
-- Affects all chart X-axis labels
+- Affects the chart X-axis labels
 
 ### Filter Presets
 
@@ -104,7 +108,7 @@ Save and restore complete filter configurations:
 
 | Action | Behavior |
 |--------|----------|
-| **Save** | Saves: sampler visibility, metric, palette, line thickness, hidden columns |
+| **Save** | Asks for a name, then saves: sampler visibility, metric, palette, line thickness, the Samplers table's hidden columns |
 | **Load** | Select from dropdown → all saved settings restored |
 | **Delete** | Select preset → click Del → removed |
 | **Default** | Always-present option that resets everything to factory defaults |
@@ -117,13 +121,14 @@ Presets are stored in localStorage under the key `wir_filterPresets`.
 
 ![Sampler Checkboxes](images/06f-sampler-checkboxes.png)
 
-- One checkbox per sampler, labeled with the sampler name
-- **Default:** All regular samplers checked. Σ Total unchecked. Utility samplers (JSR223*, Debug*, BeanShell*) unchecked.
+- One checkbox per sampler, labeled with the sampler name; transaction children are indented
+  and listed only while **Transaction Details** is on (Samplers tab)
+- **Default:** All regular samplers checked. Σ Total unchecked. Utility samplers (JSR223*, Debug*, BeanShell*, names starting `__`) and samplers with no samples unchecked.
 - **Uncheck** a sampler → its data disappears from:
-  - All time-series charts (line removed)
-  - Samplers table (row hidden)
+  - The charts on the Summary, Timeline and Compare tabs (line removed), along with the
+    threshold lines of the rules about it
   - Error tab charts (errors hidden; the two error tables keep every row)
-  - Summary metrics update accordingly
+- The Samplers table and the header cards are not filtered: they always show every sampler
 - **Re-check** → everything restored
 
 ### All / None Buttons
@@ -133,19 +138,16 @@ Presets are stored in localStorage under the key `wir_filterPresets`.
 
 ### Σ Total Checkbox
 
+- The first, bold entry in the list
 - **Default:** Unchecked (Total not shown)
 - **Check:** Adds a virtual aggregate row to the Samplers table and a dashed line to charts
-- Values: weighted averages for response times, summed counts, overall error rate
+- Values: see *Σ Total Row* on the [Samplers tab](04-Samplers-Tab.md)
 
 ### Per-Sampler Color Override
 
 - Each sampler has a **color dot** next to its name
 - **Click the dot** → color picker popup opens:
-  - Grid of swatches from all palettes
-  - Native `<input type="color">` for custom colors
+  - Grid of swatches from all palettes, the current colour marked
+  - Native `<input type="color">` (**Custom...**) for any other colour
 - **Select a color** → dot updates, chart line color updates
-- **Persistence:** Custom colors saved to localStorage
-
-### Sampler Search
-
-A text input to filter the sampler checkbox list by name. Type a partial name → only matching samplers visible.
+- **Persistence:** Custom colors saved to localStorage; choosing a palette clears them

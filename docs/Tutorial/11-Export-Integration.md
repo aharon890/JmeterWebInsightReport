@@ -100,9 +100,8 @@ The keys come in that order: `status` and `serverStatus` side by side near the t
 `findings[]`. The server keys are described in [Server asserts in the
 JSON](#server-asserts-in-the-json) below.
 
-**Every rule is the same kind of rule.** Entries used to carry an `origin` saying whether the
-report could edit them, because a legacy block produced rules it could not. That block is folded
-into `assertions[]` at load now, so there is one kind of rule, one place it lives, and nothing to
+**Every rule is the same kind of rule.** A `loadValidity` block is folded into `assertions[]` at
+load as an ordinary rule, so there is one kind of rule, one place it lives, and nothing to
 distinguish.
 
 A rule that decided nothing carries **`notJudged`** and a **`reason`** saying which kind of
@@ -138,7 +137,7 @@ at all" — a difference that decides whether a build should stop. The `gate` bl
 with server asserts `serverStatus` and `serverComponents[]`, are what a pipeline should read.
 
 There are two lines, and both are copied **verbatim** from
-[`test-plans/goldens/jq-gate.txt`](../../test-plans/goldens/jq-gate.txt). That file is the one
+[`test-plans/goldens/jq-gate.txt`](https://github.com/aharon890/JmeterWebInsightReport/blob/main/test-plans/goldens/jq-gate.txt). That file is the one
 copy: every line in it is run by `jq` over the golden CI/CD documents (a gateless run, client-only
 runs, server-only runs, a PASS over a coverage failure, a refused payload) and must give the answer written
 beside it, so a line copied from there holds on every shape of run. Copy from the file, not from a
@@ -201,9 +200,10 @@ jq -r '.findings[]? | "\(.severity) \(.ruleId): \(.message)"' web-insight-report
 performance judgement to make.
 
 **You do not need a `jq` for that one.** A rule that could not run already exits the process
-non-zero, under `failonerror`, before your pipeline reads this file — it is a configuration error
-rather than a verdict. The expressions above are for deciding what a *verdict* should do to your
-build, which is the part that is yours. See [Upgrading — asserts](../UPGRADING-ASSERTS.md).
+non-zero, under `failonerror` (on by default), before your pipeline reads this file — it is a
+configuration error rather than a verdict. A `FAIL` verdict exits 0 unless you set
+`failonassert=true`. The expressions above are for deciding what a *verdict* should do to your
+build, which is the part that is yours.
 
 Two arithmetics, both closed, so a job can check the gate's own sums rather than trust that every
 rule landed somewhere. They hold on `gate` and on every `serverComponents[]` entry alike — the server
@@ -298,8 +298,9 @@ not produce or a file the loader could not read. `assertsEvaluated: false` is re
 are no rules".
 
 In that case `gate.status` is **`NOT_EVALUATED`**, which is not `PASS`. A run that judged nothing
-has not passed anything. The top-level `status` is the same field twice: there is one vocabulary
-now, so the one-word status and the `gate` block cannot report different things.
+has not passed anything. The top-level `status` carries the same verdict as `gate.status`, with
+one difference: where nothing was judged it reads `UNKNOWN`, so read `gate.status` to tell that
+case apart.
 
 **The verdict does not change JMeter's exit code unless you ask.** By default a FAIL gate does
 not fail the process: gating on the verdict is your pipeline's reading of these artifacts. What
@@ -361,14 +362,13 @@ component's `id`, its `label` (the `description`, or the id), its `type` (a cata
 `postgres`, `kafka`, `redis`, `host-linux`, `aws-ec2`, `oracle`, `influxdb2`, `influxdb3`, `jvm`,
 `http-service`, `kubernetes-pod`, `mysql` — or `custom`), the `collectionId` of the
 payload it was judged over, and then **the same block the
-client `gate` carries** — so one arithmetic and one idiom read both sides. (It was `serverGates[]`,
-with a `failsBuild` key, until every component became one that can fail the build.)
+client `gate` carries** — so one arithmetic and one idiom read both sides.
 
 Asserts that name no declared component are reported in one more entry, **`"(no gate)"`**, which
 has no `type`. Its `id` is that reserved word, and its `label` is `"(no component)"`, the name the
 header chip, the console and the Server tab give it. Such an assert, unless parked, is a defect in the file (`INVALID_RULE`) and
 exits 1 by default, so it must be counted somewhere a pipeline sums
-`serverComponents[].notJudged.invalidRule`; the JUnit XML has carried the same suite all along.
+`serverComponents[].notJudged.invalidRule`; the JUnit XML carries the same entry as a suite.
 `(no gate)` and `assertions` are reserved, so no declared component can take either id.
 
 ```json
@@ -450,7 +450,7 @@ one.
 
 The four artifacts of one run are bound together by *filename*, and filenames are not unique per
 run. A job handed a `.json` out of a shared output directory could not tell whether it belonged
-to the HTML sitting beside it. Three things a pipeline can now do:
+to the HTML sitting beside it. `runId` settles that. Three things a pipeline can do with it:
 
 ```bash
 # 1. Archive under an id that cannot collide with a concurrent shard's
@@ -464,10 +464,6 @@ grep -q "$RUN_ID" out/web-insight-report.html || { echo "artifact set is mixed";
 xmllint --xpath 'string(//property[@name="webinsight.runId"]/@value)' out/web-insight-report.xml
 ```
 
-Note that two artifacts written by **different plugin versions** into one directory can carry
-ids of different lengths — the id was 32 bits before this release. That is not a bug to work
-around: they genuinely are different runs, so treating them as a mismatch is the right answer.
-
 ## Exit codes and the console markers
 
 The plugin exits non-zero when **it could not do what it was told**. These count:
@@ -478,8 +474,8 @@ The plugin exits non-zero when **it could not do what it was told**. These count
 | it could not build the gate your file declared | a rule naming an unknown metric; an annotations file that would not load at all; a server assert that cannot run (`INVALID_RULE`) or that names no declared component (unless it is parked); a component with an unknown `type`; a retired key in `serverMetrics` (`sources`, `gates`, `packs`, `kpis`, `failsBuild` on a component); a `requiresLoad` or `divideBy` naming no client rule, or one that is not about throughput |
 | a check a server component depended on never ran | a series that could not be collected (`SOURCE_FAILED`) or data below the coverage floor (`LOW_COVERAGE`); a payload named by `-Jwebinsight.report.servermetrics` that is missing, unreadable, another schema's or another run's, when an enabled server assert is declared |
 
-**This is on by default**; `-Jwebinsight.report.failonerror=false` restores the old exit-0
-behaviour, and buys back the exit code *only* — every marker, finding and banner still appears.
+**This is on by default**; `-Jwebinsight.report.failonerror=false` exits 0 instead, and buys back
+the exit code *only* — every marker, finding and banner still appears.
 
 **Server-side, it is lenient on missing data, by decision.** What does *not* exit non-zero:
 
@@ -489,17 +485,15 @@ behaviour, and buys back the exit code *only* — every marker, finding and bann
 - **A query that matched no series** (`NO_MATCH`) — on either side, a skip and never fatal.
 - **A refused payload when nothing needed it** — no enabled server assert declared. It is a
   WARNING finding, and the exit is unaffected.
-
-There is no observe-only component any more: every component can fail the build. A metric you only
-want to watch gets a warn band and no fail band, and a WARN never moves the exit code.
+- **A WARN.** Every component can fail the build; a metric you only want to watch gets a warn band
+  and no fail band, and a WARN never moves the exit code.
 - **`wir-collect` itself** exits 0 whenever it wrote the payload, whatever each series' status:
   the payload records them, and step 3 decides what they mean. It exits 1 only for a usage, input
   or environment fault, when nothing was written.
 
-It used to be opt-in and default-off, and the measured consequence was that every failure mode
-exited 0: a pipeline shaped `jmeter -n -t plan.jmx && publish-report` stayed green with nothing
-to publish, and CI could not detect a missing report without parsing a log file it was never
-given.
+It is on by default because the alternative exits 0 on every failure mode: a pipeline shaped
+`jmeter -n -t plan.jmx && publish-report` would stay green with nothing to publish, and CI could
+not detect a missing report without parsing a log file it was never given.
 
 **What is *not* covered: the verdict.** A FAIL gate — client or server — is a successful run of a
 working gate, and exits 0 unless you ask otherwise with `failonassert`, which reads the client gate
@@ -548,8 +542,8 @@ Optional JUnit XML for native CI/CD integration. Disabled by default.
 
 **Output:** `web-insight-report.xml` (filename matches HTML)
 
-Two testsuites — one per sampler, as before, and one per declared client rule — plus one per
-server component on a report that judged server asserts:
+Two testsuites — one per sampler, and one per declared client rule — plus one per server
+component on a report that judged server asserts:
 
 | Suite `name` | `classname` | One testcase per |
 |---|---|---|
@@ -558,18 +552,18 @@ server component on a report that judged server asserts:
 | `<testName> - <componentId>` | `server-metrics` | server assert on that component |
 | `<testName> - (no gate)` | `server-metrics` | server assert that named no declared component — only when there is one |
 
-The root `<testsuites>` element's `tests` and `failures` count the **sampler suite only**, as they
-always have: that is the contract every pipeline consuming this file already parses.
+The root `<testsuites>` element's `tests` and `failures` count the **sampler suite only** — one
+test per top-level sampler, however many rules or server asserts the file declares.
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <testsuites name="Load Test" tests="5" failures="1" time="75.0">
 
-  <!-- One testcase per top-level sampler. Every attribute and testcase name is unchanged,
-       and so is the wording of p95, p99, mean and errorRate; the additions are the
-       <properties> block below and the sampler's other failing metrics, named in the
-       message. A scope: "overall" rule judges the whole run, not a sampler, so it is
-       never named here: run-throughput below is in the assertions suite only. -->
+  <!-- One testcase per top-level sampler. The message names every metric that failed
+       the sampler: p95, p99, mean and errorRate in their fixed wording, any other by its
+       measurement and the band it breached. A scope: "overall" rule judges the whole run,
+       not a sampler, so it is never named here: run-throughput below is in the assertions
+       suite only. -->
   <testsuite name="Load Test" tests="5" failures="1" time="75.0">
     <properties>
       <property name="webinsight.runId" value="3f2a7c19b40de85a"/>
@@ -630,11 +624,10 @@ A number and its unit are separated by a space, as the band beside them is: `610
 reported by its **worst judged match** — the match the JSON's `attainment` describes (see above) —
 so a rule failing on two samplers names the slower one, not the first.
 
-**The sampler suite names every failing metric.** p95, p99, mean and errorRate keep the words they
-always had (`P95 611ms exceeds threshold`), which pipelines grep. Any other metric that failed a
+**The sampler suite names every failing metric.** p95, p99, mean and errorRate have fixed wording
+(`P95 611ms exceeds threshold`), which a pipeline can grep. Any other metric that failed a
 sampler is named by the measurement that failed it, beside the band it breached:
-`ASSERT FAIL: p50 119.361 ms breached > 119.36 ms; throughput 8.299 /s breached < 8.3 /s`. Before,
-a sampler failed only by such a metric read `ASSERT FAIL:` and nothing else. Two rules failing one
+`ASSERT FAIL: p50 119.361 ms breached > 119.36 ms; throughput 8.299 /s breached < 8.3 /s`. Two rules failing one
 metric on one sampler measure the same value, which is named once, beside the band of the first rule
 in the file to fail it — and written with the digits that keep it on its own side of every band
 that judged that metric on that sampler, passing rules' included: a p50 of 214.7456 that fails
@@ -644,11 +637,10 @@ Only rules that judged the sampler itself count: a `scope: "overall"` rule judge
 and is reported in the assertions suite alone.
 
 **Why two.** One testcase per rule is the right shape for a rule engine — and a
-`scope: "overall"` rule has no sampler to hang off, so the gate's broadest checks previously had
-no way to appear at all. But the per-sampler suite is what pipelines already parse, including
-samplers with no threshold appearing as passing tests. Replacing it would change `tests=`, every
-testcase name and every failure body at once, with no opt-out. Appending gives rules first-class
-testcases and leaves the existing contract untouched.
+`scope: "overall"` rule has no sampler to hang off, so only a rule suite can carry the gate's
+broadest checks. The per-sampler suite answers a different question, one testcase per top-level
+sampler, with samplers no rule judges appearing as passing tests, so its `tests=` and testcase
+names stay the same however the rules change. Each suite keeps the shape its consumer reads.
 
 A **warning** is recorded as `<system-out>`, not a failure — a build that stopped on a warn band
 would make warn bands pointless.
@@ -658,8 +650,8 @@ or a metric this run could not produce: those are skips, and a dashboard should 
 red. A rule that could not run at all is a `<failure>`.
 
 That split is a practical judgement as much as a principled one. Most CI dashboards render a skip
-as a grey line nobody clicks, so making a broken rule a skip guaranteed that the one state
-needing someone to open the file was the one state nobody would see.
+as a grey line nobody clicks, so a broken rule written as a skip would be the one state that needs
+someone to open the file and the one state nobody sees.
 
 Either way the message is never just the word — it carries the sentence naming the problem, so a
 CI report showing only this XML still says what to fix:
@@ -682,19 +674,17 @@ broken rule, and for server asserts a series that could not be collected or data
 Which reasons count is decided once, in the engine, not by a subtraction at each output: the
 JUnit `<failure>`, the `failonerror` exit and this arithmetic all read the same decision.
 
-A config error also fails the JMeter process itself under `failonerror`, so in practice CI sees it
-twice. See [Upgrading — asserts](../UPGRADING-ASSERTS.md).
+A config error also fails the JMeter process itself under `failonerror`, which is on by default,
+so in practice CI sees it twice. A breached fail band is a `<failure>` here and exits 0 unless
+`failonassert=true`.
 
 ### Server component suites
 
 Every component's suite is written exactly as the client suite is, by the same decision: a
 breached fail band and a check that never ran (`SOURCE_FAILED`, `LOW_COVERAGE`, `INVALID_RULE`) are
 `<failure>`, the other not-judged reasons are `<skipped>`, a warning is `<system-out>`. The
-arithmetic above holds for it with `serverComponents[i]` in place of `gate`.
-
-(An observe-only gate used to write its FAIL and collection failures as `<skipped>`, so Jenkins'
-`junit` step would not mark the build UNSTABLE. Observe-only is gone — every component can fail the
-build — and that rendering went with it.)
+arithmetic above holds for it with `serverComponents[i]` in place of `gate`. Every component can
+fail the build, so none is exempt.
 
 Each testcase body names the assert's `component:`, its `metric:` when it names a catalogue metric,
 then the `query:` that was run, `reduce:` (left out when the reducer could not be read — the
@@ -734,7 +724,7 @@ They get one suite instead, `<testName> - serverMetrics`, that says why:
 
 - **`serverMetrics.payload`**, the payload's state. A refused payload that the declared asserts
   depended on is a `<failure>` whose message is the CI/CD JSON's `serverMetrics.payload` ERROR
-  finding, word for word: the run exits 1 under `failonerror` for it, and the `junit` step now sees
+  finding, word for word: the run exits 1 under `failonerror` for it, and the `junit` step sees
   it too. On the interim report it is a `<skipped>` that says to run `wir-collect`: no payload is
   not an error, and a `<failure>` there would mark every step-1 build unstable. A refused payload
   nothing depended on (every assert disabled) is `<skipped>` with its WARNING.
@@ -757,8 +747,8 @@ asserts:   3 declared, none judged
   </testsuite>
 ```
 
-A run that declares no server assert gets no server suite. The CI/CD JSON is unchanged on all of
-these: no `serverStatus` and no `serverComponents[]`, as before.
+A run that declares no server assert gets no server suite. On all of these the CI/CD JSON carries
+no `serverStatus` and no `serverComponents[]`.
 
 **Why `<properties>` sits where it does, in every suite.** There is no real JUnit XML schema —
 it is a de-facto format with materially different parsers — but the two strict ones that exist
@@ -787,11 +777,10 @@ For very large tests (chart data above the threshold, 10 MB by default):
   pane with "Chart withheld", and draws nothing. The summary, sampler and error tables are
   server-rendered from this run's own data, so they remain and are correct.
 
-  This reverses an earlier choice. It used to warn in a banner and chart the foreign data
-  anyway, on the reasoning that stale charts with a banner beat no charts — and that is the
-  wrong trade. A chart from another run is *wrong output*, and a banner above a plausible-looking
-  chart is read by nobody once the numbers below it look reasonable. If you have a report in this
-  state, regenerate it, or give each run its own output directory.
+  No charts beat stale charts under a banner. A chart from another run is *wrong output*, and a
+  banner above a plausible-looking chart is read by nobody once the numbers below it look
+  reasonable. If you have a report in this state, regenerate it, or give each run its own output
+  directory.
 
   A **missing** payload is a different failure and keeps its own message: nothing is wrong there,
   only absent, so the page still renders what it has.
@@ -832,11 +821,11 @@ Pass it to the `-g -o` step only.
 > machine emits a Web Insight report, including other people's test plans that have never heard
 > of this plugin. Remove that line from `reportgenerator.properties` to opt out.
 >
-> With no `-o` and no `output_dir` property, the exporter used to fall back to
-> `$JMETER_HOME/bin/report-output/` — inside the JMeter installation, which is read-only on most
-> managed installs and is a collision point every `-g` run on that machine shares. It now takes
-> the first writable of: the directory of the JTL being exported → the working directory →
-> `~/.jmeter-web-insight-report` → system temp, and says which it chose. An `-o` or `output_dir`
+> With no `-o` and no `output_dir` property, the exporter takes the first writable of: the
+> directory of the JTL being exported → the working directory → `~/.jmeter-web-insight-report` →
+> system temp, and says which it chose. There is no fixed default folder inside the JMeter
+> installation: that is read-only on most managed installs, and a collision point every `-g` run
+> on the machine would share. An `-o` or `output_dir`
 > you set explicitly is never relocated; it fails instead. The intent line logged at the start of
 > generation always prints the resolved directory absolutely, so check there if a report is not
 > where you expected.

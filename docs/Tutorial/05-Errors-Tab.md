@@ -8,7 +8,7 @@ Error breakdown charts and detail tables for investigating test failures.
 ## Error classes — where a failure was decided
 
 Every row in this tab is a sample JMeter judged failed (`success = false`). That is **not** the
-same as an HTTP error, and the report now says which is which.
+same as an HTTP error, and the report says which is which.
 
 | Class | Condition | What it means |
 |---|---|---|
@@ -16,11 +16,10 @@ same as an HTTP error, and the report now says which is which.
 | **Non-protocol failure** | code in 200–299 | The server answered *successfully* and the sampler failed it anyway — a Response Assertion, or a script calling `setSuccessful(false)`. |
 | **Transport failure** | anything else | No HTTP status at all. Either JMeter wrote the exception into the code field (`Non HTTP response code: java.net.ConnectException`), or it wrote **`000`** — its marker for "no status line was ever read", which is a connection refused, a timeout before the first byte, or a failed TLS handshake. Numeric codes outside the status range land here too, which is what a JDBC, JMS or TCP sampler writes. |
 
-> **`000` was classified as an HTTP failure until 2.4.1.** It is all digits, so it parsed as a
-> status and fell outside 2xx. The effect was the worst possible shape: `class=transport` — the
-> selector written precisely to gate on connection failures — counted **zero** on a run whose
-> errors were all connection failures, while `class=protocol` claimed them. Digits alone no
-> longer make a status; the range does.
+> **`000` is a transport failure.** It is all digits, but digits alone do not make a status — the
+> 100–599 range does. So a run whose errors are all connection failures counts them under
+> `errorRate:class=transport`, the selector written to gate on exactly that, and none under
+> `class=protocol`.
 
 > **This is inferred, not read.** The class comes from the response code of a sample already known
 > to have failed — nothing more. The report cannot tell you *which* assertion fired, or whether an
@@ -34,9 +33,8 @@ same as an HTTP error, and the report now says which is which.
 asserts something untrue, so it renders as `—`. A 500's message and a transport exception are
 real and are never suppressed.
 
-Before this, a run with assertion failures showed a bare `200` in the breakdown, and a row reading
-`200 | OK` in the detail table, accounting for however many of the errors. The class appears on
-every surface: both tables, the by-response-code chart, and both CSV exports.
+The class appears on every surface: both tables, the grouped error view, the by-response-code
+chart, and both CSV exports.
 
 
 ## Error Charts
@@ -62,15 +60,21 @@ Three charts provide different views of error data. The first two sit side by si
 ### Error Timeline (Scatter Plot)
 
 - Individual error occurrences plotted over time
-- Each dot = one error, colored by sampler
+- Each dot = one error, colored by sampler; hover for its time and response code
 - Reveals error bursts and patterns (e.g., errors clustered during a specific time window)
+
+**The first 500 errors.** The report keeps the details of the first 500 failed samples. The error
+timeline plots those, and says so under the chart, with the time of the last one plotted, when the
+run had more. The two breakdown charts then count every error instead — and the sampler filter
+stops applying to them, which their caption also says. The Error Summary table always counts every
+error.
 
 ### Chart Controls
 
-All error charts have:
-- **Hide/Show** button — same behavior as Timeline tab
+The Error Breakdown card and the Error Timeline each have:
+- **Drag handle** (☰) — reorder the two
+- **Hide** button and a **"Show N Hidden Charts"** button to bring them back, as on the Timeline tab
 - **Fullscreen** button
-- **"Show N Hidden Charts"** restore link when charts are hidden
 
 ## Error Summary Table
 
@@ -105,46 +109,61 @@ On a run with Transaction Controllers the children start collapsed, so the Total
 top-level rows and its % of Errors is below 100% — the children's errors are the rest. Turn on
 **Transaction Details** (Samplers tab) and it covers every row.
 
-> **Before this fix the Total was wrong on every report with an error.** It was built by column
-> position from before the Class column existed, so it summed Class, wrote `100%` under Count and
-> `0.00%` under % of Errors, and left % of All Samples empty — `Total · 0 · 100% · 0.00%` even on
-> a run where every sample failed.
-
 **Controls:**
 - **Search** — filter rows by text
-- **Column toggle** — show/hide columns
+- **Sort** — click a column header
+- **Column toggle** — show/hide columns; drag a header's right edge to resize a column
 - **Row hide** — X button per row; "Show N Hidden Rows" brings back what X hid and nothing else —
   the search and the collapsed transaction children keep theirs
-- **CSV download** — exports as `error-summary.csv`
+- **CSV download** — exports as `error-summary.csv`, every row, with the response message
+- **⊕ on the Class cell** — opens the assert editor on the Asserts tab with a rule for that
+  sampler's error rate in that class (`errorRate:class=transport`, for example), seeded from the
+  observed rate
 
 ## Error Details Table
 
-Individual error records with request-level detail.
+Individual error records with request-level detail — the first 500 failed samples (see
+[the first 500 errors](#error-timeline-scatter-plot)).
+
+A **By time / Grouped** switch beside the heading picks the view, and the choice is remembered.
+
+### By time
+
+One row per error, in the order they happened.
 
 | Column | Description |
 |--------|-------------|
-| **Time** | Timestamp of the error |
+| **Time** | Time of the error (`HH:mm:ss.SSS`) |
 | **Sampler** | Request label |
 | **Code** | HTTP response code |
 | **Class** | Where the failure was decided — see [Error classes](#error-classes--where-a-failure-was-decided) |
 | **Message** | Response message text |
 | **Thread** | JMeter thread name |
 
+### Grouped
+
+One row per sampler and response code, most frequent first: **Count**, **Code** (with its class),
+**Sampler**, **Message**, **First seen** and **Last seen**. Click a group to list each occurrence's
+time and thread; **Expand All** and **Collapse All** open or close every group, and the search box
+filters the groups.
+
 ### Expandable Error Rows
 
 ![Error Detail Expanded](images/12d-error-detail-expanded.png)
 
-Click any error detail row to expand it. The panel shows what was captured for that sample:
-- **Request URL** — the URL that failed, when the sample has one (a sampler that is not HTTP has none)
-- **Request Headers** — *not captured.* Nothing populates this on either ingestion path: the
-  listener passes null and a JTL has no headers to read. The field exists in the model, so the
-  panel is plumbing waiting for a capture change rather than a feature you are missing.
+In the By time view, click any row to expand it. The panel shows what was captured for that sample:
+- **URL** — the URL that failed, when the sample has one (a sampler that is not HTTP has none)
 - **Response Body** — the error response body with JSON auto-formatting and syntax highlighting,
-  and **Copy**, **Wrap** (word wrap) and **Raw** (the body as received, unformatted)
+  and **Copy**, **Wrap** (word wrap) and **Raw** (the body as received, unformatted). A body cut at
+  the size limit is marked *(truncated)*
 
-**Response body size limit:** Default 16KB. Configure via:
+Request and response headers are not captured on either ingestion path, so the panel never shows
+them. A record with neither a URL nor a body says the body is not available and points to the
+listener.
+
+**Response body size limit:** 16,384 characters by default. Configure via:
 ```bash
--Jwebinsight.error.body.maxsize=32768   # 32KB
+-Jwebinsight.error.body.maxsize=32768
 ```
 
 Click again to collapse.
@@ -154,12 +173,15 @@ response code, message, thread and URL but no body. The **URL is available in bo
 mode reads it from the sample, and JTL mode reads a `URL` column when the file has one, which
 JMeter writes under `jmeter.save.saveservice.url=true`.
 
-**Controls:** Same as Error Summary (search, column toggle, row hide, CSV download as `error-details.csv`)
+**Controls:** Same as Error Summary (search, sort, column toggle, row hide), and a CSV download as
+`error-details.csv` holding every kept record with its URL and response body, whichever view is
+showing.
 
 ## Sampler Filter Integration
 
 The error charts respect the sampler filter:
-- **Uncheck a sampler** → its errors disappear from all 3 charts
+- **Uncheck a sampler** → its errors disappear from all 3 charts (from the breakdown charts only
+  when the run kept every error's details — see [the first 500 errors](#error-timeline-scatter-plot))
 - **Re-check** → errors reappear
 - This allows focusing on specific request types when investigating failures
 
@@ -168,7 +190,7 @@ Summary's Total. Use a table's search to narrow it.
 
 ## Edge Cases
 
-- **Zero errors:** Error tab shows no charts and empty tables (no crashes or layout issues)
+- **Zero errors:** Error tab shows no charts or tables, only *No errors recorded during the test.*
 
 ![Zero Errors](images/20-zero-errors.png)
 

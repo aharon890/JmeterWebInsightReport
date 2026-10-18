@@ -10,9 +10,9 @@ Toggle via the **moon/sun icon** (☾/☀) in the header.
 
 | Element | Light → Dark |
 |---------|-------------|
-| **Background** | White → dark grey (#1a1a2e) |
+| **Background** | Light grey (#f8fafc) → near-black slate (#111827) |
 | **Text** | Dark grey → light grey/white |
-| **Cards** | White cards → dark cards |
+| **Cards** | White cards → dark slate cards (#1e293b) |
 | **Tables** | White rows → dark rows with subtle borders |
 | **Charts** | Light theme → ECharts dark theme, drawn on the card's own background (the chart paints none) |
 | **Chart palettes** | A palette colour that would sit under 3:1 on the dark card is swapped for a lighter one of its hue (High Contrast's blue, purple, crimson, olive, dark green and maroon; Okabe-Ito's blue and black). The palette you picked is unchanged in light mode |
@@ -54,7 +54,7 @@ Swaps all semantic colors from green/red to blue/orange:
 
 - **Default:** OFF
 - **Toggle:** Click icon → body gets `cb-mode` CSS class
-- **Icon opacity:** 0.4 (off) → 1.0 (on)
+- **Icon opacity:** 0.4 (off) → 1.0 (on), and the button fills with the primary colour while on
 - **Title attribute:** Updates to "Colorblind mode (on)" / "(off)"
 - **Persistence:** Saved to localStorage
 

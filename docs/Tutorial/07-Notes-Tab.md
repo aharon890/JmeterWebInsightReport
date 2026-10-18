@@ -1,10 +1,10 @@
 # Notes Tab
 
-Test annotations, markdown notes, verdict, and timeline markers.
+Test annotations: markdown notes, timeline markers, and the baseline summary.
 
 > **Saving.** *Save Annotations* here and the save menu in the
 > [Asserts tab](12-Asserts-Tab.md) write the same file, and both emit the **whole
-> document** — notes, verdict, markers, sampler notes, comparison thresholds, assertion rules,
+> document** — notes, markers, sampler notes, comparison thresholds, assertion rules,
 > the `serverMetrics` block with any server asserts edited on the [Server tab](13-Server-Tab.md),
 > and any key this version of the plugin does not recognise, carried through verbatim. Editing
 > notes never costs you your rules or your server asserts, and editing either never costs you
@@ -13,34 +13,24 @@ Test annotations, markdown notes, verdict, and timeline markers.
 
 ## With Annotations (report-annotations.json)
 
-When a `report-annotations.json` file is present in the output directory, the Notes tab renders:
+When the run was given a `report-annotations.json`, the Notes tab renders:
 
 ### Test Notes
 
 ![Annotations Notes](images/17b-annotations-notes.png)
 
 The notes open as Markdown in an editable box, and **Preview** renders them as HTML (shown above;
-press it again to go back to editing):
-- Headings (h1-h6)
-- Bold, italic, code
-- Bullet and numbered lists
-- Code blocks
-- Links
-
-### Verdict Badge
-
-A prominent badge showing the overall test verdict:
-
-| Verdict | Color | Meaning |
-|---------|-------|---------|
-| **PASS** | Green | Test meets all criteria |
-| **WARN** | Amber | Test has warnings |
-| **FAIL** | Red | Test failed criteria |
-| **CONDITIONAL_PASS** | Blue | Pass with conditions |
+press it again to go back to editing). The preview understands:
+- Headings (`#`, `##`, `###`)
+- Bold, italic, inline code
+- Bullet lists (`- item`)
+- Code blocks (```` ``` ````)
 
 ### Timeline Markers
 
-Vertical dashed lines drawn on all time-series charts at annotated timestamps.
+Vertical dashed lines at annotated timestamps, drawn on the Response Time, Throughput and Error
+Rate charts of the Timeline tab and on the Summary tab's chart. The **Timeline Annotations**
+section of this tab lists every marker with its time, type, label and description.
 
 | Marker Type | Color |
 |-------------|-------|
@@ -50,9 +40,11 @@ Vertical dashed lines drawn on all time-series charts at annotated timestamps.
 | `deployment` | Blue |
 | `custom` | Purple |
 
+A marker's own `color` key overrides its type's colour.
+
 Each marker has:
 - **Label** — short text shown on the chart
-- **Description** — detailed text shown on hover
+- **Description** — longer text, listed beside the marker on this tab
 
 ### Sampler Notes
 
@@ -62,11 +54,11 @@ Per-sampler annotations shown as blue (i) icons in the Samplers tab table:
 
 ### "What Changed" Summary
 
-When baseline comparison exists, an auto-generated summary of regressions and improvements appears in the Notes tab.
+When baseline comparison exists, an auto-generated summary of regressions and improvements appears in the Notes tab — see [Compare](06-Compare-Tab.md#what-changed-summary).
 
 ## Without Annotations
 
-When no `report-annotations.json` is found, the Notes tab provides:
+With no annotations file, the same editor starts empty:
 
 ![Notes Editor](images/13-notes-editor.png)
 
@@ -74,7 +66,8 @@ When no `report-annotations.json` is found, the Notes tab provides:
 
 - **Textarea** — type markdown text
 - **Preview** — swaps the box for the rendered Markdown; press it again to go back to editing
-- **"Save Annotations"** button — downloads a JSON file that can be used in future runs
+- **"Save Annotations"** button — downloads `report-annotations.json`, a file that can be used in
+  future runs
 
 This allows engineers to write notes directly in the report and export them for the next run.
 
@@ -84,7 +77,6 @@ This allows engineers to write notes directly in the report and export them for 
 {
   "version": "1.0",
   "testNotes": "## Test Objective\nValidate checkout under 500 users.",
-  "verdict": "PASS",
   "assertions": [
     { "id": "checkout-p95",
       "target": { "sampler": "POST /api/checkout" },
@@ -109,8 +101,7 @@ This allows engineers to write notes directly in the report and export them for 
 ```
 
 **Auto-detection:** The plugin looks for `report-annotations.json` in the **report output
-directory**, and nowhere else. (JMeter's `bin/` was listed here once; nothing searches it. It
-looked like it worked because the output directory defaults to the working directory, and
-JMeter is usually launched from `bin/`.)
+directory**, and nowhere else — not next to the JTL, and not in JMeter's `bin/`.
 
-Or specify explicitly: `-Jwebinsight.report.annotations=/path/to/annotations.json`
+Or specify explicitly: `-Jwebinsight.report.annotations=/path/to/annotations.json`, or the
+listener's **Annotations File** field.

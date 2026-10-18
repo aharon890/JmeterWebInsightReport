@@ -79,13 +79,15 @@ cp jmeter-web-insight-report/target/jmeter-web-insight-report-*.jar $JMETER_HOME
 
 ### GUI
 
-The **Web Insight Report** listener has three configurable fields:
+The **Web Insight Report** listener has four fields and a checkbox:
 
 | Field | Description | Default |
 |-------|-------------|---------|
 | Report Title | Title shown in the report header | `JMeter Web Insight Report` |
 | Report Filename | Output filename | `web-insight-report.html` |
 | Output Directory | Where report files are written | Resolved — see [Where the report goes by default](#where-the-report-goes-by-default) |
+| Annotations File | The `report-annotations.json` holding the asserts, timeline markers and notes the run is judged against | Auto-detected in the output directory |
+| Generate JUnit XML | Also write `<name>.xml` | Off |
 
 ### CLI Properties
 
@@ -112,7 +114,7 @@ Precedence: **`-J` property > GUI field > default.**
 | `webinsight.report.rampup` | Ramp-up duration in ms, for the timeline overlay | none |
 | `webinsight.report.externaldata` | Force the chart payload into a separate `.js` file | `false` |
 | `webinsight.report.externaldata.threshold` | Payload size (chars) above which that happens automatically. Values ≤ 0 are rejected with a warning | `10000000` |
-| `webinsight.report.failonerror` | Exit non-zero when the plugin could not do what it was told: the artifact set is incomplete (the report itself, or its `.json`/`.xml` sibling, could not be written), **or** the gate could not be built from what the annotations file declared — a rule or server assert that cannot run; a series that could not be collected (SOURCE FAILED) or data below the coverage floor on any server component; a refused server-metrics payload when an enabled server assert is declared. **On by default**; `=false` restores exit 0 and nothing else — every marker still prints | `true` |
+| `webinsight.report.failonerror` | Exit non-zero when the plugin could not do what it was told: the artifact set is incomplete (the report itself, or its `.json`/`.xml` sibling, could not be written), **or** the gate could not be built from what the annotations file declared — a rule or server assert that cannot run; a series that could not be collected (SOURCE FAILED) or data below the coverage floor on any server component; a refused server-metrics payload when an enabled server assert is declared. **On by default**; `=false` makes these exit 0 and changes nothing else — every marker still prints | `true` |
 | `webinsight.report.failonassert` | Exit non-zero when the client gate's verdict is `FAIL`, or any server component FAILed. **Off by default and staying that way** — a verdict is yours to act on. Fires on `FAIL` only, never on `WARN` or a rule that did not judge | `false` |
 | `webinsight.apdex.threshold` | Apdex satisfied threshold in ms | `500` |
 | `webinsight.error.body.maxsize` | Response-body characters kept per error record. Negative values are rejected | `16384` |
@@ -130,9 +132,7 @@ words. Not `yes`, not `1`, not `on` — JMeter's own `getPropertyAsBoolean` is
 things in two fields of one test plan.
 
 Anything else **warns and is treated as unset**, so the GUI/JMX field decides. Treating it as
-`false` would still void a ticked checkbox, just noisily. Previously
-`-Jwebinsight.report.junit=yes` matched neither branch: it did not enable JUnit XML and it did
-not fall through to the box that was ticked, with no message on any channel.
+`false` would still void a ticked checkbox, just noisily.
 
 ### Where the report goes by default
 
@@ -144,22 +144,21 @@ probe write, and logs which one it chose:
 2. the process working directory
 3. the directory of the `.jmx`
 4. `~/.jmeter-web-insight-report`
-5. the system temp directory
+5. `web-insight-report` under the system temp directory
 
 The results file outranks the working directory and the `.jmx` does not, which is less arbitrary
 than it looks: a results filename is you naming a place for this run's output, while the `.jmx`'s
-directory is only where a file happened to be opened from. Ranking the plan higher put reports
-next to the plans instead of next to the run.
+directory is only where a file happened to be opened from. Ranking the plan higher would put
+reports next to the plans instead of next to the run.
 
-It used to be the working directory, full stop — which in GUI mode is normally
-`$JMETER_HOME/bin`, read-only on most managed installs, and in a container may not be writable
-by the run user. A default that commonly fails is not a default. The `-g -o` exporter used to
-fall back to `$JMETER_HOME/bin/report-output`, inside the installation; it now uses the same
-chain, starting from the directory of the JTL being exported.
+The working directory alone would be a poor default: in GUI mode it is normally
+`$JMETER_HOME/bin`, read-only on most managed installs, and in a container it may not be writable
+by the run user. A default that commonly fails is not a default. When neither `-o` nor the
+exporter's own `output_dir` names a directory, the `-g` exporter uses the same chain, starting
+from the directory of the JTL being exported.
 
 The probe is a real create-and-delete, not `File.canWrite()` — on Windows that method reflects
-only the DOS read-only attribute and returns true for an ACL-denied directory, so the fail-fast
-check never fired and a 1.5 MB report rendered before anything noticed.
+only the DOS read-only attribute and returns true for an ACL-denied directory.
 
 **An explicitly configured directory is never relocated.** It hard-fails instead: silently
 moving a path someone asked for means the report is not where they put it and the overwrite
@@ -211,8 +210,9 @@ These markers are what a pipeline should grep rather than parsing the block abov
 | `WEB-INSIGHT-REPORT: ASSERT FAIL — <verdict line>` | stderr | `failonassert=true` and the client gate or a server component said FAIL (`-g -o` only; the listener writes it to `jmeter.log`) |
 
 `INCOMPLETE`, `FAILED` and `CONFIG ERROR` exit non-zero by default;
-`-Jwebinsight.report.failonerror=false` restores exit 0. The one exception is a `-g -o` run that
-fails outright: that exception has always propagated out of the exporter and still does.
+`-Jwebinsight.report.failonerror=false` makes them exit 0. The one exception is a `-g -o` run that
+fails outright: the exporter's exception propagates, and JMeter exits non-zero whatever the flag
+says.
 
 `CONFIG ERROR` is the one that arrives *with* a complete, readable report — the report is where
 you diagnose the config, and its Asserts and Server tabs say which rule or server assert could not
@@ -288,11 +288,10 @@ An auto-detected file is announced at **WARN**, not INFO. It is an *input* being
 *output* directory, so in a shared directory someone else's thresholds silently decide your
 run's gate verdict — and a wrong verdict looks exactly like a right one.
 
-> Earlier versions of this page said "next to the JTL file (or in JMeter's `bin/` directory)".
-> Neither is searched. The `bin/` half appeared to work only because the output directory
-> defaults to the working directory and JMeter is conventionally launched from `bin/` — set an
-> output directory and it stops. A missing annotations file means no asserts, so the quality
-> gate silently stops gating; the plugin now warns when a configured file is absent.
+> Nothing else is searched: not the JTL's directory, not JMeter's `bin/`. A missing annotations
+> file means no asserts, so the quality gate would silently stop gating. A file named with
+> `-Jwebinsight.report.annotations` that does not exist is therefore a configuration error: an
+> ERROR finding and a `CONFIG ERROR` line, exit 1 under `failonerror`.
 
 ```json
 {
@@ -330,9 +329,10 @@ run's gate verdict — and a wrong verdict looks exactly like a right one.
 - **Server asserts** — a `serverMetrics` block in the same file: what the *server* should look like
   under this load (CPU, consumer lag, pool usage…), judged against metrics collected after the run.
   See [Server asserts](#server-asserts) below.
-- **Test notes** — Markdown rendered in the Notes tab and Summary tab.
+- **Test notes** — Markdown rendered in the Notes tab.
 - **Sampler notes** — info icon with tooltip next to sampler names in the table.
-- **Timeline markers** — vertical dashed lines on all charts at annotated timestamps.
+- **Timeline markers** — vertical dashed lines at annotated timestamps, on the Timeline tab's
+  Response Time, Throughput and Error Rate charts and on the Summary tab's chart.
 
 A release attaches `report-annotations.schema.json`, this file's JSON Schema. Associate it with your
 annotations file in your editor for completion and typo squiggles on every key, `serverMetrics`
@@ -417,16 +417,16 @@ jmeter -g results.jtl -o report \
   run's identity hashes the title, and a payload from a different identity is refused. Pass the
   same ramp-up to both, too (`--rampup` and `-Jwebinsight.report.rampup`, in milliseconds); a
   mismatch is a warning, and the payload's window is the one judged.
-- A file written for the earlier design — `sources`, `gates`, an assert's `source` or `gate`, a
-  component's `failsBuild` — is refused with a sentence naming the replacement, never half-read.
+- A retired key — `sources`, `gates`, an assert's `source` or `gate`, a component's `failsBuild` —
+  is refused with a sentence naming the replacement, never half-read.
 
 The full walk-through — reading the Server tab, the editor, Validate query, the reference for
 every key — is [Tutorial 13 — Server tab](docs/Tutorial/13-Server-Tab.md).
 
 #### Running `wir-collect` from a release
 
-A release attaches `wir-collect.sh` and its `wir-collect.bat` wrapper beside the plugin JAR (an
-older release attached the JAR alone, and both scripts are in its source archive). `wir-collect.sh`
+A release attaches `wir-collect.sh` and its `wir-collect.bat` wrapper beside the plugin JAR, and
+both scripts are in its source archive. `wir-collect.sh`
 is self-contained: copy it anywhere, set `JMETER_HOME`, and run it as `bash wir-collect.sh ...` —
 a downloaded release asset has no executable bit, so `./wir-collect.sh` needs a `chmod +x` first.
 Neither script is needed, though: the collector is a `main` inside the plugin JAR, and it is
@@ -508,7 +508,7 @@ what lets both ingestion paths answer "is the report already sitting here mine?"
 guessing from a filename.
 
 Filenames bind the four artifacts together, and filenames are not unique per run. A job handed a
-`.json` out of a shared output directory can now check it against the HTML beside it.
+`.json` out of a shared output directory can check it against the HTML beside it.
 
 ### Output Files
 
