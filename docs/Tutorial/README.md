@@ -17,8 +17,8 @@ Complete documentation of the Web Insight Report features and behavior. Each pag
 | 9 | [Dark Mode & Accessibility](09-Dark-Mode-Accessibility.md) | Dark mode, colorblind mode, palette recommendations |
 | 10 | [Asserts & Apdex](10-Asserts-Apdex.md) | Assertion rules, targets, metrics, predicates, verdict logic, Apdex |
 | 11 | [Export & Integration](11-Export-Integration.md) | CSV export, Copy Summary, CI/CD JSON, JUnit XML, external data mode |
-| 12 | [Asserts Tab](12-Asserts-Tab.md) | The gate strip, the rules table, the assert editor, drafts, saving, seeding, cell verdicts, chart interactions |
-| 13 | [Server Tab](13-Server-Tab.md) | Server asserts (expected) against collected metrics (actual): the three steps, `wir-collect`, the header chip, `serverStatus`, gates, the editor, and the `serverMetrics` reference |
+| 12 | [Asserts Tab](12-Asserts-Tab.md) | The gate strip, the rules table, the assert editor, drafts, saving, seeding, Generate from run, cell verdicts, chart interactions |
+| 13 | [Server Tab](13-Server-Tab.md) | Server asserts (expected) against collected metrics (actual): the three steps, `wir-collect`, the header chip, `serverStatus`, components and the catalogue, the editor, and the `serverMetrics` reference |
 
 ## Screenshots
 

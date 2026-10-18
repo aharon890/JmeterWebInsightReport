@@ -29,7 +29,8 @@ Put that in `report-annotations.json` in the report's output directory (or point
 data. One rule on one metric of one sampler is a complete, valid gate.
 
 **Assertable ≡ displayed.** Every number the report shows can be asserted — any metric, any
-percentile from p50 to p99.99, per sampler, per group, or for the whole run.
+percentile (`p50`, `p99.9`, `p99.99`, any `pN` above 0 and below 100), per sampler, per group, or
+for the whole run.
 
 **You write the direction.** Bands are explicit comparisons: `fail: {"gt": 800}` for latency,
 `fail: {"lt": 30}` for throughput. There is no per-metric table of which way is bad, which is
@@ -113,7 +114,7 @@ the two rules to write instead.
 
 **Per sampler:** `sampleCount` · `errorCount` · `errorRate` (%) · `mean` · `median` · `min` ·
 `max` · `stdDev` (ms) · `latency` (ms) · `connectTime` (ms) · `throughput` (/s) ·
-`receivedKbPerSec` · `sentKbPerSec` (KB/s) · `apdex` · **p50…p99.99** (ms)
+`receivedKbPerSec` · `sentKbPerSec` (KB/s) · `apdex` · **any `pN`, 0 < N < 100** (ms)
 
 `latency` is JMeter's Latency field — time to first byte — and `connectTime` its Connect time.
 Both are means, as `mean` is. They matter because `elapsed` cannot see them: a connect-time
@@ -182,11 +183,12 @@ Three things worth knowing:
 - **A qualified metric inherits its base's scope.** `errorRate:…` works whole-run and per sampler;
   `errorCount:…` is per-sampler only, exactly as the plain metrics are.
 
-> Selectors are written in the file. The editor's metric dropdown offers the plain names, and an
-> existing qualified rule keeps its own entry when you open it — but a new one is written by hand.
+> The editor's metric dropdown offers the plain names, and an existing qualified rule keeps its
+> own entry when you open it — a new one is seeded from an Errors-tab row, as above, or written in
+> the file by hand.
 
 **Whole run:** `totalSamples` · `errorRate` (%) · `duration` (s) · `maxThreads` · `mean` ·
-`median` · `throughput` (/s) · `apdex` · **p50…p99.99** (ms)
+`median` · `throughput` (/s) · `apdex` · **any `pN`, 0 < N < 100** (ms)
 
 Arbitrary percentiles ride the t-digest the report already computes — nothing extra is
 calculated to be displayed, but any quantile can be asserted. The whole-run figures come from
@@ -398,7 +400,8 @@ row already shows the number, the limit and the gap between them.
 `load:<metric>` — editable, disableable, deletable and retunable exactly like a rule written by
 hand. It is *consumed*: a save from the Asserts tab writes the rule and no `loadValidity` block
 at all, so the file never declares the same check twice. Until you save, it is re-created on
-every run, so a tester who never opens the report loses nothing.
+every run, so a tester who never opens the report loses nothing, and each such run says so in a
+warning finding naming the rule.
 
 A `tolerance` of 1 or more is not clamped. It puts the band at or below zero (`1 − 1` is zero),
 and a band nothing can breach is refused: the rule is `NOT_JUDGED / INVALID_RULE`, and the run
@@ -410,19 +413,23 @@ a sentence naming the field: `loadValidity.target must be a finite number, not N
 
 ## Apdex
 
-Apdex scores each sample against a threshold **T**: satisfied under T, tolerating under 4×T,
-frustrated beyond. The report's T defaults to 500 ms and is configurable.
+Apdex scores each sample against a threshold **T**: satisfied at or under T, tolerating at or
+under 4×T, frustrated beyond — and a failed sample is frustrated whatever its time. A sampler's
+score is `(satisfied + tolerating / 2) / samples`, to two decimals; the whole run's is the
+top-level samplers' scores weighted by sample count. The report's T defaults to 500 ms and is set
+with `-Jwebinsight.apdex.threshold`.
 
 An apdex assertion therefore asserts that configuration as much as the score — "apdex fell below
-0.8" means nothing without knowing T — so the report carries T alongside.
+0.8" means nothing without knowing T. The report does not print T, so keep it the same for every
+run a rule judges.
 
 | Score | Reading |
 |---|---|
-| 0.94 – 1.00 | Excellent |
-| 0.85 – 0.93 | Good |
-| 0.70 – 0.84 | Fair |
-| 0.50 – 0.69 | Poor |
-| below 0.50 | Unacceptable |
+| 0.95 – 1.00 | Excellent |
+| 0.86 – 0.94 | Good |
+| 0.71 – 0.85 | Fair |
+| 0.51 – 0.70 | Poor |
+| 0.50 or below | Unacceptable |
 
 ---
 
@@ -434,10 +441,11 @@ report — and names the rule and the fix:
 - unknown metric, with the nearest valid name
 - **target matched nothing, listing the samplers the run actually contained**
 - an invalid glob or regex, with the position
-- a band with no operator or several; a rule with no band at all; a non-numeric threshold
+- a band with several operators or one that is not `gt`, `gte`, `lt` or `lte`; a rule with no
+  band at all; a non-numeric threshold
 - an **unreachable warn band** — `warn > 500` beside `fail > 400` can never fire, because
-  `fail` is tested first. Verdicts stay correct, so the loader warns; the report's editor
-  refuses to author one.
+  `fail` is tested first. Verdicts stay correct, so the loader warns; the report's editor says
+  so under the form and still saves the rule.
 - duplicate ids
 
 **An unrecognised key is not one of them.** This plugin parses one specific shape, and a key

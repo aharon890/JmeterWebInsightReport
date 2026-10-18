@@ -61,7 +61,7 @@ run could not produce the value. A glyph as well as a colour, because the report
 and high-contrast palettes precisely because hue is not a channel this audience can rely on.
 
 - **Hover** names the rule, the measured value and the limit — `p95 FAIL · checkout-p95 ·
-  2340 ms vs > 2000 ms`.
+  2,340 ms vs > 2,000 ms · click to edit`.
 - **Click** switches to the Asserts tab and opens the editor on the rule that decided the cell.
   Where several rules judge one cell, the worst decides and the tooltip says how many there are.
 - Read down a column and you see coverage: which samplers are gated on p95 and which are not.

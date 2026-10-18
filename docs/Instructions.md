@@ -20,14 +20,15 @@ with the number of failed stages.
 | Suite | Command | Time | What it covers |
 |-------|---------|------|----------------|
 | Sanity | `./test-plans/scripts/run-sanity.sh` | ~2 min | Build + shade guard, S02 "Unit tests (Java + report.js)" — every `mvn test` plus the `test-plans/js-unit/` suite in node, S03 static checks (shell syntax, fixture-list agreement, script modes, line endings, NUL bytes, the `report.js` source rules, the release tier, the jq idioms, and the self-tests that feed each guard a known defect), a live JMeter run, the whole Playwright suite against existing fixtures |
-| Regression | `./test-plans/scripts/run-regression.sh` | ~2 min, ~4½ min when fixtures are stale | Everything above, plus regenerating the report fixtures when they no longer match the source, and R06 — the golden artifacts (see [The golden harness](#the-golden-harness-r06)) |
+| Regression | `./test-plans/scripts/run-regression.sh` | ~2 min, ~5 min when fixtures are stale | Everything above, plus regenerating the report fixtures when they no longer match the source, and R06 — the golden artifacts (see [The golden harness](#the-golden-harness-r06)) |
 
 Regression skips fixture regeneration when the provenance stamps show the fixtures
 were built from exactly the source now in the tree — so a change touching no plugin
 source costs the same as sanity. `--force-fixtures` regenerates regardless.
 
-The stamp hashes every file under both modules' `src/main`, so "did this change what
-a report says?" is answered by content, not by a list someone has to maintain. When
+The stamp hashes every file under both modules' `src/main`, plus the committed inputs of the two
+server fixtures (`test-plans/server-metrics/` and `test-plans/server-catalogue/`), so "did this
+change what a report says?" is answered by content, not by a list someone has to maintain. When
 regeneration *is* skipped, regression still runs the live E24 smoke — without it a
 skipped cycle never launches JMeter and could not notice the plugin failing to load.
 
@@ -37,13 +38,14 @@ stage S05 and points at regression rather than testing an old build.
 ### What the automated suites leave out
 
 They run the JMeter scenarios the Playwright specs actually open (E02, E05-E12, E19, E25,
-E26) plus CMP — the authoritative list is `FIXTURE_IDS` in `scripts/lib/common.sh`, which
+E26, E27) plus CMP — the authoritative list is `FIXTURE_IDS` in `scripts/lib/common.sh`, which
 is where to check rather than here. The remaining scenarios in `run-all-tests.sh` are
 validated only by "an HTML and a JSON file appeared" — except E20, which asserts the
-external-data payload was written and referenced. Run the full set, plus the config, error
-and Docker suites, before a release; the full set is now ~4½ minutes.
+external-data payload was written and referenced. Run the full set, plus the config, error,
+Docker, title/JUnit and scenario-family runners (see [Run Everything](#run-everything)), before a
+release; the full set is ~5 minutes.
 
-Three easy ones to get wrong. **E19 is a fixture**, not a deleted stress test:
+Three easy ones to get wrong. **E19 is a fixture**, the listener half of external-data mode:
 `external-data.spec.ts` opens it to assert the payload was written to a sibling `.js` and
 referenced by `<script src>` — the one product promise no inline-payload fixture can
 exercise. **E25** is the one that renders every rule state in a single run (PASS, WARN, FAIL,
@@ -69,18 +71,23 @@ Budget bar to; no server assert names them, so `runId` and every `collectionId` 
 them. That directory is in the fixture stamp, so editing the CSV regenerates every fixture. It runs with
 `failonerror=false`, because one of its asserts is an `INVALID_RULE` on purpose.
 
-**Never pass `-Jwebinsight.report.title` to E26** (or to anything built from its inputs, such as
-C38). On the `-g -o` path the title is the run's test name and is hashed into `runId`, so setting
+**E27 is E26's twin for catalogue components**, built the same way from the committed inputs under
+`test-plans/server-catalogue/`: two catalogue components, `orders-db` (`postgres`) and `events`
+(`kafka`), one assert each, and every other catalogue metric the committed CSV carries collected
+beside them — which is what the metric picker, its thresholds step and Generate read. It also runs
+with `failonerror=false`, and the runner checks that `serverCatalogue` and an unasserted catalogue
+metric reached the page.
+
+**Never pass `-Jwebinsight.report.title` to E26 or E27** (or to anything built from their inputs,
+such as C38). On the `-g -o` path the title is the run's test name and is hashed into `runId`, so setting
 it makes the committed payload another run's — the server block is withheld, JMeter still exits 0
 under E26's `failonerror=false`, and only the runner's check that `serverGates` reached the page
 stands between that and every Server-tab spec opening a report with nothing on it.
 
-What *was* deleted is E18 (100 threads, 120s) and the old stress scenario that used to hold
-the E19 id (20 threads, 60s). They cost ~3½ minutes between them to assert a file existed.
-No spec opened either, and since no test plan contains an HTTP sampler the thread counts
-generated no load — only more rows, and never enough to reach the 10 MB
-`webinsight.report.externaldata.threshold` that would have made the volume mean something.
-E20 covers that path deliberately instead, and the E19 id was reused for the listener half.
+There is no stress scenario that only adds threads, and no E18. No test plan contains an HTTP
+sampler, so a higher thread count generates no load — only more rows, and never enough to reach
+the 10 MB `webinsight.report.externaldata.threshold` that would make the volume mean something.
+E20 forces the external-data path instead (`-g -o`), and E19 is its listener half.
 
 Scenario durations are never shortened to save time: several specs assert on chart
 granularity and bucket counts, which are derived from test duration, so a shortened
@@ -93,20 +100,20 @@ the code under test.
 ./scripts/install-hooks.sh
 ```
 
-Sets `core.hooksPath` to `.githooks/` and populates `origin/HEAD`. `pre-push`
-enforces exactly one rule, and runs no tests:
+Sets `core.hooksPath` to `.githooks/` and populates `origin/HEAD`. Two hooks each
+enforce one rule, and neither runs tests:
 
-| Push target | Behaviour |
-|-------------|-----------|
-| primary branch | **refused** — main changes via a pull request, never a direct push |
-| anything else | allowed — the full regression is expected to have already run, before the push |
+| Hook | Behaviour |
+|------|-----------|
+| `pre-commit` | a commit **on** the primary branch is **refused**, so the change is still only in the working tree and the fix is one `git switch -c`. It stands down on a detached HEAD and inside a merge, rebase, cherry-pick or revert |
+| `pre-push` | a push that touches the primary branch is **refused** — main changes via a pull request, never a direct push. Any other push is allowed; the full regression is expected to have already run, before the push |
 
 The full regression runs *before* a push, driven by the `run-tests` skill
 (`.claude/skills/run-tests/`) — Claude runs it automatically when finishing a
-feature or fix. ~1½ min normally, ~5½ when a source change genuinely invalidated
+feature or fix. ~2 min normally, ~5 when a source change genuinely invalidated
 the fixtures. Without Claude, run `./test-plans/scripts/run-regression.sh` by hand.
 
-Overrides: `WIR_ALLOW_MAIN_PUSH=1`, `git push --no-verify`.
+Overrides: `WIR_ALLOW_MAIN_COMMIT=1`, `WIR_ALLOW_MAIN_PUSH=1`, or git's own `--no-verify`.
 
 **CI runs the fast half, and only that.** `.github/workflows/ci.yml` runs on every push and
 pull request, in about a minute and a half: `mvn -B clean verify` (so a broken shade
@@ -119,18 +126,18 @@ is machine-independent work, which is the entire criterion for what belongs ther
 
 **The jq idiom check.** The jq lines a pipeline gates with — a DEFAULT and a STRICT line — live
 in exactly one file, `test-plans/goldens/jq-gate.txt`, which the docs copy from. Its `CASES` line
-names golden CI/CD documents (G1–G5, G7, G8 — G6 was retired with observe-only gates) and each idiom line states the answer it must give over each
-one. `verify_jq_idioms` runs every line with `jq -e` over those goldens and fails on any answer
-that differs; `selftest_jq_idioms` feeds it the idiom that used to be documented (it errored on
-every client-only run) and a one-clause mutant of each clause of the real lines, and demands a
-refusal for each — so the goldens cannot stop discriminating without saying which clause went
+names golden CI/CD documents (G1–G5, G7 and G8) and each idiom line states the answer it must
+give over each one. `verify_jq_idioms` runs every line with `jq -e` over those goldens and fails on
+any answer that differs; `selftest_jq_idioms` feeds it a known-wrong idiom (one that errors on a
+client-only run), a malformed line, and a one-clause mutant of each clause of the real lines, and
+demands a refusal for each — so the goldens cannot stop discriminating without saying which clause went
 blind. Both open with `command -v jq || return 0`, as `verify_shaded_jar` does with `jar`: on a
 machine without jq they print that they skipped and pass. CI's runner has jq, so that is where
 they are enforced; locally, `test-plans/js-unit/jq-gate.test.js` runs a JavaScript translation of
 each line over the same goldens and refuses to pass once a line in the file no longer matches the
 text it was translated from.
 
-**`regression.yml` stays deleted, deliberately.** Even with the fixture stage parallelised, a
+**There is deliberately no `regression.yml`.** Even with the fixture stage parallelised, a
 full regression took **15m48s** on a GitHub runner against ~1½ minutes locally, because the
 scenarios are wall-clock bound and a shared 2-core runner cannot overlap them the way a
 developer machine can. That tier runs where it is fast — before the push, via the `run-tests`
@@ -139,7 +146,7 @@ skill — and no required status check may be slower than the fast job.
 The consequence worth knowing: nothing that needs JMeter, a fixture or a browser runs on the
 server, and the pre-push hook still runs no tests. A push made without the regression suite
 reaches the remote with only the fast tier behind it. `./scripts/install-hooks.sh` is still
-not optional: without it, nothing blocks a direct push to main.
+not optional: without it, nothing blocks a commit on main or a direct push to it.
 
 The branch is never hardcoded — it is resolved from `origin/HEAD`, falling back to
 asking the remote, so a rename or a fork with a differently-named primary branch
@@ -150,9 +157,9 @@ needs no edit.
 - Java 21+ (the build targets 21; a newer JDK works)
 - Maven 3.8+
 - JMeter 5.6.3 (macOS: `brew install jmeter`)
-- Node.js 18+ (for Playwright)
+- Node.js 18+ (for Playwright and the `report.js` unit tests, which every suite runs)
 - Docker (for container tests)
-- Python 3 (for data integrity + large JTL generation)
+- Python 3 (for the golden harness, data integrity and large JTL generation)
 
 ## 1. Build & Deploy Plugin
 
@@ -184,7 +191,7 @@ plugin version is parsed from the parent `pom.xml`. Override as needed:
 JMETER_HOME=/opt/apache-jmeter-5.6.3 ./scripts/build-and-deploy.sh
 ```
 
-## 2. Java Unit/Integration Tests
+## 2. Java and `report.js` Unit Tests
 
 ```bash
 mvn test
@@ -204,24 +211,52 @@ mvn test -pl jmeter-web-insight-report
 mvn test -pl jmeter-report-core -Dtest=JtlParserTest
 ```
 
-**Test classes:**
+**Some of the test classes** (`mvn test` runs every class under both modules' `src/test/java`):
 
-| Module | Class | Tests | Covers |
-|--------|-------|-------|--------|
-| core | JtlParserTest | 24 | JTL parsing, edge cases, transaction controllers |
-| core | LiveStatisticsEngineTest | 51 | Aggregation, Apdex, body truncation, thread safety |
-| core | ComparisonResultTest | 13 | Regression detection, custom thresholds |
-| core | ComparisonThresholdsTest | 6 | Threshold defaults, isEnabled() |
-| core | TDigestPercentileCalculatorTest | 11 | Percentiles, CDF for Apdex |
-| core | FormatUtilTest | 9 | Duration, bytes, percentage formatting |
-| core | SamplerFilterTest | 7 | Include/exclude patterns |
-| report | AnnotationLoaderTest | 11 | JSON loading, validation, thresholds |
-| report | ChartDataBuilderTest | 9 | Histogram, response codes, heatmap |
-| report | CiCdJsonSerializerTest | 14 | JSON output, Apdex, asserts |
-| report | ReportDataSerializerTest | 18 | Chart data serialization |
-| report | ThymeleafReportRendererTest | 9 | HTML rendering |
-| report | JunitXmlWriterTest | 15 | XML structure, assert failures |
-| report | WebInsightDataExporterTest | 7 | -g -o collision check, filename resolution |
+| Module | Class | Covers |
+|--------|-------|--------|
+| core | JtlParserTest | JTL parsing, edge cases, transaction controllers |
+| core | LiveStatisticsEngineTest | Aggregation, Apdex, body truncation, thread safety |
+| core | ComparisonResultTest | Regression detection, custom thresholds |
+| core | ComparisonThresholdsTest | Threshold defaults, isEnabled() |
+| core | TDigestPercentileCalculatorTest | Percentiles, CDF for Apdex |
+| core | FormatUtilTest | Duration, bytes, percentage formatting |
+| core | SamplerFilterTest | Include/exclude patterns |
+| core | AssertionParityTest | The Java evaluator against `assert-parity-vectors.json` |
+| core | UsabilityTest | Which client rules can decide anything (`INVALID_RULE`) |
+| core | DigitsTest | How a number is written beside a band, against `digits-vectors.json` |
+| core | KpiUsabilityTest | Which server asserts can decide anything |
+| core | CatalogueTest | The server metric catalogue's type files |
+| core | CsvSourceTest | The collector's `--csv` backend and its per-line errors |
+| core | RunIdentityTest | `runId`: same JTL, same id; distinct runs, distinct ids |
+| report | AnnotationLoaderTest | JSON loading, validation, thresholds |
+| report | AnnotationsSchemaTest | The shipped JSON Schema against the beans the loader binds |
+| report | MapperParityTest | The production rule mapper against the parity vectors |
+| report | ServerParityTest | The server evaluator against `server-parity-vectors.json` |
+| report | ExitPolicyTest | `failonerror` / `failonassert` on both ingestion paths |
+| report | ComparisonThresholdResolverTest | `webinsight.compare.*` layering |
+| report | ChartDataBuilderTest | Histogram, response codes, heatmap |
+| report | CiCdJsonSerializerTest | JSON output, Apdex, asserts |
+| report | ReportDataSerializerTest | Chart data serialization |
+| report | ThymeleafReportRendererTest | HTML rendering |
+| report | JunitXmlWriterTest | XML structure, assert failures |
+| report | WebInsightDataExporterTest | -g -o collision check, filename resolution |
+| report | WirCollectTest | The `wir-collect` collector end to end over the goldens JTL |
+
+### `report.js` unit tests
+
+The pure half of `report.js` — parsers, formatters, the client and server evaluators — runs in
+node, with no browser, no fixture and no build, in about a tenth of a second:
+
+```bash
+# One file
+node test-plans/js-unit/asserts-parity.test.js
+
+# All of them, as S02/R02 and CI run them (fails loudly if node is missing)
+bash -c '. scripts/lib/common.sh && run_js_unit_tests'
+```
+
+`run_js_unit_tests` runs every `test-plans/js-unit/*.test.js`.
 
 ## 3. Playwright Browser Tests
 
@@ -258,12 +293,11 @@ the second run has a baseline to compare against, which is what the second scrip
 does.
 
 You do not have to remember this. Each generated report carries a `.fixture-stamp`
-recording the md5 of **every file under both modules' `src/main`** — not a hand-picked list.
-It used to name five rendering files, which meant a change to `core/stats` left every stamp
-matching: regeneration was skipped and every browser test asserted against the previous
-build's numbers, green. Widening it also made the check ~29x faster, because the hashes are
-now computed in one pass and compared as whole listings. Playwright checks the stamps before
-it starts and **refuses to run** if anything has changed since the fixtures were generated,
+recording the md5 of **every file under both modules' `src/main`**, and of the server fixtures'
+committed inputs under `test-plans/server-metrics/` and `test-plans/server-catalogue/` — not a
+hand-picked list, so a change to `core/stats` invalidates the fixtures as surely as one to
+`report.js`. The hashes are computed in one pass and compared as whole listings. Playwright
+checks the stamps before it starts and **refuses to run** if anything has changed since the fixtures were generated,
 naming the file that moved. That includes a file *added* under a stamped directory, an
 untracked one too: Playwright and the runners compare the same listing whole. To override, set
 `WIR_SKIP_FIXTURE_CHECK=1`.
@@ -273,15 +307,14 @@ A stamp is written only beside a report the run itself wrote. Every scenario in
 directory over `rm` (a report still there afterwards, as a Windows lock leaves it, is a FAIL
 that is neither run over nor stamped), and stamp only when the report exists afterwards, whatever
 JMeter's exit code. A scenario whose JMeter renders nothing is therefore a FAIL with no report and
-no stamp. It used to pass on the previous run's report, freshly stamped, and the browser tests
-then checked the previous build.
+no stamp, never a pass on the previous run's report under a fresh stamp.
 
 The stamp also records which JAR rendered the report: for every resource under the modules'
 `src/main/resources` (the template, `report.js`, `report.css`, ECharts, the schema, the server
 catalogue; not `META-INF/`, which the shade plugin rewrites), the md5 of that file inside the
 plugin JAR that was in `lib/ext`. A fixture whose JAR does not hold the tree's copy of each is
 refused, naming the files, as "rendered by a JAR whose static/css/report.css is not the tree's (…)
-— redeploy and regenerate". A stamp written before the record existed counts as stale. The runners
+— redeploy and regenerate". A stamp without that record counts as stale. The runners
 also count every fixture stale while `lib/ext` holds more than one plugin JAR, because JMeter's
 classpath is flat and nobody chooses which one loads, and `SKIP_BUILD=1` runs refuse to start on
 two JARs. Where `unzip` is not installed, the JAR comparison is skipped and the run says so.
@@ -296,36 +329,67 @@ a check that cries wolf just teaches people to bypass it permanently.
 
 **Spec files:**
 
-| File | Tests | What it tests |
-|------|-------|---------------|
-| header-global | 13 | Dark mode, colorblind, badges, persistence |
-| tab-navigation | 9 | Tab switching, Filters dropdown, row collapse |
-| summary-tab | 16 | Metric cards, Apdex, chart, Top 5, Copy Summary |
-| timeline-tab | 8 | 9 charts, hide/show, fullscreen |
-| samplers-tab | 18 | Sort, search, columns, rows, detail expand, TC toggle |
-| errors-tab | 15 | Error charts, tables, expand, sampler filter |
-| filter-controls | 28 | Palette, line, metric, granularity, sampler filter, color picker |
-| asserts-apdex | 15 | Assert badges, Apdex display, annotations |
-| asserts-chart-lines | 16 | Threshold markLine per metric, label text |
-| asserts-tab | 20 | Gate strip, rules table, findings |
-| asserts-charts | 27 | Rule lines, target/visibility filtering, drag handles, placement direction |
-| asserts-seeding | 38 | ⊕ seeding, sampler badges, per-cell verdicts, the wizard |
-| asserts-editor | 30 | The editor form, validation, live preview |
-| asserts-filter-sort | 40 | Filtering and sorting the rules table |
-| asserts-save | 21 | Draft model, write-back, round-trip |
-| asserts-parity | 46 | The client evaluator against `assert-parity-vectors.json` |
-| csv-export | 11 | CSV download content, hidden data included |
-| compare-tab | 15 | Compare charts, table, badges, metric/filter interaction |
-| flow-investigate | 1 | E2E: slow sampler investigation |
-| flow-customize | 2 | E2E: presentation setup + sampler filtering |
-| ui-interactions | 18 | localStorage, echarts, TC hierarchy, notes, fullscreen |
-| advanced-interactions | 10 | Drag-drop, zoom, legend, sync, Y-axis units |
-| remaining-gaps | 17 | Compare thresholds, error JSON formatting, annotations |
+Every file under `test-plans/playwright/tests/`; `playwright_test_count` gives the number of tests.
 
-**Screenshots & Traces:** captured for failures only. Capturing them for every test
-produced a 397 MB report directory that CI then uploaded on every run, green or red —
-and a passing test's trace is never opened. Set `WIR_FULL_TRACE=1` to capture
-everything while chasing something locally.
+| File | What it tests |
+|------|---------------|
+| header-global | Dark mode, colorblind, badges, persistence |
+| tab-navigation | Tab switching, Filters dropdown, row collapse |
+| summary-tab | Metric cards, Apdex, chart, Top 5, Copy Summary |
+| verdict-block | The Summary tab's Copy Verdict |
+| timeline-tab | 9 charts, hide/show, fullscreen |
+| chart-aggregation | Metric-aware bucketing at coarser granularity, the Σ Total line |
+| client-time-axis | Client chart time labels at a phone's width |
+| samplers-tab | Sort, search, columns, rows, detail expand, TC toggle |
+| sampler-table-walkers | A row's chart panel and judging row stay with it through sort, filter and toggles |
+| column-resize | Sampler table default column layout, resizing, auto-fit |
+| table-sort-and-toast | Sampler table text sort, column order restore, copy feedback |
+| errors-tab | Error charts, tables, expand, sampler filter |
+| error-details-grouping | The Error Details "By time" / "Grouped" toggle |
+| error-truncation-note | Truncation captions on the error charts |
+| filter-controls | Palette, line, metric, granularity, sampler filter, color picker |
+| asserts-apdex | Assert badges, Apdex display, annotations |
+| asserts-chart-lines | Threshold markLine per metric, label text |
+| asserts-tab | Gate strip, rules table, findings |
+| asserts-charts | Rule lines, target/visibility filtering, drag handles, placement direction |
+| asserts-seeding | ⊕ seeding, sampler badges, per-cell verdicts, the wizard |
+| asserts-wizard-dialog | The Generate wizard as a keyboard dialog |
+| asserts-editor | The editor form, validation, live preview |
+| asserts-filter-sort | Filtering and sorting the rules table |
+| asserts-save | Draft model, write-back, round-trip, the document editor |
+| asserts-parity | The client evaluator against `assert-parity-vectors.json` |
+| client-numbers | A client number beside its band on every Asserts-tab surface and the Budget bar (E26) |
+| client-fixes | Client-side asserts fixes, and Undo offered only while the document is as its action left it |
+| value-formatting | How a threshold is written into a cell |
+| server-tab | The Server tab's board, judged window and charts (E26) |
+| server-board | The component board, the Summary server card, Generate with a review |
+| server-components | A component the mapper refuses, one the draft no longer declares, one edited or removed on its card |
+| server-editor | The server assert editor |
+| server-picker | + Add component, the metric picker and its thresholds step (E27) |
+| server-seeding | Generate from this run, retuning from the chart |
+| server-drafts | The document assembler: both blocks, the unsaved count, drafts |
+| server-findings | The findings pane on each tab |
+| server-identity | Id-less and duplicate-id server asserts, capped series, retired keys |
+| server-numbers | How the Server tab writes a number |
+| server-layout | The Server tab at narrow widths and in both themes |
+| server-dialogs | Server tab dialogs and the keyboard (E27) |
+| server-parity | The browser's server evaluator against `server-parity-vectors.json` |
+| keyboard-focus | Focus survives a re-render; a focused select is never rebuilt |
+| retired-key-focus | Focus after Remove on a retired key, in both editors |
+| csv-export | CSV download content, hidden data included |
+| compare-tab | Compare charts, table, badges, metric/filter interaction |
+| external-data | The external-data payload: loaded from its sibling `.js`, and the right one (E19) |
+| xss-escaping | Escaping JTL-derived text: chart tooltips, clipboard HTML, inline handlers |
+| print-and-a11y | Printing realises the charts on tabs that were never opened |
+| flow-investigate | E2E: slow sampler investigation |
+| flow-customize | E2E: presentation setup + sampler filtering |
+| ui-interactions | localStorage, echarts, TC hierarchy, notes, fullscreen |
+| advanced-interactions | Drag-drop, zoom, legend, sync, Y-axis units |
+| remaining-gaps | Compare thresholds, error JSON formatting, annotations |
+
+**Screenshots & Traces:** captured for failures only — a passing test's trace is never
+opened, and capturing every test's fills hundreds of megabytes. Set `WIR_FULL_TRACE=1` to
+capture everything while chasing something locally.
 
 ```bash
 node node_modules/@playwright/test/cli.js show-report ../../test-results/playwright-report
@@ -368,9 +432,13 @@ jmeter -n -t test-plans/quick-smoke-test.jmx \
 | E24 | Minimal data | single-sampler-test (1 thread, 5s) | 5s |
 | E25 | Assertion rules | asserts-scenario-test + asserts.json — every rule state in one run | 30s |
 | E26 | Server metrics | no JMX: `-g -o` over `goldens/plain.jtl` + `server-metrics/` (annotations, CSV data, payload), no report title | — (not a timed run) |
+| E27 | Server metrics, catalogue | no JMX: `-g -o` over `goldens/plain.jtl` + `server-catalogue/` (two catalogue components), no report title | — (not a timed run) |
 
-`./scripts/list-scenarios.sh` generates the full list from the runners themselves (`--text`,
-`--csv`, `--count`); trust it over this table.
+The `run_test` lines in `run-all-tests.sh`, and its E20, E26 and E27 blocks, are the list; trust
+them over this table. `./scripts/list-scenarios.sh` (`--text`, `--csv`, `--count`) generates the
+list of every scenario a runner records by name, so it shows E20, E26 and E27 from this runner but
+not the scenarios launched through `run_test`, and it lists an ID once even where two runners use
+it (the family runners reuse C01–C08 and E01–E07).
 
 ## 5. Configuration & Runtime Tests
 
@@ -393,28 +461,28 @@ the harder configuration edges: property precedence, two reports in one director
 filename reaching the exporter, a rejected filename, an unwritable CI/CD JSON, a disabled
 listener, reserved dashboard filenames and the announced output paths.
 
-C33 through C41 are the newest and the least obvious. **C33** holds the line between a
+C33 through C41 are the least obvious. **C33** holds the line between a
 configuration error and a verdict — a rule that could not run exits non-zero, a gate that
 genuinely FAILED exits 0 — and its fourth run exists solely so this never becomes "anything red
 fails the build". **C34** proves the five `-Jwebinsight.compare.*` properties reach the compare
-verdict at all; they were documented in three places while nothing executed a single one of
-them, so the whole layering could have been deleted with every suite green. **C35** runs the
+verdict at all: the property names, spelled as documented, surviving a real JMeter process, which
+`ComparisonThresholdResolverTest` cannot see. **C35** runs the
 three server-metrics steps through real processes — `wir-collect.sh --recording` over a recorded
 Prometheus response, then `jmeter -g -o` with `-Jwebinsight.report.servermetrics` — and proves a
 collected `server-metrics.json` is embedded for the run it was collected against and refused for
 any other: the payload carries the run identity, so a stale one cannot quietly become this run's
 evidence. The refusal is a CONFIG ERROR, a non-zero exit and an ERROR finding in the CI/CD JSON,
 because a declared server assert needed the payload. It also asserts the collector's console said
-the recording was read (`wir-collect: OK app/up coverage=`): since the collector exits 0 for an empty
-series, the exit code alone no longer proves it. **C36** collects through the CSV backend
+the recording was read (`wir-collect: OK app/up coverage=`): the collector exits 0 for an empty
+series too, so the exit code alone does not prove it. **C36** collects through the CSV backend
 (`--csv`) and pins the `failonassert` fold: a component's FAIL exits 0 by default and 1 under the
-flag, and is a JUnit `<failure>` in that component's suite. **C37** pins the other half of D4 —
-`--prometheus-url` on a dead port: the collector exits 0 because it wrote the payload (D27), the
+flag, and is a JUnit `<failure>` in that component's suite. **C37** pins a collection failure —
+`--prometheus-url` on a dead port: the collector exits 0 because it wrote the payload, the
 payload records the source `FAILED`, and step 3 is a CONFIG ERROR with the assert counted as
 `sourceFailed` and written as a JUnit `<failure>`. C37 also runs the three documented steps as one
 `set -e` script, with `jmeter` on `PATH`, `JMETER_HOME` unset and a lone copy of
-`wir-collect.sh`; the script must reach step 3's report (a collector that exited non-zero stopped
-it before the only report that gates), and its step 3 passes
+`wir-collect.sh`; the script must reach step 3's report (a collector that exited non-zero would
+stop it before the only report that gates), and its step 3 passes
 `-Jwebinsight.report.failonerror=false`, which is how a pipeline that wants the report and its own
 jq gate keeps a dead source from ending the script. **C38** is the save promise end to end: the document the page saves gates
 the next `jmeter -g` exactly as the page showed it — the page's save re-judged by `jmeter -g`. `save-from-page.js` runs the report's own
@@ -424,8 +492,9 @@ an add), and one where Generate from this run seeded an assert on a freed series
 `jmeter -g` over the same committed payload and diffed against the page field by field — every
 server assert, every server component, the client gate. A fourth document is an untouched Download
 of a page built from G3's `gate-broken.json`, six of whose seven rules Java refuses (the seventh is
-the PASS control), re-judged with each refused rule's sentence: a no-op Save once dropped a band the
-run could not read, and the next run passed the rule (C-1, client half). It needs `node` on `PATH`.
+the PASS control), re-judged with each refused rule's sentence: a no-op Save must not drop a band
+the run could not read, or the next run would pass the rule (C-1, client half). It needs `node` on
+`PATH`.
 **C39** collects a Grafana export as it is downloaded — `wir-collect.sh --csv --layout wide` over a
 CRLF copy of the committed `test-plans/server-catalogue/e27-grafana.csv` with E27's annotations and
 the `e27-grafana-columns.csv` map — and checks the payload in node, field by field: two columns read
@@ -450,12 +519,15 @@ under the catalogue's own name with no `readAs`. It needs `node` on `PATH` too.
 **Error handling (N01-N09):** zero samples, unparseable annotations, missing baseline, long
 title, empty sampler name, report overwrite, empty title property, and — N08 — a *well-formed*
 annotations file whose rules are individually broken. N02 and N08 are not the same test: N02's
-file never parses, so nothing reaches the evaluator, and every "the rule itself is unreadable"
-failure lived outside the suite until N08. It asserts the report and the CI/CD JSON are still
-written, that the three bad rules are counted INVALID, and that the one healthy rule beside them
-is still judged. N09 runs the same rules through the `-g -o` exporter, where the failure
-mode is different — an exception propagates and JMeter exits 1 rather than quietly producing
-no report — so it asserts the exit code as well as the artifacts.
+file never parses, so nothing reaches the evaluator, while N08's file parses and each of its five
+broken rules fails at a different point (an uncompilable pattern, a bad selector key, an unknown
+`class=` token, an unknown metric, an unreadable target). N08 asserts that the run exits non-zero
+(rules the file got wrong are a configuration error under the default `failonerror`), that the
+report and the CI/CD JSON are still written, that the five bad rules are counted as
+`INVALID_RULE` (`gate.notJudged.invalidRule` is 5), that the one healthy rule beside them is still
+judged, and that no stack trace reaches either log. N09 runs the same rules through the `-g -o`
+exporter, over a JTL with errors of every class, and asserts the same, so the two ingestion paths
+cannot answer differently for one annotations file.
 
 ## 6. `-g -o` CLI Pipeline Tests
 
@@ -471,7 +543,7 @@ jmeter -g results.jtl -o report-dir/ \
   -Jwebinsight.report.annotations=/path/to/annotations.json
 ```
 
-**Scenarios:** Basic generation, custom title/filename, annotations via -J, baseline via -J, JUnit XML, collision detection (existing report skipped).
+**Scenarios:** Basic generation, custom title/filename, annotations via -J, baseline via -J, JUnit XML, collision detection (a report the listener already wrote for the same run is skipped; another run's report is replaced). `run-family-cd-tests.sh` runs the exporter alone and both paths at once (`-n -t … -e -o`).
 
 ## 7. Data Integrity Verification
 
@@ -508,6 +580,27 @@ containers — they are NOT part of `run-all-tests.sh`:
 `docker/Dockerfile.jmeter` contains only JMeter — the plugin is bind-mounted at
 run time, so a code change needs no image rebuild.
 
+To build the image by hand:
+
+```bash
+docker build -t jmeter-webinsight-test:5.6.3 -f docker/Dockerfile.jmeter docker/
+```
+
+To run a single container test by hand, note the JAR path must be expanded by
+the shell — a glob inside quotes is passed to Docker literally and silently
+bind-mounts a *directory* instead of the plugin:
+
+```bash
+JAR=$(ls jmeter-web-insight-report/target/jmeter-web-insight-report-*.jar)
+docker run --rm \
+  -v "$PWD/$JAR:/opt/apache-jmeter-5.6.3/lib/ext/plugin.jar" \
+  -v "$PWD/test-plans/docker-test.jmx:/test/docker-test.jmx" \
+  -v "$PWD/test-results/docker/E16:/results" \
+  jmeter-webinsight-test:5.6.3 \
+  -n -t /test/docker-test.jmx -l /results/results.jtl \
+  -Jwebinsight.report.output=/results -Jthreads=10 -Jduration=30
+```
+
 ## The golden harness (R06)
 
 ```bash
@@ -536,20 +629,20 @@ without either — a golden check that cannot run must not look like one that pa
 | G8 | `gate-server-fail.json`, payload missing | refused where a server assert needed it: no server block, one ERROR finding |
 | G9 | `gate-digits.json` | client rules only, each band within a hundredth of plain.jtl's measured value: every client `actual` and JUnit number stays on its own side of every band its rule declares (`119.361` beside `"threshold": 119.36`, not `119.36`) |
 
-There is no G6: it was the observe-only gate, retired with `failsBuild` when every component
-became one that builds, and case ids are not reused.
+There is no G6, and case ids are not reused.
 
 G4, G5 and G7 read the committed payload `test-plans/goldens/server-metrics.json`, collected with
 `wir-collect --csv` against `plain.jtl` under the default title from the committed
 `test-plans/goldens/server-metrics.csv`; `test-plans/goldens/server-metrics.md` says how to
 regenerate it. G5, G7 and G8 declare no client rule on purpose: in G4 the client gate already
-FAILs, so the server half of the jq idioms was run over no document where it mattered. The same goldens are what
+FAILs and decides both jq idioms on its own, so without them the server half of the idioms would
+run over no document where it decides anything. The same goldens are what
 `verify_jq_idioms` runs the documented jq lines over.
 
 Three semantics bite immediately:
 
 - **It compares the `.json` and `.xml` only, never the HTML.** The comparison block lives only in
-  the HTML, which is why a baseline-JTL case was removed after its first run. It does not cover the
+  the HTML, which is why no case runs against a baseline JTL. It does not cover the
   live-listener path either, which is not reproducible.
 - **`--accept` regenerates the baselines, and it is a deliberate act.** Commit them **with** the
   change that caused them and say which in the message: the diff then appears in the pull request
@@ -562,27 +655,6 @@ Three semantics bite immediately:
 
 `selftest_goldens_accept` (S03/R03 and CI) runs the real runner against a stub JMeter that writes
 nothing and demands that `--accept` refuse it.
-
-To build the image by hand:
-
-```bash
-docker build -t jmeter-webinsight-test:5.6.3 -f docker/Dockerfile.jmeter docker/
-```
-
-To run a single container test by hand, note the JAR path must be expanded by
-the shell — a glob inside quotes is passed to Docker literally and silently
-bind-mounts a *directory* instead of the plugin:
-
-```bash
-JAR=$(ls jmeter-web-insight-report/target/jmeter-web-insight-report-*.jar)
-docker run --rm \
-  -v "$PWD/$JAR:/opt/apache-jmeter-5.6.3/lib/ext/plugin.jar" \
-  -v "$PWD/test-plans/docker-test.jmx:/test/docker-test.jmx" \
-  -v "$PWD/test-results/docker/E16:/results" \
-  jmeter-webinsight-test:5.6.3 \
-  -n -t /test/docker-test.jmx -l /results/results.jtl \
-  -Jwebinsight.report.output=/results -Jthreads=10 -Jduration=30
-```
 
 ## Run Everything
 
@@ -597,9 +669,10 @@ mvn test
 
 # 3. JMeter execution tests (generates reports for Playwright)
 ./test-plans/scripts/run-all-tests.sh
+./test-plans/scripts/generate-cmp-fixture.sh
 
 # 4. Playwright (needs reports from step 3)
-cd test-plans/playwright && npm test
+(cd test-plans/playwright && npm test)
 
 # 5. Config + error handling tests
 ./test-plans/scripts/run-config-tests.sh
@@ -607,7 +680,22 @@ cd test-plans/playwright && npm test
 
 # 6. Golden artifacts (R06)
 ./test-plans/scripts/run-goldens.sh
+
+# 7. Docker (E16, E17)
+./test-plans/scripts/run-docker-tests.sh
+
+# 8. Title/JUnit and the scenario families
+./test-plans/scripts/run-title-junit-tests.sh   # T-series: the report title and JUnit XML, -J and JMX
+./test-plans/scripts/run-family-ab-tests.sh     # A/B: a shared output directory after several runs
+./test-plans/scripts/run-family-cd-tests.sh     # C/D: the -g exporter, and both paths at once (-n -t -e -o)
+./test-plans/scripts/run-family-e-tests.sh      # E: two JMeter processes writing into one directory
+./test-plans/scripts/run-family-fh-tests.sh     # F/H: external-data mode, negative and edge inputs
+./test-plans/scripts/run-family-g-tests.sh      # G: Docker containers sharing one host mount
+./test-plans/scripts/run-family-ij-extra-tests.sh  # I/J: title and JUnit rows on the -g and both-paths runs
 ```
+
+The config, error, title/JUnit and family runners do not build or deploy: they run against the
+plugin step 1 put in `lib/ext`. The Docker runners build the JAR they mount.
 
 ## Cleaning Test Data
 

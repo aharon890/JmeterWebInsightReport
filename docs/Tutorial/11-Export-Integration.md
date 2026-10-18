@@ -25,7 +25,11 @@ The **"Copy Summary"** button on the Summary tab copies a clean HTML table to th
 - Email (Outlook, Gmail)
 - Wiki pages
 
-The copied table includes: all metric cards, sampler statistics, and the assert verdict.
+The copied tables hold the Summary tab's metric cards and the top 5 slowest samplers. Neither
+verdict is in them: **Copy Verdict**, beside it, copies the verdict as a few plain lines for a chat
+or an email — the test name and generation time, the Asserts verdict with its counts, the server
+chip's word when server asserts are declared, a "Draft differs" line when your rule edits would
+change the file, and the report's file name.
 
 ## Chart PNG/SVG Export
 
@@ -54,7 +58,9 @@ Every report generates `web-insight-report.json`:
       "sampleCount": 42364,
       "mean": 891,
       "p95": 2340,
+      "p99": 3980,
       "errorRate": 0.8,
+      "throughput": 564.9,
       "apdex": 0.72,
       "assertStatus": "FAIL"
     }
@@ -89,15 +95,23 @@ Every report generates `web-insight-report.json`:
   "serverAsserts": [ "… one entry per server assert, see below" ],
   "findings": [
     { "severity": "error", "ruleId": "checkout-p95x",
-      "message": "unknown metric 'p95x' — did you mean 'p95'?" }
+      "message": "unknown metric 'p95x' — did you mean 'p95'?. Valid here: sampleCount, errorCount, … p99, p99.9" }
   ],
-  "generatedAt": "2026-03-28 14:30:00"
+  "generatedAt": "2026-03-28 14:30:00 UTC",
+  "artifacts": {
+    "outputDirectory": "/out",
+    "html": { "path": "/out/web-insight-report.html", "outcome": "WRITTEN" },
+    "json": { "path": "/out/web-insight-report.json", "outcome": "WRITTEN" },
+    "data": { "path": "/out/web-insight-data.js", "outcome": "SKIPPED", "detail": "inline" }
+  }
 }
 ```
 
 The keys come in that order: `status` and `serverStatus` side by side near the top, the client
 `gate` and `assertions[]`, then the server `serverComponents[]` and `serverAsserts[]`, then
-`findings[]`. The server keys are described in [Server asserts in the
+`findings[]`, `generatedAt` (with the generating machine's time zone) and `artifacts`, the path of
+every file the run planned — the JUnit XML only when it is enabled, the chart-data file `SKIPPED`
+when the data stayed inline. The server keys are described in [Server asserts in the
 JSON](#server-asserts-in-the-json) below.
 
 **Every rule is the same kind of rule.** A `loadValidity` block is folded into `assertions[]` at
@@ -136,12 +150,9 @@ metrics, so `gate.notJudged` has one shape whether or not the run collected anyt
 at all" — a difference that decides whether a build should stop. The `gate` block, and on a run
 with server asserts `serverStatus` and `serverComponents[]`, are what a pipeline should read.
 
-There are two lines, and both are copied **verbatim** from
-[`test-plans/goldens/jq-gate.txt`](https://github.com/aharon890/JmeterWebInsightReport/blob/main/test-plans/goldens/jq-gate.txt). That file is the one
-copy: every line in it is run by `jq` over the golden CI/CD documents (a gateless run, client-only
-runs, server-only runs, a PASS over a coverage failure, a refused payload) and must give the answer written
-beside it, so a line copied from there holds on every shape of run. Copy from the file, not from a
-page — this one included — if the two ever disagree.
+There are two lines. Both are tested on every build over CI/CD documents of every shape (a run
+with no rules, client-only runs, server-only runs, a PASS over a coverage failure, a refused
+payload), so they hold on any run.
 
 ```bash
 # DEFAULT — the verdicts
@@ -183,7 +194,7 @@ the array:
 ```bash
 # What actually broke, client side
 jq -r '.assertions[]? | select(.status=="FAIL") |
-       "\(.id): \(.metric) \(.results[0].actual) vs \(.results[0].threshold)"' \
+       "\(.id): \(.metric) \(.attainment.actual) vs \(.attainment.failThreshold)"' \
    web-insight-report.json
 
 # What actually broke, server side
@@ -282,15 +293,16 @@ The whole run's `assertViolations` entry carries **`"scope": "overall"`** beside
 run"`. The name is display text, and a sampler can be called "Whole run"; read `scope` to find the
 run-level violation. A sampler's entry has no `scope` key.
 
-**No gate declared?** `gate` and `assertions` are absent, and `assertsEvaluated` is `false`. A
-run that was reported rather than judged never looks like a passing one.
+**No gate declared?** `gate`, `assertions` and `assertViolations` are absent, no sampler carries
+an `assertStatus`, and `assertsEvaluated` is `false`. A run that was reported rather than judged
+never looks like a passing one.
 
 `gate` and `assertions` describe the **client** rules only. A run that declares server asserts and
-no client rules therefore carries no `gate` block (and a top-level `status` of `UNKNOWN`) and, once
-the server asserts were judged against a payload, still reports `assertsEvaluated: true` —
-something *was* judged, and its verdicts are in `serverStatus`, `serverComponents[]` and
-`serverAsserts[]`. The question the field answers is "did any gate, either side, run", not "is
-there a `gate` block".
+no client rules therefore carries no `gate` block and no `assertViolations` (and a top-level
+`status` of `UNKNOWN`) and, once the server asserts were judged against a payload, still reports
+`assertsEvaluated: true` — something *was* judged, and its verdicts are in `serverStatus`,
+`serverComponents[]` and `serverAsserts[]`. The question the field answers is "did any gate,
+either side, run", not "is there a `gate` block".
 
 **A gate that ran is `assertsEvaluated: true` even when it judged nothing.** Rules were declared
 — they just all came back `NOT_JUDGED`, whether from a renamed sampler, a metric this run could
@@ -511,6 +523,7 @@ reading `jmeter.log`, which by default has no Console appender at all:
 | `WEB-INSIGHT-REPORT: FAILED <reason>` | stderr | nothing usable was produced; the exception class is named |
 | `WEB-INSIGHT-REPORT: CONFIG ERROR — <reason>` | stderr | the artifacts are all there, but the gate is not the one your file declared; the reason says how many checks never ran and why, a refused payload included |
 | `WEB-INSIGHT-REPORT: ASSERT FAIL — <verdict line>` | stderr | `failonassert=true` and the client gate or a server component said FAIL. `-g -o` only; the listener writes the same fact to `jmeter.log` |
+| `WEB-INSIGHT-REPORT: exiting 1 because <flag>=true` | stderr | printed as the process exits, naming the flag that turned this run into exit 1: `webinsight.report.failonerror` or `webinsight.report.failonassert` |
 
 `CONFIG ERROR` is the one that comes with a complete, readable report. That is deliberate: the
 report is the artifact you debug the configuration *from*: the Asserts tab opens on a red banner
@@ -542,8 +555,9 @@ Optional JUnit XML for native CI/CD integration. Disabled by default.
 
 **Output:** `web-insight-report.xml` (filename matches HTML)
 
-Two testsuites — one per sampler, and one per declared client rule — plus one per server
-component on a report that judged server asserts:
+Two testsuites — one testcase per top-level sampler in the first, one per declared client rule in
+the second (written only when a client rule is declared) — plus one per server component on a
+report that judged server asserts:
 
 | Suite `name` | `classname` | One testcase per |
 |---|---|---|
@@ -551,6 +565,7 @@ component on a report that judged server asserts:
 | `<testName> - assertions` | `assertions` | declared client rule |
 | `<testName> - <componentId>` | `server-metrics` | server assert on that component |
 | `<testName> - (no gate)` | `server-metrics` | server assert that named no declared component — only when there is one |
+| `<testName> - serverMetrics` | `server-metrics` | the payload's state, and each server assert the file makes unrunnable — only when server asserts are declared and nothing was judged ([below](#when-server-asserts-are-declared-and-nothing-was-judged)) |
 
 The root `<testsuites>` element's `tests` and `failures` count the **sampler suite only** — one
 test per top-level sampler, however many rules or server asserts the file declares.
@@ -568,14 +583,16 @@ test per top-level sampler, however many rules or server asserts the file declar
     <properties>
       <property name="webinsight.runId" value="3f2a7c19b40de85a"/>
     </properties>
-    <testcase name="GET /api/products" time="0.234" classname="performance"/>
-    <testcase name="POST /checkout" time="2.340" classname="performance">
+    <testcase name="GET /api/products" time="0.234" classname="performance">
+    </testcase>
+    <testcase name="POST /checkout" time="0.891" classname="performance">
       <failure message="ASSERT FAIL: P95 2340ms exceeds threshold; p50 812.50 ms breached &gt; 800 ms">
-        P95: 2340ms (FAIL)
-        Error Rate: 0.8% (PASS)
-        p50: 812.50 ms (FAIL)
+P95: 2340ms (FAIL)
+Error Rate: 0.8% (PASS)
+p50: 812.50 ms (FAIL)
       </failure>
     </testcase>
+    <!-- … -->
   </testsuite>
 
   <!-- One testcase per declared rule, run-level rules included. -->
@@ -584,7 +601,7 @@ test per top-level sampler, however many rules or server asserts the file declar
       <property name="webinsight.runId" value="3f2a7c19b40de85a"/>
     </properties>
     <testcase name="checkout-p95" time="0.000" classname="assertions">
-      <failure message="Assertion 'checkout-p95': p95 2340 ms on POST /checkout breached &gt; 1000 ms">
+      <failure message="Assertion &apos;checkout-p95&apos;: p95 2340 ms on POST /checkout breached &gt; 1000 ms">
 target:   POST /checkout
 metric:   p95
 criteria: warn &gt; 650 ms  ·  fail &gt; 1000 ms
@@ -592,7 +609,7 @@ criteria: warn &gt; 650 ms  ·  fail &gt; 1000 ms
       </failure>
     </testcase>
     <testcase name="checkout-p50" time="0.000" classname="assertions">
-      <failure message="Assertion 'checkout-p50': p50 812.50 ms on POST /checkout breached &gt; 800 ms">
+      <failure message="Assertion &apos;checkout-p50&apos;: p50 812.50 ms on POST /checkout breached &gt; 800 ms">
 target:   POST /checkout
 metric:   p50
 criteria: fail &gt; 800 ms
@@ -600,11 +617,17 @@ criteria: fail &gt; 800 ms
       </failure>
     </testcase>
     <testcase name="run-throughput" time="0.000" classname="assertions">
-      <failure message="Assertion 'run-throughput': throughput 27.50 /s on Whole run breached &lt; 30 /s"/>
+      <failure message="Assertion &apos;run-throughput&apos;: throughput 27.50 /s on Whole run breached &lt; 30 /s">
+target:   Whole run
+metric:   throughput
+criteria: fail &lt; 30 /s
+  [FAIL] Whole run = 27.50 /s
+      </failure>
     </testcase>
     <testcase name="parked-rule" time="0.000" classname="assertions">
-      <skipped message="rule is parked with enabled: false"/>
+      <skipped message="rule was parked with enabled: false"/>
     </testcase>
+    <!-- … -->
   </testsuite>
 </testsuites>
 ```
@@ -632,7 +655,7 @@ metric on one sampler measure the same value, which is named once, beside the ba
 in the file to fail it — and written with the digits that keep it on its own side of every band
 that judged that metric on that sampler, passing rules' included: a p50 of 214.7456 that fails
 `> 119.36` and passes `≥ 214.75` reads `214.746`, not `214.75`. The failure body lists every
-metric judged on the sampler the same way, the four legacy ones first: `p50: 119.361 ms (FAIL)`.
+metric judged on the sampler the same way, the four with fixed wording first: `p50: 119.361 ms (FAIL)`.
 Only rules that judged the sampler itself count: a `scope: "overall"` rule judges the whole run
 and is reported in the assertions suite alone.
 
@@ -657,8 +680,13 @@ Either way the message is never just the word — it carries the sentence naming
 CI report showing only this XML still says what to fix:
 
 ```xml
-<failure message="rule could not run: unknown metric 'p95x' — did you mean 'p95'?"/>
-<skipped message="rule is parked with enabled: false"/>
+<failure message="rule could not run: unknown metric &apos;p95x&apos; — did you mean &apos;p95&apos;?">
+target:   POST /checkout
+metric:   p95x
+criteria: fail &gt; 1000
+problem:  rule could not run: unknown metric &apos;p95x&apos; — did you mean &apos;p95&apos;?
+</failure>
+<skipped message="rule was parked with enabled: false"/>
 ```
 
 So the two counts are:
@@ -697,7 +725,7 @@ then the `query:` that was run, `reduce:` (left out when the reducer could not b
       <property name="webinsight.runId" value="3f2a7c19b40de85a"/>
     </properties>
     <testcase name="up-fails" time="0.000" classname="server-metrics">
-      <failure message="Server assert 'up-fails': max 49 msgs breached &gt; 20 msgs - a real breach">
+      <failure message="Server assert &apos;up-fails&apos;: max 49 msgs breached &gt; 20 msgs - a real breach">
 component: kafka
 query:     up
 reduce:    max across max
@@ -802,7 +830,7 @@ For very large tests (chart data above the threshold, 10 MB by default):
 
 | Path | Command | Error Detail | JMX Change |
 |------|---------|-------------|------------|
-| **Listener** | Add listener to test plan | Full (URL, headers, response body) | One-time |
+| **Listener** | Add listener to test plan | Full (URL, response body) | One-time |
 | **CLI `-g -o`** | `jmeter -g results.jtl -o report/` | Partial (no response body) | None |
 
 Both produce the same interactive report. The listener captures richer error detail during live execution.

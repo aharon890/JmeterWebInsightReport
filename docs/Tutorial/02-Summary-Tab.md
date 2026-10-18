@@ -49,7 +49,7 @@ On the interim report it says NOT COLLECTED, and over a refused payload REFUSED.
 |------|-------|----------|
 | **P95, whole run** | The 95th percentile of every sample, all samplers together (not an average of per-sampler P95s) | Shows an assert mini-badge (PASS/WARN/FAIL) when a rule judges p95 |
 | **P99, whole run** | The 99th percentile of every sample, all samplers together | Shows an assert mini-badge |
-| **Throughput** | Overall requests per second | Format: "49.80/s" |
+| **Throughput** | Overall requests per second | Up to 2 decimals (e.g., "49.8/s", "54.32/s") |
 | **Apdex Score** | The overall Apdex | Coloured by band — see [Apdex Card](#apdex-card) below |
 
 ### Apdex Card

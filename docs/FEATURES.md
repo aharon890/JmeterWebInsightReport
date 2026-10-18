@@ -10,32 +10,32 @@ The report is organized into **8 tabs**:
 
 | Tab | Purpose |
 |-----|---------|
-| **Summary** | At-a-glance metrics, quality gate strip, response time chart, top 5 slowest samplers, engineer notes |
+| **Summary** | At-a-glance metrics, quality gate strip and server card, response time chart, top 5 slowest samplers, Copy Verdict and Copy Summary |
 | **Timeline** | Full time-series charts — response time, throughput, error rate, bytes, connect/latency, response codes, percentile comparison, scatter plot |
 | **Samplers** | Detailed statistics table with sorting, filtering, column control, inline detail expansion, per-cell assert verdicts |
 | **Errors** | Error breakdown charts, error timeline, error detail records with expandable response bodies |
 | **Compare** | Baseline vs current run overlay and regression detection |
 | **Asserts** | The client quality gate — rules table, editor, wizard, findings banner, save/round-trip. **Always reachable**, whether or not the run declared a rule |
 | **Server** | Server asserts — the values you expect from the servers, compared with the metrics `wir-collect` fetched for the run: one badge per component, a board of asserts, charts, an editor. **Shipped visible**: on a run that declared nothing it says so, and on the interim report it says what was declared and not yet collected. See [Server tab](Tutorial/13-Server-Tab.md) |
-| **Notes** | Test notes (Markdown), timeline annotations, verdict |
+| **Notes** | Test notes (Markdown), timeline annotations, what changed against the baseline |
 
 ---
 
 ## Interactive Charts (Apache ECharts)
 
-All charts support:
+The time-series charts support:
 - **Hover tooltips** — exact values at any data point
-- **Zoom** — click-drag or mouse wheel to zoom into time ranges
-- **Pan** — shift+drag to scroll the zoomed view without losing zoom level
+- **Zoom** — mouse wheel over the chart to zoom into a time range
+- **Pan** — click-drag a zoomed chart to scroll the view without losing zoom level
 - **Time range slider** — draggable slider at bottom of each chart
 - **Legend toggle** — click legend items to show/hide individual series
 - **Legend truncation** — sampler names longer than 30 characters are cut to 27 and an ellipsis in chart legends; hover tooltip shows full name
 - **Hide/show charts** — hide individual charts via "Hide" button on any tab (Timeline, Errors, Compare); "Show N Hidden Charts" restores them
-- **Drag-and-drop reorder** — drag charts by grip handle to rearrange on any tab; layout persisted per tab in localStorage
+- **Drag-and-drop reorder** — drag charts by grip handle to rearrange them on the Timeline, Errors and Compare tabs; layout persisted per tab in localStorage
 - **Cross-chart synchronization** — hover/zoom one chart, all others follow via echarts.connect()
 - **Timer/Clock toggle** — switch between wall-clock time (14:30:50) and elapsed timer (1:20:15) on all timeline charts. Adaptive precision: seconds shown when zoomed in, hidden for long tests. Time Range selector always shows full date+time.
 - **Smart Y-axis units** — response time axes auto-adapt: ms for fast responses, sec/min/hr for slow ones. Unit determined by the max value in the chart. Tooltips also show human-readable durations (e.g., `5m 50s` instead of `350000 ms`).
-- **PNG export** — download button (camera icon) on each chart
+- **PNG export** — download button (the download icon in the chart's toolbox) on each chart
 - **SVG export** — download button next to PNG for vector graphics
 - **CSV export** — download button on every data table (see [Table CSV Export](#table-csv-export))
 - **Fullscreen** — expand any chart to full viewport
@@ -49,9 +49,9 @@ All charts support:
 - Error Rate Over Time (per sampler)
 - Bytes Throughput Over Time (received/sent bytes per sampler)
 - Connect Time vs Latency vs Processing (stacked area breakdown)
-- Response Codes Over Time (stacked bar by HTTP status code)
+- Response Codes Over Time (stacked bar by response code of the failed samples, built from the first 500 error records)
 - Response Time Percentiles Comparison (grouped bar: p50/p90/p95/p99/max per sampler)
-- Response Time Scatter Plot (individual data points for pattern/outlier detection)
+- Response Time Scatter Plot (one point per sampler per time bucket, at that bucket's mean response time)
 - Response Time Heatmap (response time distribution over time — see below)
 
 **Error tab:**
@@ -75,19 +75,19 @@ All charts support:
 
 ## Sampler Filtering
 
-A persistent **filter bar** appears across all tabs:
+A persistent **filter bar** appears below the tabs on every tab but Server, whose charts it does not affect:
 
-- **Sampler checkboxes** — toggle each sampler on/off; affects all charts, tables, and error views globally
-- **Select All / None** — quick toggle buttons
+- **Sampler checkboxes** — toggle each sampler on/off; affects the charts on every tab the bar is shown on
+- **All / None** — quick toggle buttons
 - **Deselected samplers** appear dimmed (45% opacity) with hidden checkmark
 - **Auto-hide utility samplers** — JSR223, Debug, BeanShell, and JMeter internal samplers (\_\_*) are unchecked by default
-- **Auto-hide 0-request samplers** — samplers with no requests are hidden automatically
+- **Auto-hide 0-request samplers** — samplers with no requests are unchecked by default
 - **Sampler name truncation** — long names truncated with ellipsis + hover tooltip in filter bar
 
 When samplers are deselected:
 - Their lines disappear from all time-series charts
-- Their errors disappear from error breakdown, timeline, and tables
-- Summary metrics and charts update accordingly
+- Their errors disappear from the error charts (see [Error Deep-Dive](#error-deep-dive)); the two error tables keep every row
+- The Summary tab's response time chart follows; the header and summary cards and the Samplers table always cover every sampler
 
 ### Filter Presets
 Save and load filter configurations:
@@ -97,13 +97,13 @@ Save and load filter configurations:
 - **Default preset** — resets all settings (visibility, metric, palette, line thickness, columns) to initial state
 
 ### Time Range Selector
-A time range filter in the filter bar shows the current zoomed range:
+A read-only time range display in the filter bar shows the current zoomed range:
 - Automatically syncs with chart zoom/pan state
 - **Reset** button restores all charts to full time range
 
 ### Collapsible Filter Rows
 A **"Filters ▾"** dropdown in the tab navigation bar with per-row visibility toggles:
-- ☑ Palette / Line / Metric / Granularity
+- ☑ Palette / Line / Metric (the row that also holds Granularity)
 - ☑ Time Range / Presets
 - ☑ Samplers
 
@@ -123,7 +123,7 @@ Three built-in palettes available via toggle buttons:
 Click the **color dot** next to any sampler name in the filter bar to open a color picker:
 - Grid of swatches from all palettes
 - Native color input (`<input type="color">`) for any custom color
-- Custom colors persist in **localStorage** across page reloads
+- Custom colors persist in **localStorage** across page reloads; choosing a palette clears them
 
 ### Line Thickness
 Toggle between **Thin** (1px), **Medium** (2px), and **Thick** (3px) line widths for all chart lines.
@@ -142,11 +142,12 @@ Switch the response time charts between metrics:
 - **P99** — 99th percentile
 - **Max** — maximum response time
 
-The selected metric applies to both Summary and Timeline response time charts. Per-sampler percentiles are computed per 1-second time bucket.
+The selected metric applies to the Summary and Timeline response time charts and to the Compare
+tab's Response Time Comparison. Per-sampler percentiles are computed per 1-second time bucket.
 
 ### Granularity Control
 
-A dropdown in the filter bar lets you adjust the time-series aggregation level: **1s, 5s, 10s, 30s, 1min, 5min, 10min**. Higher granularity smooths charts by averaging data points into larger buckets — useful for long tests where 1-second resolution produces too many points.
+A dropdown in the filter bar lets you adjust the time-series aggregation level: **1s, 5s, 10s, 30s, 1min, 5min, 10min**. Higher granularity smooths charts by folding data points into larger buckets — a sample-weighted average for response times, percentiles and error rates, the bucket's rate for throughput and bytes, the maximum for Max — useful for long tests where 1-second resolution produces too many points.
 
 **Auto-detection:** The default granularity adapts to test duration:
 - < 5 minutes → 1s (raw)
@@ -156,14 +157,14 @@ A dropdown in the filter bar lets you adjust the time-series aggregation level: 
 - 1-2 hours → 5min
 - 2+ hours → 10min
 
-Changing granularity instantly refreshes all timeline charts. The underlying data remains at 1-second resolution — only the display aggregation changes.
+Changing granularity instantly re-renders the time-series charts; the heatmap, the percentile bars, the response-code bars and the Compare tab's charts keep their own resolution. The underlying data remains at 1-second resolution — only the display aggregation changes.
 
 ---
 
 ## Response Time Heatmap
 
 A heatmap visualization at the bottom of the Timeline tab showing response time distribution over time:
-- **X-axis:** time (same as other timeline charts)
+- **X-axis:** time, one column per second — the Granularity selector does not apply to it
 - **Y-axis:** response time buckets — 0-50ms, 50-100ms, 100-200ms, 200-500ms, 500-1K, 1K-2K, 2K-5K, 5K+
 - **Color intensity:** number of samples in each bucket (light blue = few, red = many)
 
@@ -172,7 +173,7 @@ Reveals patterns that line charts miss:
 - Response time shifts over time (e.g., requests gradually moving to a higher bucket)
 - Outlier bursts (a cluster of slow requests appearing in a higher bucket)
 
-**Per-sampler tooltip:** When multiple samplers are visible, hovering a cell shows the per-sampler breakdown (which samplers contributed how many samples to that bucket).
+**Per-sampler tooltip:** When more than one sampler contributed to a cell, hovering it shows the per-sampler breakdown (which samplers contributed how many samples to that bucket).
 
 **Sampler filter integration:** Respects the sampler filter bar — deselecting a sampler removes its data from the heatmap. Transaction children excluded when toggle is off.
 
@@ -183,7 +184,7 @@ All standard chart features: drag-to-reorder, hide/show, fullscreen, PNG/SVG exp
 ## Samplers Tab
 
 ### Statistics Table
-Full table with columns: Sampler, Samples, Errors, Error %, Mean, Median, P90, P95, P99, Min, Max, Throughput, Recv KB/s.
+Full table with columns: Sampler, Samples, Errors, Error %, Mean, Median, P90, P95, P99, Min, Max, Throughput, Recv KB/s, Apdex.
 
 - **Sortable** — click any column header (ascending/descending)
 - **Searchable** — text filter box above the table
@@ -195,8 +196,8 @@ Full table with columns: Sampler, Samples, Errors, Error %, Mean, Median, P90, P
   the rules judging that sampler. Click it to list every rule that judged the row, with the
   number and the limit.
 - **Per-metric assert markers** — every metric cell a rule judges carries its own verdict
-  (`✓ ! ✕ ◎ ?`), so the table shows *what is gated and how it did*, not just a row-level
-  answer. Clicking a marker edits the rule that decided it; the ⊕ beside it then reads "Add
+  (`✓` PASS, `!` WARN, `✕` FAIL, `?` not measurable), so the table shows *what is gated and how
+  it did*, not just a row-level answer. Clicking a marker edits the rule that decided it; the ⊕ beside it then reads "Add
   another", because the likeliest mistake here is a second rule for something already covered.
   Glyph as well as colour, so the distinction survives the colourblind palettes and print.
   Hovering names the rule, the value and the limit.
@@ -230,13 +231,15 @@ Click any sampler row to expand an inline detail panel with **configurable mini-
 - **Persistent** — chart configuration saved in localStorage, survives page refresh
 
 ### Transaction Controller Hierarchy
-Transaction Controllers are auto-detected from sampler naming patterns:
+Transaction Controllers are detected from the sample tree the listener receives — a Transaction
+Controller's sample and the sub-samples inside it — never guessed from sampler names. A JTL does not
+keep that tree, so in a `-g` report every sampler is top-level:
 - **Default view:** Only parent transactions and standalone samplers are shown — matches JMeter's native Aggregate Report. Child samplers are hidden from the table, filter bar, and charts to avoid double-counting.
 - **"Transaction Details" toggle:** Button in the Samplers tab toolbar. When activated, child samplers appear indented under their parent with full statistics and mini-charts. The toggle also reveals child sampler checkboxes in the filter bar.
 - **Σ Total always correct:** The total row always sums parents + standalone samplers only, regardless of toggle state. Parents already aggregate their children, so children are never double-counted.
 - **Parent indicators:** Transaction parents display a ▶ triangle icon
 - **Child indentation:** Children are visually indented in both the table and filter bar
-- **Hierarchy detection:** Uses sampler name prefix matching (e.g., "Login Flow" parent contains "Login Flow - Authenticate", "Login Flow - Get Profile")
+- **Hierarchy detection:** Only real parent/child pairs from the sample tree are grouped, so REST-style names that share a prefix are never nested by accident. A sampler's own sub-samples (embedded resources, redirects) are nested so their time is not counted twice, but only a Transaction Controller is shown as a transaction
 
 ---
 
@@ -245,32 +248,44 @@ Transaction Controllers are auto-detected from sampler naming patterns:
 The Errors tab provides four views:
 
 1. **Error Breakdown** — side-by-side:
-   - Pie/donut chart by HTTP status code (fixed color per code: 500=red, 401=blue, etc.)
+   - Pie/donut chart by HTTP status code (fixed color per code: 500=red, 401=blue, etc.), each
+     slice labelled with its error class (`500 · HTTP`)
    - Bar chart by sampler (uses sampler palette colors)
-2. **Error Timeline** — scatter plot showing individual error occurrences over time, colored by sampler
-3. **Error Summary Table** — grouped by sampler + response code, with count and percentages
+2. **Error Timeline** — scatter plot showing individual error occurrences over time, colored by
+   sampler. The report keeps the details of the first 500 failed samples; past that the timeline
+   plots those 500 and says so under the chart, with the time of the last one plotted
+3. **Error Summary Table** — grouped by sampler + response code, with the error class, count and
+   percentages, counting every error
    - Search filter, column toggle, row hide
    - Fixed-width columns with ellipsis truncation and native title tooltips
-4. **Error Details Table** — individual error records with timestamp, sampler, code, message, thread
+   - **⊕ on the Class cell** — opens the assert editor with an `errorRate:class=…` rule for that
+     sampler and class, seeded from the observed rate
+4. **Error Details Table** — the first 500 error records, with time, sampler, code, class,
+   message and thread. A **By time / Grouped** switch beside the heading picks the view, and the
+   choice is remembered: *By time* is one row per error, *Grouped* one row per sampler and
+   response code, most frequent first, with first and last seen — click a group to list each
+   occurrence's time and thread, or use Expand All / Collapse All
    - Search filter, column toggle, row hide
    - Fixed-width columns with ellipsis truncation and native title tooltips
 
 ### Expandable Error Rows
-Click any error detail row to expand and see:
+In the By time view, click any error detail row to expand and see:
 - **Request URL** — the URL that failed. Listener mode reads it from the sample; JTL mode reads a
   `URL` column when the file has one (JMeter writes it under `jmeter.save.saveservice.url=true`).
-- **Response Body** — the error response, with JSON auto-detection. **Listener mode only** — the
-  JTL carries no response bodies, so a `-g` report shows code, message, thread and URL but no
-  body. Truncated to 16 KB by default, configurable via `-Jwebinsight.error.body.maxsize`.
-- **Request Headers** — *not captured.* The field exists in the model and nothing populates it on
-  either path: the listener passes null and the JTL has none to read. The panel never appears.
-  Left in place deliberately as the socket a future capture change plugs into.
+- **Response Body** — the error response, with JSON auto-formatting and **Copy**, **Wrap** and
+  **Raw** buttons. **Listener mode only** — the JTL carries no response bodies, so a `-g` report
+  shows code, message, thread and URL but no body. Truncated to 16,384 characters by default,
+  configurable via `-Jwebinsight.error.body.maxsize`.
+
+Request headers are not captured in either mode.
 
 Note: URL and response body are captured in listener mode. When parsing JTL files, URL is captured if the `URL` column is present; response body is not available in JTL format.
 
 The error charts respect the sampler filter — deselecting a sampler hides its errors from all
-three. The two error tables do not: they list every error whatever the filter shows, and so does
-the Error Summary's Total row. A table's search narrows it.
+three, from the two breakdown charts only while the run kept every error's details: past 500
+errors they count every error, the filter not applied, and their caption says so. The two error
+tables do not: they list every error whatever the filter shows, and so does the Error Summary's
+Total row. A table's search narrows it.
 
 ---
 
@@ -305,10 +320,10 @@ A tester declares exactly which checks decide a run:
 ```
 
 - **Targets** — one sampler, several, a glob or regex pattern with excludes, or the whole run.
-- **Metrics** — any of the 13 per-sampler statistics, any percentile p50–p99.99, or 8 whole-run
-  figures. Includes `latency` (time to first byte) and `connectTime`, which `elapsed` cannot see:
-  a connect-time regression is the signature of a TLS, DNS or pool problem while the total
-  response time barely moves. Byte rates are named in kilobytes, matching the column they sit
+- **Metrics** — any of the 13 per-sampler statistics, any percentile (`p50`, `p99.9`, any `pN`
+  above 0 and below 100), or 7 whole-run figures. Includes `latency` (time to first byte) and
+  `connectTime`, which `elapsed` cannot see: a connect-time regression is the signature of a TLS,
+  DNS or pool problem while the total response time barely moves. Byte rates are named in kilobytes, matching the column they sit
   under, so a rule judges the number the report shows.
 - **Predicates** — `gt`, `gte`, `lt`, `lte`. One threshold each, so every rule can show actual
   against expected. The tester writes the direction.
@@ -373,7 +388,7 @@ Full reference with the meaning and the fix for each:
   pass one. A mistyped metric name never turns the verdict to FAIL when no measured number
   exceeded anything; it is a configuration error, reported as one.
 - **A broken rule is loud, and countable on its own.** The finding names it with a
-  "did you mean", the JUnit skip message carries the sentence, and the CI/CD JSON publishes
+  "did you mean", the JUnit `<failure>` carries the sentence, and the CI/CD JSON publishes
   `gate.notJudged.invalidRule`. Strictness is the pipeline's opt-in: the STRICT line under
   [Gating a pipeline with jq](#gating-a-pipeline-with-jq). (A bare `.gate.failed == 0` reads false
   on every run that declared no client rule, because the `gate` block is written only when one
@@ -394,16 +409,18 @@ Full reference with the meaning and the fix for each:
   cannot be computed by two different rules. A rule that measured eleven samplers and could not
   measure a twelfth reports the worst of the eleven, so a genuine `FAIL` among them stands.
 - **Nothing gated ≠ passed.** A gate of nothing but NOT_JUDGED rules, or no rules at all,
-  reports NOT EVALUATED and `assertsEvaluated: false`. It was reported, not judged.
-- **There is deliberately no "inconclusive".** In CI an eighth status must resolve to pass or
+  reports NOT EVALUATED, and a run with no rules at all reports `assertsEvaluated: false`. It was
+  reported, not judged.
+- **There is deliberately no "inconclusive".** In CI a fifth status must resolve to pass or
   fail anyway — as a failure it is FAIL with extra words, as a pass it is the silent green this
   feature exists to prevent. Where the honest answer is "the question was wrong", the report
   states it as a fact about the run, not as a verdict that withholds judgement.
 
 ### Display
 - **Header badge** — the client gate's verdict (ASSERTS PASS / ASSERTS WARNING / ASSERTS FAIL;
-  NO ASSERTS DECLARED or ASSERTS NOT EVALUATED when nothing was judged), never a draft, and never
-  moved by a server assert
+  when no client rule decided anything, NO ASSERTS DECLARED, ASSERTS NOT EVALUATED, or SERVER
+  ASSERTS ONLY on a run whose server asserts alone were judged), never a draft, and never moved by
+  a server assert
 - **Server chip** — beside the badge on a run with server asserts, and a link to the Server tab.
   It names the worst component, ranked FAIL > NOT EVALUATED > WARN > PASS — the same fold
   as the JSON's `serverStatus`, so the two cannot disagree — and counts the other declared
@@ -430,7 +447,8 @@ Full reference with the meaning and the fix for each:
 - **Sampler table** — the worst verdict of the rules judging each sampler, clickable for detail;
   a per-metric verdict marker on every cell a rule judges; ⊕ on every metric cell to seed a rule
   from that number
-- **Summary cards** — the gate's verdict for that metric beside P95 and P99 (whole run)
+- **Summary cards** — beside the whole-run P95 and P99 cards, the worst verdict of every rule on
+  that metric, whatever it targets (not a verdict on the whole-run figure itself)
 - **Chart threshold lines** — every rule on the charted metric, labelled by rule id, draggable
   to retune, with the run aggregate marked beside them. A line is drawn only when the chart is
   showing a sampler the rule judges — a limit on a sampler the filter bar has hidden is a limit
@@ -486,10 +504,11 @@ change it.
 
 The industry-standard Apdex (Application Performance Index) is computed per sampler and overall:
 
-**Apdex = (Satisfied + Tolerating/2) / Total**
-- Satisfied: response time < T
-- Tolerating: response time >= T and < 4T
-- Frustrated: response time >= 4T
+**Apdex = (Satisfied + Tolerating/2) / Total**, per sampler, to two decimals; the overall score
+is the top-level samplers' scores weighted by sample count
+- Satisfied: a successful sample with response time <= T
+- Tolerating: a successful sample with response time > T and <= 4T
+- Frustrated: response time > 4T, or a failed sample whatever its time
 
 Score from 0 to 1, color-coded:
 - \> 0.94 = Excellent (green)
@@ -562,17 +581,24 @@ java -cp "%JMETER_HOME%\lib\ext\jmeter-web-insight-report-X.Y.Z.jar;%JMETER_HOME
 `wir-collect --help` prints both lines with the real JAR name, the options and the exit codes. If
 step 3 sets `-Jwebinsight.report.title`, step 2 must pass the same text as `--test-name`: the
 title is hashed into the run's identity, and a payload collected for another identity is refused.
+A ramp-up is given to both the same way, in milliseconds: `--rampup` and
+`-Jwebinsight.report.rampup`. It is cut from the window the server asserts are judged over
+(`serverMetrics.collection.excludeRampUp`, on by default), and the report says so in a finding
+when the two disagree.
 
 - **Where the metrics come from — exactly one `wir-collect` flag.** `--prometheus-url URL`
   (with `--prometheus-token-env NAME` for a bearer token), `--recording DIR` (recorded Prometheus
   range-query responses, one `<first 16 hex of sha256(query)>.json` per query), or
-  `--csv FILE [--from TOOL] [--layout wide] [--csv-columns SPEC] [--component ID]` (a CSV export,
-  one row per point: `time,component,metric,instance,value`; `--from` reads a Telegraf, Datadog, OTel
-  or CloudWatch export by that tool's names and converts it to the catalogue's unit, `--layout wide`
-  reads Grafana's CSV download, a time column and one column per series, and `--csv-columns` and
+  `--csv FILE [--from TOOL] [--layout wide [--columns MAP]] [--csv-columns SPEC] [--component ID]
+  [--time-zone ZONE]` (a CSV export, one row per point: `time,component,metric,instance,value`;
+  `--from` reads a Telegraf, Datadog, OTel or CloudWatch export by that tool's names and converts it
+  to the catalogue's unit, `--layout wide` reads Grafana's CSV download, a time column and one
+  column per series (`--columns` maps a column by its exact header), `--csv-columns` and
   `--component` read a long export whose columns have other names and no component — InfluxDB 2's
-  annotated CSV, blocks and all, InfluxDB 3 and Dynatrace). `--step` sets the
-  resolution and the coverage grid (default `15s`). Connection details are never in the file.
+  annotated CSV, blocks and all, InfluxDB 3 and Dynatrace — and `--time-zone` names the zone of a
+  time written with none). `--step` sets the resolution and the coverage grid (default `15s`), and
+  `--clock-offset` shifts every timestamp for servers whose clocks are known to be off. Connection
+  details are never in the file.
 - **Components.** `serverMetrics.components` names what is being measured: a `type` from the
   built-in catalogue (`postgres`, `kafka`, `redis`, `host-linux`, `aws-ec2`, `oracle`, `influxdb2`,
   `influxdb3`, `jvm`, `http-service`, `kubernetes-pod`, `mysql`) or `custom`, a
@@ -581,9 +607,9 @@ title is hashed into the run's identity, and a payload collected for another ide
   component is one badge, one verdict and one JUnit suite, and **every component can fail the
   build**: to only watch a metric, give its assert a warn band and no fail band.
 - **Catalogue metric or own query.** A server assert names its `component` and either a catalogue
-  `metric` — whose query, unit, reducer and `across` come from the catalogue, and anything the
-  assert writes overrides them — or its own `query`, the escape hatch and the only way on a
-  `custom` component. Both, or neither, is `INVALID_RULE`.
+  `metric` — whose query, unit, reducer and `across` come from the catalogue, and a `unit`,
+  `reduce` or `across` the assert writes overrides the catalogue's — or its own `query`, the
+  escape hatch and the only way on a `custom` component. Both, or neither, is `INVALID_RULE`.
 - **The catalogue's types.** `postgres` (postgres_exporter), `kafka` (kafka_exporter and the JMX
   exporter with Strimzi's rules; its request latencies, request-handler idle and lag in seconds have
   no Prometheus query under those, so they are collected from a `--csv` export), `redis` (redis_exporter), `host-linux` (node_exporter: CPU busy
@@ -594,7 +620,7 @@ title is hashed into the run's identity, and a payload collected for another ide
   processes against their limits, CPU, wait classes, locks, tablespaces; five metrics need the
   custom metrics file in the Server tab tutorial), `influxdb2` / `influxdb3` (InfluxDB's own
   `/metrics`: write and query latency and errors, rejected points, and each engine's own health
-  signals, under one set of ids for the KPIs both share), `jvm` (Micrometer through Spring Boot
+  signals, under one set of ids for the metrics both share), `jvm` (Micrometer through Spring Boot
   Actuator: heap against its maximum, live heap growth, GC pauses, threads, process CPU),
   `http-service` (Micrometer's `http.server.requests`: request rate, 5xx share, mean, slowest and —
   with the request histogram switched on — p95 response time), `kubernetes-pod` (cAdvisor and
@@ -607,21 +633,26 @@ title is hashed into the run's identity, and a payload collected for another ide
   tool has no single metric, and the computed series goes in the file under the catalogue's name.
 - **The CSV format.** One row per point under a header, columns found by name in any order:
   `time,component,metric,instance,value`. `time` is ISO 8601 with an offset or `Z`, or epoch
-  milliseconds — a time with no zone is refused, never guessed. `metric` is a catalogue metric's
-  name or a custom assert's `query` text; `instance` may be empty; an empty or `NaN` value is a gap,
-  not zero. A bad row fails only the series it belongs to, naming the line, and the collection
-  reads `PARTIAL`. Full rules: [Server tab](Tutorial/13-Server-Tab.md).
+  milliseconds — a time with no zone is refused, never guessed, unless `--time-zone` names the
+  zone. `metric` is a catalogue metric's name or a custom assert's `query` text; `instance` may be
+  empty; an empty or `NaN` value is a gap, not zero. A bad row fails only the series it belongs
+  to, naming the line, and the collection reads `PARTIAL`. Full rules: [Server tab](Tutorial/13-Server-Tab.md).
 - **Retired keys are refused, not ignored.** `sources`, `gates`, `kpis` and `packs` in the block,
-  `source`, `gate`, `onMissing` and `required` on an assert, and `failsBuild` on a component are
-  each refused with a sentence naming what to write instead, so a file carrying one cannot quietly
-  judge less than it says.
+  `source`, `gate`, `onMissing`, `required` and the rest of the
+  [retired assert keys](Tutorial/13-Server-Tab.md#retired-and-refused-keys) on an assert (and
+  `sustainedFor`, `breachBudget` or `over` written at its top level instead of under
+  `reduce.over`), and `failsBuild` on a component are each refused with a sentence naming what to
+  write instead, so a file carrying one cannot quietly judge less than it says.
 - **Statuses.** The same four as the client side, and the same reasons, plus three that belong to
   server asserts only: `SOURCE_FAILED`, `LOW_COVERAGE` and `LOAD_NOT_ACHIEVED`. Coverage is
   measured over the **collected window**.
-- **Separate from the client verdict, everywhere.** The Server tab, the header chip and
-  `serverStatus` in the CI/CD JSON. The client badge never moves for a server assert.
-- **Authored in the report.** An editor that shows the verdict a Save would make as you type (the
-  board's own answer: never an estimate on a capped series), *Validate query* (an exact lookup
+- **Separate from the client verdict, everywhere.** The Server tab, the header chip, the Summary
+  tab's server card and `serverStatus` in the CI/CD JSON. The client badge never moves for a
+  server assert.
+- **Authored in the report.** *+ Add server assert*, *+ Add component*, and on a catalogue
+  component *+ metric*, a picker that proposes thresholds from the catalogue's default or this run;
+  an editor that shows the verdict a Save would make as you type (the board's own answer: never
+  an estimate on a capped series), *Validate query* (an exact lookup
   against what was collected, never an estimate), *Generate from this run*, drag-to-retune on the
   charts, and a component's description and match edited, or the component deleted with its
   asserts, from its card's **⋯** — all drafts with an Undo where they remove something, saved with
@@ -642,7 +673,6 @@ anywhere:
 {
   "version": "1.0",
   "testNotes": "## Test Objective\nValidate checkout under 500 users...",
-  "verdict": "CONDITIONAL_PASS",
   "timelineMarkers": [
     { "timestamp": 1773702727000, "label": "Test Start", "type": "info", "description": "Ramp-up begins" },
     { "timestamp": 1773702740000, "label": "DB Failover", "type": "warning", "description": "Primary DB switched" }
@@ -656,26 +686,24 @@ anywhere:
 
 ### Features
 - **Test Notes** — rendered as Markdown (headers, bold, italic, lists, code blocks)
-- **Engineer Notes on Summary** — when notes exist, a compact view appears on the Summary tab
-- **Verdict badge** — PASS/WARN/FAIL/CONDITIONAL_PASS displayed prominently
 - **Timeline markers** — vertical dashed lines on all charts at annotated timestamps; color-coded by type (info=blue, warning=amber, error=red, deployment=blue, custom=purple)
 - **Sampler notes** — info icon next to sampler names in the table, tooltip on hover
-- **In-browser editor** — when no notes exist, a Markdown editor with live preview and "Save Annotations" button that downloads a JSON file for future runs
+- **In-browser editor** — the Notes tab's notes are always editable, with a Preview toggle and a "Save Annotations" button that downloads the whole annotations file, rules and server asserts included, for future runs
 
 ---
 
 ## Run Comparison
 
 ### Setup
-Place a previous run's JTL as `baseline.jtl` in the output directory. The plugin auto-detects it on the next run.
+Place a previous run's JTL as `baseline.jtl` in the output directory. The plugin auto-detects it on the next run. Or point `-Jwebinsight.report.baseline` at a JTL anywhere — the way to give `jmeter -g … -o` a baseline, since `-o` takes an empty directory. The Compare tab appears only when a baseline was loaded.
 
 ### Comparison Charts
-- **Response Time Comparison** — per-sampler current (solid) vs baseline (dashed) lines, aligned by elapsed time starting at 0. Respects sampler filter and metric selector (Mean/P50/P90/P95/P99).
+- **Response Time Comparison** — per-sampler current (solid) vs baseline (dashed) lines, aligned by elapsed time starting at 0. Respects sampler filter and metric selector (Mean/P50/P90/P95/P99/Max).
 - **Throughput Comparison** — same per-sampler current vs baseline layout for throughput.
 - Both charts support fullscreen, hide/show, zoom, cross-chart sync, and dark mode.
 
 ### Custom Regression Thresholds
-Regression detection thresholds are configurable instead of hardcoded. Default: P95 increase >10% or error rate increase >2%.
+Regression detection thresholds are configurable. Default: P95 increase >10% or error rate increase >2 percentage points.
 
 **Configuration via `report-annotations.json`:**
 ```json
@@ -699,7 +727,7 @@ Regression detection thresholds are configurable instead of hardcoded. Default: 
 
 **Supported metrics** (set to -1 to disable):
 - `p95PctChange` — P95 response time % increase (default: 10)
-- `errorRateChange` — absolute error rate increase (default: 2)
+- `errorRateChange` — absolute error rate increase, in percentage points (default: 2)
 - `meanPctChange` — mean response time % increase (default: disabled)
 - `p99PctChange` — P99 response time % increase (default: disabled)
 - `throughputPctChange` — throughput % decrease (default: disabled)
@@ -710,7 +738,9 @@ Regression detection thresholds are configurable instead of hardcoded. Default: 
 - All sampler statistics columns: Samples, Errors, Error %, Mean, Median, P90, P95, P99, Min, Max, Throughput, Recv KB/s
 - Current values with inline superscript deltas (red/green, or blue/orange in colorblind mode)
 - Sortable columns, drag-to-reorder, column toggle, row hide, search filter
-- Status badges: OK, REGRESSION, NEW — based on configurable thresholds
+- Status badges, outlined so they read as a comparison rather than an assert verdict: OK, REGRESSION
+  (any enabled threshold crossed), NEW (not in the baseline), and REMOVED (ran in the baseline but
+  not in this run; its row shows dashes, and it counts as a regression)
 
 ### "What Changed" Summary
 Auto-generated text summary in the **Notes tab** when baseline comparison exists. Shows:
@@ -726,10 +756,10 @@ Updates live when regression thresholds are adjusted via the Compare tab control
 ## Smart Defaults
 
 The report auto-detects and handles common patterns:
-- **Auto-hide utility samplers** — samplers matching JSR223*, Debug*, BeanShell*, __* are hidden by default (can be toggled back on)
-- **Auto-hide empty samplers** — samplers with 0 requests are hidden
-- **Transaction Controller detection** — parent/child relationships detected from naming patterns; children collapsed by default
-- **Ramp-up period marking** — when configured, a semi-transparent overlay marks the ramp-up phase on all timeline charts
+- **Auto-hide utility samplers** — samplers matching JSR223*, Debug*, BeanShell*, __* are unchecked in the filter bar by default, so they are off the charts; the Samplers table still lists them (tick them to chart them)
+- **Auto-hide empty samplers** — samplers with 0 requests are unchecked the same way
+- **Transaction Controller detection** — parent/child relationships taken from the sample tree the listener receives (a `-g` report has none, so every sampler is top-level); children collapsed by default
+- **Ramp-up period marking** — when configured, a semi-transparent overlay marks the ramp-up phase on the time-axis charts of the Summary, Timeline and Errors tabs (not the heatmap or the percentile bars)
 
 ---
 
@@ -750,7 +780,7 @@ Every report generation produces a `web-insight-report.json` alongside the web r
   "errorRate": 0.12,
   "samplers": [
     { "name": "POST /checkout", "sampleCount": 42364, "mean": 891, "p95": 2340,
-      "p99": 3980, "throughput": 564.9, "apdex": 0.82, "assertStatus": "FAIL" }
+      "p99": 3980, "errorRate": 0.8, "throughput": 564.9, "apdex": 0.82, "assertStatus": "FAIL" }
   ],
   "assertViolations": [
     { "sampler": "POST /checkout", "status": "FAIL" },
@@ -765,27 +795,32 @@ Every report generation produces a `web-insight-report.json` alongside the web r
   "assertions": [
     { "id": "checkout-p95", "target": "POST /checkout", "targetKind": "sampler",
       "metric": "p95", "unit": "ms", "status": "FAIL", "matched": 1,
-      "attainment": { "actual": 2340, "failThreshold": 800, "consumed": 2.925, "breached": true } },
+      "attainment": { "actual": 2340, "failThreshold": 800, "consumed": 2.925, "breached": true },
+      "results": [ { "sampler": "POST /checkout", "actual": 2340, "status": "FAIL",
+                     "predicate": "gt", "threshold": 800 } ] },
     { "id": "search-tail", "target": "GET /search*", "targetKind": "match",
       "metric": "p99.99.9", "unit": "", "status": "NOT_JUDGED",
-      "notJudged": "INVALID_RULE", "reason": "unknown metric 'p99.99.9'", "matched": 0 }
+      "notJudged": "INVALID_RULE", "reason": "unknown metric 'p99.99.9'", "matched": 0,
+      "results": [] }
   ],
   "findings": [
     { "severity": "error", "ruleId": "search-tail",
-      "message": "unknown metric 'p99.99.9' — did you mean 'p99.9'?" }
+      "message": "unknown metric 'p99.99.9'. Valid here: sampleCount, errorCount, … p99, p99.9" }
   ],
-  "generatedAt": "2026-08-10 09:14:22",
+  "generatedAt": "2026-08-10 09:14:22 UTC",
   "artifacts": {
     "outputDirectory": "/out",
     "html": { "path": "/out/web-insight-report.html", "outcome": "WRITTEN" },
-    "json": { "path": "/out/web-insight-report.json", "outcome": "WRITTEN" }
+    "json": { "path": "/out/web-insight-report.json", "outcome": "WRITTEN" },
+    "data": { "path": "/out/web-insight-data.js", "outcome": "SKIPPED", "detail": "inline" }
   }
 }
 ```
 
-`gate`, `assertions` and `findings` appear only when there is something to report — `findings`
-appears even with no `gate` block, which is the case that most needs it. Every per-sampler and
-per-rule key above is emitted by `CiCdJsonSerializer`; the two arrays are abridged here.
+`gate`, `assertions` and `assertViolations` appear only when a client rule was declared, and
+`findings` only when there is something to report — but `findings` appears even with no `gate`
+block, which is the case that most needs it. The keys above are real and in the order written; the
+two arrays are abridged here.
 
 **On a run with server asserts**, three more keys, written only once the server asserts were
 evaluated (so not on the interim report, and not when the payload was refused):
@@ -822,13 +857,12 @@ evaluated (so not on the interim report, and not when the payload was refused):
   (`actual`, `coverage` of the collected window, `instances`) and its status, with `notJudged` and
   a `reason` when it decided nothing.
 
-The values above are from the golden `G4` (`test-plans/goldens/expected/G4.json`), abridged.
+The example above is abridged.
 
 ### Gating a pipeline with jq
 
-Two lines, copied verbatim from `test-plans/goldens/jq-gate.txt` — the one copy, which
-`verify_jq_idioms` runs over the golden documents on every CI push. Both hold on a client-only,
-a server-only and a mixed run.
+Two lines. Both are tested on every build, and both hold on a client-only, a server-only and a
+mixed run.
 
 **DEFAULT** — the verdicts. A run that declared no client rule passes the client half; the server
 half refuses only `serverStatus` `FAIL`. A component that judged nothing (`NOT_EVALUATED`)
@@ -923,7 +957,7 @@ environment fault. The payload records what failed; the report decides what that
 It is on by default because, off, a pipeline shaped `jmeter -n -t … && publish-report` stays
 green when the report it publishes was never written.
 
-Four greppable markers, one line each:
+Six greppable markers, one line each:
 
 | Marker | Stream | Means |
 |---|---|---|
@@ -931,6 +965,8 @@ Four greppable markers, one line each:
 | `WEB-INSIGHT-REPORT: INCOMPLETE — <reason>` | stderr | the report exists, a sibling does not; the reason names the artifact |
 | `WEB-INSIGHT-REPORT: FAILED <reason>` | stderr | nothing usable was produced; the exception class is named |
 | `WEB-INSIGHT-REPORT: CONFIG ERROR — <reason>` | stderr | every artifact is there, but a gate is not the one the file declared — client or server |
+| `WEB-INSIGHT-REPORT: ASSERT FAIL — <verdict line>` | stderr | `failonassert=true` and a gate said FAIL; `-g -o` only (the listener writes it to `jmeter.log`) |
+| `WEB-INSIGHT-REPORT: exiting 1 because <flag>=true` | stderr | printed as the process exits 1, naming `webinsight.report.failonerror` or `webinsight.report.failonassert` |
 
 `CONFIG ERROR` deliberately arrives with a complete report rather than instead of one — the
 report is where you diagnose the config, and its Asserts tab opens on a banner naming each rule
@@ -945,7 +981,7 @@ Optional JUnit XML report for native CI/CD test result integration. Disabled by 
 - GUI checkbox: "Generate JUnit XML" in listener settings
 - CLI property: `-Jwebinsight.report.junit=true`
 
-**Output:** `web-insight-report.xml` (or matching the HTML filename). Each sampler = test case, assert breaches = test failures with metric details. If nothing was declared, all test cases pass.
+**Output:** `web-insight-report.xml` (or matching the HTML filename). Each top-level sampler = test case, assert breaches = test failures with metric details. If nothing was declared, all test cases pass.
 
 The failure message text is `ASSERT FAIL: …`, and CI jobs grep it. It names every failing metric:
 p95, p99, mean and errorRate in a fixed wording (`P95 611ms exceeds threshold`), any other
@@ -955,10 +991,11 @@ by its measurement and the band it breached (`p50 119.361 ms breached > 119.36 m
 
 | `<testsuite name=…>` | When | One testcase per |
 |---|---|---|
-| `<testName>` | always | sampler |
+| `<testName>` | always | top-level sampler |
 | `<testName> - assertions` | a client rule was declared | client rule |
 | `<testName> - <componentId>` | server asserts were evaluated, one suite per component | server assert |
 | `<testName> - (no gate)` | a server assert named no declared component | server assert |
+| `<testName> - serverMetrics` | server asserts were declared and nothing was judged (the interim report, or a refused payload) | the payload's state (`serverMetrics.payload`: a `<failure>` when a refused payload was needed, else `<skipped>`), plus a `<failure>` per server assert the file makes unrunnable |
 
 The root `<testsuites>` `tests`/`failures` counts are the **sampler suite's only**; each other
 suite carries its own counts. In a server suite a FAIL, and a check that could not
@@ -1014,6 +1051,11 @@ The "Copy Summary" button on the Summary tab copies a clean HTML table to your c
 - Email reports
 - Wiki pages
 
+It holds the summary cards and the top 5 slowest samplers, and no verdict. **Copy Verdict**, beside
+it, copies the verdict as a few plain lines for a chat or an email: the test name and generation
+time, the Asserts verdict with its counts, the server chip's word when server asserts are declared,
+and the report's file name.
+
 ---
 
 ## External Data Mode
@@ -1067,7 +1109,8 @@ Toggle via the eye icon in the header. Swaps all semantic colors from green/red 
 - Pass/OK badges → blue, Fail/Regression badges → orange
 - Comparison table deltas → blue (improvement) / orange (regression)
 - Error cards, error codes → orange tones
-- Fail lines and drag handles on the Asserts and Server tabs' charts → orange
+- Assert fail lines and their drag handles on the charts, client and server → orange; warn lines
+  and handles → fuchsia, so warn and fail stay apart for a red-green colour-blind reader
 - Works independently with dark mode (4 combinations: light, dark, light+cb, dark+cb)
 - Persists in localStorage
 - Chart line palettes not affected (use Okabe-Ito palette option separately for colorblind-friendly chart colors)
@@ -1119,7 +1162,7 @@ let a run produce no report at all and still exit 0.
 
 **Note on error details:** When generating from JTL, error records carry the response code, message, thread, and URL — but not the response body, because JTL CSV does not store it. The report shows an informational message when expanding error details that lack this data.
 
-**Request headers are not captured in either mode.** Listener mode records the response body but passes no request headers, and JTL has none to read, so the request-headers panel never appears. (Tracked as dead capture plumbing; the field exists in the model but nothing populates it.)
+**Request headers are not captured in either mode.**
 
 ### As a Listener
 Add **Web Insight Report** listener to your test plan (GUI or non-GUI mode). Auto-detects `report-annotations.json` and `baseline.jtl` in the output directory. Works with `-n` (non-GUI) mode for CI/CD — the listener fires at test end and generates the full report with complete error details.
@@ -1184,16 +1227,17 @@ All settings can be overridden via JMeter `-J` properties. CLI properties take p
 | `webinsight.report.failonassert` | `false` — `true` exits non-zero on a client FAIL or a FAIL on any server component |
 | `webinsight.report.servermetrics` | none, never auto-detected — the `server-metrics.json` payload `wir-collect` wrote for this run |
 
-`junit`, `externaldata` and `failonerror` accept only `true` or `false`, case-insensitively.
-Anything else warns and is treated as **unset**, so the GUI/JMX field still decides —
-`-Jwebinsight.report.junit=yes` warns rather than silently voiding a ticked box.
+`junit`, `externaldata`, `failonerror` and `failonassert` accept only `true` or `false`,
+case-insensitively. Anything else warns and is treated as **unset**: `junit` then falls back to the
+GUI checkbox, so `-Jwebinsight.report.junit=yes` warns rather than silently voiding a ticked box,
+and the others to their defaults — `failonerror=0` leaves the default `true` in force.
 
 **Metrics & thresholds:**
 
 | Property | Default |
 |----------|---------|
 | `webinsight.apdex.threshold` | `500` (ms) |
-| `webinsight.error.body.maxsize` | `16384` (bytes) |
+| `webinsight.error.body.maxsize` | `16384` (characters) |
 
 **Comparison thresholds** (set to -1 to disable):
 
@@ -1223,7 +1267,7 @@ The listener captures additional data not available in JTL parsing:
 - **Connect time** — TCP connection establishment time
 - **Latency** — time to first byte
 - **Request URL** — for error records
-- **Response body** — for error records (truncated to 16KB by default, configurable via `webinsight.error.body.maxsize`)
+- **Response body** — for error records (truncated to 16,384 characters by default, configurable via `webinsight.error.body.maxsize`)
 
 ### Distributed Testing
 
@@ -1240,9 +1284,9 @@ load. Give each host a distinct `-Jwebinsight.report.output` if you must start t
 separately.
 
 If a worker dies without reporting `testEnded` — a crashed JVM, a dropped RMI connection —
-the controller never reaches zero active hosts and **no report is generated**. The listener
-logs a WARN naming the number of hosts still outstanding, so this shows up in `jmeter.log`
-rather than looking like a hang.
+the controller never reaches zero active hosts and **no report is generated**. The first time a
+host ends while others are still running, the listener logs a WARN naming how many it is still
+waiting on, so this shows up in `jmeter.log` rather than looking like a hang.
 
 ### Which samplers the headline numbers cover
 
@@ -1251,7 +1295,7 @@ samplers**: transaction-controller children are excluded, because their time is 
 counted inside their parent.
 
 Auto-hidden utility samplers (`JSR223 *`, `Debug *`, `BeanShell *`, JMeter internals) are
-*not* excluded — they are hidden from the sampler table but still counted in the tiles, so a
+*not* excluded — they are unchecked in the filter bar but still counted in the tiles, so a
 slow setup sampler does move the headline P95. They are, however, excluded from any blanket
 pattern rule, so they cannot fail a build on their own; a rule that names them explicitly still
 applies.

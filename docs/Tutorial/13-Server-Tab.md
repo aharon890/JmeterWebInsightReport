@@ -67,7 +67,8 @@ A minimal file:
 **Components** name what is being measured. `type` is a type from the built-in
 [catalogue](#the-catalogue) (`postgres`, `kafka`, `redis`, `host-linux`, `aws-ec2`, `oracle`,
 `influxdb2`, `influxdb3`, `jvm`, `http-service`, `kubernetes-pod`, `mysql`) or `custom`.
-`description` is the label the badge, the chip and the JUnit suite show. `match` is optional: a
+`description` is the label the card, the header chip, the Summary card and the CI/CD JSON's `label`
+show; the id names the JUnit suite and the console line. `match` is optional: a
 PromQL label selector that narrows every catalogue query on that component to the right instances.
 
 A server assert names its `component` and **either** a catalogue `metric` **or** its own `query`:
@@ -241,7 +242,9 @@ component the build depended on that decided nothing is worse news than a warnin
 opens this tab.
 
 The client badge does not change. On a run with server asserts and no client rules it reads
-`SERVER ASSERTS ONLY`, which tells you to look at the chip rather than claiming a pass.
+`SERVER ASSERTS ONLY` once the server asserts are judged, and `ASSERTS NOT EVALUATED` before that
+(step 1's report, or over a refused payload). Either way it tells you to look at the chip rather
+than claiming a pass.
 
 The CI/CD JSON's top-level **`serverStatus`** is the same fold, so the chip and the JSON cannot
 disagree:
@@ -386,14 +389,14 @@ Each card holds a table, with the same columns on every card so they line up:
 | **Actual** | The one number the bands were compared with |
 | **Criteria** | The bands, `warn > 300 msgs · fail > 500 msgs`, plus the band that was breached |
 | **Coverage** | How much of the **collected window** has data (below) |
-| **Instances** | How many series the query returned, all judged. `21 (20 drawn)` when the chart draws fewer than were judged. A dash exactly when Coverage is one: nothing was measured. A series that was measured and decided nothing, such as `LOW COVERAGE`, still shows its instances, the count the CI/CD JSON and JUnit give |
+| **Instances** | How many series the query returned, all judged. `21 (20 drawn)` when the chart draws fewer than were judged. A dash exactly when Coverage shows a dash too: nothing was measured. A series that was measured and decided nothing, such as `LOW COVERAGE`, still shows its instances, the count the CI/CD JSON and JUnit give |
 | *(actions)* | **Edit**, **Duplicate**, **Disable** / **Enable**, and **Delete**, which offers an **Undo** |
 
 The reducer appears under the name only when the assert chose its own, such as
 `max sustained for 5s across max`. A catalogue metric's default reducer, or a plain `max` across
 `max`, is not repeated on every row.
 
-Source, Gate and Query are not on the board. The collection has one source, the component is the
+The board has no Source or Query column. The collection has one source, the component is the
 card, and the resolved query stays in `server-metrics.json` and in the CI/CD JSON's
 `serverAsserts[]`.
 
@@ -433,9 +436,9 @@ reason, and the board shows the reason with the sentence that explains it undern
 | `UNMATCHED` | `NO_MATCH` | The source answered and the query matched no series (for a CSV: no row names this component and metric) | No, it is counted and reported |
 | `NO VALUE` | `NO_VALUE` | No point fell inside the judged window, the reducer had nothing to say, or a `divideBy` divisor measured zero | No |
 | `INVALID` | `INVALID_RULE` | The file is wrong: an unknown component or catalogue metric, `metric` and `query` both or neither, a `custom` component with no `query`, an unreadable band, an unknown reducer, a retired key. The sentence names it | **Yes**, under `failonerror` |
-| `SOURCE FAILED` | `SOURCE_FAILED` | The series could not be fetched: authentication, DNS, timeout, a 5xx, or a CSV row of this series that could not be read | **Yes**, under `failonerror` |
+| `SOURCE FAILED` | `SOURCE_FAILED` | The series could not be fetched: authentication, DNS, timeout, a 5xx, a placeholder the collector could not resolve, a catalogue metric with no Prometheus query asked of Prometheus or a recording, or a CSV row of this series that could not be read | **Yes**, under `failonerror` |
 | `LOW COVERAGE` | `LOW_COVERAGE` | Data came back, but below the coverage floor | **Yes**, under `failonerror` |
-| `LOAD NOT ACHIEVED` | `LOAD_NOT_ACHIEVED` | The client load rule it `requiresLoad` FAILED or was not judged | No, the load rule already carries the FAIL |
+| `LOAD NOT ACHIEVED` | `LOAD_NOT_ACHIEVED` | The client load rule it `requiresLoad` FAILED or was not judged, or the rule it `divideBy` was not judged | No, the load rule already carries the FAIL |
 
 Two more states exist only on the page, while you edit:
 
@@ -464,7 +467,7 @@ and re-collect. Until you do, the report tells you the payload was collected und
 ### Opening a row: two panels
 
 Every row starts **closed**, a FAIL included, so a card reads as a list of verdicts. The ▸ beside
-the status (or a click on the id) opens it, and ▾ closes it again. **Expand all rows** in the header
+the status (or a click on its name) opens it, and ▾ closes it again. **Expand all rows** in the header
 opens every one.
 
 An open row has two panels:
@@ -585,8 +588,8 @@ cards are offered inline, under **+ Add your first component**.
 | Field | |
 |---|---|
 | **Type** | One card per type: **Postgres**, **Kafka**, **Redis**, **Linux host**, **AWS EC2**, **Oracle Database**, **InfluxDB 2**, **InfluxDB 3**, **JVM**, **HTTP service**, **Kubernetes pod** and **MySQL**, each naming what it covers, what its metrics need (`Needs postgres_exporter`; Kafka's broker internals also need the JMX exporter with Strimzi's rules; AWS EC2's come from CloudWatch's `AWS/EC2` and `AWS/EBS`, and its ENA allowances from the CloudWatch agent; Oracle's five need [a custom metrics file](#oracle-the-custom-metrics-file); InfluxDB serves its own `/metrics`; JVM and HTTP service read [Micrometer's names](#jvm-and-http-service-micrometers-names); a Kubernetes pod's come from cAdvisor and kube-state-metrics) and how many catalogue metrics it has, and **Custom**, for anything else, where each assert writes its own query |
-| **Id** | The name its server asserts, the badge and the JUnit suite use, such as `orders-db` |
-| **Description** | The label on the badge, the chip and the JUnit suite, such as `Orders DB` |
+| **Id** | The name its server asserts, its card and the JUnit suite use, such as `orders-db` |
+| **Description** | The label on its card, the header chip and the Summary card, such as `Orders DB` |
 | **Advanced → Match** | Optional: a label selector added to every catalogue query, for when two components of one type share a source. See [`match`](#the-catalogue) |
 
 A missing id, an id another component already has, and a reserved id (`assertions`, `(no gate)`)
@@ -675,9 +678,11 @@ PASS. Such a row takes the catalogue's safe default instead, under every rule, a
 left empty. So is a metric with no data in this run, which has nothing to take headroom from.
 
 The same holds at the top. The catalogue declares a **ceiling** on the metrics that cannot read
-past one: 100 on the Postgres percentages (connections used, rolled-back transactions, cache hit
-ratio) and 1 on `up`. Upward, the headroom is then a share of the smaller of this run's number and
-the room left below the ceiling. Connections used at a 68 % peak gives warn `> 76` and fail `> 84`,
+past one: for example 100 on the Postgres percentages (connections used, rolled-back transactions,
+cache hit ratio), 1 on a 0/1 flag such as `up`, and 10 s on the InfluxDB latency p95s, whose
+histograms stop there. A percentage that can read past 100, such as MySQL's connections used or a
+Kubernetes container's CPU against its limit, has none. Upward, the headroom is then a share of the
+smaller of this run's number and the room left below the ceiling. Connections used at a 68 % peak gives warn `> 76` and fail `> 84`,
 where 50% of the run alone would give fail `> 102`, a band the metric can never reach. Nothing at or
 below half the ceiling changes: at 20 % the fail band is still `> 30`. Each band is checked after it
 is rounded, and one at or past the ceiling, or one that rounding put on the run itself, is not
@@ -744,14 +749,18 @@ make, then how the series is reduced, and the details last.
 | **Warn**, **Fail** | An operator and a number each, with the unit the band is compared in beside it: the unit, `/min` added for a `slope`, ` ÷ <rule>` for a **Divide by**. Leave one empty for no band, unless the file declared a band there that the run [could not read](#a-band-the-run-could-not-read): then the empty box keeps it, and the row has a **×** |
 | **If saved** | The verdict the board would show for this assert if you saved it now, as you type: the chip, the actual against the band it breached, and `judged live` when the page recomputed a verdict (`live` on one that decided nothing, such as `DISABLED`). It is the board's own answer, so it never estimates. On a series the page holds capped it keeps the build's verdict while the assert is as the run judged it (`the build’s verdict — this series is capped here`) and reads `NOT RE-JUDGED` once you change it; a query this run did not collect reads `NEEDS RE-COLLECTION`. While Save is refused there is no verdict, only a pointer to the reason under the form |
 | **Reduce** | `max`, `min`, `avg`, `last`, `pN` or `slope` |
-| **Tolerance** | Offered on `max` and `min` only: *sustained for* a duration, or a *breach budget* fraction. A tolerance you choose needs a value: left empty, Save is refused with the run's own sentence. To remove one, set Tolerance to *none*. Erasing its value does not remove it |
-| **Across instances** | `max` (the worst instance when higher is worse), `min` (the worst when lower is worse) or `avg`. A custom query starts at `max`; a catalogue metric starts at the catalogue's — `min` on postgres `up` and `cache.hit.pct` — and only a different choice is written |
+| **Tolerance** | Offered on `max` and `min`, and on any assert that already carries one, so a tolerance the run refuses on another reducer can be removed: *sustained for* a duration, or a *breach budget* fraction. A tolerance you choose needs a value: left empty, Save is refused with the run's own sentence. To remove one, set Tolerance to *none*. Erasing its value does not remove it |
+| **Across instances** | `max` (the worst instance when higher is worse), `min` (the worst when lower is worse) or `avg`. A custom query starts at `max`; a catalogue metric starts at the catalogue's — `min` on most metrics where lower is worse, such as `up`, a hit ratio or free memory — and only a different choice is written |
 | **Unit** | A label shown beside every number. It converts nothing. For a catalogue metric, empty means the catalogue's. For a custom query, empty means no unit, and Save writes no `unit` key unless the file already had one |
 | **Requires load**, **Divide by** | See [Advanced](#advanced) |
 | **Description**, **Id** | Leave the id empty and the assert gets the id the run derives from the component and the metric or query, as one added with **+ metric** or Generate does. The field shows that id as its placeholder, and it is not written into the file. One another assert already has is refused |
 
 The [Validate query](#validate-query) line sits under Metric (or Query). Enabling and disabling is
 not a field: it is **Disable** / **Enable** on the row.
+
+A [retired key](#retired-and-refused-keys) the assert carries has no field either. The editor lists
+it at the top in the run's own words, with a `Remove "<key>" from this server assert` button, so
+the assert can be saved without it.
 
 **Save server assert** is disabled, with the sentence, for anything the run would refuse. The editor
 and `jmeter -g` share one set of refusals. Warnings that do not refuse (a warn band the fail band
@@ -797,6 +806,7 @@ component's `match` expanded. It is an **exact lookup, never an estimate**:
 | `Not collected. Download the file and re-run wir-collect to fetch it.` | Nothing collected answers for this text. The page will not guess |
 | `Collecting again will not help: the query has an invisible character at its start (U+00A0) …` | The query starts or ends with an invisible character that is not trimmed: a no-break or zero-width space, a bidi mark, a soft hyphen, a variation selector, a tag character or a C1 control. The warning names it by its code point. No source returns that series, so delete the character rather than re-collect. Said only when nothing came back for that text: a series that returned points (a source whose name carries the same character, or an emoji that ends in a variation selector) is answered with the `Collected` line instead |
 | `Nothing has been collected for this report yet.` | Step 1's report: no payload |
+| `Write a query, or choose a catalogue metric.` | Custom query… with the Query box still empty: nothing to look up yet |
 
 Editing what an existing server assert fetches turns its row to `NEEDS RE-COLLECTION`. A verdict
 computed from the old series under the new query would be confidently wrong, so none is shown.
@@ -919,8 +929,8 @@ document:
   in the file is not copied into a download.
 
 **Next-run fidelity**: feed the saved file to `jmeter -g` with the same payload and it reproduces
-the verdicts the page showed. The page and the engine judge from a shared set of test vectors, and a
-test downloads the edited file, re-runs `jmeter -g`, and compares the result field by field.
+the verdicts the page showed. The page and the engine are tested against the same set of cases, and
+an edited file downloaded from a real page is re-run with `jmeter -g` and compared field by field.
 
 ---
 
@@ -1304,15 +1314,13 @@ The exit code is the first gate, and it needs nothing extra:
 | A server assert the file got wrong | 1 (`failonerror`) |
 | A source failed or coverage fell short | 1 (`failonerror`) |
 | A query matched nothing (`NO_MATCH`) | 0, counted and reported |
-| A server assert parked with `enabled: false` (`DISABLED`), one with no point in the judged window (`NO_VALUE`), or one whose `requiresLoad` rule did not PASS (`LOAD_NOT_ACHIEVED`) | 0, counted and reported |
+| A server assert parked with `enabled: false` (`DISABLED`), one with no point in the judged window (`NO_VALUE`), or one whose load rule FAILED or was not judged (`LOAD_NOT_ACHIEVED`) | 0, counted and reported |
 | A component with no server asserts yet | 0 |
 | No payload given (step 1) | 0. The server asserts are not evaluated and `serverComponents` is omitted. JUnit's `serverMetrics` suite says so with a `<skipped>` |
 | A payload given and refused (missing, another run's, unreadable) while an enabled server assert is declared | 1 (`failonerror`), with the ERROR finding `serverMetrics.payload`, and the same sentence as a JUnit `<failure>` |
 | The same with no enabled server assert declared | 0, with a warning |
 
-To gate on the CI/CD JSON, copy one of these two lines. They come from the one file that holds
-them, `test-plans/goldens/jq-gate.txt`, and they are run over the golden documents on every build.
-Both treat a run with no client rule as passing the client half, and a run with no server block as
+To gate on the CI/CD JSON, copy one of these two lines. Both are tested on every build. Both treat a run with no client rule as passing the client half, and a run with no server block as
 passing the server half.
 
 **DEFAULT** refuses a client FAIL and `serverStatus` FAIL, the verdicts. It does not refuse a
@@ -1442,7 +1450,7 @@ worth.
 | Code | Means |
 |---|---|
 | `0` | The payload was written, **whatever each series' status**. A failed source, a bad CSV row or an empty query is recorded in the payload, and step 3 decides what it means (`failonerror`) |
-| `1` | Nothing was written: bad arguments (no source flag, or two), an unreadable JTL or annotations file, a file with nothing to collect (no server assert and no component of a catalogue type), an undeclared `--env` or `--component`, an unwritable `--out`, a ramp-up as long as the run, or (from `wir-collect.sh`) no `java` |
+| `1` | Nothing was written: bad arguments (no source flag, or two), an unreadable or empty JTL, an unreadable annotations file, a file with nothing to collect (no server assert and no component of a catalogue type), an undeclared `--env` or `--component`, an unwritable `--out`, a ramp-up as long as the run, or (from `wir-collect.sh`) no `java`, no JMeter install, or not exactly one plugin JAR in `lib/ext` |
 
 There is no other code, on purpose. A collector that exited non-zero on a dead source would
 stop a `set -e` script or a Jenkins `sh` step before step 3, and step 3 is the only report that
@@ -1482,16 +1490,17 @@ wir-collect: WARNING bus/\u00a0lag: the query has an invisible character at its 
 
 **`--prometheus-url URL`** queries a live Prometheus. The token is never on the command line:
 `--prometheus-token-env PROM_TOKEN` names the environment variable that holds it. A URL with
-userinfo (`https://bob:secret@…`) is refused. A query parameter named like a credential (`token`,
-`key`, `secret`, `password`, `auth`, `credential`, `sig`) must take its value from `${secret.NAME}`,
+userinfo (`https://bob:secret@…`) is refused. A query parameter whose name contains `token`, `key`,
+`secret`, `password`, `passwd`, `auth`, `credential` or `sig` (`api_key`, `access_token`) must take
+its value from `${secret.NAME}`,
 an environment variable the collector resolves and masks wherever the URL is written. The URL may
 also carry `${env.*}` placeholders.
 
 **`--recording DIR`** replays recorded Prometheus `query_range` responses, one file per query,
 named by the first 16 hex characters of the SHA-256 of the resolved query text:
 `<digest>.json`, where the digest is `printf '%s' 'up' | sha256sum | cut -c1-16`. A missing file
-reads as `EMPTY`, an unreadable one as `FAILED`. Use it for offline replay and for deterministic
-fixtures.
+reads as `EMPTY`, an unreadable one as `FAILED`. Use it for offline replay and for repeatable
+tests.
 
 **`--csv FILE`** reads an export from anything that is not Prometheus. The format:
 
@@ -1519,7 +1528,7 @@ time,component,metric,instance,value
   converted, so a counter must be exported as the rate the catalogue's query would have computed.
 - Rows more than one step outside the run's window are dropped.
 - **A bad row fails only the series it belongs to**, naming the line — e.g.
-  `e26-metrics.csv line 1328: time "2023-11-14 22:13:20" has no time zone - …` — and the source
+  `metrics.csv line 1328: time "2023-11-14 22:13:20" has no time zone - …` — and the source
   reads `PARTIAL`. A missing required column fails the whole file, quoting the header it has.
 - A `metric` cell that is a name padded with an invisible character a plain trim leaves (a
   no-break, zero-width or bidi character) is a bad row of the series that name asks for, not a
@@ -2016,10 +2025,9 @@ under `scripts/`:
   Git's (or MSYS2's) `bash` comes before `C:\Windows\System32` on `PATH`. Otherwise `bash` is the WSL
   launcher. On a plain Windows machine, use the `cmd.exe` line above.
 
-**Regenerating a committed payload** inside a checkout of this repository: set `JMETER_HOME` to the
-JMeter that holds the current build. The script tries `jmeter` on `PATH` before the checkout's own
-`apache-jmeter-*`, so on a machine with another JMeter installed it would otherwise collect with
-whichever plugin JAR that one holds.
+**On a machine with more than one JMeter**, set `JMETER_HOME` to the one that holds the plugin JAR
+you mean to collect with. Without it the script takes the JMeter that `jmeter` on `PATH` belongs to,
+and collects with whichever plugin JAR that one holds.
 
 ---
 
@@ -2051,13 +2059,13 @@ bare number is ambiguous between seconds and milliseconds.
 | Key | | Default |
 |---|---|---|
 | `type` | `postgres`, `kafka`, `redis`, `host-linux`, `aws-ec2`, `oracle`, `influxdb2`, `influxdb3`, `jvm`, `http-service`, `kubernetes-pod` or `mysql` ([the catalogue](#the-catalogue)), or `custom` | required |
-| `description` | The label on the badge, the chip and the JUnit suite | the id |
+| `description` | The label on its card, the header chip, the Summary card and the CI/CD JSON's `label`. The JUnit suite is named by the id | the id |
 | `match` | A PromQL label selector, expanded into a catalogue query's `${match}` / `${andMatch}` slots. Read trimmed of surrounding spaces; an invisible character at either end (a no-break or zero-width space, a bidi or tag character, a C1 control) is not trimmed, goes into every catalogue query of the component as it is, and raises a warning under the component that names it by its code point. A `custom` component's asserts write their own query, so its match is never expanded and never warned about | — |
 
 A component with no type or an unknown type is a configuration error, and every server assert on
-it is `INVALID_RULE` with the same sentence. `assertions` and `(no gate)` are reserved ids: the
-JUnit report already names suites that. There is no implicit component — every server assert
-names a declared one.
+it is `INVALID_RULE`, with a sentence naming the component, its type and the types there are.
+`assertions` and `(no gate)` are reserved ids: the JUnit report already names suites that. There is
+no implicit component — every server assert names a declared one.
 
 ### Credentials stay out of the file
 
@@ -2087,7 +2095,7 @@ payload. Placeholders are resolved in **queries and the `--prometheus-url` value
 
 | Placeholder | Resolves to |
 |---|---|
-| `${env.NAME}` | the selected environment's `vars.NAME` |
+| `${env.NAME}` | the selected environment's `vars.NAME`. `${env.name}` is the environment's own name, unless its `vars` declare a `name` |
 | `${run.startTs}`, `${run.endTs}` | the window, epoch milliseconds |
 | `${run.runId}`, `${run.testName}` | the run's identity and name, for a query that selects the test's own traffic by label |
 | `${secret.NAME}` | the environment variable `NAME`. The `--prometheus-url` value only, and refused in a query, which is written as resolved |
@@ -2110,7 +2118,7 @@ no declared environment is a configuration error.
 | `unit` | The series' unit: what the collected values are in, written beside the numbers. Converts nothing. A verdict's number is written in it with `/min` added for a `slope` (`B/min`, or `/min` with no unit) and ` ÷ <rule>` for a `divideBy` (`% ÷ load:throughput`), wherever a verdict's number is written: the board, the Summary card, the Per instance panel, the picker, Set thresholds, the Generate review, the editor and JUnit; the CI/CD JSON keeps it as declared. So a slope's `unit` is `B`, never `B/min`, which would read `B/min/min` | the catalogue's, for a `metric` |
 | `reduce.kind` | `max`, `min`, `avg`, `last`, `pN` (0 < N < 100, e.g. `p95`, `p99.9`, nearest-rank), `slope` (least squares, **per minute**) | the catalogue's for a `metric`; otherwise required |
 | `reduce.over` | `max` and `min` only, one of: `{"sustainedFor": "30s"}`, the highest (lowest) level held for at least that long; `{"breachBudget": 0.02}`, the level exceeded at most that fraction of the time | — |
-| `across` | How instances fold into one number: `max` (the worst instance when higher is worse), `min` (the worst when lower is worse) or `avg` | the catalogue's for a `metric` (`min` on postgres `up` and `cache.hit.pct`, else `max`); otherwise `max` |
+| `across` | How instances fold into one number: `max` (the worst instance when higher is worse), `min` (the worst when lower is worse) or `avg` | the catalogue's for a `metric` (`min` on most metrics where lower is worse, such as `up` or a hit ratio, else `max`); otherwise `max` |
 | `warn`, `fail` | One operator each, `gt`, `gte`, `lt` or `lte`, and a literal number. `fail` is tested first | at least one |
 | `requiresLoad` | A client throughput rule id ([Advanced](#advanced)) | the block's `requiresLoad` |
 | `divideBy` | A client load rule id ([Advanced](#advanced)) | — |
@@ -2124,10 +2132,12 @@ be a whole number of the collection's steps. One no longer than a step is the pl
 `reduce.over` instead.
 `breachBudget` is a fraction: 2% is `0.02`.
 
-Two shapes are **warnings, not refusals**, because the verdicts are still correct: a warn band the
-fail band already covers, and a downward band at or below zero on a reducer other than `slope`
-(a gauge can be negative, so the report does not guess). Two server asserts under one id is a
-warning too.
+These shapes are **warnings, not refusals**, because the verdicts are still correct: a warn band the
+fail band already covers; a downward band at or below zero on a reducer other than `slope` (a gauge
+can be negative, so the report does not guess); an upward band at or past a catalogue metric's
+[ceiling](#setting-thresholds), unless the assert is a `slope` or a `divideBy` ratio; and a `query` or
+a component's `match` with an invisible character at either end. Two server asserts under one id is
+a warning too.
 
 ### Collection
 
@@ -2206,7 +2216,9 @@ You rarely need to open it, but it is plain JSON:
 | `window` | Epoch milliseconds. `rampUpEnd` only when `--rampup` was given |
 | `sources[]` | The collection's one source, `metrics`: `type` is `prometheus`, `file` (`--recording`) or `csv`. `status` is `OK`, `PARTIAL` (some series failed, others came back) or `FAILED` (nothing came back) |
 | `sources[].resolvedUrl`, `error` | The URL, recording directory or CSV path. A URL is redacted: userinfo stripped, credential parameters and every secret value masked |
-| `series[]` | One per distinct component and query. `component` says which component it was collected for |
+| `sources[].from`, `layout`, `timeZone`, `columns`, `component` | How a CSV was read: `--from`, `--layout wide`, `--time-zone`, `--csv-columns` and `--component`, each only when given |
+| `series[]` | One per distinct component and query. `component` says which component it was collected for, and `metric` which catalogue metric it is, when it is one |
+| `series[].readAs` | Only on a series read under a tool's name (`--from`): the tool, its name for the metric, the kind of number and the scale applied |
 | `series[].status` | `OK`, `PARTIAL` (gaps, above the floor), `INSUFFICIENT` (below it → `LOW_COVERAGE`), `EMPTY` (→ `NO_MATCH`), `FAILED` (→ `SOURCE_FAILED`) |
 | `points` | `[timestamp, value]`, the timestamp a whole epoch millisecond on the JTL's clock |
 

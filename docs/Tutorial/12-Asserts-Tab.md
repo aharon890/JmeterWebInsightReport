@@ -91,6 +91,15 @@ status, because "3 not judged" sends you nowhere and "1 invalid, 1 unmatched, 1 
 you to three different places. Full reference:
 [Asserts & Apdex → The statuses](10-Asserts-Apdex.md#the-statuses).
 
+**Finding a rule.** The search box above the table matches a rule's id, description, target,
+metric and criteria, and the name of every sampler it judges. The status chips beside it, each
+with its count, narrow the table to the statuses you pick, and **More filters** adds the metric,
+the kind of target, the sampler a rule judges and *Drafts only*. Every column header sorts, and
+the sort is remembered in this browser.
+
+Each row ends in **Edit**, **Duplicate** (the copy is named `<id>-copy`), **Disable** (or
+**Enable**) and **Delete**, which offers an **Undo** until the document next changes.
+
 **Neither number is rounded onto the other.** A band is written as the file holds it, never
 rounded: `fail > 373.86 ms`, `fail ≥ 211.41 ms`. An actual is written whole for `ms` and `s` and
 with two decimals otherwise — unless that would put it on a band it is not on, or across one, of
@@ -154,7 +163,9 @@ because it is calculated in the page rather than baked in when the report was wr
 
 **Expanding a rule shows every match, passing ones included.** A verdict alone does not tell you
 which of eight matched samplers breached, nor how close the others were — and that is exactly
-what you need in order to decide where to move a threshold.
+what you need in order to decide where to move a threshold. A rule that judged more than 200
+samplers shows its worst 200 and a line saying how many more the report does not carry; the
+CI/CD JSON carries them all.
 
 **A rule that matched nothing gets its own follow-up row**, not just an empty Actual cell:
 
@@ -241,8 +252,8 @@ stays quiet about it.
 
 ## Editing a rule
 
-**Edit** on any row, **+ Add assert** in the toolbar, the ⊕ on a metric cell in the Samplers
-tab, the wizard, or a click on a chart — they all open the same slide-over.
+**Edit** on any row, **Fix** on the could-not-run banner, **+ Add assert** in the toolbar, the ⊕
+on a metric cell in the Samplers tab, or a click on a chart — they all open the same slide-over.
 
 ![Assert editor](images/51-assert-editor.png)
 
@@ -292,6 +303,10 @@ Inline, on the field, not a wall on submit. The editor refuses to save:
 - a **duplicate id** — ids name JUnit testcases, so two rules sharing one make the outputs
   ambiguous;
 - a rule with **no bands** — it can never decide anything, so there is nothing to save;
+- a band value that is **not a number** — `5o0` is a band someone meant, so it is not dropped
+  in silence;
+- a band that **can never fire** — `fail < 0` on a metric that is never negative, which the next
+  run would refuse as `INVALID_RULE`;
 - a band **the file declared and the run could not read** — two operators, an unknown operator,
   text where a number belongs. No box can hold it, so the form shows the band empty and refuses in
   the run's own words:
@@ -329,10 +344,10 @@ Two verdicts therefore exist at once, and the report never confuses them:
 **One document, two slices.** The annotations file holds the client rules here and the server
 asserts edited on the [Server tab](13-Server-Tab.md), and the drafts of both are one set: the
 unsaved-changes pill counts both, and this tab's banner and save menu answer for both — the
-Server tab has no Save or Discard of its own. When server asserts have unsaved changes the banner
-adds `· server asserts: K changed — see the Server tab`. It does not fold a server verdict into
-the client one: the two sides are judged separately, and a server edit cannot move the client
-verdict.
+Server tab's **Download** and **Discard drafts** are the same actions on the same file. When
+server asserts have unsaved changes the banner adds
+`· server asserts: K changed — see the Server tab`. It does not fold a server verdict into the
+client one: the two sides are judged separately, and a server edit cannot move the client verdict.
 
 Each changed row is marked `NEW` or `EDITED`. Drafts persist to `localStorage` keyed by the run —
 one record holding both slices, and for server asserts also keyed by the collection, so a fresh
@@ -370,11 +385,12 @@ The rules table owns `assertions[]` and has a proper form for it. **Edit documen
 rest: `samplerNotes`, `timelineMarkers`, `comparisonThresholds`, `version`, and any key a newer
 plugin or another tool wrote.
 
-It is the whole file as JSON, validated as you type — Apply is disabled until it parses, and the
-message is the parser's own, naming the line. Applying makes it a **draft**, exactly like editing a
-rule: the header badge keeps reporting what this run was actually gated on. The Server tab's toolbar
-has the same button, for the `serverMetrics` keys no form there edits; the editor opens over
-whichever tab asked for it, and Escape closes it.
+It is the whole file as JSON, validated as you type — **Apply as draft** is disabled until the
+text parses as a JSON object every tab can read, and the message under it says what is wrong.
+Applying makes it a **draft**, exactly like editing a rule: the header badge keeps reporting what
+this run was actually gated on. The Server tab's toolbar has the same button, for the
+`serverMetrics` keys no form there edits; the editor opens over whichever tab asked for it, and
+Escape closes it.
 
 Deliberately the whole document rather than a form per block. A form per block would have to be
 written again for every block added later, and would still leave keys the plugin does not model
@@ -402,9 +418,9 @@ Two guarantees, both covered by tests:
 1. **Round trip.** Open a report and save with no edits, and you get an equivalent file back.
 2. **Next-run fidelity.** Feed a saved file to `jmeter -g` on the same data and it reproduces
    the verdicts the report previewed — client rules and server asserts alike, given the same
-   collected payload. The browser and the engine run the same algorithm against a shared set of
-   test vectors, so they cannot drift apart unnoticed, and scenario C38 saves a document from a
-   real page, re-judges it with `jmeter -g` and compares the two field by field.
+   collected payload. The browser and the engine are tested against the same set of cases, and a
+   document saved from a real page is re-judged with `jmeter -g` and compared field by field, so
+   the two cannot drift apart unnoticed.
 
 ---
 
@@ -419,26 +435,26 @@ opens targeting that sampler and metric, with bands already seeded from the obse
   warn takes that value, so the new rule passes the run it was seeded from instead of warning on it.
   1925 ms seeds warn 2233, not 2000.
 
-For **throughput** and **apdex** the direction flips automatically, because worse means smaller
-and a `>` band on them would never fire.
+For **throughput**, **received KB/s** and **apdex** the direction flips automatically: worse
+means smaller there, so the seeded bands are floors (`<`) below the observed value.
 
 The mini badge beside each sampler name is the worst verdict of the rules judging it. Click it
-for a list of every rule that judged that sampler, with the number and the limit — or:
-
-> No rules target this sampler — it is reported, not judged.
+for a list of every rule that judged that sampler, with the number and the limit. A sampler no
+rule judges has no badge — it is reported, not judged.
 
 ![Rules judging a sampler](images/56-judging-rules.png)
 
 ### Seeing what is already gated
 
-A cell a rule already judges shows **its own verdict** rather than a bare ⊕ — `✓ ! ✕ ◎ ?`,
-glyph as well as colour so it survives the colourblind palettes. Hovering names the rule and its
-limit; clicking edits that rule.
+A cell a rule already judges shows **its own verdict** beside the ⊕ — `✓` PASS, `!` WARN, `✕`
+FAIL, `?` a value this run could not measure — glyph as well as colour so it survives the
+colourblind palettes. Hovering names the rule and its limit; clicking edits that rule (the worst,
+when several judge the cell).
 
 This is there to stop the commonest mistake in the whole feature: seeding a second rule for
-something already covered. The editor accepts one, quietly naming it `checkout-p95-2` — two rules,
-two JUnit testcases, one intention. Where a rule exists the ⊕ reads *"Add another assert on …"*,
-and the marker beside it is the shorter path.
+something already covered. The editor saves one under any id not already taken — two rules, two
+JUnit testcases, one intention. Where a rule exists the ⊕ reads *"Add another assert on …"*, and
+the marker beside it is the shorter path.
 
 The inverse is worth as much: read down a column and you can see which samplers are gated on p95
 and which are not. Nothing else in the report shows coverage.
@@ -453,23 +469,26 @@ gets a credible gate in four clicks, then prunes.
 ![Generate from run](images/54-generate-wizard.png)
 
 Pick a shape — one rule per sampler × metric, or one blanket rule per metric across the selection.
-Pick the samplers: every sampler in the run is listed, and the ones that look like helpers start
+Pick the samplers: every top-level sampler that recorded samples is listed (transaction children
+and the samplers the report hides by default are not), and the ones that look like helpers start
 unticked. A filter narrows the list, and **All**, **None**, **Exclude helpers** and **Invert**
 change the selection. Tick the metrics. Set the **Tolerance**, how much worse than this run is
 still acceptable, and **Warn at**, where warn sits as a share of fail. The preview shows exactly
-what it will create before it creates anything. Everything arrives as drafts.
+what it will create before it creates anything, and the button says how many: **Add 6 draft
+rules**. Everything arrives as drafts.
 
 It is a dialog like the editors: focus moves into it, Tab and Shift+Tab stay inside it, Escape
-closes it, and Cancel, ×, Escape and Apply all put focus back on the button that opened it — on a
-run with no rules yet, Apply replaces the empty state and focus lands on the toolbar's **Generate
-from run…** instead.
+closes it, and Cancel, ×, Escape and the Add button all put focus back on the button that opened
+it — on a run with no rules yet, adding replaces the empty state and focus lands on the toolbar's
+**Generate from run…** instead.
 
 Blanket rules seed from the **worst** observed value across their targets. Seeding from the best
 would produce a gate that failed the moment it was written.
 
-Each band is rounded to the nearest whole millisecond, or to two decimals, unless that would put it
-across the value it was seeded from, or put a warn band on that value. Then it is rounded away from
-the run instead. So every rule the wizard creates passes this run as written, with one exception:
+A ceiling's fail band is first rounded up to a number a person would have chosen, as the ⊕ does.
+Each band is then rounded to the nearest whole millisecond, or to two decimals, unless that would
+put it across the value it was seeded from, or put a warn band on that value; then it is rounded
+away from the run instead. So every rule the wizard creates passes this run as written, with one exception:
 a throughput, received KB/s or apdex below 0.01. Its fail band cannot go lower than 0.01, the
 smallest floor two decimals can write, so it sits above the run and the rule FAILs as soon as it
 is created. At Tolerance 0 a fail band can sit exactly on the observed value, which still passes.

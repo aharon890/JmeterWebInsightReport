@@ -108,8 +108,9 @@ The report has 3 main areas:
   - `ASSERTS PASS` / `ASSERTS WARNING` / `ASSERTS FAIL` (when the run declared asserts) — click
     it to open the Asserts tab
   - `NO ASSERTS DECLARED` (nothing was declared — reported, not judged)
-  - `ASSERTS NOT EVALUATED` (rules were declared and none of them judged anything — a renamed
-    sampler, a metric this run could not produce, everything parked)
+  - `ASSERTS NOT EVALUATED` (asserts were declared and none of them judged anything — a renamed
+    sampler, a metric this run could not produce, everything parked, or only server asserts on a
+    report that has not judged them: the interim report, or one whose payload was refused)
   - `SERVER ASSERTS ONLY` (no client rule gave a verdict and the server asserts were judged — the
     server chip beside it carries their verdict)
 
@@ -165,4 +166,4 @@ Each report generation produces:
 | `web-insight-report.html` | Self-contained interactive report |
 | `web-insight-report.json` | Machine-readable CI/CD summary |
 | `web-insight-report.xml` | JUnit XML (when enabled) |
-| `web-insight-data.js` | External chart data (large tests only; `<name>-data.js` for a report with another name) |
+| `web-insight-data.js` | External chart data (large tests, or when `-Jwebinsight.report.externaldata=true` forces it; `<name>-data.js` for a report with another name) |

@@ -122,17 +122,18 @@ Precedence: **`-J` property > GUI field > default.**
 | `webinsight.compare.p99.threshold` | Compare tab: % P99 change | — |
 | `webinsight.compare.mean.threshold` | Compare tab: % mean change | — |
 | `webinsight.compare.errorrate.threshold` | Compare tab: absolute error-rate change in points | `2` |
-| `webinsight.compare.throughput.threshold` | Compare tab: % throughput change | — |
+| `webinsight.compare.throughput.threshold` | Compare tab: % throughput drop | — |
 
 ### Boolean properties accept only `true` or `false`
 
-`junit`, `externaldata` and `failonerror` are parsed case-insensitively as exactly those two
-words. Not `yes`, not `1`, not `on` — JMeter's own `getPropertyAsBoolean` is
+`junit`, `externaldata`, `failonerror` and `failonassert` are parsed case-insensitively as exactly
+those two words. Not `yes`, not `1`, not `on` — JMeter's own `getPropertyAsBoolean` is
 `Boolean.parseBoolean`, so a wider vocabulary here would mean the same value did two different
 things in two fields of one test plan.
 
-Anything else **warns and is treated as unset**, so the GUI/JMX field decides. Treating it as
-`false` would still void a ticked checkbox, just noisily.
+Anything else **warns and is treated as unset**, so the GUI/JMX field decides where there is one
+(the JUnit checkbox) and the default decides everywhere else — `failonerror=0` leaves
+`failonerror` on. Treating it as `false` would still void a ticked checkbox, just noisily.
 
 ### Where the report goes by default
 
@@ -167,7 +168,7 @@ target drifts between runs.
 ### Reserved report filenames
 
 Under `-e -o dir` or `-g -o dir` the plugin writes into the same directory as JMeter's own
-HTML dashboard, so `index` and `statistics` are rejected — a report named `index.html` would
+HTML dashboard, so `index` and `statistics` are rejected, in every mode — a report named `index.html` would
 replace the dashboard's entry point, and `statistics` would put our summary on top of
 JMeter's `statistics.json`. Both fall back to the default name with a warning, and the report
 is still produced. Path separators, `..`, and characters outside
@@ -316,7 +317,7 @@ run's gate verdict — and a wrong verdict looks exactly like a right one.
 }
 ```
 
-- **Asserts** — the quality gate. Any metric, any percentile (p50–p99.99), per sampler, per
+- **Asserts** — the quality gate. Any metric, any percentile between p0 and p100 (`p95`, `p99.9`), per sampler, per
   pattern, or for the whole run, each with its own warn/fail bands. Only what you declare ever
   decides the verdict. The report shows every rule with its verdict, lets you tune a limit
   against the observed number with the verdict recomputing as you type, and saves the updated
@@ -324,7 +325,8 @@ run's gate verdict — and a wrong verdict looks exactly like a right one.
   and [12-Asserts-Tab.md](docs/Tutorial/12-Asserts-Tab.md).
 
   You can also author them without writing JSON at all: press the ⊕ beside any number in the
-  Samplers table, click a level on a timeline chart, or run **Generate from run…**. Every metric
+  Samplers table, press **+ Assert from chart** on a chart and click a level, or run
+  **Generate from run…**. Every metric
   cell a rule already judges shows its verdict, so you can see what is gated before adding to it.
 - **Server asserts** — a `serverMetrics` block in the same file: what the *server* should look like
   under this load (CPU, consumer lag, pool usage…), judged against metrics collected after the run.
@@ -340,9 +342,12 @@ included.
 
 ### Baseline Comparison
 
-Rename a previous run's `results.jtl` to `baseline.jtl` in the same directory. The plugin auto-detects it and adds a **Compare** tab with:
-- Current vs baseline response time overlay chart
-- Per-sampler diff table with regression detection (>10% p95 increase or >2% error rate increase)
+Copy a previous run's JTL into the report output directory as `baseline.jtl`, or point at it from
+anywhere with `-Jwebinsight.report.baseline`. The plugin picks it up and adds a **Compare** tab with:
+- Current vs baseline response time and throughput comparison charts
+- Per-sampler diff table with regression detection — by default a p95 more than 10% higher, or an
+  error rate more than 2 points higher; the thresholds are editable on the tab and settable with
+  the `webinsight.compare.*` properties
 
 ### Server asserts
 
@@ -386,10 +391,11 @@ file exported from any of them and converts it to the catalogue's unit.
 **Where the metrics come from is never in the file.** It is a flag to `wir-collect`, exactly one of
 `--prometheus-url URL` (with `--prometheus-token-env NAME` naming the variable that holds the
 token), `--recording DIR`, or `--csv FILE [--from TOOL] [--layout wide] [--csv-columns SPEC]
-[--component ID]` (one row per point: `time,component,metric,instance,value`; `--from` reads another
-tool's metric names and units, `--layout wide` reads Grafana's CSV download, a time column and one
-column per series, and `--csv-columns` and `--component` read a long export whose columns have other
-names and no component, such as InfluxDB's annotated CSV or Dynatrace's).
+[--component ID] [--time-zone ZONE]` (one row per point: `time,component,metric,instance,value`;
+`--from` reads another tool's metric names and units, `--layout wide` reads Grafana's CSV download,
+a time column and one column per series, `--csv-columns` and `--component` read a long export whose
+columns have other names and no component, such as InfluxDB's annotated CSV or Dynatrace's, and
+`--time-zone` reads a time written with no zone, which is otherwise refused, never guessed).
 
 The metrics exist only after the run, so the flow is three steps:
 
@@ -412,13 +418,12 @@ jmeter -g results.jtl -o report \
 - `wir-collect` exits **0 whenever it wrote the payload**, whatever each series' status — a dead
   source or a query that matched nothing is recorded in the payload, and step 3 decides what it
   means under `failonerror`. It exits 1 only when nothing was written (a usage, input or
-  environment fault), so under `set -e` step 3 always gets to run.
+  environment fault, or an annotations file with nothing to collect), so under `set -e` step 3
+  always gets to run.
 - If step 3 sets `-Jwebinsight.report.title`, pass the same text to `wir-collect --test-name`: the
   run's identity hashes the title, and a payload from a different identity is refused. Pass the
   same ramp-up to both, too (`--rampup` and `-Jwebinsight.report.rampup`, in milliseconds); a
   mismatch is a warning, and the payload's window is the one judged.
-- A retired key — `sources`, `gates`, an assert's `source` or `gate`, a component's `failsBuild` —
-  is refused with a sentence naming the replacement, never half-read.
 
 The full walk-through — reading the Server tab, the editor, Validate query, the reference for
 every key — is [Tutorial 13 — Server tab](docs/Tutorial/13-Server-Tab.md).
@@ -489,10 +494,8 @@ jq -e '(.gate.failed // 0) == 0 and (.serverStatus // "PASS") != "FAIL"' web-ins
 
 It refuses a verdict — a breached client rule, or a server component FAILing — and leaves
 configuration errors to the exit code (`failonerror`, on by default). For `failonerror=false` there
-is a STRICT line that also refuses every check that never ran. Both are copied from
-[`test-plans/goldens/jq-gate.txt`](test-plans/goldens/jq-gate.txt), the one copy, which the build
-runs over the golden documents; [Tutorial 11](docs/Tutorial/11-Export-Integration.md#gating-on-the-gate)
-explains each, along with `serverComponents[]`, `serverAsserts[]` and the JUnit suites.
+is a STRICT line that also refuses every check that never ran. Both are tested on every build;
+[Tutorial 11](docs/Tutorial/11-Export-Integration.md#gating-on-the-gate) explains each, along with `serverComponents[]`, `serverAsserts[]` and the JUnit suites.
 
 ### Run identity
 
@@ -517,7 +520,7 @@ Filenames bind the four artifacts together, and filenames are not unique per run
 | `web-insight-report.html` | Self-contained interactive Web Insight Report |
 | `web-insight-report.json` | Machine-readable CI/CD summary |
 | `web-insight-report.xml` | JUnit XML (when enabled via `-Jwebinsight.report.junit=true`) |
-| `web-insight-data.js` | External chart data (only for large tests >10MB) |
+| `web-insight-data.js` | External chart data, written when the payload passes `externaldata.threshold` (10,000,000 characters) or `externaldata=true` forces it; `<name>-data.js` for a report with another name |
 | `.web-insight-publish.lock` | Empty dotfile. Two runs sharing an output directory take a lock on it while renaming their artifacts into place, so one cannot interleave its four files with the other's. **Deliberately never deleted** — removing the name while another process holds a lock on that inode lets a third create a fresh file and lock that instead, which is two holders and exactly what the lock prevents. Harmless to delete when nothing is running; it will reappear |
 
 ## Documentation
