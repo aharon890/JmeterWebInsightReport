@@ -1,0 +1,3 @@
+column,component,metric,instance
+orders-db:5432 deadlocks,orders-db,deadlocks,pg-1
+Replication lag,orders-db,replication.lag.seconds,pg-1

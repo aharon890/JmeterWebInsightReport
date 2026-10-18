@@ -1,0 +1,486 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+  <hashTree>
+    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="Transaction Controller Test">
+      <stringProp name="TestPlan.comments">Test plan with Transaction Controllers for validating parent-child hierarchy in the Web Insight Report. 10 users, 30 seconds.</stringProp>
+      <elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments">
+        <collectionProp name="Arguments.arguments"/>
+      </elementProp>
+    </TestPlan>
+    <hashTree>
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="E-Commerce Users">
+        <intProp name="ThreadGroup.num_threads">10</intProp>
+        <intProp name="ThreadGroup.ramp_time">5</intProp>
+        <longProp name="ThreadGroup.duration">30</longProp>
+        <longProp name="ThreadGroup.delay">0</longProp>
+        <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
+        <boolProp name="ThreadGroup.scheduler">true</boolProp>
+        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController">
+          <intProp name="LoopController.loops">-1</intProp>
+          <boolProp name="LoopController.continue_forever">false</boolProp>
+        </elementProp>
+      </ThreadGroup>
+      <hashTree>
+        <TransactionController guiclass="TransactionControllerGui" testclass="TransactionController" testname="Login Flow">
+          <boolProp name="TransactionController.parent">true</boolProp>
+          <boolProp name="TransactionController.includeTimers">false</boolProp>
+        </TransactionController>
+        <hashTree>
+          <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="Login Flow - Load Login Page" enabled="true">
+            <stringProp name="scriptLanguage">groovy</stringProp>
+            <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def random = ThreadLocalRandom.current()
+Thread.sleep(random.nextInt(40, 120))
+SampleResult.setSuccessful(true)
+SampleResult.setResponseCode(&quot;200&quot;)
+SampleResult.setResponseMessage(&quot;OK&quot;)
+SampleResult.setResponseData(&apos;{&quot;page&quot;:&quot;login&quot;}&apos;, &quot;UTF-8&quot;)
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(64)
+            </stringProp>
+            <stringProp name="cacheKey">true</stringProp>
+            <stringProp name="parameters"></stringProp>
+            <stringProp name="filename"></stringProp>
+          </JSR223Sampler>
+          <hashTree>
+            <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="Think Time" enabled="true">
+              <stringProp name="ConstantTimer.delay">200</stringProp>
+            </ConstantTimer>
+            <hashTree/>
+          </hashTree>
+          <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="Login Flow - Authenticate" enabled="true">
+            <stringProp name="scriptLanguage">groovy</stringProp>
+            <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def random = ThreadLocalRandom.current()
+Thread.sleep(random.nextInt(100, 350))
+if (random.nextInt(100) &lt; 5) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;401&quot;)
+    SampleResult.setResponseMessage(&quot;Unauthorized&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Invalid credentials&quot;}&apos;, &quot;UTF-8&quot;)
+} else {
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;200&quot;)
+    SampleResult.setResponseMessage(&quot;OK&quot;)
+    SampleResult.setResponseData(&apos;{&quot;token&quot;:&quot;jwt-mock-token&quot;,&quot;user&quot;:&quot;user1&quot;}&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(128)
+            </stringProp>
+            <stringProp name="cacheKey">true</stringProp>
+            <stringProp name="parameters"></stringProp>
+            <stringProp name="filename"></stringProp>
+          </JSR223Sampler>
+          <hashTree>
+            <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="Think Time" enabled="true">
+              <stringProp name="ConstantTimer.delay">150</stringProp>
+            </ConstantTimer>
+            <hashTree/>
+          </hashTree>
+          <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="Login Flow - Get Profile" enabled="true">
+            <stringProp name="scriptLanguage">groovy</stringProp>
+            <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def random = ThreadLocalRandom.current()
+Thread.sleep(random.nextInt(50, 200))
+SampleResult.setSuccessful(true)
+SampleResult.setResponseCode(&quot;200&quot;)
+SampleResult.setResponseMessage(&quot;OK&quot;)
+SampleResult.setResponseData(&apos;{&quot;userId&quot;:&quot;u-123&quot;,&quot;name&quot;:&quot;John Doe&quot;,&quot;role&quot;:&quot;customer&quot;}&apos;, &quot;UTF-8&quot;)
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(64)
+            </stringProp>
+            <stringProp name="cacheKey">true</stringProp>
+            <stringProp name="parameters"></stringProp>
+            <stringProp name="filename"></stringProp>
+          </JSR223Sampler>
+          <hashTree/>
+        </hashTree>
+        <TransactionController guiclass="TransactionControllerGui" testclass="TransactionController" testname="Browse Session" enabled="true">
+          <boolProp name="TransactionController.parent">true</boolProp>
+          <boolProp name="TransactionController.includeTimers">false</boolProp>
+        </TransactionController>
+        <hashTree>
+          <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="Browse Session - Homepage" enabled="true">
+            <stringProp name="scriptLanguage">groovy</stringProp>
+            <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def random = ThreadLocalRandom.current()
+Thread.sleep(random.nextInt(60, 180))
+SampleResult.setSuccessful(true)
+SampleResult.setResponseCode(&quot;200&quot;)
+SampleResult.setResponseMessage(&quot;OK&quot;)
+SampleResult.setResponseData(&apos;{&quot;featured&quot;:12,&quot;banners&quot;:3}&apos;, &quot;UTF-8&quot;)
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(64)
+            </stringProp>
+            <stringProp name="cacheKey">true</stringProp>
+            <stringProp name="parameters"></stringProp>
+            <stringProp name="filename"></stringProp>
+          </JSR223Sampler>
+          <hashTree>
+            <UniformRandomTimer guiclass="UniformRandomTimerGui" testclass="UniformRandomTimer" testname="Think Time" enabled="true">
+              <stringProp name="ConstantTimer.delay">200</stringProp>
+              <stringProp name="RandomTimer.range">400</stringProp>
+            </UniformRandomTimer>
+            <hashTree/>
+          </hashTree>
+          <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="Browse Session - Search Products" enabled="true">
+            <stringProp name="scriptLanguage">groovy</stringProp>
+            <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def random = ThreadLocalRandom.current()
+Thread.sleep(random.nextInt(150, 500))
+if (random.nextInt(100) &lt; 3) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;504&quot;)
+    SampleResult.setResponseMessage(&quot;Gateway Timeout&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Search service timeout&quot;}&apos;, &quot;UTF-8&quot;)
+} else {
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;200&quot;)
+    SampleResult.setResponseMessage(&quot;OK&quot;)
+    SampleResult.setResponseData(&apos;{&quot;results&quot;:&apos; + random.nextInt(0, 200) + &apos;,&quot;page&quot;:1}&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(96)
+            </stringProp>
+            <stringProp name="cacheKey">true</stringProp>
+            <stringProp name="parameters"></stringProp>
+            <stringProp name="filename"></stringProp>
+          </JSR223Sampler>
+          <hashTree>
+            <UniformRandomTimer guiclass="UniformRandomTimerGui" testclass="UniformRandomTimer" testname="Think Time" enabled="true">
+              <stringProp name="ConstantTimer.delay">300</stringProp>
+              <stringProp name="RandomTimer.range">500</stringProp>
+            </UniformRandomTimer>
+            <hashTree/>
+          </hashTree>
+          <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="Browse Session - View Product" enabled="true">
+            <stringProp name="scriptLanguage">groovy</stringProp>
+            <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def random = ThreadLocalRandom.current()
+Thread.sleep(random.nextInt(80, 250))
+if (random.nextInt(100) &lt; 2) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;404&quot;)
+    SampleResult.setResponseMessage(&quot;Not Found&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Product not found&quot;}&apos;, &quot;UTF-8&quot;)
+} else {
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;200&quot;)
+    SampleResult.setResponseMessage(&quot;OK&quot;)
+    SampleResult.setResponseData(&apos;{&quot;id&quot;:&apos; + random.nextInt(1,999) + &apos;,&quot;name&quot;:&quot;Widget&quot;,&quot;price&quot;:29.99}&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(64)
+            </stringProp>
+            <stringProp name="cacheKey">true</stringProp>
+            <stringProp name="parameters"></stringProp>
+            <stringProp name="filename"></stringProp>
+          </JSR223Sampler>
+          <hashTree/>
+        </hashTree>
+        <TransactionController guiclass="TransactionControllerGui" testclass="TransactionController" testname="Checkout Flow">
+          <boolProp name="TransactionController.parent">true</boolProp>
+          <boolProp name="TransactionController.includeTimers">false</boolProp>
+        </TransactionController>
+        <hashTree>
+          <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="Checkout Flow - Add to Cart">
+            <stringProp name="scriptLanguage">groovy</stringProp>
+            <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def random = ThreadLocalRandom.current()
+Thread.sleep(random.nextInt(60, 200))
+SampleResult.setSuccessful(true)
+SampleResult.setResponseCode(&quot;200&quot;)
+SampleResult.setResponseMessage(&quot;OK&quot;)
+SampleResult.setResponseData(&apos;{&quot;cartId&quot;:&quot;c-001&quot;,&quot;items&quot;:&apos; + random.nextInt(1,5) + &apos;}&apos;, &quot;UTF-8&quot;)
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(128)
+            </stringProp>
+            <stringProp name="cacheKey">true</stringProp>
+            <stringProp name="parameters"></stringProp>
+            <stringProp name="filename"></stringProp>
+          </JSR223Sampler>
+          <hashTree>
+            <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="Think Time" enabled="true">
+              <stringProp name="ConstantTimer.delay">300</stringProp>
+            </ConstantTimer>
+            <hashTree/>
+          </hashTree>
+          <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="Checkout Flow - Apply Coupon">
+            <stringProp name="scriptLanguage">groovy</stringProp>
+            <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def random = ThreadLocalRandom.current()
+Thread.sleep(random.nextInt(40, 150))
+if (random.nextInt(100) &lt; 8) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;400&quot;)
+    SampleResult.setResponseMessage(&quot;Bad Request&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Invalid coupon code&quot;}&apos;, &quot;UTF-8&quot;)
+} else {
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;200&quot;)
+    SampleResult.setResponseMessage(&quot;OK&quot;)
+    SampleResult.setResponseData(&apos;{&quot;discount&quot;:15,&quot;code&quot;:&quot;SAVE15&quot;}&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(96)
+            </stringProp>
+            <stringProp name="cacheKey">true</stringProp>
+            <stringProp name="parameters"></stringProp>
+            <stringProp name="filename"></stringProp>
+          </JSR223Sampler>
+          <hashTree>
+            <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="Think Time" enabled="true">
+              <stringProp name="ConstantTimer.delay">200</stringProp>
+            </ConstantTimer>
+            <hashTree/>
+          </hashTree>
+          <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="Checkout Flow - Process Payment">
+            <stringProp name="scriptLanguage">groovy</stringProp>
+            <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def random = ThreadLocalRandom.current()
+Thread.sleep(random.nextInt(200, 700))
+def roll = random.nextInt(100)
+if (roll &lt; 4) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;402&quot;)
+    SampleResult.setResponseMessage(&quot;Payment Required&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Card declined&quot;,&quot;code&quot;:&quot;CARD_DECLINED&quot;}&apos;, &quot;UTF-8&quot;)
+} else if (roll &lt; 7) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;500&quot;)
+    SampleResult.setResponseMessage(&quot;Internal Server Error&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Payment gateway timeout&quot;}&apos;, &quot;UTF-8&quot;)
+} else {
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;201&quot;)
+    SampleResult.setResponseMessage(&quot;Created&quot;)
+    SampleResult.setResponseData(&apos;{&quot;orderId&quot;:&quot;ORD-&apos; + System.currentTimeMillis() + &apos;&quot;,&quot;status&quot;:&quot;confirmed&quot;}&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(256)
+            </stringProp>
+            <stringProp name="cacheKey">true</stringProp>
+            <stringProp name="parameters"></stringProp>
+            <stringProp name="filename"></stringProp>
+          </JSR223Sampler>
+          <hashTree/>
+        </hashTree>
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="GET /api/health" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def random = ThreadLocalRandom.current()
+Thread.sleep(random.nextInt(10, 50))
+SampleResult.setSuccessful(true)
+SampleResult.setResponseCode(&quot;200&quot;)
+SampleResult.setResponseMessage(&quot;OK&quot;)
+SampleResult.setResponseData(&apos;{&quot;status&quot;:&quot;UP&quot;,&quot;version&quot;:&quot;2.1.0&quot;}&apos;, &quot;UTF-8&quot;)
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(32)
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree>
+          <UniformRandomTimer guiclass="UniformRandomTimerGui" testclass="UniformRandomTimer" testname="Think Time" enabled="true">
+            <stringProp name="ConstantTimer.delay">500</stringProp>
+            <stringProp name="RandomTimer.range">1000</stringProp>
+          </UniformRandomTimer>
+          <hashTree/>
+        </hashTree>
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="GET /api/notifications" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def random = ThreadLocalRandom.current()
+Thread.sleep(random.nextInt(30, 120))
+if (random.nextInt(100) &lt; 1) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;503&quot;)
+    SampleResult.setResponseMessage(&quot;Service Unavailable&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Notification service down&quot;}&apos;, &quot;UTF-8&quot;)
+} else {
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;200&quot;)
+    SampleResult.setResponseMessage(&quot;OK&quot;)
+    SampleResult.setResponseData(&apos;{&quot;unread&quot;:&apos; + random.nextInt(0, 15) + &apos;,&quot;total&quot;:&apos; + random.nextInt(10, 100) + &apos;}&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(48)
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree>
+          <UniformRandomTimer guiclass="UniformRandomTimerGui" testclass="UniformRandomTimer" testname="Think Time" enabled="true">
+            <stringProp name="ConstantTimer.delay">500</stringProp>
+            <stringProp name="RandomTimer.range">1000</stringProp>
+          </UniformRandomTimer>
+          <hashTree/>
+        </hashTree>
+        <ResultCollector guiclass="SimpleDataWriter" testclass="ResultCollector" testname="Save Results to JTL" enabled="true">
+          <boolProp name="ResultCollector.error_logging">false</boolProp>
+          <objProp>
+            <name>saveConfig</name>
+            <value class="SampleSaveConfiguration">
+              <time>true</time>
+              <latency>true</latency>
+              <timestamp>true</timestamp>
+              <success>true</success>
+              <label>true</label>
+              <code>true</code>
+              <message>true</message>
+              <threadName>true</threadName>
+              <dataType>true</dataType>
+              <encoding>false</encoding>
+              <assertions>true</assertions>
+              <subresults>true</subresults>
+              <responseData>false</responseData>
+              <samplerData>false</samplerData>
+              <xml>false</xml>
+              <fieldNames>true</fieldNames>
+              <responseHeaders>false</responseHeaders>
+              <requestHeaders>false</requestHeaders>
+              <responseDataOnError>false</responseDataOnError>
+              <saveAssertionResultsFailureMessage>true</saveAssertionResultsFailureMessage>
+              <assertionsResultsToSave>0</assertionsResultsToSave>
+              <bytes>true</bytes>
+              <sentBytes>true</sentBytes>
+              <threadCounts>true</threadCounts>
+              <sampleCount>true</sampleCount>
+              <idleTime>true</idleTime>
+              <connectTime>true</connectTime>
+            </value>
+          </objProp>
+          <stringProp name="filename">transaction-controller-results.jtl</stringProp>
+        </ResultCollector>
+        <hashTree/>
+        <com.jmeterwebinsightreport.report.listener.WebInsightReportListener guiclass="com.jmeterwebinsightreport.report.listener.WebInsightReportListenerGui" testclass="com.jmeterwebinsightreport.report.listener.WebInsightReportListener" testname="Web Insight Report">
+          <boolProp name="ResultCollector.error_logging">false</boolProp>
+          <objProp>
+            <name>saveConfig</name>
+            <value class="SampleSaveConfiguration">
+              <time>true</time>
+              <latency>true</latency>
+              <timestamp>true</timestamp>
+              <success>true</success>
+              <label>true</label>
+              <code>true</code>
+              <message>true</message>
+              <threadName>true</threadName>
+              <dataType>true</dataType>
+              <encoding>false</encoding>
+              <assertions>true</assertions>
+              <subresults>true</subresults>
+              <responseData>false</responseData>
+              <samplerData>false</samplerData>
+              <xml>false</xml>
+              <fieldNames>true</fieldNames>
+              <responseHeaders>false</responseHeaders>
+              <requestHeaders>false</requestHeaders>
+              <responseDataOnError>false</responseDataOnError>
+              <saveAssertionResultsFailureMessage>true</saveAssertionResultsFailureMessage>
+              <assertionsResultsToSave>0</assertionsResultsToSave>
+              <bytes>true</bytes>
+              <sentBytes>true</sentBytes>
+              <url>true</url>
+              <threadCounts>true</threadCounts>
+              <idleTime>true</idleTime>
+              <connectTime>true</connectTime>
+            </value>
+          </objProp>
+          <stringProp name="WebInsightReport.reportTitle">TransactionControllerTest_${timestamp}.html</stringProp>
+          <stringProp name="WebInsightReport.reportFilename">TransactionControllerTest_${timestamp}.html</stringProp>
+          <stringProp name="WebInsightReport.outputDirectory"></stringProp>
+        </com.jmeterwebinsightreport.report.listener.WebInsightReportListener>
+        <hashTree/>
+      </hashTree>
+      <ResultCollector guiclass="StatVisualizer" testclass="ResultCollector" testname="Aggregate Report">
+        <boolProp name="ResultCollector.error_logging">false</boolProp>
+        <objProp>
+          <name>saveConfig</name>
+          <value class="SampleSaveConfiguration">
+            <time>true</time>
+            <latency>true</latency>
+            <timestamp>true</timestamp>
+            <success>true</success>
+            <label>true</label>
+            <code>true</code>
+            <message>true</message>
+            <threadName>true</threadName>
+            <dataType>true</dataType>
+            <encoding>false</encoding>
+            <assertions>true</assertions>
+            <subresults>true</subresults>
+            <responseData>false</responseData>
+            <samplerData>false</samplerData>
+            <xml>false</xml>
+            <fieldNames>true</fieldNames>
+            <responseHeaders>false</responseHeaders>
+            <requestHeaders>false</requestHeaders>
+            <responseDataOnError>false</responseDataOnError>
+            <saveAssertionResultsFailureMessage>true</saveAssertionResultsFailureMessage>
+            <assertionsResultsToSave>0</assertionsResultsToSave>
+            <bytes>true</bytes>
+            <sentBytes>true</sentBytes>
+            <url>true</url>
+            <threadCounts>true</threadCounts>
+            <idleTime>true</idleTime>
+            <connectTime>true</connectTime>
+          </value>
+        </objProp>
+        <stringProp name="filename"></stringProp>
+      </ResultCollector>
+      <hashTree/>
+      <ResultCollector guiclass="ViewResultsFullVisualizer" testclass="ResultCollector" testname="View Results Tree">
+        <boolProp name="ResultCollector.error_logging">false</boolProp>
+        <objProp>
+          <name>saveConfig</name>
+          <value class="SampleSaveConfiguration">
+            <time>true</time>
+            <latency>true</latency>
+            <timestamp>true</timestamp>
+            <success>true</success>
+            <label>true</label>
+            <code>true</code>
+            <message>true</message>
+            <threadName>true</threadName>
+            <dataType>true</dataType>
+            <encoding>false</encoding>
+            <assertions>true</assertions>
+            <subresults>true</subresults>
+            <responseData>false</responseData>
+            <samplerData>false</samplerData>
+            <xml>false</xml>
+            <fieldNames>true</fieldNames>
+            <responseHeaders>false</responseHeaders>
+            <requestHeaders>false</requestHeaders>
+            <responseDataOnError>false</responseDataOnError>
+            <saveAssertionResultsFailureMessage>true</saveAssertionResultsFailureMessage>
+            <assertionsResultsToSave>0</assertionsResultsToSave>
+            <bytes>true</bytes>
+            <sentBytes>true</sentBytes>
+            <url>true</url>
+            <threadCounts>true</threadCounts>
+            <idleTime>true</idleTime>
+            <connectTime>true</connectTime>
+          </value>
+        </objProp>
+        <stringProp name="filename"></stringProp>
+      </ResultCollector>
+      <hashTree/>
+    </hashTree>
+  </hashTree>
+</jmeterTestPlan>

@@ -1,0 +1,98 @@
+{
+  "type": "http-service",
+  "version": 1,
+  "label": "HTTP service",
+  "summary": "The server's own view of the requests: rate, 5xx share, mean, slowest and p95 latency",
+  "exporter": "Micrometer's http.server.requests (Spring Boot Actuator)",
+  "source": "Micrometer's http.server.requests timer as Spring Boot Actuator records it for Spring MVC and WebFlux, under Micrometer's Prometheus names (http_server_requests_seconds_count, _sum and _max, and _bucket with a histogram): Spring Framework's server request observation convention (tags error, exception, method, outcome, status, uri; status is the raw response code), Spring Boot 4.1.1's metrics reference and Micrometer's PrometheusNamingConvention, MicrometerCollector, AbstractTimerBuilder and DistributionStatisticConfig at main, read on 2026-10-09; the queries were not run against a live service. A service whose timer was renamed (management.observations.http.server.requests.name), one on Spring's OpenTelemetry convention (http.server.request.duration) and one on another framework need a custom query. Prometheus' own scrapes of the actuator count as requests. latency.p95 needs management.metrics.distribution.percentiles-histogram.http.server.requests=true, without which there is no _bucket series; a timer's histogram stops at 30 s unless maximum-expected-value raises it, and a quantile reads no further than its top bucket. _max is the slowest request in Micrometer's decaying window, 2 minutes by default, so the run's first scrapes can carry a request from before it. Micrometer creates a timer for a tag set the first time it records one (DefaultMeterObservationHandler's onStop), and status is a tag, so a service that has returned no 5xx since it started has no 5xx series: errors.5xx.pct reads 0 for it rather than nothing (the 'or 0 *' fallback), and when a 5xx status first appears, its new series starts at the count its first scrape sees, which rate() takes as the baseline, so those first 5xx are not counted. In-flight requests are left out: Micrometer 1.18's DefaultMeterObservationHandler builder no longer creates the http.server.requests.active timer unless asked, and Spring Boot 3.3 added management.observations.long-task-timer.enabled to switch it off, so whether the series exists depends on the versions. No tool's name is given: Datadog's APM metrics embed the span name (trace.<SPAN_NAME>.hits, .errors, and the trace.<SPAN_NAME> distribution), which depends on the integration, so each is null; OpenTelemetry's http.server.request.duration (Stable, seconds) is a histogram, and the rate, the 5xx share, the mean and the p95 are each computed from it, so each is null; Telegraf reads a Micrometer endpoint only through inputs.prometheus, whose names depend on its metric_version. Export the computed series under the catalogue's name.",
+  "metrics": [
+    {
+      "name": "requests.rate",
+      "label": "Requests per second (avg)",
+      "category": "Throughput",
+      "description": "Requests the service finished per second, averaged over the run: it shows the load reached this service. Compare it with JMeter's own rate; a shortfall means something in front answered, refused or queued the rest.",
+      "unit": "/s",
+      "reduce": "avg",
+      "across": "min",
+      "direction": "lower",
+      "dimension": "per service instance",
+      "recommended": false,
+      "queries": { "prometheus": "sum by (instance) (rate(http_server_requests_seconds_count${match}[1m]))" },
+      "names": {
+        "telegraf": null,
+        "datadog": null,
+        "otel": null
+      }
+    },
+    {
+      "name": "errors.5xx.pct",
+      "label": "Server errors, 5xx (%)",
+      "category": "Errors",
+      "description": "Requests answered with a 5xx status, as a percentage of all requests, in the worst minute. It separates the service's own failures from errors JMeter met in front of it, at a load balancer or a gateway. The first 5xx of a status the service had not returned since it started are not counted: they start its series.",
+      "unit": "%",
+      "reduce": "max",
+      "direction": "higher",
+      "ceiling": 100,
+      "dimension": "per service instance",
+      "recommended": true,
+      "safeDefault": { "warn": { "gt": 0 } },
+      "queries": { "prometheus": "100 * (sum by (instance) (rate(http_server_requests_seconds_count{status=~\"5..\"${andMatch}}[1m])) or 0 * sum by (instance) (rate(http_server_requests_seconds_count${match}[1m]))) / sum by (instance) (rate(http_server_requests_seconds_count${match}[1m]))" },
+      "names": {
+        "telegraf": null,
+        "datadog": null,
+        "otel": null
+      }
+    },
+    {
+      "name": "latency.mean",
+      "label": "Mean response time (ms)",
+      "category": "Latency",
+      "description": "Mean time the service took per request, in the worst minute, measured inside the application. Set beside JMeter's own times, the difference is spent in the network, a proxy or a queue in front of it.",
+      "unit": "ms",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per service instance",
+      "recommended": true,
+      "queries": { "prometheus": "1000 * sum by (instance) (rate(http_server_requests_seconds_sum${match}[1m])) / sum by (instance) (rate(http_server_requests_seconds_count${match}[1m]))" },
+      "names": {
+        "telegraf": null,
+        "datadog": null,
+        "otel": null
+      }
+    },
+    {
+      "name": "latency.max",
+      "label": "Slowest request (ms)",
+      "category": "Latency",
+      "description": "The slowest request the service served during the run, or up to 2 minutes before it, measured inside the application. A single outlier sets it, so compare it with JMeter's own maximum rather than judging it alone.",
+      "unit": "ms",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per service instance",
+      "recommended": true,
+      "queries": { "prometheus": "1000 * max by (instance) (http_server_requests_seconds_max${match})" },
+      "names": {
+        "telegraf": null,
+        "datadog": null,
+        "otel": null
+      }
+    },
+    {
+      "name": "latency.p95",
+      "label": "Response time p95 (ms)",
+      "category": "Latency",
+      "description": "95th percentile of the time the service took per request, in the worst minute. Needs the request histogram, which Spring Boot leaves off: set management.metrics.distribution.percentiles-histogram.http.server.requests=true, or this metric has no data.",
+      "unit": "ms",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per service instance",
+      "recommended": false,
+      "queries": { "prometheus": "1000 * histogram_quantile(0.95, sum by (instance, le) (rate(http_server_requests_seconds_bucket${match}[1m])))" },
+      "names": {
+        "telegraf": null,
+        "datadog": null,
+        "otel": null
+      }
+    }
+  ]
+}

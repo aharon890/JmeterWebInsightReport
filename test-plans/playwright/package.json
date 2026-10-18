@@ -1,0 +1,14 @@
+{
+  "name": "web-insight-report-playwright-tests",
+  "version": "1.0.0",
+  "description": "Playwright browser tests for Web Insight Report HTML files",
+  "//": "Scripts call cli.js directly, not `npx playwright`: under Git Bash npx fails to resolve the local install and .bin/playwright is a POSIX shim node tries to require as a module.",
+  "scripts": {
+    "test": "node node_modules/@playwright/test/cli.js test",
+    "test:headed": "node node_modules/@playwright/test/cli.js test --headed",
+    "test:ui": "node node_modules/@playwright/test/cli.js test --ui"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.0"
+  }
+}

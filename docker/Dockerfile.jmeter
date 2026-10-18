@@ -1,0 +1,41 @@
+FROM eclipse-temurin:21-jre
+
+# Overridable so run-docker-tests.sh can build and address a different JMeter version
+# without the in-container lib/ext path drifting out of sync with the image.
+ARG JMETER_VERSION=5.6.3
+ENV JMETER_VERSION=${JMETER_VERSION}
+ENV JMETER_HOME=/opt/apache-jmeter-${JMETER_VERSION}
+ENV PATH=${JMETER_HOME}/bin:${PATH}
+
+# The tarball is fetched over the network at build time, so verify it. Apache publishes a
+# .sha512 next to every binary; without checking it, a tampered or truncated mirror response
+# is installed silently and the image is only as trustworthy as the download.
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends wget; \
+    wget -q "https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-${JMETER_VERSION}.tgz"; \
+    wget -q "https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-${JMETER_VERSION}.tgz.sha512"; \
+    sha512sum -c "apache-jmeter-${JMETER_VERSION}.tgz.sha512"; \
+    tar -xzf "apache-jmeter-${JMETER_VERSION}.tgz" -C /opt/; \
+    rm "apache-jmeter-${JMETER_VERSION}.tgz" "apache-jmeter-${JMETER_VERSION}.tgz.sha512"; \
+    apt-get purge -y wget; \
+    apt-get autoremove -y; \
+    rm -rf /var/lib/apt/lists/*
+
+# Run as a normal user by default. As root the container writes root-owned files into the
+# bind-mounted test-results/docker/* directory on Linux hosts, breaking host-side cleanup for
+# the unprivileged user who started the run.
+#
+# The directories are world-writable rather than owned by this specific user, because a bind
+# mount SHADOWS the image's ownership: whatever uid the host directory belongs to is what the
+# container sees. Callers that need writes to land as themselves should pass
+# `--user "$(id -u):$(id -g)"` — run-docker-tests.sh does this on Unix hosts — and that uid
+# will not exist in the image, so the mode has to allow it rather than the ownership.
+RUN useradd --create-home --shell /usr/sbin/nologin jmeter \
+    && mkdir -p /test /results \
+    && chmod 777 /test /results
+
+USER jmeter
+WORKDIR /test
+
+ENTRYPOINT ["jmeter"]

@@ -10,8 +10,8 @@ import com.jmeterwebinsightreport.core.comparison.ComparisonResult;
 import com.jmeterwebinsightreport.core.comparison.ComparisonThresholds;
 import com.jmeterwebinsightreport.core.model.*;
 import com.jmeterwebinsightreport.core.model.TimeSeriesBucket.SamplerBucketData;
-import com.jmeterwebinsightreport.core.sla.SlaEvaluator;
-import com.jmeterwebinsightreport.core.sla.SlaStatus;
+import com.jmeterwebinsightreport.core.assertion.SamplerVerdicts;
+import com.jmeterwebinsightreport.core.assertion.AssertionStatus;
 import com.jmeterwebinsightreport.report.annotation.ReportAnnotations;
 
 import java.io.IOException;
@@ -47,41 +47,84 @@ public class ReportDataSerializer {
     }
 
     /**
-     * Serialize chart data with annotations and comparison.
+     * The chart data, as the page reads it inline.
+     *
+     * <p>This and {@link #externalDataJsContent} are the only two ways in, and each takes every
+     * argument (GAP-6). Shorter forms used to fill the rest with null, and one that left out the
+     * evaluation built a page with no gate, no metric vocabulary and no annotations document —
+     * a payload no report ships, one argument away from shipping.
+     *
+     * @param evaluation the gate, so the report's Asserts tab has the rules, the
+     *        results, the metric vocabulary and the annotations document. The page is one file
+     *        on {@code file://} — whatever is not in the payload, it cannot ask for. A run that
+     *        declared nothing passes {@code GateEvaluation.none()}; null still builds the gateless
+     *        payload, which no report ships.
+     * @param serverMetrics the collector's payload, or null — the series the Server tab will
+     *        chart and the server asserts will be judged over, carried in the same map as
+     *        everything else so it is counted by the external-data threshold and present in
+     *        every output (inline, external and streamed all go through here)
+     * @param server the server gates as judged, or null — {@code serverGates[]}/{@code serverKpis[]} for the Server tab
      */
     public String serializeChartData(ReportData reportData, ReportAnnotations annotations,
-                                      ComparisonResult comparison) throws JsonProcessingException {
+                                      ComparisonResult comparison,
+                                      com.jmeterwebinsightreport.report.gate.GateEvaluation evaluation,
+                                      com.jmeterwebinsightreport.core.servermetrics.collect.ServerMetricsPayload serverMetrics,
+                                      com.jmeterwebinsightreport.report.gate.ServerGateEvaluation server)
+            throws JsonProcessingException {
+        return objectMapper.writeValueAsString(
+                chartDataOf(reportData, annotations, comparison, evaluation, serverMetrics, server));
+    }
+
+    /**
+     * The same payload, as the sidecar the report's {@code <script src>} loads, written to any
+     * {@link java.io.Writer}.
+     *
+     * <p>Split out so report generation can <em>stage</em> the payload alongside the rest of the
+     * set and publish all four together, rather than committing this one to its final name while
+     * the HTML that references it has not been rendered yet. The chart data map is built eagerly
+     * here — it is cheap and it is where a serialisation problem should surface — but the JSON
+     * itself is still streamed, never materialised as a String: for a large soak run that meant
+     * building the whole payload once and then allocating a second full copy to prepend the
+     * wrapper, tripling transient heap inside the JMeter JVM at the worst possible moment.
+     *
+     * @param assignmentPrefix the JS assignment the report's &lt;script src&gt; expects
+     * @param evaluation the gate, and the rest as {@link #serializeChartData}, which this takes
+     *        argument for argument
+     */
+    public com.jmeterwebinsightreport.core.util.AtomicFileWriter.ContentWriter externalDataJsContent(
+            ReportData reportData, ReportAnnotations annotations, ComparisonResult comparison,
+            String assignmentPrefix,
+            com.jmeterwebinsightreport.report.gate.GateEvaluation evaluation,
+            com.jmeterwebinsightreport.core.servermetrics.collect.ServerMetricsPayload serverMetrics,
+            com.jmeterwebinsightreport.report.gate.ServerGateEvaluation server) {
+        Map<String, Object> chartData =
+                chartDataOf(reportData, annotations, comparison, evaluation, serverMetrics, server);
+
+        // Through the one sidecar writer the threshold path uses too, which writes a __proto__ key
+        // in the form the browser keeps as a key (N2).
+        return ObjectLiteralWriter.assignment(assignmentPrefix, writer -> {
+            // AUTO_CLOSE_TARGET must be off: writeValue would otherwise close the writer and
+            // the trailing ";" would never be written (and the report would fail to parse).
+            JsonGenerator generator = objectMapper.getFactory().createGenerator(writer);
+            generator.disable(JsonGenerator.Feature.AUTO_CLOSE_TARGET);
+            objectMapper.writeValue(generator, chartData);
+            generator.flush();
+        });
+    }
+
+    /** The one map both forms write, so the inline page and the sidecar cannot carry different data. */
+    private Map<String, Object> chartDataOf(ReportData reportData, ReportAnnotations annotations,
+            ComparisonResult comparison,
+            com.jmeterwebinsightreport.report.gate.GateEvaluation evaluation,
+            com.jmeterwebinsightreport.core.servermetrics.collect.ServerMetricsPayload serverMetrics,
+            com.jmeterwebinsightreport.report.gate.ServerGateEvaluation server) {
         Map<String, Object> chartData = buildChartDataMap(reportData);
         addAnnotations(chartData, annotations);
+        GatePayloadBuilder.addTo(chartData, evaluation, annotations, reportData);
         addComparison(chartData, comparison);
-        return objectMapper.writeValueAsString(chartData);
-    }
-
-    /**
-     * Serialize chart data with annotations.
-     */
-    public String serializeChartData(ReportData reportData, ReportAnnotations annotations) throws JsonProcessingException {
-        Map<String, Object> chartData = buildChartDataMap(reportData);
-        addAnnotations(chartData, annotations);
-        return objectMapper.writeValueAsString(chartData);
-    }
-
-    /**
-     * Serialize chart-specific data subset to JSON — compact format for ECharts.
-     */
-    public String serializeChartData(ReportData reportData) throws JsonProcessingException {
-        return objectMapper.writeValueAsString(buildChartDataMap(reportData));
-    }
-
-    /**
-     * Build chart data map to file (avoids intermediate String for external data mode).
-     */
-    public void writeChartDataToFile(ReportData reportData, ReportAnnotations annotations,
-                                      ComparisonResult comparison, java.io.File outputFile) throws IOException {
-        Map<String, Object> chartData = buildChartDataMap(reportData);
-        addAnnotations(chartData, annotations);
-        addComparison(chartData, comparison);
-        objectMapper.writeValue(outputFile, chartData);
+        ServerMetricsPayloadWriter.addTo(chartData, serverMetrics, server);
+        GatePayloadBuilder.addServerTo(chartData, server);
+        return chartData;
     }
 
     private void addAnnotations(Map<String, Object> chartData, ReportAnnotations annotations) {
@@ -101,19 +144,19 @@ public class ReportDataSerializer {
         }
         chartData.put("timelineMarkers", markers);
 
-        // SLA thresholds for chart marklines
-        if (annotations.getSlaThresholds() != null && !annotations.getSlaThresholds().isEmpty()) {
-            Map<String, Object> slaData = new LinkedHashMap<>(annotations.getSlaThresholds().size());
-            for (Map.Entry<String, ReportAnnotations.SlaThresholdConfig> entry : annotations.getSlaThresholds().entrySet()) {
-                Map<String, Object> th = new LinkedHashMap<>();
-                if (entry.getValue().getP95() != null) th.put("p95", entry.getValue().getP95());
-                if (entry.getValue().getP99() != null) th.put("p99", entry.getValue().getP99());
-                if (entry.getValue().getErrorRate() != null) th.put("errorRate", entry.getValue().getErrorRate());
-                if (entry.getValue().getMeanResponseTime() != null) th.put("mean", entry.getValue().getMeanResponseTime());
-                slaData.put(entry.getKey(), th);
-            }
-            chartData.put("slaThresholds", slaData);
+        // Loaded annotation content — serialized so "Save Annotations" can round-trip it instead of
+        // overwriting markers/notes/verdict with empties (C24).
+        if (annotations.getTestNotes() != null) chartData.put("testNotes", annotations.getTestNotes());
+        if (annotations.getSamplerNotes() != null && !annotations.getSamplerNotes().isEmpty()) {
+            chartData.put("samplerNotes", annotations.getSamplerNotes());
         }
+
+        // A dead threshold block does NOT reach the chart data. It drew chart marklines that
+        // no rule stood behind — a limit line with no verdict, no badge and nothing in the
+        // CI/CD JSON — which is a worse lie than not drawing it: the reader sees a threshold on
+        // a chart and concludes the run was gated against it. A top-level "thresholds" key is
+        // now an unknown key like any other: nothing reads it, nothing reports it, and it rides
+        // the annotations document only so a Save writes it back.
     }
 
     private Map<String, Map<String, List<Object>>> buildPerSamplerSeries(List<TimeSeriesBucket> timeSeries) {
@@ -145,8 +188,8 @@ public class ReportDataSerializer {
                 arrays[5][bucketIdx] = round2(sd.getP95());
                 arrays[6][bucketIdx] = round2(sd.getP99());
                 arrays[7][bucketIdx] = round2(sd.getMax());
-                arrays[8][bucketIdx] = round2(sd.getConnectTime());
-                arrays[9][bucketIdx] = round2(sd.getLatency());
+                arrays[8][bucketIdx] = round2OrNull(sd.getConnectTime());
+                arrays[9][bucketIdx] = round2OrNull(sd.getLatency());
                 arrays[10][bucketIdx] = round2(sd.getReceivedBytes());
                 arrays[11][bucketIdx] = round2(sd.getSentBytes());
             }
@@ -197,9 +240,29 @@ public class ReportDataSerializer {
             Map<String, Object> d = new LinkedHashMap<>();
             d.put("name", diff.getSamplerName());
             d.put("isNew", diff.isNew());
+            d.put("removed", diff.isRemoved());
             d.put("regression", diff.isRegression());
 
             SamplerStatistics curr = diff.getCurrent();
+            if (curr == null) {
+                // Removed sampler: present in the baseline, gone from this run. There are no
+                // "current" figures to report — emit the baseline side only, so the compare
+                // table can show the row as gone instead of the whole report failing to
+                // generate on a NullPointerException.
+                SamplerStatistics base = diff.getBaseline();
+                if (base != null) {
+                    d.put("baseSamples", base.getSampleCount());
+                    d.put("baseErrors", base.getErrorCount());
+                    d.put("baseErrorRate", round2(base.getErrorRate()));
+                    d.put("baseMean", round2(base.getMeanResponseTime()));
+                    d.put("baseP95", round2(base.getPercentile95()));
+                    d.put("baseP99", round2(base.getPercentile99()));
+                    d.put("baseThroughput", round2(base.getThroughput()));
+                }
+                diffs.add(d);
+                continue;
+            }
+
             d.put("currSamples", curr.getSampleCount());
             d.put("currErrors", curr.getErrorCount());
             d.put("currErrorRate", round2(curr.getErrorRate()));
@@ -249,10 +312,17 @@ public class ReportDataSerializer {
     }
 
     /**
-     * Build chart data as a Map — core logic shared by all serializeChartData overloads.
+     * Build chart data as a Map — core logic shared by the inline and the sidecar form.
      */
     private Map<String, Object> buildChartDataMap(ReportData reportData) {
         Map<String, Object> chartData = new LinkedHashMap<>();
+
+        // Which run this payload belongs to. First key in the map so it is readable in the first
+        // line of a multi-megabyte web-insight-data.js, and so report.js can refuse a payload
+        // that belongs to a different run instead of rendering it under this report's headings.
+        chartData.put("runId", com.jmeterwebinsightreport.core.util.RunIdentity.of(reportData));
+        chartData.put("runTestName", reportData.getMetadata() != null
+                ? reportData.getMetadata().getTestName() : null);
 
         // Time-series arrays (parallel arrays for efficient JS consumption)
         List<TimeSeriesBucket> timeSeries = reportData.getTimeSeries();
@@ -282,6 +352,8 @@ public class ReportDataSerializer {
         if (reportData.getSamplerStatistics() != null) {
             for (SamplerStatistics stat : reportData.getSamplerStatistics()) {
                 Map<String, Object> s = new LinkedHashMap<>();
+                // What the client evaluator judges, unrounded (R2-1, M7d X) — see exact().
+                Map<String, Object> exact = new LinkedHashMap<>();
                 s.put("name", stat.getSamplerName());
                 s.put("count", stat.getSampleCount());
                 s.put("mean", round2(stat.getMeanResponseTime()));
@@ -289,17 +361,55 @@ public class ReportDataSerializer {
                 s.put("p90", round2(stat.getPercentile90()));
                 s.put("p95", round2(stat.getPercentile95()));
                 s.put("p99", round2(stat.getPercentile99()));
+                exact(exact, "mean", stat.getMeanResponseTime());
+                exact(exact, "median", stat.getMedianResponseTime());
+                exact(exact, "p90", stat.getPercentile90());
+                exact(exact, "p95", stat.getPercentile95());
+                exact(exact, "p99", stat.getPercentile99());
+                // p75 and p99.9 complete the grid the assert editor offers. They are resolved
+                // from the retained digest, so they are real quantiles rather than anything
+                // interpolated from the four the table displays; absent a digest the key is
+                // omitted entirely, because a wrong tail number is worse than a missing one.
+                PercentileSource dist = reportData.percentileSource(stat.getSamplerName());
+                if (dist != null && dist.sampleCount() > 0) {
+                    double p75 = dist.percentile(75);
+                    double p999 = dist.percentile(99.9);
+                    s.put("p75", round2(p75));
+                    s.put("p999", round2(p999));
+                    exact(exact, "p75", p75);
+                    exact(exact, "p999", p999);
+                }
                 s.put("min", round2(stat.getMinResponseTime()));
                 s.put("max", round2(stat.getMaxResponseTime()));
                 s.put("errorRate", round2(stat.getErrorRate()));
+                exact(exact, "min", stat.getMinResponseTime());
+                exact(exact, "max", stat.getMaxResponseTime());
+                exact(exact, "errorRate", stat.getErrorRate());
                 s.put("errorCount", stat.getErrorCount());
-                s.put("throughput", round2(stat.getThroughput()));
+                // Full precision, unlike its neighbours: throughput is the number requiresLoad and
+                // divideBy judge, and the browser re-judges server KPIs from this payload. Java
+                // judges stat.getThroughput() as is, so a round2'd 12.496 req/s sat ON a `lt 12.5`
+                // load rule and passed it on the board while the build stood the KPI down (R2-1).
+                // The JS formats every number it shows; this one is never displayed raw.
+                s.put("throughput", fullPrecision(stat.getThroughput()));
                 s.put("stdDev", round2(stat.getStandardDeviation()));
                 s.put("receivedBytesPerSec", round2(stat.getReceivedBytesPerSec()));
                 s.put("sentBytesPerSec", round2(stat.getSentBytesPerSec()));
-                s.put("meanConnectTime", round2(stat.getMeanConnectTime()));
-                s.put("meanLatency", round2(stat.getMeanLatency()));
+                exact(exact, "stdDev", stat.getStandardDeviation());
+                exact(exact, "receivedBytesPerSec", stat.getReceivedBytesPerSec());
+                exact(exact, "sentBytesPerSec", stat.getSentBytesPerSec());
+                // Absent, not zero — see SamplerStatistics.meanConnectTime. NaN is not valid
+                // JSON, and null is what the client already reads as "no value": fmtNum returns
+                // an empty cell for it, and the per-bucket connectTime/latency arrays beside
+                // this one have carried nulls for the same reason since they were added.
+                s.put("meanConnectTime", round2OrAbsent(stat.getMeanConnectTime()));
+                s.put("meanLatency", round2OrAbsent(stat.getMeanLatency()));
+                exact(exact, "meanConnectTime", stat.getMeanConnectTime());
+                exact(exact, "meanLatency", stat.getMeanLatency());
                 s.put("apdex", stat.getApdexScore());
+                if (!exact.isEmpty()) {
+                    s.put("exact", exact);
+                }
                 s.put("isTransactionController", stat.isTransactionController());
                 if (stat.getParentSamplerName() != null) {
                     s.put("parent", stat.getParentSamplerName());
@@ -311,6 +421,58 @@ public class ReportDataSerializer {
             }
         }
         chartData.put("samplers", samplers);
+
+        // The run as a whole. The percentiles are of the merged distribution of top-level
+        // samplers — the true overall percentile, not an average of per-sampler percentiles —
+        // and feed the Σ Total table row and the percentile-bar Total.
+        //
+        // The volume, rate and quality figures beside them are new, and they are here because
+        // a rule can now target {"scope": "overall"}: the editor has to show the observed value
+        // it is seeding a band from, and it can only show what the payload carries. They come
+        // from OverallMetrics, the same resolver the header tiles and the CI/CD JSON use, so
+        // the number in the editor is the number in the verdict.
+        if (reportData.getOverallP95() > 0 || reportData.getOverallP99() > 0
+                || reportData.getOverallMedian() > 0
+                || (reportData.getSamplerStatistics() != null && !reportData.getSamplerStatistics().isEmpty())) {
+            OverallMetrics m = OverallMetrics.of(reportData);
+            Map<String, Object> overall = new LinkedHashMap<>();
+            Map<String, Object> exact = new LinkedHashMap<>();
+            overall.put("median", round2(m.getMedian()));
+            overall.put("p90", round2(m.getP90()));
+            overall.put("p95", round2(m.getP95()));
+            overall.put("p99", round2(m.getP99()));
+            exact(exact, "median", m.getMedian());
+            exact(exact, "p90", m.getP90());
+            exact(exact, "p95", m.getP95());
+            exact(exact, "p99", m.getP99());
+            if (m.hasDistribution()) {
+                double p75 = m.percentile(75);
+                double p999 = m.percentile(99.9);
+                overall.put("p75", round2(p75));
+                overall.put("p999", round2(p999));
+                exact(exact, "p75", p75);
+                exact(exact, "p999", p999);
+            }
+            overall.put("mean", round2(m.getMean()));
+            overall.put("totalSamples", m.getTotalSamples());
+            overall.put("errorRate", round2(m.getErrorRate()));
+            overall.put("throughput", fullPrecision(m.getThroughput()));   // see samplers[] (R2-1)
+            overall.put("apdex", m.getApdex());
+            overall.put("duration", round2(m.getDurationSeconds()));
+            overall.put("maxThreads", m.getMaxThreads());
+            exact(exact, "mean", m.getMean());
+            exact(exact, "errorRate", m.getErrorRate());
+            exact(exact, "duration", m.getDurationSeconds());
+            if (!exact.isEmpty()) {
+                overall.put("exact", exact);
+            }
+            chartData.put("overall", overall);
+        }
+
+        // The T every Apdex score on this page was computed against. An apdex rule asserts this
+        // configuration as much as it asserts the score — "apdex fell below 0.8" means nothing
+        // without it — so the report shows it next to any such rule, and cannot until it is here.
+        chartData.put("apdexThreshold", reportData.getApdexThreshold());
 
         // Per-sampler time-series for individual chart lines
         chartData.put("perSamplerSeries", buildPerSamplerSeries(timeSeries));
@@ -328,7 +490,7 @@ public class ReportDataSerializer {
         chartData.put("heatmapData", ChartDataBuilder.buildHeatmapData(timeSeries, allSamplerNames));
 
         // Response codes over time
-        chartData.put("responseCodesOverTime", ChartDataBuilder.buildResponseCodesOverTime(reportData));
+
 
         // Error breakdown data for Error tab charts
         if (reportData.getErrorSummaries() != null && !reportData.getErrorSummaries().isEmpty()) {
@@ -340,6 +502,13 @@ public class ReportDataSerializer {
                 e.put("message", es.getResponseMessage());
                 e.put("count", es.getOccurrenceCount());
                 e.put("pctErrors", round2(es.getPercentageOfErrors()));
+                // Carried, not re-derived in the browser. Everything client-side that shows an
+                // error — the by-code chart, the grouped detail view, both CSV exports — needs
+                // to know that a 200 in this list is a failure, and shipping the field means
+                // there is one classifier rather than two that can disagree.
+                e.put("errorClass", es.getErrorClass());
+                e.put("errorClassLabel", es.getErrorClassLabel());
+                e.put("messageMeaningless", es.isMessageMeaningless());
                 errorsByType.add(e);
 
                 // Full error summary for CSV export (includes sampler name)
@@ -350,6 +519,9 @@ public class ReportDataSerializer {
                 full.put("occurrenceCount", es.getOccurrenceCount());
                 full.put("percentageOfErrors", round2(es.getPercentageOfErrors()));
                 full.put("percentageOfAllSamples", round2(es.getPercentageOfAllSamples()));
+                full.put("errorClass", es.getErrorClass());
+                full.put("errorClassLabel", es.getErrorClassLabel());
+                full.put("messageMeaningless", es.isMessageMeaningless());
                 errorSummaries.add(full);
             }
             chartData.put("errorsByType", errorsByType);
@@ -380,6 +552,9 @@ public class ReportDataSerializer {
                 e.put("sampler", er.getSamplerName());
                 e.put("code", er.getResponseCode());
                 e.put("message", er.getResponseMessage());
+                e.put("errorClass", er.getErrorClass());
+                e.put("errorClassLabel", er.getErrorClassLabel());
+                e.put("messageMeaningless", er.isMessageMeaningless());
                 e.put("thread", er.getThreadName());
                 if (er.getRequestUrl() != null) e.put("url", er.getRequestUrl());
                 if (er.getRequestHeaders() != null) e.put("headers", er.getRequestHeaders());
@@ -388,6 +563,25 @@ public class ReportDataSerializer {
             }
             chartData.put("errorRecords", errorRecords);
         }
+        // Whether the detailed error records are a truncated sample (charts must then use full aggregates).
+        chartData.put("errorRecordsTruncated", reportData.isErrorRecordsTruncated());
+
+        // Test-level totals — needed for correct "% of all samples" math on the client (C20).
+        //
+        // Two populations, deliberately, because two parts of the report count different
+        // things and each must be internally consistent:
+        //  - totalSampleCount/totalErrorCount are EVERY recorded sample. The error tab's rows
+        //    include transaction children, so its total row has to divide by the same
+        //    population its rows come from.
+        //  - topLevelSampleCount/topLevelErrorCount exclude transaction children. That is the
+        //    population the header tiles and cicd.json use, since a child's time is already
+        //    counted inside its parent.
+        if (reportData.getMetadata() != null) {
+            chartData.put("totalSampleCount", reportData.getMetadata().getTotalSamples());
+            chartData.put("totalErrorCount", reportData.getMetadata().getTotalErrors());
+        }
+        chartData.put("topLevelSampleCount", reportData.getTopLevelSampleCount());
+        chartData.put("topLevelErrorCount", reportData.getTopLevelErrorCount());
 
         // Hidden samplers (auto-hide utility + 0-request)
         if (reportData.getHiddenSamplers() != null && !reportData.getHiddenSamplers().isEmpty()) {
@@ -415,12 +609,100 @@ public class ReportDataSerializer {
      * Delegates to {@link CiCdJsonSerializer}.
      */
     public String serializeCiCdJson(ReportData reportData,
-                                      Map<String, SlaEvaluator.SlaResult> slaResults,
-                                      SlaStatus overallStatus) throws JsonProcessingException {
-        return new CiCdJsonSerializer(objectMapper).serialize(reportData, slaResults, overallStatus);
+                                      SamplerVerdicts assertResults,
+                                      AssertionStatus overallStatus) throws JsonProcessingException {
+        return serializeCiCdJson(reportData, assertResults, overallStatus, null);
+    }
+
+    /** @param artifacts the manifest of paths actually written, or null to omit it */
+    public String serializeCiCdJson(ReportData reportData,
+                                      SamplerVerdicts assertResults,
+                                      AssertionStatus overallStatus,
+                                      Map<String, Object> artifacts) throws JsonProcessingException {
+        return serializeCiCdJson(reportData, assertResults, overallStatus, artifacts, null);
+    }
+
+    /** @param gate the declared rules and their results, or null when there is no gate */
+    public String serializeCiCdJson(ReportData reportData,
+                                      SamplerVerdicts assertResults,
+                                      AssertionStatus overallStatus,
+                                      Map<String, Object> artifacts,
+                                      com.jmeterwebinsightreport.core.assertion.GateSummary gate)
+            throws JsonProcessingException {
+        return serializeCiCdJson(reportData, assertResults, overallStatus, artifacts, gate, null);
+    }
+
+    /** @param findings what the loader and validator rejected, published even with no gate */
+    public String serializeCiCdJson(ReportData reportData,
+                                      SamplerVerdicts assertResults,
+                                      AssertionStatus overallStatus,
+                                      Map<String, Object> artifacts,
+                                      com.jmeterwebinsightreport.core.assertion.GateSummary gate,
+                                      java.util.List<com.jmeterwebinsightreport.core.assertion
+                                              .AssertionValidator.Finding> findings)
+            throws JsonProcessingException {
+        return serializeCiCdJson(reportData, assertResults, overallStatus, artifacts, gate, findings, null);
+    }
+
+    /** @param server the server gates as judged, or null — {@code serverGates[]} and {@code serverKpis[]} */
+    public String serializeCiCdJson(ReportData reportData,
+                                      SamplerVerdicts assertResults,
+                                      AssertionStatus overallStatus,
+                                      Map<String, Object> artifacts,
+                                      com.jmeterwebinsightreport.core.assertion.GateSummary gate,
+                                      java.util.List<com.jmeterwebinsightreport.core.assertion
+                                              .AssertionValidator.Finding> findings,
+                                      com.jmeterwebinsightreport.report.gate.ServerGateEvaluation server)
+            throws JsonProcessingException {
+        return new CiCdJsonSerializer(objectMapper).serialize(
+                reportData, assertResults, overallStatus, artifacts, gate,
+                findings == null ? java.util.Collections.emptyList() : findings, server);
     }
 
     private static double round2(double value) {
         return Math.round(value * 100.0) / 100.0;
+    }
+
+    /**
+     * The value as measured, for a figure something JUDGES in the browser (R2-1) — except where
+     * it is not a number JSON can carry: NaN and the infinities still go through round2, which
+     * is what they always did (NaN became 0), because Jackson would write them as bare tokens and
+     * the page's JSON would not parse.
+     */
+    private static double fullPrecision(double value) {
+        return Double.isNaN(value) || Double.isInfinite(value) ? round2(value) : value;
+    }
+
+    /**
+     * A figure the client evaluator judges, at the precision Java judges it — written into the
+     * entry's {@code exact} block only where round2 changed it, so a run of whole numbers carries
+     * none. R2-1 carried throughput unrounded because the Server tab re-judges load rules from it;
+     * every other metric a client rule names was still 2dp, so a rule re-judged on the Asserts tab
+     * after an edit could flip at an edge Java does not (a mean of 12.496 sat ON {@code lt 12.5}).
+     * The figures beside it stay 2dp: they are what the charts and tables show. report.js
+     * {@code buildRun} lays this block over them for the evaluator and for nothing else.
+     */
+    private static void exact(Map<String, Object> into, String key, double value) {
+        if (!Double.isNaN(value) && !Double.isInfinite(value) && round2(value) != value) {
+            into.put(key, value);
+        }
+    }
+
+    /** round2 that preserves null (absent metric) so it serializes as JSON null, not 0. */
+    private static Double round2OrNull(Double value) {
+        return value == null ? null : round2(value);
+    }
+
+    /**
+     * A primitive metric that may be absent, as a number or null — never NaN.
+     *
+     * <p>The sibling of {@link #round2OrNull} for the model's primitive {@code double} fields,
+     * which carry absence as NaN because they have no null. Jackson would serialise NaN as the
+     * bare token {@code NaN}, which is not JSON: {@code JSON.parse} throws, so one sampler saved
+     * without a Connect column would take the whole payload — and with it every chart, the gate
+     * strip and the Asserts tab — down with it.
+     */
+    private static Double round2OrAbsent(double value) {
+        return Double.isNaN(value) ? null : round2(value);
     }
 }

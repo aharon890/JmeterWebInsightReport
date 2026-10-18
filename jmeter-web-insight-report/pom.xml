@@ -7,7 +7,9 @@
     <parent>
         <groupId>com.jmeterwebinsightreport</groupId>
         <artifactId>jmeter-web-insight-suite</artifactId>
-        <version>1.0.0</version>
+        <!-- ${revision} lives in the parent pom's properties — the single place the
+             suite version is defined. Do not hardcode a number here. -->
+        <version>${revision}</version>
     </parent>
 
     <artifactId>jmeter-web-insight-report</artifactId>
@@ -51,12 +53,6 @@
             <artifactId>thymeleaf</artifactId>
         </dependency>
 
-        <!-- AutoService annotation processor -->
-        <dependency>
-            <groupId>com.google.auto.service</groupId>
-            <artifactId>auto-service-annotations</artifactId>
-        </dependency>
-
         <!-- Testing -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
@@ -66,21 +62,6 @@
 
     <build>
         <plugins>
-            <!-- Compiler with AutoService annotation processing -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <configuration>
-                    <annotationProcessorPaths>
-                        <path>
-                            <groupId>com.google.auto.service</groupId>
-                            <artifactId>auto-service</artifactId>
-                            <version>${auto-service.version}</version>
-                        </path>
-                    </annotationProcessorPaths>
-                </configuration>
-            </plugin>
-
             <!-- Shade plugin — produces fat JAR with core + t-digest + thymeleaf -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -104,6 +85,49 @@
                                     <include>org.javassist:*</include>
                                 </includes>
                             </artifactSet>
+                            <!--
+                                The fat JAR is dropped into JMeter's shared lib/ext, whose
+                                classloader is flat. Shipping Thymeleaf/OGNL/Javassist at their
+                                original coordinates means another lib/ext plugin (or a future
+                                JMeter) bundling a different version resolves to whichever jar
+                                wins the scan order, producing NoSuchMethodError/LinkageError at
+                                report-generation time for this plugin or the other one.
+
+                                Relocate every bundled third-party library under one prefix so
+                                nothing outside this JAR can collide with it. Thymeleaf's OGNL
+                                usage survives because all of them move together.
+
+                                jmeter-report-core is deliberately NOT relocated: it stays under
+                                com.jmeterwebinsightreport alongside the listener and exporter,
+                                whose fully-qualified names appear in JMX files and in
+                                reportgenerator.properties.
+                            -->
+                            <relocations>
+                                <relocation>
+                                    <pattern>org.thymeleaf</pattern>
+                                    <shadedPattern>com.jmeterwebinsightreport.shaded.thymeleaf</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>org.attoparser</pattern>
+                                    <shadedPattern>com.jmeterwebinsightreport.shaded.attoparser</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>org.unbescape</pattern>
+                                    <shadedPattern>com.jmeterwebinsightreport.shaded.unbescape</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>ognl</pattern>
+                                    <shadedPattern>com.jmeterwebinsightreport.shaded.ognl</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>javassist</pattern>
+                                    <shadedPattern>com.jmeterwebinsightreport.shaded.javassist</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>com.tdunning</pattern>
+                                    <shadedPattern>com.jmeterwebinsightreport.shaded.tdunning</shadedPattern>
+                                </relocation>
+                            </relocations>
                             <filters>
                                 <filter>
                                     <artifact>*:*</artifact>

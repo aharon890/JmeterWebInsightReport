@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# =============================================================================
+#  pre-push — refuse a direct push to the primary branch. That is its ONLY job.
+#
+#  Install with: ./scripts/install-hooks.sh   (sets core.hooksPath to .githooks)
+#
+#  There is no CI, and this hook deliberately runs no tests. The GitHub workflows
+#  were deleted: a full regression cost 15m48s on a shared 2-core runner against
+#  ~1½ minutes locally, so verification happens where it is fast — BEFORE the
+#  push, driven by the run-tests skill (.claude/skills/run-tests/), which runs
+#  the full regression when a feature or fix is finished. The accepted trade-off:
+#  a push made without that step reaches the remote untested. The hook stays out
+#  of that and enforces the one rule that must hold no matter who is pushing:
+#
+#      The primary branch changes through a pull request, never a direct push.
+#
+#  The branch is NOT named here. It is resolved from the remote, so a repo whose
+#  primary branch is called something else needs no edit.
+#
+#  Escape hatches:
+#    WIR_ALLOW_MAIN_PUSH=1  git push   permit a direct push to the primary branch
+#    git push --no-verify              skip this hook entirely (git's own bypass)
+# =============================================================================
+set -uo pipefail
+
+# The repository's primary branch, never hardcoded. origin/HEAD is a local pointer
+# set by `git remote set-head origin -a` (install-hooks.sh does this), so the normal
+# path costs nothing. A clone that has never had it set falls back to asking the
+# remote, and an offline clone falls back to "main" and says so — guessing silently
+# would silently drop the block on the one push where it matters.
+primary_branch() {
+    local ref
+    ref="$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null)"
+    if [[ -n "$ref" ]]; then
+        printf '%s\n' "${ref#refs/remotes/origin/}"
+        return 0
+    fi
+    # Delimiter is | — the pattern itself contains colons ("^ref:" and "[[:space:]]"),
+    # so a :-delimited s/// parses as garbage and silently matches nothing.
+    ref="$(git ls-remote --symref origin HEAD 2>/dev/null \
+           | sed -n 's|^ref: refs/heads/\([^[:space:]]*\).*|\1|p' | head -1)"
+    if [[ -n "$ref" ]]; then
+        printf '%s\n' "$ref"
+        return 0
+    fi
+    echo "[pre-push] Could not resolve the primary branch; assuming 'main'." >&2
+    echo "[pre-push] Run: git remote set-head origin -a" >&2
+    printf 'main\n'
+}
+
+PRIMARY="$(primary_branch)"
+
+# stdin gives "<local ref> <local sha> <remote ref> <remote sha>" per pushed ref.
+# A single `git push --all` can update several refs; if ANY of them touches the
+# primary branch — update or delete alike — the whole push is refused.
+targets_primary=0
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+    [[ -z "${remote_ref:-}" ]] && continue
+    [[ "$remote_ref" == "refs/heads/$PRIMARY" ]] && targets_primary=1
+done
+
+if [[ $targets_primary -eq 1 && "${WIR_ALLOW_MAIN_PUSH:-0}" != "1" ]]; then
+    cat >&2 <<EOF
+
+[pre-push] REFUSED: this push touches '$PRIMARY' directly.
+
+  '$PRIMARY' changes through a pull request, so the change is reviewable and the
+  history says where it came from. Nothing was pushed.
+
+  Instead:
+    git switch -c <branch>        # if you committed on '$PRIMARY' by accident
+    git push -u origin <branch>
+    gh pr create --base $PRIMARY
+
+  Nothing at push time runs the tests — run the full regression first:
+    ./test-plans/scripts/run-regression.sh
+
+  If you genuinely need to push '$PRIMARY' directly:
+    WIR_ALLOW_MAIN_PUSH=1 git push
+
+EOF
+    exit 1
+fi
+
+exit 0

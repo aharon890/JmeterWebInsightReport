@@ -1,0 +1,159 @@
+{
+  "type": "mysql",
+  "version": 1,
+  "label": "MySQL",
+  "summary": "Connections against their limit, threads running, row locks, slow queries, replica lag",
+  "exporter": "mysqld_exporter",
+  "source": "mysqld_exporter (prometheus-community), default collectors (global_status, global_variables, slave_status): collector/global_status.go, global_variables.go, slave_status.go, exporter.go and mysqld_exporter.go read at main on 2026-10-09 (v0.20.0 the latest release; it supports MySQL 5.6 and later and MariaDB 10.3 and later); the queries were not run against a live server. SHOW GLOBAL STATUS becomes mysql_global_status_<variable in lower case>, except the groups the exporter folds into labelled series (Connection_errors_* into mysql_global_status_connection_errors_total{error}), and SHOW GLOBAL VARIABLES mysql_global_variables_<name>. The replica's lag is the column SHOW REPLICA STATUS calls Seconds_Behind_Source and SHOW SLAVE STATUS Seconds_Behind_Master; the exporter tries SHOW ALL SLAVES STATUS, SHOW SLAVE STATUS, then SHOW REPLICA STATUS, so MySQL 8.4, which removed SHOW SLAVE STATUS, exports mysql_slave_status_seconds_behind_source, and older MySQL and MariaDB mysql_slave_status_seconds_behind_master (MySQL 8.0.22 to 8.3 rename the column only in SHOW REPLICA STATUS's output, as MySQL worklog WL#14171 specifies: SHOW SLAVE STATUS keeps the old names; MariaDB's column is still Seconds_Behind_Master): the query reads either. A NULL lag, when replication is stopped, is skipped, so it leaves no series rather than a 0. MariaDB has every status variable these queries read under the same name (its status-variable and InnoDB status-variable references, checked the same day), and the exporter reads it the same way. MySQL permits max_connections + 1 connections (one kept for CONNECTION_ADMIN) and more on its administrative interface, so connections.used.pct can pass 100. Slow_queries counts queries longer than long_query_time whether or not the slow query log is on. Tools' names checked the same day against Telegraf's inputs.mysql (README and mysql.go: with metric_version = 2, a status variable is the field mysql.<variable in lower case>; left unset, version 1 maps some names otherwise and keeps replica columns' case), Datadog's mysql metadata.csv, const.py and conf.yaml.example, the OpenTelemetry mysqlreceiver documentation.md and the AWS/RDS metric list. Datadog sends slow queries and row lock waits as per-second rates, and its replication metrics need replication: true (on with dbm). OTel's mysql.server.healthy is not named: what makes it 0 was not checked. AWS/RDS has no MySQL-internal metric: ReplicaLag is the one named, and DatabaseConnections is a count, not a share of max_connections. A ratio of a tool's metrics is null: export the computed series under the catalogue's name.",
+  "metrics": [
+    {
+      "name": "up",
+      "label": "Exporter can reach MySQL",
+      "category": "Availability",
+      "description": "1 while mysqld_exporter can reach MySQL, 0 when it cannot. Any 0 during the run means the server was unreachable for at least one scrape, and every other metric is blind for that span.",
+      "unit": "",
+      "reduce": "min",
+      "across": "min",
+      "direction": "lower",
+      "ceiling": 1,
+      "dimension": "per MySQL server",
+      "recommended": true,
+      "safeDefault": { "fail": { "lt": 1 } },
+      "queries": { "prometheus": "min by (instance) (mysql_up${match})" },
+      "names": {
+        "telegraf": null,
+        "datadog": null,
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "connections.used.pct",
+      "label": "Connections used (% of max_connections)",
+      "category": "Connections",
+      "description": "Open connections as a percentage of max_connections, at their peak. At 100 % new connections are refused with \"Too many connections\". MySQL keeps one more for an administrator, so it can read just past 100.",
+      "unit": "%",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per MySQL server",
+      "recommended": true,
+      "queries": { "prometheus": "100 * max by (instance) (mysql_global_status_threads_connected${match}) / max by (instance) (mysql_global_variables_max_connections${match})" },
+      "names": {
+        "telegraf": null,
+        "datadog": null,
+        "otel": null,
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "connections.refused",
+      "label": "Connections refused at max_connections, per minute (peak)",
+      "category": "Connections",
+      "description": "Connections MySQL refused because max_connections was reached, in any minute of the run. Those clients got errors.",
+      "unit": "/min",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per MySQL server",
+      "recommended": true,
+      "safeDefault": { "fail": { "gt": 0 } },
+      "queries": { "prometheus": "sum by (instance) (increase(mysql_global_status_connection_errors_total{error=\"max_connections\"${andMatch}}[1m]))" },
+      "names": {
+        "telegraf": { "metric": "mysql.connection_errors_max_connections", "kind": "counter", "scale": 60, "note": "metric_version = 2" },
+        "datadog": null,
+        "otel": { "metric": "mysql.connection.errors", "kind": "counter", "scale": 60, "note": "off by default: enable it under the mysql receiver's metrics; error=max_connections" },
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "threads.running",
+      "label": "Threads running (peak)",
+      "category": "Connections",
+      "description": "Connections executing a statement rather than sleeping, at their peak. Far above the number of cores, statements queue for CPU or for each other's locks, and every query slows down.",
+      "unit": "threads",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per MySQL server",
+      "recommended": true,
+      "queries": { "prometheus": "max by (instance) (mysql_global_status_threads_running${match})" },
+      "names": {
+        "telegraf": { "metric": "mysql.threads_running", "kind": "gauge", "note": "metric_version = 2" },
+        "datadog": { "metric": "mysql.performance.threads_running", "kind": "gauge" },
+        "otel": { "metric": "mysql.threads", "kind": "gauge", "note": "kind=running" },
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "row.lock.waits",
+      "label": "Row lock waits per minute (peak)",
+      "category": "Locks",
+      "description": "Times an InnoDB statement had to wait for a row lock another transaction held, in any minute of the run. A count that climbs with the load means contention on hot rows, which turns into lock wait timeouts.",
+      "unit": "/min",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per MySQL server",
+      "recommended": true,
+      "queries": { "prometheus": "sum by (instance) (increase(mysql_global_status_innodb_row_lock_waits${match}[1m]))" },
+      "names": {
+        "telegraf": { "metric": "mysql.innodb_row_lock_waits", "kind": "counter", "scale": 60, "note": "metric_version = 2" },
+        "datadog": { "metric": "mysql.innodb.row_lock_waits", "kind": "rate", "scale": 60 },
+        "otel": { "metric": "mysql.row_locks", "kind": "counter", "scale": 60, "note": "kind=waits" },
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "slow.queries",
+      "label": "Slow queries per minute (peak)",
+      "category": "Queries",
+      "description": "Queries that took longer than long_query_time, in any minute of the run, whether or not the slow query log is on. What counts as slow is the server's setting, so compare runs on one configuration.",
+      "unit": "/min",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per MySQL server",
+      "recommended": false,
+      "queries": { "prometheus": "sum by (instance) (increase(mysql_global_status_slow_queries${match}[1m]))" },
+      "names": {
+        "telegraf": { "metric": "mysql.slow_queries", "kind": "counter", "scale": 60, "note": "metric_version = 2" },
+        "datadog": { "metric": "mysql.performance.slow_queries", "kind": "rate", "scale": 60 },
+        "otel": { "metric": "mysql.query.slow.count", "kind": "counter", "scale": 60, "note": "off by default: enable it under the mysql receiver's metrics" },
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "buffer.pool.hit.pct",
+      "label": "InnoDB buffer pool hit ratio (%)",
+      "category": "Cache",
+      "description": "Logical reads InnoDB served from the buffer pool rather than from disk, as a percentage, per minute. A drop under load means the working set no longer fits in memory. Weak as an absolute: compare it with a baseline run.",
+      "unit": "%",
+      "reduce": "min",
+      "across": "min",
+      "direction": "lower",
+      "ceiling": 100,
+      "dimension": "per MySQL server",
+      "recommended": false,
+      "queries": { "prometheus": "100 * (1 - sum by (instance) (rate(mysql_global_status_innodb_buffer_pool_reads${match}[1m])) / sum by (instance) (rate(mysql_global_status_innodb_buffer_pool_read_requests${match}[1m])))" },
+      "names": {
+        "telegraf": null,
+        "datadog": null,
+        "otel": null,
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "replication.lag.seconds",
+      "label": "Replication lag (s)",
+      "category": "Replication",
+      "description": "How far a replica's applier is behind its source, in seconds. A write-heavy test can leave replicas serving stale reads. Reported by replicas only, and only while replication runs.",
+      "unit": "s",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per replica",
+      "recommended": false,
+      "queries": { "prometheus": "max by (instance) (mysql_slave_status_seconds_behind_master${match} or mysql_slave_status_seconds_behind_source${match})" },
+      "names": {
+        "telegraf": { "metric": "mysql.slave_seconds_behind_master", "kind": "gauge", "note": "needs gather_slave_status = true and metric_version = 2; MySQL 8.4 needs gather_replica_status, which names it slave_seconds_behind_source" },
+        "datadog": { "metric": "mysql.replication.seconds_behind_source", "kind": "gauge", "note": "needs replication: true in the MySQL check's options (on with dbm: true)" },
+        "otel": { "metric": "mysql.replica.time_behind_source", "kind": "gauge", "note": "off by default: enable it under the mysql receiver's metrics; read on the replica" },
+        "cloudwatch": { "metric": "AWS/RDS:ReplicaLag", "kind": "gauge", "note": "RDS read replicas; statistic Maximum, per DBInstanceIdentifier" }
+      }
+    }
+  ]
+}

@@ -1,0 +1,189 @@
+{
+  "$schema": "https://aharon890.github.io/jmeter-web-insight-report/schema/report-annotations.schema.json",
+  "version": "1.0",
+  "testNotes": "## Assertion rules — E25\n\nEvery status the gate can produce, in one run, so the report's Asserts tab can be\nasserted against something that renders all of them.",
+  "_comment": [
+    "Thresholds here are extreme on purpose. This fixture's job is to render one of every",
+    "rule state — PASS, WARN, FAIL, UNMATCHED, DISABLED, INVALID — on any machine,",
+    "and a realistic limit would make the verdict depend on how fast the runner happened to be.",
+    "The scenarios run 4-up, so a threshold anywhere near the observed value would turn a",
+    "browser test into a coin toss.",
+    "",
+    "This key is also doing a second job: it is an unknown key, and the round-trip guarantee",
+    "says it must survive being saved from the report.",
+    "",
+    "loadValidity's target is deliberately tiny for the same machine-independence reason: the",
+    "point of the fixture is that the legacy block is FOLDED INTO assertions[] at load and the",
+    "block itself is consumed, so what the tab shows and what a save writes back are ordinary",
+    "rules with no second dialect behind them. Whether a shortfall is detected is arithmetic,",
+    "and that is unit-tested in GateEvaluationTest where no runner speed can reach it. Both",
+    "bands are declared because the block supplies no default consequence — a loadValidity with",
+    "neither warn nor fail judges nothing at all, deliberately."
+  ],
+  "assertions": [
+    {
+      "id": "fast-api-p95",
+      "description": "Comfortably inside budget — the PASS row",
+      "target": {
+        "sampler": "Fast API"
+      },
+      "metric": "p95",
+      "warn": {
+        "gt": 500000
+      },
+      "fail": {
+        "gt": 999999
+      }
+    },
+    {
+      "id": "moderate-api-p95",
+      "description": "Over the warn band, under the fail band — the WARN row",
+      "target": {
+        "sampler": "Moderate API"
+      },
+      "metric": "p95",
+      "warn": {
+        "gt": 1
+      },
+      "fail": {
+        "gt": 999999
+      }
+    },
+    {
+      "id": "slow-api-p95",
+      "description": "Breaches — the FAIL row",
+      "target": {
+        "sampler": "Slow API"
+      },
+      "metric": "p95",
+      "warn": {
+        "gt": 1
+      },
+      "fail": {
+        "gt": 2
+      }
+    },
+    {
+      "id": "api-error-rate",
+      "description": "A pattern matching several samplers, all passing",
+      "target": {
+        "match": "*API"
+      },
+      "metric": "errorRate",
+      "fail": {
+        "gt": 99
+      }
+    },
+    {
+      "id": "run-throughput",
+      "description": "Whole-run scope — no sampler to hang off",
+      "target": {
+        "scope": "overall"
+      },
+      "metric": "throughput",
+      "fail": {
+        "lt": 0.001
+      }
+    },
+    {
+      "id": "run-apdex-ceiling",
+      "description": "A whole-run apdex ceiling. Deliberately unreachable — apdex is bounded at 1 by definition — so the row is PASS on any machine. Upward rather than a floor: a downward band on apdex has to sit at or below 0 to be unreachable, and the validator correctly calls that out as a rule that can never fire.",
+      "target": {
+        "scope": "overall"
+      },
+      "metric": "apdex",
+      "fail": {
+        "gt": 2
+      }
+    },
+    {
+      "id": "slow-api-tail",
+      "description": "An off-grid percentile — p99.9 is resolved from the retained digest, not the standard grid. Deliberately unreachable so the row is PASS on any machine.",
+      "target": {
+        "sampler": "Slow API"
+      },
+      "metric": "p99.9",
+      "fail": {
+        "gt": 999999
+      }
+    },
+    {
+      "id": "renamed-sampler",
+      "description": "The typo case — this sampler is not in the run",
+      "target": {
+        "sampler": "Fast APIs"
+      },
+      "metric": "p95",
+      "fail": {
+        "gt": 100
+      }
+    },
+    {
+      "_why": "No id on purpose. The loader labels it assertions[N] so findings and JUnit testcases can name it, and that label must NOT be written back into the file as a real id - it is positional, so inserting a rule above it would make the name a lie.",
+      "description": "An id-less rule, which the loader has to name and the report must not rename",
+      "target": {
+        "sampler": "Moderate API"
+      },
+      "metric": "p90",
+      "fail": {
+        "gt": 999999
+      }
+    },
+    {
+      "id": "unknown-metric",
+      "description": "Cannot run — the INVALID row. Logs one ERROR per run, on purpose.",
+      "target": {
+        "sampler": "Fast API"
+      },
+      "metric": "p95x",
+      "fail": {
+        "gt": 1
+      }
+    },
+    {
+      "id": "parked-rule",
+      "description": "Kept in the file, not evaluated",
+      "target": {
+        "sampler": "Fast API"
+      },
+      "metric": "mean",
+      "fail": {
+        "gt": 1
+      },
+      "enabled": false
+    },
+    {
+      "id": "smoke-only-rule",
+      "description": "A second PASS row, so the sort and filter specs have two of them to order",
+      "target": {
+        "sampler": "Fast API"
+      },
+      "metric": "p99",
+      "fail": {
+        "gt": 999999
+      },
+      "owner": "perf-team",
+      "_ticket": "PERF-1042"
+    }
+  ],
+  "loadValidity": {
+    "metric": "throughput",
+    "target": 0.002,
+    "warn": {
+      "tolerance": 0.25
+    },
+    "fail": {
+      "tolerance": 0.5
+    }
+  },
+  "samplerNotes": {
+    "Slow API": "Deliberately slow — the fixture needs a sampler that breaches."
+  },
+  "timelineMarkers": [
+    {
+      "timestamp": 1700000005000,
+      "label": "Ramp-up complete",
+      "type": "info"
+    }
+  ]
+}

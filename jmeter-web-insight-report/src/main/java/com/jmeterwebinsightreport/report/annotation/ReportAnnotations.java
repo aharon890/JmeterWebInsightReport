@@ -1,6 +1,7 @@
 package com.jmeterwebinsightreport.report.annotation;
 
-import com.jmeterwebinsightreport.core.sla.SlaEvaluator;
+import com.fasterxml.jackson.annotation.JsonAnyGetter;
+import com.fasterxml.jackson.annotation.JsonAnySetter;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -15,13 +16,88 @@ public class ReportAnnotations {
 
     private String version = "1.0";
     private String testNotes = "";
-    private String verdict = "";
     private List<TimelineMarker> timelineMarkers = new ArrayList<>();
     private Map<String, String> samplerNotes = new LinkedHashMap<>();
-    private Map<String, SlaThresholdConfig> slaThresholds = new LinkedHashMap<>();
     private ComparisonThresholdConfig comparisonThresholds;
+    private List<AssertionConfig> assertions = new ArrayList<>();
+    private LoadValidityConfig loadValidity;
+    private ServerMetricsJson serverMetrics;
+
+    /**
+     * Keys this version does not recognise, kept verbatim.
+     *
+     * <p>The report can save this file back, and a save that silently dropped whatever it did
+     * not understand would punish anyone who hand-added a key, or who opened a file written by
+     * a newer plugin in an older one. Round-tripping the unknown is the difference between an
+     * editor and a lossy converter.
+     */
+    private final Map<String, Object> unknownKeys = new LinkedHashMap<>();
+
+    /** See {@link #migratedRuleId()}. */
+    private String migratedRuleId;
 
     public ReportAnnotations() {
+    }
+
+    @JsonAnySetter
+    public void setUnknownKey(String name, Object value) {
+        unknownKeys.put(name, value);
+    }
+
+    @JsonAnyGetter
+    public Map<String, Object> getUnknownKeys() {
+        return unknownKeys;
+    }
+
+    public LoadValidityConfig getLoadValidity() { return loadValidity; }
+    public void setLoadValidity(LoadValidityConfig loadValidity) { this.loadValidity = loadValidity; }
+
+    /**
+     * The {@code serverMetrics} block as written, or {@code null} when the file has none.
+     *
+     * <p>Typed, like {@code assertions}, so the mapper can name what is wrong in it; captured
+     * with its own unknown keys, so a save still round-trips whatever this version does not
+     * understand. {@code ServerMetricsMapper} turns it into the config the server gates judge.
+     */
+    public ServerMetricsJson getServerMetrics() { return serverMetrics; }
+    public void setServerMetrics(ServerMetricsJson serverMetrics) { this.serverMetrics = serverMetrics; }
+
+    /**
+     * Fold any legacy block into {@code assertions}, so the rest of the system sees one kind of
+     * rule.
+     *
+     * <p>Idempotent by construction — the block is consumed, so a second call has nothing to do —
+     * which is what lets every entry point call it without coordinating. {@code GateEvaluation}
+     * calls it because that is the one place a run is judged and nothing may reach the evaluator
+     * unmigrated; {@code AnnotationLoader} calls it so a caller that only wants to read the
+     * document still gets the migrated shape.
+     *
+     * @return the id of the rule this created, or null when there was nothing to migrate
+     */
+    public String migrateLegacyBlocks() {
+        String id = LoadValidityMigration.apply(this);
+        if (id != null) {
+            migratedRuleId = id;
+        }
+        return id;
+    }
+
+    /**
+     * The id of the rule a legacy block became, whichever call migrated it — or null when none
+     * did.
+     *
+     * <p>Kept because the call that migrates is usually not the one that reports it. Every run
+     * loads its file through {@code AnnotationLoader}, which migrates and consumes the block, so
+     * {@code GateEvaluation}'s own call found nothing and its WARNING finding never fired on a
+     * real run (GAP-1). Not part of the file: no bean accessor, so Jackson never writes it.
+     */
+    public String migratedRuleId() {
+        return migratedRuleId;
+    }
+
+    public List<AssertionConfig> getAssertions() { return assertions; }
+    public void setAssertions(List<AssertionConfig> assertions) {
+        this.assertions = assertions == null ? new ArrayList<AssertionConfig>() : assertions;
     }
 
     public String getVersion() { return version; }
@@ -30,49 +106,53 @@ public class ReportAnnotations {
     public String getTestNotes() { return testNotes; }
     public void setTestNotes(String testNotes) { this.testNotes = testNotes; }
 
-    public String getVerdict() { return verdict; }
-    public void setVerdict(String verdict) { this.verdict = verdict; }
-
     public List<TimelineMarker> getTimelineMarkers() { return timelineMarkers; }
     public void setTimelineMarkers(List<TimelineMarker> timelineMarkers) { this.timelineMarkers = timelineMarkers; }
 
     public Map<String, String> getSamplerNotes() { return samplerNotes; }
     public void setSamplerNotes(Map<String, String> samplerNotes) { this.samplerNotes = samplerNotes; }
 
-    public Map<String, SlaThresholdConfig> getSlaThresholds() { return slaThresholds; }
-    public void setSlaThresholds(Map<String, SlaThresholdConfig> slaThresholds) { this.slaThresholds = slaThresholds; }
-
     public ComparisonThresholdConfig getComparisonThresholds() { return comparisonThresholds; }
     public void setComparisonThresholds(ComparisonThresholdConfig comparisonThresholds) { this.comparisonThresholds = comparisonThresholds; }
 
     /**
-     * SLA thresholds per sampler (or "default" for all).
-     * Keys: sampler name or "default". Values contain metric thresholds.
+     * A LEGACY block, read only so it can be migrated.
+     *
+     * <p>It declared the load the run was supposed to apply, so a shortfall could not pass for a
+     * fast system — a real question, and one JMeter cannot answer on its own because it records
+     * what was achieved and never what was intended.
+     *
+     * <p>It is no longer a mechanism. {@link LoadValidityMigration} folds it into
+     * {@code assertions} at load, where it becomes an ordinary rule the report can edit, disable
+     * and delete. These classes survive only to parse the old shape; nothing writes them back.
      */
-    public static class SlaThresholdConfig implements SlaEvaluator.ThresholdConfig {
-        private Double p95;
-        private Double p99;
-        private Double errorRate;
-        private Double meanResponseTime;
-        private Double apdexThreshold;
+    public static class LoadValidityConfig {
+        private String metric;
+        private Double target;
+        private BandConfig warn;
+        private BandConfig fail;
 
-        public SlaThresholdConfig() {}
+        public String getMetric() { return metric; }
+        public void setMetric(String metric) { this.metric = metric; }
 
-        public Double getP95() { return p95; }
-        public void setP95(Double p95) { this.p95 = p95; }
+        public Double getTarget() { return target; }
+        public void setTarget(Double target) { this.target = target; }
 
-        public Double getP99() { return p99; }
-        public void setP99(Double p99) { this.p99 = p99; }
+        public BandConfig getWarn() { return warn; }
+        public void setWarn(BandConfig warn) { this.warn = warn; }
 
-        public Double getErrorRate() { return errorRate; }
-        public void setErrorRate(Double errorRate) { this.errorRate = errorRate; }
-
-        public Double getMeanResponseTime() { return meanResponseTime; }
-        public void setMeanResponseTime(Double meanResponseTime) { this.meanResponseTime = meanResponseTime; }
-
-        public Double getApdexThreshold() { return apdexThreshold; }
-        public void setApdexThreshold(Double apdexThreshold) { this.apdexThreshold = apdexThreshold; }
+        public BandConfig getFail() { return fail; }
+        public void setFail(BandConfig fail) { this.fail = fail; }
     }
+
+    /** One band of the legacy block: how far under target was still acceptable. */
+    public static class BandConfig {
+        private Double tolerance;
+
+        public Double getTolerance() { return tolerance; }
+        public void setTolerance(Double tolerance) { this.tolerance = tolerance; }
+    }
+
 
     /**
      * Comparison regression thresholds from annotations JSON.
@@ -96,6 +176,91 @@ public class ReportAnnotations {
         public void setP99PctChange(Double v) { this.p99PctChange = v; }
         public Double getThroughputPctChange() { return throughputPctChange; }
         public void setThroughputPctChange(Double v) { this.throughputPctChange = v; }
+    }
+
+    /**
+     * One declared assertion, exactly as written in the file.
+     *
+     * <p>Deliberately dumb: every field is carried through as typed, including a metric name
+     * that does not exist and a band with the wrong number of operators. Validation happens
+     * afterwards, in one place, so that every finding can name the rule and suggest a fix
+     * instead of surfacing as a Jackson parse error that names a line number.
+     */
+    public static class AssertionConfig {
+        private String id;
+        private String description;
+        private TargetConfig target;
+        private String metric;
+        private Map<String, Object> warn;
+        private Map<String, Object> fail;
+        private Boolean enabled;
+        private final Map<String, Object> unknownKeys = new LinkedHashMap<>();
+        /**
+         * The bands a migration could not build, by {@code warn}/{@code fail}, each with the sentence
+         * that says why in the words of the field the file wrote (L3). Not a property: no getter or
+         * setter names it, so Jackson neither reads nor writes it, and a band refused here is written
+         * back as the band itself — the next run, reading the file with no legacy block, refuses that
+         * band in the band reader's words.
+         */
+        private final Map<String, String> bandRefusals = new LinkedHashMap<>();
+
+        public AssertionConfig() {}
+
+        @JsonAnySetter
+        public void setUnknownKey(String name, Object value) { unknownKeys.put(name, value); }
+
+        @JsonAnyGetter
+        public Map<String, Object> getUnknownKeys() { return unknownKeys; }
+
+        /** Record that the {@code warn} or {@code fail} band could not be built, and why. */
+        void refuseBand(String which, String problem) { bandRefusals.put(which, problem); }
+
+        /** Why the {@code warn} or {@code fail} band could not be built, or null. */
+        String bandRefusal(String which) { return bandRefusals.get(which); }
+
+        public String getId() { return id; }
+        public void setId(String id) { this.id = id; }
+        public String getDescription() { return description; }
+        public void setDescription(String description) { this.description = description; }
+        public TargetConfig getTarget() { return target; }
+        public void setTarget(TargetConfig target) { this.target = target; }
+        public String getMetric() { return metric; }
+        public void setMetric(String metric) { this.metric = metric; }
+        public Map<String, Object> getWarn() { return warn; }
+        public void setWarn(Map<String, Object> warn) { this.warn = warn; }
+        public Map<String, Object> getFail() { return fail; }
+        public void setFail(Map<String, Object> fail) { this.fail = fail; }
+        public Boolean getEnabled() { return enabled; }
+        public void setEnabled(Boolean enabled) { this.enabled = enabled; }
+    }
+
+    /** Exactly one of these forms is meant to be set; the validator says so when several are. */
+    public static class TargetConfig {
+        private String sampler;
+        private List<String> samplers;
+        private String match;
+        private List<String> exclude;
+        private String scope;
+        private final Map<String, Object> unknownKeys = new LinkedHashMap<>();
+
+        public TargetConfig() {}
+
+        @JsonAnySetter
+        public void setUnknownKey(String name, Object value) { unknownKeys.put(name, value); }
+
+        @JsonAnyGetter
+        public Map<String, Object> getUnknownKeys() { return unknownKeys; }
+
+        public String getSampler() { return sampler; }
+        public void setSampler(String sampler) { this.sampler = sampler; }
+        public List<String> getSamplers() { return samplers; }
+        public void setSamplers(List<String> samplers) { this.samplers = samplers; }
+        public String getMatch() { return match; }
+        public void setMatch(String match) { this.match = match; }
+        public List<String> getExclude() { return exclude; }
+        public void setExclude(List<String> exclude) { this.exclude = exclude; }
+        public String getScope() { return scope; }
+        public void setScope(String scope) { this.scope = scope; }
     }
 
     /**

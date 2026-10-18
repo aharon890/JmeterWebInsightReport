@@ -1,0 +1,909 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+  <hashTree>
+    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="Report Stress Test — 20 Samplers, 10 Error Types">
+      <stringProp name="TestPlan.comments">Stress test for Web Insight Report: 20 samplers with long names, 10 distinct error types, varied response times and throughput patterns.</stringProp>
+      <elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments">
+        <collectionProp name="Arguments.arguments"/>
+      </elementProp>
+    </TestPlan>
+    <hashTree>
+
+      <!-- ========== Thread Group 1: API Gateway & Auth (5 samplers) ========== -->
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="API Gateway &amp; Authentication Flow">
+        <stringProp name="ThreadGroup.num_threads">${__P(threads,8)}</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">${__P(rampup,10)}</stringProp>
+        <stringProp name="ThreadGroup.duration">${__P(duration,60)}</stringProp>
+        <longProp name="ThreadGroup.delay">0</longProp>
+        <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
+        <boolProp name="ThreadGroup.scheduler">true</boolProp>
+        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController">
+          <intProp name="LoopController.loops">-1</intProp>
+          <boolProp name="LoopController.continue_forever">false</boolProp>
+        </elementProp>
+      </ThreadGroup>
+      <hashTree>
+
+        <!-- Sampler 1 -->
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="POST /api/v3/identity/oauth2/authorize?response_type=code&amp;client_id=webapp-prod&amp;scope=openid+profile+email&amp;redirect_uri=https://dashboard.example.com/auth/callback&amp;state={csrfToken}" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def r = ThreadLocalRandom.current()
+Thread.sleep(r.nextInt(100, 350))
+if (r.nextInt(100) &lt; 4) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;401&quot;)
+    SampleResult.setResponseMessage(&quot;Unauthorized — Invalid client_id or redirect_uri mismatch&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;invalid_client&quot;,&quot;error_description&quot;:&quot;The OAuth client was not found or redirect_uri does not match registered callbacks&quot;}&apos;, &quot;UTF-8&quot;)
+} else {
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;302&quot;)
+    SampleResult.setResponseMessage(&quot;Found&quot;)
+    SampleResult.setResponseData(&apos;{&quot;redirect&quot;:&quot;https://dashboard.example.com/auth/callback?code=abc123&quot;}&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(r.nextInt(200, 400))
+SampleResult.setConnectTime(r.nextInt(5, 25))
+SampleResult.setLatency(r.nextInt(20, 80))
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree>
+          <UniformRandomTimer guiclass="UniformRandomTimerGui" testclass="UniformRandomTimer" testname="Think Time" enabled="true">
+            <stringProp name="ConstantTimer.delay">200</stringProp>
+            <stringProp name="RandomTimer.range">400</stringProp>
+          </UniformRandomTimer>
+          <hashTree/>
+        </hashTree>
+
+        <!-- Sampler 2 -->
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="POST /api/v3/identity/oauth2/token?grant_type=authorization_code&amp;code_verifier={pkceVerifier}&amp;redirect_uri=https://dashboard.example.com/auth/callback" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def r = ThreadLocalRandom.current()
+Thread.sleep(r.nextInt(150, 500))
+if (r.nextInt(100) &lt; 3) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;400&quot;)
+    SampleResult.setResponseMessage(&quot;Bad Request — Authorization code expired or already used&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;invalid_grant&quot;,&quot;error_description&quot;:&quot;The authorization code has expired. Authorization codes are valid for 10 minutes.&quot;}&apos;, &quot;UTF-8&quot;)
+} else {
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;200&quot;)
+    SampleResult.setResponseMessage(&quot;OK&quot;)
+    SampleResult.setResponseData(&apos;{&quot;access_token&quot;:&quot;eyJ...mock&quot;,&quot;token_type&quot;:&quot;Bearer&quot;,&quot;expires_in&quot;:3600,&quot;refresh_token&quot;:&quot;rt_mock&quot;}&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(r.nextInt(300, 600))
+SampleResult.setConnectTime(r.nextInt(5, 30))
+SampleResult.setLatency(r.nextInt(30, 100))
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree>
+          <UniformRandomTimer guiclass="UniformRandomTimerGui" testclass="UniformRandomTimer" testname="Think Time" enabled="true">
+            <stringProp name="ConstantTimer.delay">200</stringProp>
+            <stringProp name="RandomTimer.range">300</stringProp>
+          </UniformRandomTimer>
+          <hashTree/>
+        </hashTree>
+
+        <!-- Sampler 3 -->
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="GET /api/v3/users/me/profile?include=preferences,notifications,subscriptions&amp;expand=organization,teams,roles&amp;fields=all" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def r = ThreadLocalRandom.current()
+Thread.sleep(r.nextInt(50, 200))
+if (r.nextInt(100) &lt; 2) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;403&quot;)
+    SampleResult.setResponseMessage(&quot;Forbidden — Insufficient permissions to access user profile with expanded fields&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;access_denied&quot;,&quot;required_scope&quot;:&quot;profile:read:expanded&quot;}&apos;, &quot;UTF-8&quot;)
+} else {
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;200&quot;)
+    SampleResult.setResponseMessage(&quot;OK&quot;)
+    SampleResult.setResponseData(&apos;{&quot;userId&quot;:&quot;u-12345&quot;,&quot;name&quot;:&quot;Test User&quot;,&quot;email&quot;:&quot;test@example.com&quot;,&quot;org&quot;:&quot;Acme Corp&quot;}&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(r.nextInt(80, 150))
+SampleResult.setConnectTime(r.nextInt(3, 15))
+SampleResult.setLatency(r.nextInt(10, 50))
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree>
+          <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="Think Time" enabled="true">
+            <stringProp name="ConstantTimer.delay">300</stringProp>
+          </ConstantTimer>
+          <hashTree/>
+        </hashTree>
+
+        <!-- Sampler 4 -->
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="PUT /api/v3/users/me/preferences/notification-settings?channels=email,push,sms&amp;timezone=America/Los_Angeles&amp;locale=en-US&amp;digestFrequency=daily" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def r = ThreadLocalRandom.current()
+Thread.sleep(r.nextInt(80, 300))
+if (r.nextInt(100) &lt; 5) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;422&quot;)
+    SampleResult.setResponseMessage(&quot;Unprocessable Entity — Invalid notification channel or timezone format&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;validation_error&quot;,&quot;fields&quot;:{&quot;timezone&quot;:&quot;Unknown timezone identifier&quot;,&quot;digestFrequency&quot;:&quot;Must be one of: hourly, daily, weekly&quot;}}&apos;, &quot;UTF-8&quot;)
+} else {
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;200&quot;)
+    SampleResult.setResponseMessage(&quot;OK&quot;)
+    SampleResult.setResponseData(&apos;{&quot;updated&quot;:true}&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(r.nextInt(150, 350))
+SampleResult.setConnectTime(r.nextInt(3, 20))
+SampleResult.setLatency(r.nextInt(15, 60))
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree>
+          <UniformRandomTimer guiclass="UniformRandomTimerGui" testclass="UniformRandomTimer" testname="Think Time" enabled="true">
+            <stringProp name="ConstantTimer.delay">150</stringProp>
+            <stringProp name="RandomTimer.range">350</stringProp>
+          </UniformRandomTimer>
+          <hashTree/>
+        </hashTree>
+
+        <!-- Sampler 5 -->
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="DELETE /api/v3/identity/sessions/current?revokeRefreshTokens=true&amp;logoutFromAllDevices=false&amp;clearBrowserCookies=true&amp;auditReason=user_initiated" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def r = ThreadLocalRandom.current()
+Thread.sleep(r.nextInt(50, 200))
+if (r.nextInt(100) &lt; 2) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;500&quot;)
+    SampleResult.setResponseMessage(&quot;Internal Server Error — Session store connection pool exhausted&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;internal_error&quot;,&quot;message&quot;:&quot;Redis connection pool exhausted, unable to revoke session tokens&quot;,&quot;retryable&quot;:true}&apos;, &quot;UTF-8&quot;)
+} else {
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;204&quot;)
+    SampleResult.setResponseMessage(&quot;No Content&quot;)
+    SampleResult.setResponseData(&apos;&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(r.nextInt(60, 120))
+SampleResult.setConnectTime(r.nextInt(3, 15))
+SampleResult.setLatency(r.nextInt(10, 40))
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree>
+          <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="Think Time" enabled="true">
+            <stringProp name="ConstantTimer.delay">400</stringProp>
+          </ConstantTimer>
+          <hashTree/>
+        </hashTree>
+
+      </hashTree>
+
+      <!-- ========== Thread Group 2: Marketplace & Catalog (5 samplers) ========== -->
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Marketplace Catalog &amp; Search">
+        <stringProp name="ThreadGroup.num_threads">${__P(threads,8)}</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">${__P(rampup,10)}</stringProp>
+        <stringProp name="ThreadGroup.duration">${__P(duration,60)}</stringProp>
+        <longProp name="ThreadGroup.delay">2</longProp>
+        <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
+        <boolProp name="ThreadGroup.scheduler">true</boolProp>
+        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController">
+          <intProp name="LoopController.loops">-1</intProp>
+          <boolProp name="LoopController.continue_forever">false</boolProp>
+        </elementProp>
+      </ThreadGroup>
+      <hashTree>
+
+        <!-- Sampler 6 -->
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="GET /api/v3/marketplace/catalog/products/search?query={searchTerm}&amp;category=electronics&amp;minPrice=10&amp;maxPrice=5000&amp;sortBy=relevance&amp;page=1&amp;pageSize=48&amp;facets=brand,rating,shipping" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def r = ThreadLocalRandom.current()
+def delay = r.nextInt(200, 700)
+if (r.nextInt(100) &lt; 12) delay += r.nextInt(300, 800) // slow queries
+Thread.sleep(delay)
+def roll = r.nextInt(100)
+if (roll &lt; 3) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;504&quot;)
+    SampleResult.setResponseMessage(&quot;Gateway Timeout — Elasticsearch cluster did not respond within 30s deadline&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;search_timeout&quot;,&quot;message&quot;:&quot;Elasticsearch query exceeded 30000ms deadline. Cluster health: YELLOW, active shards: 47/50&quot;}&apos;, &quot;UTF-8&quot;)
+} else if (roll &lt; 5) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;503&quot;)
+    SampleResult.setResponseMessage(&quot;Service Unavailable — Search index is being rebuilt after schema migration&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;index_rebuilding&quot;,&quot;eta_seconds&quot;:120,&quot;progress&quot;:&quot;67%&quot;}&apos;, &quot;UTF-8&quot;)
+} else {
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;200&quot;)
+    SampleResult.setResponseMessage(&quot;OK&quot;)
+    SampleResult.setResponseData(&apos;{&quot;totalResults&quot;:&apos; + r.nextInt(0, 5000) + &apos;,&quot;page&quot;:1,&quot;results&quot;:[],&quot;facets&quot;:{}}&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(r.nextInt(100, 250))
+SampleResult.setConnectTime(r.nextInt(5, 35))
+SampleResult.setLatency(r.nextInt(30, 120))
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree>
+          <UniformRandomTimer guiclass="UniformRandomTimerGui" testclass="UniformRandomTimer" testname="Think Time" enabled="true">
+            <stringProp name="ConstantTimer.delay">300</stringProp>
+            <stringProp name="RandomTimer.range">500</stringProp>
+          </UniformRandomTimer>
+          <hashTree/>
+        </hashTree>
+
+        <!-- Sampler 7 -->
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="GET /api/v3/marketplace/catalog/products/{productId}/details?includeReviews=true&amp;reviewsLimit=25&amp;includeQA=true&amp;includeSimilar=true&amp;currency=USD&amp;warehouse=US-WEST-2" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def r = ThreadLocalRandom.current()
+Thread.sleep(r.nextInt(80, 400))
+if (r.nextInt(100) &lt; 3) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;404&quot;)
+    SampleResult.setResponseMessage(&quot;Not Found — Product ID does not exist or has been delisted by the seller&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;product_not_found&quot;,&quot;productId&quot;:&quot;PROD-99999&quot;,&quot;suggestion&quot;:&quot;This product may have been removed. Try searching for similar items.&quot;}&apos;, &quot;UTF-8&quot;)
+} else {
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;200&quot;)
+    SampleResult.setResponseMessage(&quot;OK&quot;)
+    SampleResult.setResponseData(&apos;{&quot;id&quot;:&quot;PROD-&apos; + r.nextInt(1,999) + &apos;&quot;,&quot;name&quot;:&quot;Widget&quot;,&quot;price&quot;:&apos; + String.format(&quot;%.2f&quot;, r.nextDouble(5, 2000)) + &apos;}&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(r.nextInt(80, 180))
+SampleResult.setConnectTime(r.nextInt(3, 20))
+SampleResult.setLatency(r.nextInt(15, 70))
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree>
+          <UniformRandomTimer guiclass="UniformRandomTimerGui" testclass="UniformRandomTimer" testname="Think Time" enabled="true">
+            <stringProp name="ConstantTimer.delay">200</stringProp>
+            <stringProp name="RandomTimer.range">400</stringProp>
+          </UniformRandomTimer>
+          <hashTree/>
+        </hashTree>
+
+        <!-- Sampler 8 -->
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="GET /api/v3/marketplace/sellers/{sellerId}/storefront?includeProducts=true&amp;productLimit=20&amp;includeRatings=true&amp;includeReturnPolicy=true&amp;includeShippingZones=true" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def r = ThreadLocalRandom.current()
+Thread.sleep(r.nextInt(100, 500))
+SampleResult.setSuccessful(true)
+SampleResult.setResponseCode(&quot;200&quot;)
+SampleResult.setResponseMessage(&quot;OK&quot;)
+SampleResult.setResponseData(&apos;{&quot;sellerId&quot;:&quot;S-&apos; + r.nextInt(1,100) + &apos;&quot;,&quot;products&quot;:20,&quot;rating&quot;:4.7}&apos;, &quot;UTF-8&quot;)
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(r.nextInt(90, 200))
+SampleResult.setConnectTime(r.nextInt(5, 25))
+SampleResult.setLatency(r.nextInt(20, 80))
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree>
+          <UniformRandomTimer guiclass="UniformRandomTimerGui" testclass="UniformRandomTimer" testname="Think Time" enabled="true">
+            <stringProp name="ConstantTimer.delay">250</stringProp>
+            <stringProp name="RandomTimer.range">450</stringProp>
+          </UniformRandomTimer>
+          <hashTree/>
+        </hashTree>
+
+        <!-- Sampler 9 -->
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="POST /api/v3/marketplace/catalog/products/{productId}/reviews?includePhotos=true&amp;verifiedPurchaseOnly=false&amp;moderationLevel=auto" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def r = ThreadLocalRandom.current()
+Thread.sleep(r.nextInt(100, 350))
+if (r.nextInt(100) &lt; 6) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;429&quot;)
+    SampleResult.setResponseMessage(&quot;Too Many Requests — Rate limit exceeded: max 10 reviews per hour per user&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;rate_limit_exceeded&quot;,&quot;limit&quot;:10,&quot;window&quot;:&quot;1h&quot;,&quot;retry_after&quot;:1847}&apos;, &quot;UTF-8&quot;)
+} else {
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;201&quot;)
+    SampleResult.setResponseMessage(&quot;Created&quot;)
+    SampleResult.setResponseData(&apos;{&quot;reviewId&quot;:&quot;RV-&apos; + r.nextInt(1,9999) + &apos;&quot;,&quot;status&quot;:&quot;pending_moderation&quot;}&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(r.nextInt(200, 500))
+SampleResult.setConnectTime(r.nextInt(3, 18))
+SampleResult.setLatency(r.nextInt(15, 65))
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree>
+          <UniformRandomTimer guiclass="UniformRandomTimerGui" testclass="UniformRandomTimer" testname="Think Time" enabled="true">
+            <stringProp name="ConstantTimer.delay">300</stringProp>
+            <stringProp name="RandomTimer.range">600</stringProp>
+          </UniformRandomTimer>
+          <hashTree/>
+        </hashTree>
+
+        <!-- Sampler 10 -->
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="GET /api/v3/marketplace/recommendations/personalized?userId={userId}&amp;algorithm=collaborative-filtering&amp;maxItems=12&amp;excludeViewed=true&amp;boostCategory=recent-purchases" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def r = ThreadLocalRandom.current()
+def delay = r.nextInt(150, 600)
+if (r.nextInt(100) &lt; 8) delay += r.nextInt(200, 600) // ML model latency spikes
+Thread.sleep(delay)
+if (r.nextInt(100) &lt; 2) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;500&quot;)
+    SampleResult.setResponseMessage(&quot;Internal Server Error — ML recommendation model failed to score candidates&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;model_inference_error&quot;,&quot;model_version&quot;:&quot;v2.7.3&quot;,&quot;message&quot;:&quot;TensorFlow Serving returned status UNAVAILABLE&quot;}&apos;, &quot;UTF-8&quot;)
+} else {
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;200&quot;)
+    SampleResult.setResponseMessage(&quot;OK&quot;)
+    SampleResult.setResponseData(&apos;{&quot;recommendations&quot;:[],&quot;model&quot;:&quot;cf-v2.7&quot;,&quot;count&quot;:12}&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(r.nextInt(100, 220))
+SampleResult.setConnectTime(r.nextInt(5, 30))
+SampleResult.setLatency(r.nextInt(25, 100))
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree>
+          <UniformRandomTimer guiclass="UniformRandomTimerGui" testclass="UniformRandomTimer" testname="Think Time" enabled="true">
+            <stringProp name="ConstantTimer.delay">200</stringProp>
+            <stringProp name="RandomTimer.range">500</stringProp>
+          </UniformRandomTimer>
+          <hashTree/>
+        </hashTree>
+
+      </hashTree>
+
+      <!-- ========== Thread Group 3: Shopping Cart & Checkout (5 samplers) ========== -->
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Shopping Cart &amp; Checkout Pipeline">
+        <stringProp name="ThreadGroup.num_threads">${__P(threads,8)}</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">${__P(rampup,10)}</stringProp>
+        <stringProp name="ThreadGroup.duration">${__P(duration,60)}</stringProp>
+        <longProp name="ThreadGroup.delay">5</longProp>
+        <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
+        <boolProp name="ThreadGroup.scheduler">true</boolProp>
+        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController">
+          <intProp name="LoopController.loops">-1</intProp>
+          <boolProp name="LoopController.continue_forever">false</boolProp>
+        </elementProp>
+      </ThreadGroup>
+      <hashTree>
+
+        <!-- Sampler 11 -->
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="POST /api/v3/shopping-cart/{cartId}/items/add?applyPromotions=true&amp;loyaltyTier=PLATINUM&amp;shippingEstimate=true&amp;giftWrapAvailable=true&amp;reserveInventory=300s" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def r = ThreadLocalRandom.current()
+Thread.sleep(r.nextInt(80, 350))
+if (r.nextInt(100) &lt; 4) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;409&quot;)
+    SampleResult.setResponseMessage(&quot;Conflict — Item out of stock or inventory reservation expired&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;inventory_conflict&quot;,&quot;message&quot;:&quot;Requested quantity (3) exceeds available stock (0) for SKU-78432. Last restock ETA: 2024-03-25.&quot;}&apos;, &quot;UTF-8&quot;)
+} else {
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;200&quot;)
+    SampleResult.setResponseMessage(&quot;OK&quot;)
+    SampleResult.setResponseData(&apos;{&quot;cartId&quot;:&quot;cart-abc&quot;,&quot;items&quot;:&apos; + r.nextInt(1,8) + &apos;,&quot;total&quot;:&apos; + String.format(&quot;%.2f&quot;, r.nextDouble(15, 800)) + &apos;}&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(r.nextInt(150, 350))
+SampleResult.setConnectTime(r.nextInt(3, 20))
+SampleResult.setLatency(r.nextInt(15, 60))
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree>
+          <UniformRandomTimer guiclass="UniformRandomTimerGui" testclass="UniformRandomTimer" testname="Think Time" enabled="true">
+            <stringProp name="ConstantTimer.delay">300</stringProp>
+            <stringProp name="RandomTimer.range">500</stringProp>
+          </UniformRandomTimer>
+          <hashTree/>
+        </hashTree>
+
+        <!-- Sampler 12 -->
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="POST /api/v3/shopping-cart/{cartId}/promotions/apply?couponCode={code}&amp;autoDiscover=true&amp;stackable=true&amp;membershipDiscount=true" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def r = ThreadLocalRandom.current()
+Thread.sleep(r.nextInt(60, 250))
+if (r.nextInt(100) &lt; 8) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;422&quot;)
+    SampleResult.setResponseMessage(&quot;Unprocessable Entity — Coupon code is expired, already used, or not applicable to cart items&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;coupon_invalid&quot;,&quot;code&quot;:&quot;SAVE20&quot;,&quot;reason&quot;:&quot;Coupon expired on 2024-01-31. Minimum cart value $50 not met.&quot;}&apos;, &quot;UTF-8&quot;)
+} else {
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;200&quot;)
+    SampleResult.setResponseMessage(&quot;OK&quot;)
+    SampleResult.setResponseData(&apos;{&quot;discount&quot;:&apos; + String.format(&quot;%.2f&quot;, r.nextDouble(2, 50)) + &apos;,&quot;applied&quot;:true}&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(r.nextInt(100, 250))
+SampleResult.setConnectTime(r.nextInt(3, 15))
+SampleResult.setLatency(r.nextInt(10, 50))
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree>
+          <UniformRandomTimer guiclass="UniformRandomTimerGui" testclass="UniformRandomTimer" testname="Think Time" enabled="true">
+            <stringProp name="ConstantTimer.delay">200</stringProp>
+            <stringProp name="RandomTimer.range">400</stringProp>
+          </UniformRandomTimer>
+          <hashTree/>
+        </hashTree>
+
+        <!-- Sampler 13 -->
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="POST /api/v3/checkout/shipping/calculate-rates?origin=WAREHOUSE-US-WEST-2&amp;destination={zipCode}&amp;weight={totalWeight}&amp;carriers=ups,fedex,usps&amp;insurance=true" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def r = ThreadLocalRandom.current()
+def delay = r.nextInt(200, 600)
+if (r.nextInt(100) &lt; 5) delay += r.nextInt(400, 1000) // carrier API slow
+Thread.sleep(delay)
+if (r.nextInt(100) &lt; 3) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;502&quot;)
+    SampleResult.setResponseMessage(&quot;Bad Gateway — UPS Rate API returned malformed XML response&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;carrier_api_error&quot;,&quot;carrier&quot;:&quot;UPS&quot;,&quot;message&quot;:&quot;Upstream carrier API returned non-200 status. Raw: 503 Service Temporarily Unavailable&quot;}&apos;, &quot;UTF-8&quot;)
+} else {
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;200&quot;)
+    SampleResult.setResponseMessage(&quot;OK&quot;)
+    SampleResult.setResponseData(&apos;{&quot;rates&quot;:[{&quot;carrier&quot;:&quot;UPS&quot;,&quot;price&quot;:12.99},{&quot;carrier&quot;:&quot;FedEx&quot;,&quot;price&quot;:14.50}]}&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(r.nextInt(120, 280))
+SampleResult.setConnectTime(r.nextInt(8, 40))
+SampleResult.setLatency(r.nextInt(30, 120))
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree>
+          <UniformRandomTimer guiclass="UniformRandomTimerGui" testclass="UniformRandomTimer" testname="Think Time" enabled="true">
+            <stringProp name="ConstantTimer.delay">400</stringProp>
+            <stringProp name="RandomTimer.range">600</stringProp>
+          </UniformRandomTimer>
+          <hashTree/>
+        </hashTree>
+
+        <!-- Sampler 14 -->
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="POST /api/v3/checkout/payments/process?provider=stripe&amp;method=card&amp;3dsecure=required&amp;idempotencyKey={uuid}&amp;savePaymentMethod=true&amp;fraudCheck=enhanced" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def r = ThreadLocalRandom.current()
+def delay = r.nextInt(400, 1000)
+if (r.nextInt(100) &lt; 15) delay += r.nextInt(500, 1500) // 3DS challenge
+Thread.sleep(delay)
+def roll = r.nextInt(100)
+if (roll &lt; 5) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;402&quot;)
+    SampleResult.setResponseMessage(&quot;Payment Required — Card declined by issuing bank (insufficient funds)&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;payment_declined&quot;,&quot;decline_code&quot;:&quot;insufficient_funds&quot;,&quot;message&quot;:&quot;The card was declined. Please try a different payment method.&quot;,&quot;stripe_error_id&quot;:&quot;err_1N...&quot;}&apos;, &quot;UTF-8&quot;)
+} else if (roll &lt; 8) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;500&quot;)
+    SampleResult.setResponseMessage(&quot;Internal Server Error — Payment gateway timeout during 3D Secure authentication&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;gateway_timeout&quot;,&quot;provider&quot;:&quot;stripe&quot;,&quot;message&quot;:&quot;3DS authentication timed out after 30s. Transaction rolled back.&quot;}&apos;, &quot;UTF-8&quot;)
+} else {
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;201&quot;)
+    SampleResult.setResponseMessage(&quot;Created&quot;)
+    SampleResult.setResponseData(&apos;{&quot;paymentId&quot;:&quot;pi_&apos; + r.nextInt(100000,999999) + &apos;&quot;,&quot;status&quot;:&quot;succeeded&quot;}&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(r.nextInt(400, 800))
+SampleResult.setConnectTime(r.nextInt(10, 50))
+SampleResult.setLatency(r.nextInt(50, 200))
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree>
+          <UniformRandomTimer guiclass="UniformRandomTimerGui" testclass="UniformRandomTimer" testname="Think Time" enabled="true">
+            <stringProp name="ConstantTimer.delay">500</stringProp>
+            <stringProp name="RandomTimer.range">1000</stringProp>
+          </UniformRandomTimer>
+          <hashTree/>
+        </hashTree>
+
+        <!-- Sampler 15 -->
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="POST /api/v3/orders/create-from-cart?cartId={cartId}&amp;paymentId={paymentId}&amp;sendConfirmationEmail=true&amp;generateInvoice=true&amp;notifySeller=true&amp;triggerFulfillment=async" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def r = ThreadLocalRandom.current()
+Thread.sleep(r.nextInt(200, 600))
+if (r.nextInt(100) &lt; 2) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;500&quot;)
+    SampleResult.setResponseMessage(&quot;Internal Server Error — Order creation failed: database deadlock on inventory table&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;order_creation_failed&quot;,&quot;message&quot;:&quot;Transaction deadlock detected on inventory_reservations table. Retried 3 times.&quot;,&quot;trace_id&quot;:&quot;abc-123-def&quot;}&apos;, &quot;UTF-8&quot;)
+} else {
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;201&quot;)
+    SampleResult.setResponseMessage(&quot;Created&quot;)
+    SampleResult.setResponseData(&apos;{&quot;orderId&quot;:&quot;ORD-&apos; + System.currentTimeMillis() + &apos;&quot;,&quot;status&quot;:&quot;confirmed&quot;}&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(r.nextInt(200, 450))
+SampleResult.setConnectTime(r.nextInt(5, 25))
+SampleResult.setLatency(r.nextInt(25, 90))
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree>
+          <UniformRandomTimer guiclass="UniformRandomTimerGui" testclass="UniformRandomTimer" testname="Think Time" enabled="true">
+            <stringProp name="ConstantTimer.delay">400</stringProp>
+            <stringProp name="RandomTimer.range">800</stringProp>
+          </UniformRandomTimer>
+          <hashTree/>
+        </hashTree>
+
+      </hashTree>
+
+      <!-- ========== Thread Group 4: Order Management & Fulfillment (5 samplers) ========== -->
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Order Management &amp; Fulfillment">
+        <stringProp name="ThreadGroup.num_threads">${__P(threads,8)}</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">${__P(rampup,10)}</stringProp>
+        <stringProp name="ThreadGroup.duration">${__P(duration,60)}</stringProp>
+        <longProp name="ThreadGroup.delay">8</longProp>
+        <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
+        <boolProp name="ThreadGroup.scheduler">true</boolProp>
+        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController">
+          <intProp name="LoopController.loops">-1</intProp>
+          <boolProp name="LoopController.continue_forever">false</boolProp>
+        </elementProp>
+      </ThreadGroup>
+      <hashTree>
+
+        <!-- Sampler 16 -->
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="GET /api/v3/orders/{orderId}/tracking?includeShipmentHistory=true&amp;includeCarrierDetails=true&amp;includeEstimatedDelivery=true&amp;includeProofOfDelivery=true" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def r = ThreadLocalRandom.current()
+Thread.sleep(r.nextInt(100, 400))
+SampleResult.setSuccessful(true)
+SampleResult.setResponseCode(&quot;200&quot;)
+SampleResult.setResponseMessage(&quot;OK&quot;)
+SampleResult.setResponseData(&apos;{&quot;orderId&quot;:&quot;ORD-123&quot;,&quot;status&quot;:&quot;in_transit&quot;,&quot;carrier&quot;:&quot;UPS&quot;,&quot;eta&quot;:&quot;2024-03-20&quot;}&apos;, &quot;UTF-8&quot;)
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(r.nextInt(80, 160))
+SampleResult.setConnectTime(r.nextInt(3, 18))
+SampleResult.setLatency(r.nextInt(15, 60))
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree>
+          <UniformRandomTimer guiclass="UniformRandomTimerGui" testclass="UniformRandomTimer" testname="Think Time" enabled="true">
+            <stringProp name="ConstantTimer.delay">300</stringProp>
+            <stringProp name="RandomTimer.range">500</stringProp>
+          </UniformRandomTimer>
+          <hashTree/>
+        </hashTree>
+
+        <!-- Sampler 17 -->
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="POST /api/v3/orders/{orderId}/returns/initiate?reason={reasonCode}&amp;refundMethod=original_payment&amp;pickupRequested=true&amp;qualityInspection=required&amp;restockingFee=waived" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def r = ThreadLocalRandom.current()
+Thread.sleep(r.nextInt(150, 500))
+if (r.nextInt(100) &lt; 7) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;422&quot;)
+    SampleResult.setResponseMessage(&quot;Unprocessable Entity — Return window expired (30 days) or item not eligible for return&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;return_not_eligible&quot;,&quot;reason&quot;:&quot;Return window of 30 days has expired. Order delivered on 2024-01-15.&quot;,&quot;order_id&quot;:&quot;ORD-456&quot;}&apos;, &quot;UTF-8&quot;)
+} else {
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;201&quot;)
+    SampleResult.setResponseMessage(&quot;Created&quot;)
+    SampleResult.setResponseData(&apos;{&quot;returnId&quot;:&quot;RET-&apos; + r.nextInt(1,9999) + &apos;&quot;,&quot;status&quot;:&quot;initiated&quot;,&quot;label&quot;:&quot;generated&quot;}&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(r.nextInt(180, 400))
+SampleResult.setConnectTime(r.nextInt(5, 25))
+SampleResult.setLatency(r.nextInt(20, 80))
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree>
+          <UniformRandomTimer guiclass="UniformRandomTimerGui" testclass="UniformRandomTimer" testname="Think Time" enabled="true">
+            <stringProp name="ConstantTimer.delay">400</stringProp>
+            <stringProp name="RandomTimer.range">600</stringProp>
+          </UniformRandomTimer>
+          <hashTree/>
+        </hashTree>
+
+        <!-- Sampler 18 -->
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="GET /api/v3/users/{userId}/orders/history?page=1&amp;pageSize=25&amp;sortBy=createdAt&amp;sortOrder=desc&amp;includeReturns=true&amp;includeRefunds=true&amp;dateFrom=2023-01-01" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def r = ThreadLocalRandom.current()
+Thread.sleep(r.nextInt(100, 450))
+SampleResult.setSuccessful(true)
+SampleResult.setResponseCode(&quot;200&quot;)
+SampleResult.setResponseMessage(&quot;OK&quot;)
+SampleResult.setResponseData(&apos;{&quot;totalOrders&quot;:&apos; + r.nextInt(1, 200) + &apos;,&quot;page&quot;:1,&quot;orders&quot;:[]}&apos;, &quot;UTF-8&quot;)
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(r.nextInt(90, 200))
+SampleResult.setConnectTime(r.nextInt(3, 20))
+SampleResult.setLatency(r.nextInt(15, 70))
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree>
+          <UniformRandomTimer guiclass="UniformRandomTimerGui" testclass="UniformRandomTimer" testname="Think Time" enabled="true">
+            <stringProp name="ConstantTimer.delay">250</stringProp>
+            <stringProp name="RandomTimer.range">450</stringProp>
+          </UniformRandomTimer>
+          <hashTree/>
+        </hashTree>
+
+        <!-- Sampler 19 -->
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="POST /api/v3/fulfillment/warehouse/{warehouseId}/pick-pack-ship?orderId={orderId}&amp;priority=express&amp;labelFormat=ZPL&amp;notifyCustomer=true&amp;batchId={batchId}" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def r = ThreadLocalRandom.current()
+def delay = r.nextInt(300, 800)
+if (r.nextInt(100) &lt; 10) delay += r.nextInt(500, 1500) // label printer queue
+Thread.sleep(delay)
+def roll = r.nextInt(100)
+if (roll &lt; 3) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;503&quot;)
+    SampleResult.setResponseMessage(&quot;Service Unavailable — Warehouse management system offline for maintenance window&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;wms_offline&quot;,&quot;warehouse&quot;:&quot;US-WEST-2&quot;,&quot;maintenance_window&quot;:&quot;02:00-04:00 UTC&quot;,&quot;message&quot;:&quot;WMS is undergoing scheduled maintenance. Orders will be queued.&quot;}&apos;, &quot;UTF-8&quot;)
+} else if (roll &lt; 5) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;409&quot;)
+    SampleResult.setResponseMessage(&quot;Conflict — Order already fulfilled or cancelled, cannot process again&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;duplicate_fulfillment&quot;,&quot;message&quot;:&quot;Order ORD-789 has already been shipped via tracking 1Z999...&quot;}&apos;, &quot;UTF-8&quot;)
+} else {
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;200&quot;)
+    SampleResult.setResponseMessage(&quot;OK&quot;)
+    SampleResult.setResponseData(&apos;{&quot;shipmentId&quot;:&quot;SHP-&apos; + r.nextInt(10000,99999) + &apos;&quot;,&quot;tracking&quot;:&quot;1Z999AA1&quot;,&quot;status&quot;:&quot;shipped&quot;}&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(r.nextInt(200, 500))
+SampleResult.setConnectTime(r.nextInt(8, 40))
+SampleResult.setLatency(r.nextInt(40, 150))
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree>
+          <UniformRandomTimer guiclass="UniformRandomTimerGui" testclass="UniformRandomTimer" testname="Think Time" enabled="true">
+            <stringProp name="ConstantTimer.delay">500</stringProp>
+            <stringProp name="RandomTimer.range">800</stringProp>
+          </UniformRandomTimer>
+          <hashTree/>
+        </hashTree>
+
+        <!-- Sampler 20 -->
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="POST /api/v3/notifications/send-batch?channels=email,push,sms&amp;templateId=order-status-update&amp;priority=high&amp;deduplicationKey={orderId}&amp;scheduleAt=immediate&amp;trackOpens=true" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def r = ThreadLocalRandom.current()
+Thread.sleep(r.nextInt(50, 250))
+if (r.nextInt(100) &lt; 4) {
+    if (r.nextBoolean()) {
+        SampleResult.setSuccessful(false)
+        SampleResult.setResponseCode(&quot;429&quot;)
+        SampleResult.setResponseMessage(&quot;Too Many Requests — SendGrid API rate limit exceeded (100 emails/sec)&quot;)
+        SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;rate_limited&quot;,&quot;provider&quot;:&quot;sendgrid&quot;,&quot;limit&quot;:100,&quot;retry_after_ms&quot;:1500}&apos;, &quot;UTF-8&quot;)
+    } else {
+        SampleResult.setSuccessful(false)
+        SampleResult.setResponseCode(&quot;502&quot;)
+        SampleResult.setResponseMessage(&quot;Bad Gateway — Push notification provider (FCM) returned invalid response&quot;)
+        SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;push_delivery_failed&quot;,&quot;provider&quot;:&quot;FCM&quot;,&quot;message&quot;:&quot;Firebase Cloud Messaging returned HTTP 500 for batch delivery&quot;}&apos;, &quot;UTF-8&quot;)
+    }
+} else {
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;202&quot;)
+    SampleResult.setResponseMessage(&quot;Accepted&quot;)
+    SampleResult.setResponseData(&apos;{&quot;batchId&quot;:&quot;NB-&apos; + r.nextInt(1000,9999) + &apos;&quot;,&quot;queued&quot;:3,&quot;channels&quot;:[&quot;email&quot;,&quot;push&quot;,&quot;sms&quot;]}&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(r.nextInt(150, 400))
+SampleResult.setConnectTime(r.nextInt(3, 20))
+SampleResult.setLatency(r.nextInt(10, 50))
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree>
+          <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="Think Time" enabled="true">
+            <stringProp name="ConstantTimer.delay">300</stringProp>
+          </ConstantTimer>
+          <hashTree/>
+        </hashTree>
+
+      </hashTree>
+
+      <!-- ========== Listeners ========== -->
+      <ResultCollector guiclass="SimpleDataWriter" testclass="ResultCollector" testname="Save Results to JTL">
+        <boolProp name="ResultCollector.error_logging">false</boolProp>
+        <objProp>
+          <name>saveConfig</name>
+          <value class="SampleSaveConfiguration">
+            <time>true</time>
+            <latency>true</latency>
+            <timestamp>true</timestamp>
+            <success>true</success>
+            <label>true</label>
+            <code>true</code>
+            <message>true</message>
+            <threadName>true</threadName>
+            <dataType>true</dataType>
+            <encoding>false</encoding>
+            <assertions>true</assertions>
+            <subresults>true</subresults>
+            <responseData>false</responseData>
+            <samplerData>false</samplerData>
+            <xml>false</xml>
+            <fieldNames>true</fieldNames>
+            <responseHeaders>false</responseHeaders>
+            <requestHeaders>false</requestHeaders>
+            <responseDataOnError>false</responseDataOnError>
+            <saveAssertionResultsFailureMessage>true</saveAssertionResultsFailureMessage>
+            <assertionsResultsToSave>0</assertionsResultsToSave>
+            <bytes>true</bytes>
+            <sentBytes>true</sentBytes>
+            <threadCounts>true</threadCounts>
+            <sampleCount>true</sampleCount>
+            <idleTime>true</idleTime>
+            <connectTime>true</connectTime>
+          </value>
+        </objProp>
+        <stringProp name="filename">report-stress-results.jtl</stringProp>
+      </ResultCollector>
+      <hashTree/>
+      <ResultCollector guiclass="SummaryReport" testclass="ResultCollector" testname="Summary Report">
+        <boolProp name="ResultCollector.error_logging">false</boolProp>
+        <objProp>
+          <name>saveConfig</name>
+          <value class="SampleSaveConfiguration">
+            <time>true</time>
+            <latency>true</latency>
+            <timestamp>true</timestamp>
+            <success>true</success>
+            <label>true</label>
+            <code>true</code>
+            <message>true</message>
+            <threadName>true</threadName>
+            <dataType>false</dataType>
+            <encoding>false</encoding>
+            <assertions>false</assertions>
+            <subresults>false</subresults>
+            <responseData>false</responseData>
+            <samplerData>false</samplerData>
+            <xml>false</xml>
+            <fieldNames>true</fieldNames>
+            <responseHeaders>false</responseHeaders>
+            <requestHeaders>false</requestHeaders>
+            <responseDataOnError>false</responseDataOnError>
+            <saveAssertionResultsFailureMessage>false</saveAssertionResultsFailureMessage>
+            <assertionsResultsToSave>0</assertionsResultsToSave>
+            <bytes>true</bytes>
+            <sentBytes>true</sentBytes>
+            <threadCounts>true</threadCounts>
+            <idleTime>true</idleTime>
+            <connectTime>true</connectTime>
+          </value>
+        </objProp>
+        <stringProp name="filename"></stringProp>
+      </ResultCollector>
+      <hashTree/>
+
+      <com.jmeterwebinsightreport.report.listener.WebInsightReportListener guiclass="com.jmeterwebinsightreport.report.listener.WebInsightReportListenerGui" testclass="com.jmeterwebinsightreport.report.listener.WebInsightReportListener" testname="Web Insight Report">
+        <boolProp name="ResultCollector.error_logging">false</boolProp>
+        <objProp>
+          <name>saveConfig</name>
+          <value class="SampleSaveConfiguration">
+            <time>true</time>
+            <latency>true</latency>
+            <timestamp>true</timestamp>
+            <success>true</success>
+            <label>true</label>
+            <code>true</code>
+            <message>true</message>
+            <threadName>true</threadName>
+            <dataType>true</dataType>
+            <encoding>false</encoding>
+            <assertions>true</assertions>
+            <subresults>true</subresults>
+            <responseData>false</responseData>
+            <samplerData>false</samplerData>
+            <xml>false</xml>
+            <fieldNames>true</fieldNames>
+            <responseHeaders>false</responseHeaders>
+            <requestHeaders>false</requestHeaders>
+            <responseDataOnError>false</responseDataOnError>
+            <saveAssertionResultsFailureMessage>true</saveAssertionResultsFailureMessage>
+            <assertionsResultsToSave>0</assertionsResultsToSave>
+            <bytes>true</bytes>
+            <sentBytes>true</sentBytes>
+            <url>true</url>
+            <threadCounts>true</threadCounts>
+            <idleTime>true</idleTime>
+            <connectTime>true</connectTime>
+          </value>
+        </objProp>
+      </com.jmeterwebinsightreport.report.listener.WebInsightReportListener>
+      <hashTree/>
+
+    </hashTree>
+  </hashTree>
+</jmeterTestPlan>

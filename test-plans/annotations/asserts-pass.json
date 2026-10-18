@@ -1,0 +1,64 @@
+{
+  "version": "1.0",
+  "testNotes": "## Asserts Pass Test\nLenient thresholds \u2014 all samplers should pass.",
+  "assertions": [
+    {
+      "id": "default:p95",
+      "description": "p95 must stay under 5000",
+      "target": {
+        "match": "*"
+      },
+      "metric": "p95",
+      "warn": {
+        "gt": 4000.0
+      },
+      "fail": {
+        "gt": 5000.0
+      }
+    },
+    {
+      "id": "default:p99",
+      "description": "p99 must stay under 10000",
+      "target": {
+        "match": "*"
+      },
+      "metric": "p99",
+      "warn": {
+        "gt": 8000.0
+      },
+      "fail": {
+        "gt": 10000.0
+      }
+    },
+    {
+      "id": "default:errorRate",
+      "description": "errorRate must stay under 50",
+      "target": {
+        "match": "*"
+      },
+      "metric": "errorRate",
+      "warn": {
+        "gt": 40.0
+      },
+      "fail": {
+        "gt": 50.0
+      }
+    },
+    {
+      "id": "default:mean",
+      "description": "mean must stay under 3000",
+      "target": {
+        "match": "*"
+      },
+      "metric": "mean",
+      "warn": {
+        "gt": 2400.0
+      },
+      "fail": {
+        "gt": 3000.0
+      }
+    }
+  ],
+  "samplerNotes": {},
+  "timelineMarkers": []
+}

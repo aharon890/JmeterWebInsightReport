@@ -1,0 +1,67 @@
+{
+  "_comment": [
+    "G5 (and G8): server asserts and no client rule, so the CI/CD JSON has no gate block and the",
+    "server half alone decides what a pipeline reads. The kafka component FAILs — serverStatus FAIL —",
+    "beside a db component that only WARNs. G8 is this same file over a payload that does not",
+    "exist: refused, so no server block at all and one ERROR finding.",
+    "",
+    "Over the committed server-metrics.csv and the committed server-metrics.json, as",
+    "G4. Thresholds are pinned to that data (values 1..50) and are not realistic."
+  ],
+  "serverMetrics": {
+    "components": {
+      "kafka": {
+        "type": "custom",
+        "description": "Kafka"
+      },
+      "db": {
+        "type": "custom",
+        "description": "DB"
+      }
+    },
+    "asserts": [
+      {
+        "id": "up-passes",
+        "description": "max 50, comfortably inside",
+        "component": "kafka",
+        "query": "up",
+        "reduce": {
+          "kind": "max"
+        },
+        "fail": {
+          "gt": 1000
+        }
+      },
+      {
+        "id": "up-fails",
+        "description": "a real breach",
+        "component": "kafka",
+        "query": "up",
+        "reduce": {
+          "kind": "max"
+        },
+        "warn": {
+          "gt": 10
+        },
+        "fail": {
+          "gt": 20
+        }
+      },
+      {
+        "id": "up-p50-warns",
+        "description": "over warn, under fail",
+        "component": "db",
+        "query": "up",
+        "reduce": {
+          "kind": "p50"
+        },
+        "warn": {
+          "gt": 10
+        },
+        "fail": {
+          "gt": 1000
+        }
+      }
+    ]
+  }
+}

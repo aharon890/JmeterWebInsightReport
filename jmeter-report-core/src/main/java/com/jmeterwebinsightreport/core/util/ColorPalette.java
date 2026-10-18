@@ -29,7 +29,7 @@ public final class ColorPalette {
     }
 
     /**
-     * Get the status color for an SLA status.
+     * Get the status color for an assert status.
      */
     public static String getStatusColor(String status) {
         switch (status.toUpperCase()) {

@@ -2,6 +2,7 @@ package com.jmeterwebinsightreport.report.template;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.jmeterwebinsightreport.core.model.*;
+import com.jmeterwebinsightreport.report.annotation.ReportAnnotations;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -13,12 +14,10 @@ import static org.junit.jupiter.api.Assertions.*;
 class ThymeleafReportRendererTest {
 
     private ThymeleafReportRenderer renderer;
-    private ReportDataSerializer serializer;
 
     @BeforeEach
     void setUp() {
         renderer = new ThymeleafReportRenderer();
-        serializer = new ReportDataSerializer();
     }
 
     // --- Helper methods ---
@@ -118,11 +117,98 @@ class ThymeleafReportRendererTest {
     }
 
     private String renderWithData(ReportData data) throws JsonProcessingException {
-        String chartDataJson = serializer.serializeChartData(data);
+        String chartDataJson = ChartDataJson.of(data);
         return renderer.render(data, chartDataJson);
     }
 
     // --- Tests ---
+
+    /**
+     * The header badge appears for a gate whose every rule went unmatched.
+     *
+     * <p>It did not. The renderer sets {@code overallAssertStatus} only when
+     * {@code evaluation.hasGate()}, and that required a non-empty per-sampler verdict map — which
+     * an unmatched rule cannot produce, because it judged no sampler. So the loudest surface in
+     * the report said "no asserts configured" about a run the same file's {@code gate}
+     * block was failing.
+     *
+     * <p>The badge reads "ASSERTS FAIL": the product uses one word for
+     * one mechanism now. The model variable is still {@code overallAssertStatus} and the CSS class
+     * is still {@code badge-fail} — internals no reader sees, whose renaming would be churn
+     * every browser spec pays for.
+     */
+    @Test
+    void render_showsTheBadgeWhenEveryRuleWentUnmatched() throws Exception {
+        ReportData data = createReportDataWithSamplers();
+        ReportAnnotations annotations = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readValue("{\"assertions\":[{\"id\":\"ghost\","
+                        + "\"target\":{\"sampler\":\"GET /not-in-this-run\"},"
+                        + "\"metric\":\"p95\",\"fail\":{\"gt\":1}}]}", ReportAnnotations.class);
+
+        String html = renderer.render(data, ChartDataJson.of(data), "", "",
+                annotations);
+
+        // Rules were declared; none of them judged anything. The badge must say exactly that
+        // — not "ASSERTS FAIL" (nothing failed) and not "NO ASSERTS DECLARED" (they were).
+        assertTrue(html.contains("ASSERTS NOT EVALUATED"),
+                "a declared gate that judged nothing must say so, not claim a verdict");
+        assertFalse(html.contains("NO ASSERTS DECLARED"),
+                "rules WERE declared — the badge must not deny it");
+        // ERRORS DETECTED is gone from this slot entirely, not merely absent here. An error
+        // count is not an assert verdict, and the badge answers exactly one question: what did
+        // the declared asserts decide. It used to appear on a gateless run that happened to
+        // record errors, and on a run whose gate had just FAILED it read as a lesser problem
+        // than the one that actually happened.
+        assertFalse(html.contains("ERRORS DETECTED"),
+                "an error count must never occupy the verdict slot");
+    }
+
+    /**
+     * A run that declared nothing must not claim a pass, however clean it was.
+     *
+     * <p>The fallback badge rendered {@code badge-pass} / "ALL PASSED" whenever the run recorded
+     * no errors — and {@code overallAssertStatus} is null in exactly the cases worth catching: a
+     * typo'd {@code -Jwebinsight.report.annotations} path, a file that failed to parse, and a
+     * file whose every rule was parked with {@code enabled: false}. All three are a gate that
+     * silently stopped gating, and all three came out green on the surface an executive reads.
+     */
+    @Test
+    void render_doesNotClaimAPassWhenNothingWasDeclared() throws JsonProcessingException {
+        ReportData data = createReportDataWithSamplers();
+        data.getMetadata().setTotalErrors(0);
+
+        String html = renderWithData(data);
+
+        assertTrue(html.contains("NO ASSERTS DECLARED"),
+                "a run that declared nothing must say so");
+        assertFalse(html.contains("ALL PASSED"),
+                "declared is not judged is not passed — the badge must not invent a verdict");
+        assertFalse(html.contains("badge-pass"),
+                "and it must not be green: the neutral ramp is what NOT EVALUATED looks like");
+    }
+
+    /**
+     * SF38: the header carries the generation instant as an ISO attribute for the page to write in
+     * the reader's zone, beside the text Java wrote (which is the JSON's generatedAt). A report built
+     * without one has no attribute at all, so the page keeps Java's text — never "null".
+     */
+    @Test
+    void render_carriesTheGenerationInstantForThePageToWriteInTheReadersZone() throws JsonProcessingException {
+        ReportData data = createReportDataWithSamplers();
+        data.getMetadata().setReportGeneratedAtIso("2024-01-15T08:30:00.123Z");
+
+        String html = renderWithData(data);
+
+        assertTrue(html.contains("id=\"reportGeneratedAt\""), "the header's Generated span is addressable");
+        assertTrue(html.contains("data-generated-at=\"2024-01-15T08:30:00.123Z\""), "the instant rides the span");
+        assertTrue(html.contains("Generated: 2024-01-15 10:30:00"), "Java's own text is still the span's text");
+
+        data.getMetadata().setReportGeneratedAtIso(null);
+        String bare = renderWithData(data);
+        // The attribute as markup: report.js, inlined in the page, names it too.
+        assertFalse(bare.contains("data-generated-at=\""), "no instant, no attribute");
+        assertTrue(bare.contains("Generated: 2024-01-15 10:30:00"));
+    }
 
     @Test
     void render_producesHtmlOutput() throws JsonProcessingException {
@@ -160,7 +246,7 @@ class ThymeleafReportRendererTest {
     @Test
     void render_containsChartData() throws JsonProcessingException {
         ReportData data = createReportDataWithSamplers();
-        String chartDataJson = serializer.serializeChartData(data);
+        String chartDataJson = ChartDataJson.of(data);
 
         String html = renderer.render(data, chartDataJson);
 
@@ -188,7 +274,7 @@ class ThymeleafReportRendererTest {
     @Test
     void render_includesInlinedCss() throws JsonProcessingException {
         ReportData data = createReportDataWithSamplers();
-        String chartDataJson = serializer.serializeChartData(data);
+        String chartDataJson = ChartDataJson.of(data);
         String cssContent = "body { font-family: sans-serif; }";
 
         String html = renderer.render(data, chartDataJson, cssContent, "");
@@ -200,7 +286,7 @@ class ThymeleafReportRendererTest {
     @Test
     void render_includesInlinedJs() throws JsonProcessingException {
         ReportData data = createReportDataWithSamplers();
-        String chartDataJson = serializer.serializeChartData(data);
+        String chartDataJson = ChartDataJson.of(data);
         String jsContent = "function initCharts() { console.log('init'); }";
 
         String html = renderer.render(data, chartDataJson, "", jsContent);
@@ -222,11 +308,74 @@ class ThymeleafReportRendererTest {
     @Test
     void render_twoArgOverloadProducesHtml() throws JsonProcessingException {
         ReportData data = createReportDataWithSamplers();
-        String chartDataJson = serializer.serializeChartData(data);
+        String chartDataJson = ChartDataJson.of(data);
 
         String html = renderer.render(data, chartDataJson);
 
         assertNotNull(html);
         assertTrue(html.contains("<!DOCTYPE html>"));
+    }
+
+    /**
+     * A 2xx counted as an error must not render as a bare code beside "OK".
+     *
+     * <p>Errors are collected on {@code success == false} and {@code errorType} is the response
+     * code verbatim, so a sample failed by a Response Assertion reaches the Errors tab as
+     * <em>200 / OK</em> — a row that reads like a pass while being counted as half the errors.
+     * Confirmed against a real {@code -g} run before this was written.
+     */
+    @Test
+    void render_labelsA2xxErrorAsNonProtocolAndSuppressesItsMeaninglessMessage() throws Exception {
+        ReportData data = createReportDataWithSamplers();
+
+        ErrorSummary assertionFailure = new ErrorSummary();
+        assertionFailure.setSamplerName("GET /api/items");
+        assertionFailure.setResponseCode("200");
+        assertionFailure.setResponseMessage("OK");
+        assertionFailure.setOccurrenceCount(2);
+        ErrorSummary serverFailure = new ErrorSummary();
+        serverFailure.setSamplerName("GET /api/items");
+        serverFailure.setResponseCode("500");
+        serverFailure.setResponseMessage("Internal Server Error");
+        serverFailure.setOccurrenceCount(1);
+        data.setErrorSummaries(java.util.Arrays.asList(assertionFailure, serverFailure));
+
+        ErrorRecord record = new ErrorRecord();
+        record.setSamplerName("GET /api/items");
+        record.setResponseCode("200");
+        record.setResponseMessage("OK");
+        record.setTimestamp(1785949469000L);
+        record.setThreadName("tg 1-1");
+        data.setErrorRecords(java.util.Collections.singletonList(record));
+
+        String html = renderer.render(data, ChartDataJson.of(data), "", "");
+
+        assertTrue(html.contains("Non-protocol failure"),
+                "a 200 in the error set must say it failed for a non-HTTP reason");
+        assertTrue(html.contains("HTTP failure"),
+                "the 500 must still be labelled as an HTTP-level failure");
+        // The em-dash replaces the reason phrase. The real reason lives in failureMessage, which
+        // neither ingestion path captures, so printing "OK" asserts something we cannot know.
+        assertTrue(html.contains("error-message-none"),
+                "the meaningless message must be rendered as nothing, not as \"OK\"");
+        assertTrue(html.contains("Internal Server Error"),
+                "a real failure message must survive — only the 2xx reason phrase is suppressed");
+    }
+
+    /** The class rides in the payload so nothing client-side re-derives it and disagrees. */
+    @Test
+    void render_carriesTheErrorClassInThePayloadForTheClientSurfaces() throws Exception {
+        ReportData data = createReportDataWithSamplers();
+        ErrorSummary assertionFailure = new ErrorSummary();
+        assertionFailure.setSamplerName("GET /api/items");
+        assertionFailure.setResponseCode("200");
+        assertionFailure.setResponseMessage("OK");
+        assertionFailure.setOccurrenceCount(2);
+        data.setErrorSummaries(java.util.Collections.singletonList(assertionFailure));
+
+        String payload = ChartDataJson.of(data);
+
+        assertTrue(payload.contains("\"errorClass\":\"nonProtocol\""), payload);
+        assertTrue(payload.contains("\"messageMeaningless\":true"), payload);
     }
 }

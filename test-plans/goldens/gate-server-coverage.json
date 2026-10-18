@@ -1,0 +1,46 @@
+{
+  "_comment": [
+    "G7: server asserts and no client rule. The one component PASSes on the one assert it could",
+    "judge, and its other assert is under the coverage floor — LOW_COVERAGE, a configuration error",
+    "that exits 1 under failonerror while the component's status, and so serverStatus, read PASS",
+    "(GateSummary folds only what was judged). The DEFAULT jq idiom says yes (verdicts only), the",
+    "STRICT one no; an idiom that dropped the collection clause answers differently here.",
+    "",
+    "Over the committed server-metrics.csv and the committed server-metrics.json, as",
+    "G4. Thresholds are pinned to that data (values 1..50) and are not realistic."
+  ],
+  "serverMetrics": {
+    "components": {
+      "db": {
+        "type": "custom",
+        "description": "DB"
+      }
+    },
+    "asserts": [
+      {
+        "id": "up-passes",
+        "description": "max 50, comfortably inside",
+        "component": "db",
+        "query": "up",
+        "reduce": {
+          "kind": "max"
+        },
+        "fail": {
+          "gt": 1000
+        }
+      },
+      {
+        "id": "sparse-low-coverage",
+        "description": "NOT_JUDGED / LOW_COVERAGE — fatal under failonerror",
+        "component": "db",
+        "query": "sparse",
+        "reduce": {
+          "kind": "max"
+        },
+        "fail": {
+          "gt": 1
+        }
+      }
+    ]
+  }
+}

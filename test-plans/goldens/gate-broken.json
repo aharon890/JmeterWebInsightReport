@@ -1,0 +1,69 @@
+{
+  "_comment": [
+    "The config-error path: every shape of rule that cannot decide anything.",
+    "",
+    "This is the negative fixture the suite never had. N08/N09 cover malformed FILES; nothing",
+    "covered a well-formed file whose RULES are meaningless, which is the class three separate",
+    "defects lived in -- a rule with one unreadable band, a band that can never fire, and a",
+    "retired key that silently inverted what the rule meant. All three were judged and reported",
+    "PASS, with ERROR findings beside them changing nothing.",
+    "",
+    "Every rule here must be NOT_JUDGED / INVALID_RULE, gate.status must stay clean because none",
+    "of them is a verdict, and the run must exit non-zero because the file asked for checks that",
+    "never ran. The healthy rule at the end proves the evaluator was reached at all."
+  ],
+  "assertions": [
+    {
+      "id": "half-readable-band",
+      "description": "fail has two operators; warn survives, so hasBands() stays true",
+      "target": { "sampler": "GET /api/products" },
+      "metric": "p95",
+      "warn": { "gt": 100000 },
+      "fail": { "gt": 100, "lt": 50 }
+    },
+    {
+      "id": "unreachable-band",
+      "description": "a tolerance of 20 meant as 20% — nothing is negative",
+      "target": { "sampler": "GET /api/products" },
+      "metric": "p95",
+      "fail": { "lt": -19 }
+    },
+    {
+      "id": "retired-observe",
+      "description": "meant never gates; ignoring it leaves a rule that gates",
+      "target": { "sampler": "POST /api/checkout" },
+      "metric": "p95",
+      "observe": true,
+      "fail": { "gt": 1 }
+    },
+    {
+      "id": "retired-onmissing",
+      "description": "meant fail-if-absent; ignoring it turns a red build green",
+      "target": { "sampler": "GET /api/search" },
+      "metric": "p95",
+      "onMissing": "fail",
+      "fail": { "gt": 100000 }
+    },
+    {
+      "id": "retired-outside-operator",
+      "description": "a corridor is two rules now",
+      "target": { "sampler": "GET /api/search" },
+      "metric": "mean",
+      "fail": { "outside": [10, 20] }
+    },
+    {
+      "id": "unreadable-target",
+      "description": "two target forms — picking one would judge something nobody asked for",
+      "target": { "sampler": "GET /api/products", "match": "GET *" },
+      "metric": "p95",
+      "fail": { "gt": 1 }
+    },
+    {
+      "id": "healthy-control",
+      "description": "proves the evaluator was reached and the others are not collateral",
+      "target": { "sampler": "GET /api/products" },
+      "metric": "p95",
+      "fail": { "gt": 100000 }
+    }
+  ]
+}

@@ -7,14 +7,16 @@
     <parent>
         <groupId>com.jmeterwebinsightreport</groupId>
         <artifactId>jmeter-web-insight-suite</artifactId>
-        <version>1.0.0</version>
+        <!-- ${revision} lives in the parent pom's properties — the single place the
+             suite version is defined. Do not hardcode a number here. -->
+        <version>${revision}</version>
     </parent>
 
     <artifactId>jmeter-report-core</artifactId>
     <packaging>jar</packaging>
 
     <name>JMeter Report Core</name>
-    <description>Shared models, statistics engine, SLA evaluation, and utilities for the JMeter Web Insight Suite. JMeter-agnostic.</description>
+    <description>Shared models, statistics engine, assertion engine, and utilities for the JMeter Web Insight Suite. JMeter-agnostic.</description>
 
     <dependencies>
         <!-- T-Digest for percentile calculation (compile — shaded by consuming modules) -->

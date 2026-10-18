@@ -6,12 +6,17 @@
 
     <groupId>com.jmeterwebinsightreport</groupId>
     <artifactId>jmeter-web-insight-suite</artifactId>
-    <version>1.0.0</version>
+    <!-- Maven's CI-friendly version: the real number lives in the <revision> property
+         below and both modules reference ${revision} in their <parent> block, so a
+         release is one edit instead of three kept-in-step-by-hand edits.
+         The flatten plugin (see <build>) resolves it in the installed/deployed poms,
+         because a consumer's Maven cannot expand our property. -->
+    <version>${revision}</version>
     <packaging>pom</packaging>
 
     <name>JMeter Web Insight Suite</name>
     <description>A suite of JMeter plugins for modern, interactive test reporting and monitoring.</description>
-    <url>https://github.com/jmeter-web-insight-suite</url>
+    <url>https://github.com/aharon890/JmeterWebInsightReport</url>
 
     <licenses>
         <license>
@@ -26,9 +31,15 @@
     </modules>
 
     <properties>
+        <!-- THE version of the whole suite. This is the only place to change it. -->
+        <revision>4.0.0</revision>
+
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.source>11</maven.compiler.source>
-        <maven.compiler.target>11</maven.compiler.target>
+        <!-- `release` rather than source/target: source/target still compiles against the
+             BUILD JDK's class library, so building on a JDK newer than 21 can link against
+             APIs that do not exist on 21 and the jar then fails at runtime on the Java version
+             the docs promise. `release` pins the API level too. -->
+        <maven.compiler.release>21</maven.compiler.release>
 
         <!-- Dependency versions -->
         <jmeter.version>5.6.3</jmeter.version>
@@ -37,10 +48,10 @@
         <slf4j.version>1.7.36</slf4j.version>
         <tdigest.version>3.3</tdigest.version>
         <thymeleaf.version>3.1.2.RELEASE</thymeleaf.version>
-        <auto-service.version>1.1.1</auto-service.version>
         <junit.version>5.10.2</junit.version>
 
         <!-- Plugin versions -->
+        <flatten-maven-plugin.version>1.6.0</flatten-maven-plugin.version>
         <maven-compiler-plugin.version>3.12.1</maven-compiler-plugin.version>
         <maven-shade-plugin.version>3.5.1</maven-shade-plugin.version>
         <maven-surefire-plugin.version>3.2.5</maven-surefire-plugin.version>
@@ -108,19 +119,6 @@
                 <version>${thymeleaf.version}</version>
             </dependency>
 
-            <!-- AutoService (annotation processor) -->
-            <dependency>
-                <groupId>com.google.auto.service</groupId>
-                <artifactId>auto-service</artifactId>
-                <version>${auto-service.version}</version>
-                <optional>true</optional>
-            </dependency>
-            <dependency>
-                <groupId>com.google.auto.service</groupId>
-                <artifactId>auto-service-annotations</artifactId>
-                <version>${auto-service.version}</version>
-            </dependency>
-
             <!-- Testing -->
             <dependency>
                 <groupId>org.junit.jupiter</groupId>
@@ -139,8 +137,7 @@
                     <artifactId>maven-compiler-plugin</artifactId>
                     <version>${maven-compiler-plugin.version}</version>
                     <configuration>
-                        <source>${maven.compiler.source}</source>
-                        <target>${maven.compiler.target}</target>
+                        <release>${maven.compiler.release}</release>
                     </configuration>
                 </plugin>
                 <plugin>
@@ -160,5 +157,35 @@
                 </plugin>
             </plugins>
         </pluginManagement>
+
+        <plugins>
+            <!-- Rewrites ${revision} to a literal version in the pom that gets installed and
+                 deployed. Without this the published pom would still say ${revision}, which
+                 nothing downstream can resolve — the property only exists in OUR build.
+                 resolveCiFriendliesOnly touches exactly those placeholders and leaves the rest
+                 of the pom alone. Inherited by both modules. -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>flatten-maven-plugin</artifactId>
+                <version>${flatten-maven-plugin.version}</version>
+                <configuration>
+                    <updatePomFile>true</updatePomFile>
+                    <flattenMode>resolveCiFriendliesOnly</flattenMode>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>flatten</id>
+                        <phase>process-resources</phase>
+                        <goals><goal>flatten</goal></goals>
+                    </execution>
+                    <!-- Removes .flattened-pom.xml on `mvn clean` so it never goes stale. -->
+                    <execution>
+                        <id>flatten.clean</id>
+                        <phase>clean</phase>
+                        <goals><goal>clean</goal></goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
     </build>
 </project>

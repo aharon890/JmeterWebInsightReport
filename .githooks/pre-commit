@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# =============================================================================
+#  pre-commit — refuse a commit on the primary branch. That is its ONLY job.
+#
+#  Install with: ./scripts/install-hooks.sh   (sets core.hooksPath to .githooks)
+#
+#  The sibling pre-push hook already refuses a direct PUSH to the primary branch.
+#  This one catches the same mistake earlier, and the difference matters more than
+#  it sounds: by the time a push is refused, the commits already exist on the
+#  primary branch and have to be moved off it. That recovery — switch, reset,
+#  cherry-pick — is where work gets lost. Refusing at commit time means the change
+#  is still only in the working tree, and the fix is one `git switch -c`.
+#
+#  Like pre-push, this hook RUNS NO TESTS. There is no CI; the full regression runs
+#  before a push via the run-tests skill (.claude/skills/run-tests/). Verification
+#  is a separate concern from branch discipline and stays out of here — a hook that
+#  costs 90 seconds on every commit gets disabled within a week, and then the one
+#  rule it was protecting goes with it.
+#
+#  The branch is NOT named here. It is resolved from the remote, so a repo whose
+#  primary branch is called something else needs no edit.
+#
+#  Escape hatches:
+#    WIR_ALLOW_MAIN_COMMIT=1  git commit   permit a commit on the primary branch
+#    git commit --no-verify                skip this hook entirely (git's own bypass)
+# =============================================================================
+set -uo pipefail
+
+# Identical resolution to pre-push, deliberately: two hooks that disagree about
+# which branch is primary would be worse than either one alone.
+primary_branch() {
+    local ref
+    ref="$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null)"
+    if [[ -n "$ref" ]]; then
+        printf '%s\n' "${ref#refs/remotes/origin/}"
+        return 0
+    fi
+    # Delimiter is | — the pattern itself contains colons ("^ref:" and "[[:space:]]"),
+    # so a :-delimited s/// parses as garbage and silently matches nothing.
+    ref="$(git ls-remote --symref origin HEAD 2>/dev/null \
+           | sed -n 's|^ref: refs/heads/\([^[:space:]]*\).*|\1|p' | head -1)"
+    if [[ -n "$ref" ]]; then
+        printf '%s\n' "$ref"
+        return 0
+    fi
+    echo "[pre-commit] Could not resolve the primary branch; assuming 'main'." >&2
+    echo "[pre-commit] Run: git remote set-head origin -a" >&2
+    printf 'main\n'
+}
+
+# A detached HEAD has no branch to be wrong about — rebases, bisects and
+# cherry-picks all run detached, and blocking them would break ordinary recovery
+# work for no benefit.
+current="$(git symbolic-ref --quiet --short HEAD 2>/dev/null)" || exit 0
+[[ -z "$current" ]] && exit 0
+
+# Mid-operation commits are git's own, not the author's: a merge commit, a rebase
+# step or a cherry-pick continuation can legitimately land on the primary branch
+# and is not the mistake this hook exists to catch.
+GIT_DIR_PATH="$(git rev-parse --git-dir 2>/dev/null || echo .git)"
+for marker in MERGE_HEAD REBASE_HEAD CHERRY_PICK_HEAD REVERT_HEAD; do
+    [[ -e "$GIT_DIR_PATH/$marker" ]] && exit 0
+done
+[[ -d "$GIT_DIR_PATH/rebase-merge" || -d "$GIT_DIR_PATH/rebase-apply" ]] && exit 0
+
+PRIMARY="$(primary_branch)"
+
+if [[ "$current" == "$PRIMARY" && "${WIR_ALLOW_MAIN_COMMIT:-0}" != "1" ]]; then
+    cat >&2 <<EOF
+
+[pre-commit] REFUSED: you are committing on '$PRIMARY'.
+
+  '$PRIMARY' changes through a pull request, so the change is reviewable and the
+  history says where it came from. Nothing was committed, and your work is still
+  staged exactly as it was.
+
+  Move it to a branch — the staged changes come with you:
+    git switch -c feat/<name>     # or fix/ · docs/ · chore/ · refactor/
+    git commit
+
+  If you genuinely need to commit on '$PRIMARY' directly:
+    WIR_ALLOW_MAIN_COMMIT=1 git commit
+
+EOF
+    exit 1
+fi
+
+exit 0

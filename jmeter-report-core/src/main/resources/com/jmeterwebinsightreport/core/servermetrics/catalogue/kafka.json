@@ -1,0 +1,390 @@
+{
+  "type": "kafka",
+  "version": 1,
+  "label": "Kafka",
+  "summary": "Consumer lag, brokers, partitions and ISR, controller, request latency, throughput",
+  "exporter": "kafka_exporter, and the JMX exporter with Strimzi's rules",
+  "source": "kafka_exporter (danielqsj) for consumer lag, brokers and partitions; the JMX exporter with Strimzi's rules for broker internals (offline partitions, controller, throughput). Broker-internal names depend on the JMX rules file; a cluster with other rules uses a custom query. Strimzi's rules export each BrokerTopicMetrics counter twice under one name, the broker's all-topics total (no labels) and one series per topic (label topic), so the throughput queries sum topic!=\"\" only. Tools' names checked 2026-10-08 against Telegraf's inputs.burrow (README and burrow.go), Datadog's kafka and kafka_consumer metadata.csv and metrics.yaml, the OpenTelemetry kafkametricsreceiver documentation and the java-contrib JMX gatherer's kafka target (jmxreceiver target_system kafka), and the Amazon MSK CloudWatch metric list (namespace AWS/Kafka), all at master/main. Telegraf's jolokia2 kafka fields are inferred from its example config, not seen, so none is named. Datadog's .rate metrics are per second although metadata.csv calls them gauges. On KRaft, the controller metrics come from the controller nodes: scrape or export them too. MSK's lag metrics are emitted only while a group is STABLE or EMPTY. The per-partition lag names (Telegraf's burrow_partition.lag, Datadog's kafka.consumer_lag) stay on consumer.lag.max, because a file holds one series per name: for the all-partition lag, Telegraf's sum is null (the research calls it derived) and Datadog is left out; export the summed series under the catalogue's name. The KPIs added on 2026-10-09 were checked that day against Strimzi's kafka-metrics.yaml and its Kafka Grafana dashboard, Datadog's kafka metrics.yaml and metadata.csv and its kafka_consumer metadata.csv, the java-contrib kafka.groovy, the kafkametricsreceiver documentation, the MSK metric list, kafka_exporter's README and Kafka's source at trunk. Strimzi's rules leave RequestMetrics out (type=(?!RequestMetrics)), so the produce and consumer-fetch latency p99s have no prometheus query: a cluster with JMX rules of its own writes a custom query. Strimzi exports RequestHandlerAvgIdlePercent from the meter's MeanRate, an average since the broker started that barely moves in a test, so request.handler.idle has no prometheus query either and names Datadog's, which reads the one-minute rate; NetworkProcessorAvgIdlePercent is a gauge of the processors' current io-wait ratio, each capped at 1 (SocketServer.scala), so network.processor.idle reads Strimzi's series. kafka_exporter has no lag in seconds: consumer.lag.seconds.max is CloudWatch's EstimatedMaxTimeLag or Datadog's Data Streams Monitoring estimate. Left out: a produce latency mean, because the JMX Mean of Kafka's request histograms is the mean since the broker started (Yammer metrics 2.2.0's Histogram.mean is sum over count), and MSK's ProduceTotalTimeMsMean was not checked to differ; and leader elections, whose timer Strimzi's rules export as a COUNTER named _count, a name not seen on a scrape. CloudWatch's RequestHandlerAvgIdlePercent and NetworkProcessorAvgIdlePercent are not named: they are PER_BROKER (paid), and whether they read 0-1 or 0-100 is unverified. OTel's kafka.network.io is read by bytes.in.rate (state=in) and its kafka.request.time.99p by the produce latency (type=produce), so bytes.out.rate and the fetch latency name no OTel metric. UncleanLeaderElectionsPerSec is the controller's (ControllerMetadataMetrics on KRaft), so elections.unclean takes the max over the nodes, never their sum.",
+  "metrics": [
+    {
+      "name": "consumer.lag.max",
+      "label": "Consumer lag, worst partition (msgs)",
+      "category": "Consumer lag",
+      "description": "The largest lag of any partition, per consumer group and topic. Growing lag means consumers cannot keep up with the load.",
+      "unit": "msgs",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per consumer group and topic",
+      "recommended": true,
+      "queries": { "prometheus": "max by (consumergroup, topic) (kafka_consumergroup_lag${match})" },
+      "names": {
+        "telegraf": { "metric": "burrow_partition.lag", "kind": "gauge", "note": "inputs.burrow, one series per partition: export the max by group and topic" },
+        "datadog": { "metric": "kafka.consumer_lag", "kind": "gauge", "note": "kafka_consumer check, one series per partition: export the max by consumer_group and topic" },
+        "otel": { "metric": "kafka.consumer_group.lag", "kind": "gauge", "note": "kafkametricsreceiver, one series per partition: export the max by group and topic" },
+        "cloudwatch": { "metric": "AWS/Kafka:MaxOffsetLag", "kind": "gauge", "note": "statistic Maximum, per Cluster Name, Consumer Group and Topic" }
+      }
+    },
+    {
+      "name": "consumer.lag.seconds.max",
+      "label": "Consumer lag, worst (s)",
+      "category": "Consumer lag",
+      "description": "How long consumers would take to drain their worst backlog, per consumer group and topic: lag in time compares across topics of different rates. kafka_exporter has no such series, so a Prometheus user computes it in a custom query.",
+      "unit": "s",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per consumer group and topic",
+      "recommended": false,
+      "names": {
+        "telegraf": null,
+        "datadog": { "metric": "kafka.estimated_consumer_lag", "kind": "gauge", "note": "needs Data Streams Monitoring (extra charge); lag in seconds between consumer and broker, not a time to drain; export the max by consumer_group and topic" },
+        "otel": null,
+        "cloudwatch": { "metric": "AWS/Kafka:EstimatedMaxTimeLag", "kind": "gauge", "note": "statistic Maximum, per Cluster Name, Consumer Group and Topic" }
+      }
+    },
+    {
+      "name": "consumer.lag.total",
+      "label": "Consumer lag, all partitions (msgs)",
+      "category": "Consumer lag",
+      "description": "The sum of lag over all partitions, per consumer group and topic.",
+      "unit": "msgs",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per consumer group and topic",
+      "recommended": false,
+      "queries": { "prometheus": "sum by (consumergroup, topic) (kafka_consumergroup_lag${match})" },
+      "names": {
+        "telegraf": null,
+        "otel": { "metric": "kafka.consumer_group.lag_sum", "kind": "gauge", "note": "kafkametricsreceiver, per group and topic" },
+        "cloudwatch": { "metric": "AWS/Kafka:SumOffsetLag", "kind": "gauge", "note": "statistic Maximum, per Cluster Name, Consumer Group and Topic" }
+      }
+    },
+    {
+      "name": "consumer.lag.final",
+      "label": "Consumer lag left at the end (msgs)",
+      "category": "Consumer lag",
+      "description": "Lag still outstanding when the run ended: whether consumers drained the backlog the test produced.",
+      "unit": "msgs",
+      "reduce": "last",
+      "direction": "higher",
+      "dimension": "per consumer group and topic",
+      "recommended": true,
+      "queries": { "prometheus": "sum by (consumergroup, topic) (kafka_consumergroup_lag${match})" },
+      "names": {
+        "telegraf": null,
+        "otel": { "metric": "kafka.consumer_group.lag_sum", "kind": "gauge", "note": "kafkametricsreceiver, per group and topic" },
+        "cloudwatch": { "metric": "AWS/Kafka:SumOffsetLag", "kind": "gauge", "note": "statistic Maximum, per Cluster Name, Consumer Group and Topic" }
+      }
+    },
+    {
+      "name": "consumer.group.members",
+      "label": "Consumer group members (lowest)",
+      "category": "Consumer groups",
+      "description": "Consumers in each group at its lowest point in the run. A drop means a consumer crashed or left, and a rebalance and a lag spike follow. It takes every group the exporter sees: narrow it with a consumergroup match.",
+      "unit": "members",
+      "reduce": "min",
+      "across": "min",
+      "direction": "lower",
+      "dimension": "per consumer group",
+      "recommended": false,
+      "queries": { "prometheus": "min by (consumergroup) (kafka_consumergroup_members${match})" },
+      "names": {
+        "telegraf": null,
+        "datadog": { "metric": "kafka.consumer_group.members", "kind": "gauge", "note": "needs Data Streams Monitoring (extra charge); export the min by consumer_group" },
+        "otel": { "metric": "kafka.consumer_group.members", "kind": "gauge", "note": "kafkametricsreceiver, per group" },
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "brokers",
+      "label": "Brokers in the cluster",
+      "category": "Availability",
+      "description": "Brokers the cluster reports. A drop during the run is a broker lost under load.",
+      "unit": "brokers",
+      "reduce": "min",
+      "direction": "lower",
+      "dimension": "per cluster",
+      "recommended": true,
+      "queries": { "prometheus": "min(kafka_brokers${match})" },
+      "names": {
+        "datadog": { "metric": "kafka.controller.active_broker_count", "kind": "gauge", "note": "KRaft clusters only, read on the controller nodes: export the max over hosts" },
+        "otel": { "metric": "kafka.brokers", "kind": "gauge", "note": "kafkametricsreceiver" },
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "partitions.under_replicated",
+      "label": "Under-replicated partitions",
+      "category": "Partitions & replication",
+      "description": "Partitions whose followers have fallen out of sync. Anything above 0 is a durability risk.",
+      "unit": "partitions",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per cluster",
+      "recommended": true,
+      "safeDefault": { "fail": { "gt": 0 } },
+      "queries": { "prometheus": "sum(kafka_topic_partition_under_replicated_partition${match})" },
+      "names": {
+        "datadog": { "metric": "kafka.replication.under_replicated_partitions", "kind": "gauge", "note": "one series per broker: export the sum over brokers" },
+        "otel": { "metric": "kafka.partition.under_replicated", "kind": "gauge", "note": "jmxreceiver with target_system kafka, one series per broker: export the sum over brokers" },
+        "cloudwatch": { "metric": "AWS/Kafka:UnderReplicatedPartitions", "kind": "gauge", "note": "statistic Maximum, per Cluster Name and Broker ID: export the sum over brokers" }
+      }
+    },
+    {
+      "name": "partitions.under_min_isr",
+      "label": "Under-min-ISR partitions",
+      "category": "Partitions & replication",
+      "description": "Partitions with fewer in-sync replicas than min.insync.replicas: producers with acks=all get NotEnoughReplicas errors, so writes fail.",
+      "unit": "partitions",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per cluster",
+      "recommended": true,
+      "safeDefault": { "fail": { "gt": 0 } },
+      "queries": { "prometheus": "sum(kafka_server_replicamanager_underminisrpartitioncount${match})" },
+      "names": {
+        "datadog": { "metric": "kafka.replication.under_min_isr_partition_count", "kind": "gauge", "note": "one series per broker: export the sum over brokers" },
+        "otel": null,
+        "cloudwatch": { "metric": "AWS/Kafka:UnderMinIsrPartitionCount", "kind": "gauge", "note": "statistic Maximum, per Cluster Name and Broker ID: export the sum over brokers" }
+      }
+    },
+    {
+      "name": "partitions.offline",
+      "label": "Offline partitions",
+      "category": "Partitions & replication",
+      "description": "Partitions with no active leader: they can be neither written nor read.",
+      "unit": "partitions",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per cluster",
+      "recommended": true,
+      "safeDefault": { "fail": { "gt": 0 } },
+      "queries": { "prometheus": "sum(kafka_controller_kafkacontroller_offlinepartitionscount${match})" },
+      "names": {
+        "datadog": { "metric": "kafka.replication.offline_partitions_count", "kind": "gauge", "note": "export the sum over brokers" },
+        "otel": { "metric": "kafka.partition.offline", "kind": "gauge", "note": "jmxreceiver with target_system kafka; export the sum over brokers" },
+        "cloudwatch": { "metric": "AWS/Kafka:OfflinePartitionsCount", "kind": "gauge", "note": "statistic Maximum, per Cluster Name" }
+      }
+    },
+    {
+      "name": "controller.active",
+      "label": "Active controllers",
+      "category": "Partitions & replication",
+      "description": "Exactly one broker should be the active controller at any moment. On KRaft with dedicated controller nodes only the controllers report it: scrape them too, or a brokers-only scrape finds no series and the assert decides nothing (NOT_JUDGED, no match).",
+      "unit": "",
+      "reduce": "min",
+      "direction": "lower",
+      "dimension": "per cluster",
+      "recommended": false,
+      "safeDefault": { "fail": { "lt": 1 } },
+      "queries": { "prometheus": "sum(kafka_controller_kafkacontroller_activecontrollercount${match})" },
+      "names": {
+        "datadog": { "metric": "kafka.replication.active_controller_count", "kind": "gauge", "note": "export the sum over brokers" },
+        "otel": { "metric": "kafka.controller.active.count", "kind": "gauge", "note": "jmxreceiver with target_system kafka; export the sum over brokers" },
+        "cloudwatch": { "metric": "AWS/Kafka:ActiveControllerCount", "kind": "gauge", "note": "statistic Maximum, per Cluster Name" }
+      }
+    },
+    {
+      "name": "isr.shrinks",
+      "label": "ISR shrinks per minute (peak)",
+      "category": "Partitions & replication",
+      "description": "Replicas dropped from a partition's in-sync set in any minute of the run, because their followers fell behind. A shrink leaves its partition under-replicated; the count also catches one that recovered between two scrapes, which the under-replicated gauge can miss.",
+      "unit": "/min",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per cluster",
+      "recommended": true,
+      "safeDefault": { "warn": { "gt": 0 } },
+      "queries": { "prometheus": "sum(increase(kafka_server_replicamanager_isrshrinks_total${match}[1m]))" },
+      "names": {
+        "datadog": { "metric": "kafka.replication.isr_shrinks.rate", "kind": "rate", "scale": 60, "note": "one series per broker: export the sum over brokers" },
+        "otel": { "metric": "kafka.isr.operation.count", "kind": "counter", "scale": 60, "note": "operation=shrink; jmxreceiver with target_system kafka, one series per broker: export the sum over brokers" },
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "replica.max.lag",
+      "label": "Follower lag, worst (msgs)",
+      "category": "Partitions & replication",
+      "description": "How many messages the slowest follower trails its leader by. It rises before ISR shrinks do.",
+      "unit": "msgs",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per cluster, its slowest follower",
+      "recommended": false,
+      "queries": { "prometheus": "max(kafka_server_replicafetchermanager_maxlag${match})" },
+      "names": {
+        "datadog": { "metric": "kafka.replication.max_lag", "kind": "gauge", "note": "one series per broker: export the max over brokers" },
+        "otel": { "metric": "kafka.max.lag", "kind": "gauge", "note": "jmxreceiver with target_system kafka, one series per broker: export the max over brokers" },
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "elections.unclean",
+      "label": "Unclean leader elections per minute (peak)",
+      "category": "Partitions & replication",
+      "description": "Elections that made an out-of-sync replica a partition's leader, in any minute of the run: acknowledged messages were lost. Normally only where unclean.leader.election.enable is on, or when an admin forces one. On KRaft the controllers report it: scrape them too.",
+      "unit": "/min",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per cluster",
+      "recommended": true,
+      "safeDefault": { "fail": { "gt": 0 } },
+      "queries": { "prometheus": "max(increase(kafka_controller_controllerstats_uncleanleaderelections_total${match}[1m]))" },
+      "names": {
+        "datadog": { "metric": "kafka.replication.unclean_leader_elections.rate", "kind": "rate", "scale": 60, "note": "read on the controller: export the max over hosts" },
+        "otel": { "metric": "kafka.unclean.election.rate", "kind": "counter", "scale": 60, "note": "a counter despite its name; jmxreceiver with target_system kafka, read on the controller: export the max over hosts" },
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "request.produce.latency.p99",
+      "label": "Produce latency p99 (ms)",
+      "category": "Requests",
+      "description": "Time a broker took to serve a produce request, at the 99th percentile of its last few minutes: queueing, the write and, under acks=all, the wait for replicas. It is the first broker signal to rise as the cluster saturates. Strimzi's rules leave request metrics out, so it has no Prometheus query: with JMX rules of your own, write a custom one.",
+      "unit": "ms",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per cluster, its slowest broker",
+      "recommended": false,
+      "names": {
+        "datadog": { "metric": "kafka.request.produce.time.99percentile", "kind": "gauge", "note": "one series per broker: export the max over brokers" },
+        "otel": { "metric": "kafka.request.time.99p", "kind": "gauge", "note": "type=produce; jmxreceiver with target_system kafka, one series per broker: export the max over brokers" },
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "request.fetch_consumer.latency.p99",
+      "label": "Consumer fetch latency p99 (ms)",
+      "category": "Requests",
+      "description": "Time a broker took to serve a consumer's fetch, at the 99th percentile of its last few minutes. It includes the fetch.max.wait.ms long poll (500 ms by default), so a quiet topic sits near that value. Strimzi's rules leave request metrics out, so it has no Prometheus query: with JMX rules of your own, write a custom one.",
+      "unit": "ms",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per cluster, its slowest broker",
+      "recommended": false,
+      "names": {
+        "datadog": { "metric": "kafka.request.fetch_consumer.time.99percentile", "kind": "gauge", "note": "one series per broker: export the max over brokers" },
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "requests.produce.failed",
+      "label": "Failed produce requests per minute (peak)",
+      "category": "Requests",
+      "description": "Partition writes the brokers failed in any minute of the run, counted once per partition: not enough in-sync replicas, records that fail validation, a fenced producer. Not-leader, unknown-topic and record-too-large errors are not counted here.",
+      "unit": "/min",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per cluster",
+      "recommended": true,
+      "safeDefault": { "warn": { "gt": 0 } },
+      "queries": { "prometheus": "sum(increase(kafka_server_brokertopicmetrics_failedproducerequests_total{topic!=\"\"${andMatch}}[1m]))" },
+      "names": {
+        "datadog": { "metric": "kafka.request.produce.failed.rate", "kind": "rate", "scale": 60, "note": "one series per broker: export the sum over brokers" },
+        "otel": { "metric": "kafka.request.failed", "kind": "counter", "scale": 60, "note": "type=produce; jmxreceiver with target_system kafka, one series per broker: export the sum over brokers" },
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "request.handler.idle",
+      "label": "Request handler threads idle (%)",
+      "category": "Broker threads",
+      "description": "Share of time the brokers' request handler (I/O) threads sat idle, on the busiest broker. Near 0 every request queues and latency climbs. Strimzi exports it as an average since the broker started, which barely moves in a test, so it has no Prometheus query: read Datadog's one-minute rate, or write a custom query.",
+      "unit": "%",
+      "reduce": "min",
+      "across": "min",
+      "direction": "lower",
+      "dimension": "per cluster, its busiest broker",
+      "recommended": false,
+      "names": {
+        "datadog": { "metric": "kafka.request.handler.avg.idle.pct.rate", "kind": "gauge", "scale": 100, "note": "the one-minute rate, a fraction; one series per broker: export the min over brokers" },
+        "otel": null
+      }
+    },
+    {
+      "name": "network.processor.idle",
+      "label": "Network threads idle (%)",
+      "category": "Broker threads",
+      "description": "Share of time the brokers' network threads sat idle, on the busiest broker. Near 0 connections and responses are delayed before a request reaches a handler thread.",
+      "unit": "%",
+      "reduce": "min",
+      "across": "min",
+      "direction": "lower",
+      "ceiling": 100,
+      "dimension": "per cluster, its busiest broker",
+      "recommended": false,
+      "queries": { "prometheus": "100 * min(kafka_network_socketserver_networkprocessoravgidle_percent${match})" },
+      "names": {
+        "datadog": { "metric": "kafka.net.processor.avg.idle.pct.rate", "kind": "gauge", "scale": 100, "note": "a fraction; one series per broker: export the min over brokers" },
+        "otel": null
+      }
+    },
+    {
+      "name": "request.queue.size",
+      "label": "Request queue (requests, peak)",
+      "category": "Broker threads",
+      "description": "Requests waiting for a free handler thread on the busiest broker. Growth confirms the handler threads are saturated.",
+      "unit": "requests",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per cluster, its busiest broker",
+      "recommended": false,
+      "queries": { "prometheus": "max(kafka_network_requestchannel_requestqueuesize${match})" },
+      "names": {
+        "datadog": { "metric": "kafka.request.channel.queue.size", "kind": "gauge", "note": "one series per broker: export the max over brokers" },
+        "otel": { "metric": "kafka.request.queue", "kind": "gauge", "note": "jmxreceiver with target_system kafka, one series per broker: export the max over brokers" },
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "messages.in.rate",
+      "label": "Messages in (msg/s)",
+      "category": "Throughput",
+      "description": "Messages produced into the cluster per second. Usually watched rather than judged: it shows the load the test put on Kafka.",
+      "unit": "msg/s",
+      "reduce": "max",
+      "direction": "none",
+      "dimension": "per cluster",
+      "recommended": false,
+      "queries": { "prometheus": "sum(rate(kafka_server_brokertopicmetrics_messagesin_total{topic!=\"\"${andMatch}}[1m]))" },
+      "names": {
+        "datadog": { "metric": "kafka.messages_in.rate", "kind": "rate", "note": "one series per broker: export the sum over brokers" },
+        "otel": { "metric": "kafka.message.count", "kind": "counter", "note": "jmxreceiver with target_system kafka; export the sum over brokers" },
+        "cloudwatch": { "metric": "AWS/Kafka:MessagesInPerSec", "kind": "rate", "note": "statistic Average, per Cluster Name and Broker ID: export the sum over brokers" }
+      }
+    },
+    {
+      "name": "bytes.in.rate",
+      "label": "Bytes in (B/s)",
+      "category": "Throughput",
+      "description": "Bytes produced into the cluster per second.",
+      "unit": "B/s",
+      "reduce": "max",
+      "direction": "none",
+      "dimension": "per cluster",
+      "recommended": false,
+      "queries": { "prometheus": "sum(rate(kafka_server_brokertopicmetrics_bytesin_total{topic!=\"\"${andMatch}}[1m]))" },
+      "names": {
+        "datadog": { "metric": "kafka.net.bytes_in.rate", "kind": "rate", "note": "one series per broker: export the sum over brokers" },
+        "otel": { "metric": "kafka.network.io", "kind": "counter", "note": "state=in; jmxreceiver with target_system kafka; export the sum over brokers" },
+        "cloudwatch": { "metric": "AWS/Kafka:BytesInPerSec", "kind": "rate", "note": "statistic Average, per Cluster Name and Broker ID: export the sum over brokers" }
+      }
+    },
+    {
+      "name": "bytes.out.rate",
+      "label": "Bytes out (B/s)",
+      "category": "Throughput",
+      "description": "Bytes the brokers sent to clients per second, mostly consumers' fetches. Beside bytes in, it shows whether consumers kept pace with the load.",
+      "unit": "B/s",
+      "reduce": "max",
+      "direction": "none",
+      "dimension": "per cluster",
+      "recommended": false,
+      "queries": { "prometheus": "sum(rate(kafka_server_brokertopicmetrics_bytesout_total{topic!=\"\"${andMatch}}[1m]))" },
+      "names": {
+        "datadog": { "metric": "kafka.net.bytes_out.rate", "kind": "rate", "note": "one series per broker: export the sum over brokers" },
+        "cloudwatch": { "metric": "AWS/Kafka:BytesOutPerSec", "kind": "rate", "note": "statistic Average, per Cluster Name and Broker ID: export the sum over brokers" }
+      }
+    }
+  ]
+}

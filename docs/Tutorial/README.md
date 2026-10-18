@@ -6,17 +6,19 @@ Complete documentation of the Web Insight Report features and behavior. Each pag
 
 | # | Page | Description |
 |---|------|-------------|
-| 1 | [Overview](01-Overview.md) | Report layout, header, tabs, filter bar, output files |
-| 2 | [Summary Tab](02-Summary-Tab.md) | Metric cards, Apdex, response time chart, Top 5 slowest, Copy Summary |
-| 3 | [Timeline Tab](03-Timeline-Tab.md) | 9 chart types, chart controls, hide/show, fullscreen, heatmap, granularity |
-| 4 | [Samplers Tab](04-Samplers-Tab.md) | Statistics table, 14 columns, sort/search/column toggle, detail expansion, transaction controllers |
-| 5 | [Errors Tab](05-Errors-Tab.md) | Error charts, summary table, detail table with expandable rows |
+| 1 | [Overview](01-Overview.md) | Installation, report layout, header, tabs, filter bar, output files |
+| 2 | [Summary Tab](02-Summary-Tab.md) | Gate strip, server card, metric cards, Apdex, response time chart, Top 5 slowest, Copy Summary and Copy Verdict |
+| 3 | [Timeline Tab](03-Timeline-Tab.md) | 9 chart types, chart controls, threshold lines, hide/show, fullscreen, heatmap, granularity |
+| 4 | [Samplers Tab](04-Samplers-Tab.md) | Statistics table, 14 columns, assert badges and cell markers, ⊕ to add an assert, sort/search/column toggle, detail expansion, transaction controllers |
+| 5 | [Errors Tab](05-Errors-Tab.md) | Error classes, error charts, summary table, detail table by time or grouped, expandable rows |
 | 6 | [Compare Tab](06-Compare-Tab.md) | Baseline comparison, regression detection, threshold controls |
-| 7 | [Notes Tab](07-Notes-Tab.md) | Markdown notes, verdict, timeline markers, annotation editor |
+| 7 | [Notes Tab](07-Notes-Tab.md) | Markdown notes, timeline markers, annotation editor |
 | 8 | [Filter Bar](08-Filter-Bar.md) | Palette, line thickness, metric toggle, granularity, sampler filter, presets |
 | 9 | [Dark Mode & Accessibility](09-Dark-Mode-Accessibility.md) | Dark mode, colorblind mode, palette recommendations |
-| 10 | [SLA & Apdex](10-SLA-Apdex.md) | SLA thresholds, PASS/WARN/FAIL logic, Apdex score, chart threshold lines |
+| 10 | [Asserts & Apdex](10-Asserts-Apdex.md) | Assertion rules, targets, metrics, predicates, verdict logic, Apdex |
 | 11 | [Export & Integration](11-Export-Integration.md) | CSV export, Copy Summary, CI/CD JSON, JUnit XML, external data mode |
+| 12 | [Asserts Tab](12-Asserts-Tab.md) | The gate strip, the rules table, the assert editor, drafts, saving, seeding, Generate from run, cell verdicts, chart interactions |
+| 13 | [Server Tab](13-Server-Tab.md) | Server asserts (expected) against collected metrics (actual): the three steps, `wir-collect`, the header chip, `serverStatus`, components and the catalogue, the editor, and the `serverMetrics` reference |
 
 ## Screenshots
 

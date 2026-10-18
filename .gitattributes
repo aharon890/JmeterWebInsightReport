@@ -1,26 +1,24 @@
-# Normalize line endings for all text files
-* text=auto
+# Normalize line endings so the same checkout works on Windows, macOS and Linux.
+# Without this, a Windows contributor with core.autocrlf=true commits CRLF and
+# the shell scripts die on macOS with: bad interpreter: /usr/bin/env bash^M
+* text=auto eol=lf
 
-# Force LF for source code
-*.java text eol=lf
-*.xml text eol=lf
-*.properties text eol=lf
-*.md text eol=lf
-*.json text eol=lf
-*.html text eol=lf
-*.css text eol=lf
-*.js text eol=lf
-*.yml text eol=lf
-*.yaml text eol=lf
-*.txt text eol=lf
-*.sh text eol=lf
+# Windows batch files must keep CRLF — cmd.exe mis-parses LF-only .bat files.
 *.bat text eol=crlf
+*.cmd text eol=crlf
 
-# Binary files — don't touch
+# Shell scripts must always be LF, even when checked out on Windows.
+*.sh text eol=lf
+
+# Test fixtures are parsed byte-for-byte; pin them.
+*.jtl text eol=lf
+*.jmx text eol=lf
+
+# Binary — never touch.
+*.jar binary
 *.png binary
 *.jpg binary
-*.jpeg binary
 *.gif binary
 *.ico binary
-*.jar binary
-*.class binary
+*.zip binary
+*.tgz binary

@@ -1,0 +1,229 @@
+package com.jmeterwebinsightreport.report.exporter;
+
+import com.jmeterwebinsightreport.core.model.ReportData;
+import com.jmeterwebinsightreport.core.model.TestMetadata;
+import com.jmeterwebinsightreport.core.util.RunIdentity;
+import com.jmeterwebinsightreport.report.gate.GateEvaluation;
+import com.jmeterwebinsightreport.report.generator.ReportConfiguration;
+import com.jmeterwebinsightreport.report.generator.WebInsightReportGenerator;
+import org.apache.jmeter.util.JMeterUtils;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Instant;
+import java.util.Arrays;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * The -g -o exporter must decide "is the report already sitting here <em>this run's</em>?" — and
+ * only a yes justifies writing nothing.
+ *
+ * <p>Two bugs live in this one decision. Deriving the expected name from the raw {@code -J}
+ * property missed every configuration the generator rewrites, so both generators ran and the
+ * second overwrote the first. And answering the question by <b>name</b> conflated "the listener
+ * in this very execution already wrote it" with "an unrelated report is in the way" — opposite
+ * answers, one of which is a run that silently produces nothing at all. The name finds the
+ * candidates now; the run id decides.
+ */
+class WebInsightDataExporterTest {
+
+    @TempDir
+    Path outputDir;
+
+    /**
+     * JMeterUtils holds its properties in a static that only a real JMeter start-up fills, and
+     * reading one before then is an NPE rather than a null. An empty file is enough: these tests
+     * are about which properties the exporter reads, not about JMeter's defaults.
+     */
+    @BeforeAll
+    static void initJMeterProperties() throws IOException {
+        if (JMeterUtils.getJMeterProperties() == null) {
+            File empty = File.createTempFile("wir-test-", ".properties");
+            empty.deleteOnExit();
+            JMeterUtils.loadJMeterProperties(empty.getAbsolutePath());
+        }
+    }
+
+    private void touch(String name) throws IOException {
+        Files.write(outputDir.resolve(name), "{}".getBytes(StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void filenameResolution_isSharedWithTheGenerator() {
+        assertEquals("myreport.html", WebInsightReportGenerator.resolveReportFilename("myreport"));
+        assertEquals("myreport.html", WebInsightReportGenerator.resolveReportFilename("myreport.html"));
+        assertEquals("web-insight-report.html", WebInsightReportGenerator.resolveReportFilename(null));
+        // A path is rejected and falls back, so the exporter must expect the default too.
+        assertEquals("web-insight-report.html",
+                WebInsightReportGenerator.resolveReportFilename("../../evil.html"));
+    }
+
+    @Test
+    void timestampPatternBecomesAGlob() {
+        assertEquals("ts_*.html", WebInsightReportGenerator.reportFilenameGlob("ts_${timestamp}.html"));
+        assertEquals("run_*.html", WebInsightReportGenerator.reportFilenameGlob("run_${timestamp}"));
+        assertEquals("plain.html", WebInsightReportGenerator.reportFilenameGlob("plain.html"));
+    }
+
+    // --- the exists policy, decided on identity -----------------------------------
+
+    @Test
+    void skipsWhenTheExistingReportIsThisVeryRun() throws IOException {
+        // The one case that justifies writing nothing: a combined `-n -t … -e -o` run, where the
+        // listener already produced this exact report during this execution.
+        ReportData run = run("SHARED-RUN", 1_700_000_000_000L);
+        writeJsonFor("myreport.json", run);
+
+        assertTrue(WebInsightDataExporter.thisRunAlreadyReported(
+                outputDir.toFile(), "myreport.html", run));
+        // ...and the suffix-less form the generator would have completed.
+        assertTrue(WebInsightDataExporter.thisRunAlreadyReported(
+                outputDir.toFile(), "myreport", run));
+    }
+
+    @Test
+    void generatesWhenTheExistingReportBelongsToAnotherRun() throws IOException {
+        // The failure this replaces: a stale report from an unrelated run suppressed a fresh
+        // one, and the only trace was a WARN in a log with no console appender. Overwriting is
+        // the documented default on the listener path; the exporter now agrees with it instead
+        // of contradicting it.
+        writeJsonFor("myreport.json", run("EARLIER-RUN", 1_600_000_000_000L));
+
+        assertFalse(WebInsightDataExporter.thisRunAlreadyReported(
+                outputDir.toFile(), "myreport.html", run("THIS-RUN", 1_700_000_000_000L)));
+    }
+
+    @Test
+    void generatesWhenTheExistingReportCannotSayWhoseItIs() throws IOException {
+        // No runId at all: a report from a version that predates run identity, or a .json
+        // truncated by a crash. "Cannot prove it is mine" resolves to generate — a visible
+        // overwrite is a far better failure than a run that produces nothing and says nothing.
+        touch("myreport.json");
+
+        assertFalse(WebInsightDataExporter.thisRunAlreadyReported(
+                outputDir.toFile(), "myreport.html", run("ANY", 1_700_000_000_000L)));
+    }
+
+    @Test
+    void anHtmlWithNoJsonAtAllDoesNotSuppressTheReport() throws IOException {
+        // Keying on the .html was how the old check covered a lost .json. Under identity that
+        // case is unidentified and generates: an HTML that cannot say which run produced it is
+        // not evidence that this run is already done.
+        Files.write(outputDir.resolve("myreport.html"), "<html></html>".getBytes(StandardCharsets.UTF_8));
+
+        assertFalse(WebInsightDataExporter.thisRunAlreadyReported(
+                outputDir.toFile(), "myreport.html", run("ANY", 1_700_000_000_000L)));
+    }
+
+    @Test
+    void findsATimestampedReportStampedInAnotherSecond() throws IOException {
+        // The listener stamped its name when IT ran; the exporter runs later, possibly in the
+        // next second, so an exact-name comparison would miss it entirely and the run would end
+        // with two differently-named reports of the same test.
+        ReportData run = run("SHARED-RUN", 1_700_000_000_000L);
+        writeJsonFor("ts_20260101_010101.json", run);
+
+        assertTrue(WebInsightDataExporter.thisRunAlreadyReported(
+                outputDir.toFile(), "ts_${timestamp}.html", run));
+    }
+
+    @Test
+    void doesNotFalsePositiveOnAnUnrelatedFile() throws IOException {
+        touch("statistics.json");
+        ReportData run = run("ANY", 1_700_000_000_000L);
+
+        assertFalse(WebInsightDataExporter.thisRunAlreadyReported(
+                outputDir.toFile(), "ts_${timestamp}.html", run));
+        assertFalse(WebInsightDataExporter.thisRunAlreadyReported(outputDir.toFile(), null, run));
+
+        // '${timestamp}' as the WHOLE name degenerates to glob "*.html", hence json glob
+        // "*.json", hence a regex of ".*\.json" — which matched JMeter's own statistics.json,
+        // written by JsonExporter before any exporter runs. The check concluded a listener
+        // report existed and skipped, so the run produced NO Web Insight report and exited 0.
+        assertFalse(WebInsightDataExporter.thisRunAlreadyReported(
+                        outputDir.toFile(), "${timestamp}", run),
+                "a whole-name timestamp must not match an unrelated .json");
+    }
+
+    @Test
+    void aLiteralAsteriskIsNotTreatedAsAWildcard() throws IOException {
+        touch("repXXXort.json");
+        // 'rep*ort.html' is rejected by the filename validator, so the glob is the default
+        // name — which this directory does not contain.
+        assertFalse(WebInsightDataExporter.thisRunAlreadyReported(
+                outputDir.toFile(), "rep*ort.html", run("ANY", 1L)));
+    }
+
+    @Test
+    void detectsTheDefaultName() throws IOException {
+        ReportData run = run("DEFAULT-NAME", 1_700_000_000_000L);
+        writeJsonFor("web-insight-report.json", run);
+
+        assertTrue(WebInsightDataExporter.thisRunAlreadyReported(outputDir.toFile(), null, run));
+        assertTrue(WebInsightDataExporter.thisRunAlreadyReported(outputDir.toFile(), "", run));
+    }
+
+    @Test
+    void missingDirectoryIsNotACollision() {
+        ReportData run = run("ANY", 1L);
+        assertFalse(WebInsightDataExporter.thisRunAlreadyReported(
+                new File(outputDir.toFile(), "nope"), null, run));
+        assertFalse(WebInsightDataExporter.thisRunAlreadyReported(null, null, run));
+    }
+
+    /**
+     * A CI/CD JSON carrying the run id of the given run — the real artifact's shape, minus
+     * every key the decision does not read.
+     */
+    private void writeJsonFor(String name, ReportData data) throws IOException {
+        String json = "{\n  \"runId\" : \"" + RunIdentity.of(data) + "\",\n"
+                + "  \"testName\" : \"" + data.getMetadata().getTestName() + "\"\n}\n";
+        Files.write(outputDir.resolve(name), json.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static ReportData run(String name, long startMillis) {
+        ReportData data = new ReportData();
+        TestMetadata meta = new TestMetadata();
+        meta.setTestName(name);
+        meta.setStartTime(Instant.ofEpochMilli(startMillis));
+        meta.setDurationMillis(5_000L);
+        meta.setTotalSamples(10);
+        meta.setTotalErrors(1);
+        data.setMetadata(meta);
+        return data;
+    }
+
+    /**
+     * An unrecognised boolean warns and falls through to "unset" rather than meaning false.
+     *
+     * <p>{@code -Jwebinsight.report.junit=yes} used to match neither the {@code "true"} branch
+     * nor the null/empty one, so it neither enabled JUnit XML nor let anything else decide — a
+     * typo silently voided the setting with no message anywhere. There is no GUI surface on this
+     * path, so "unset" resolves to off here; the warning is the part that matters.
+     */
+    @Test
+    void anUnrecognisedBooleanIsReportedAndTreatedAsUnset() {
+        String before = JMeterUtils.getProperty("webinsight.report.junit");
+        try {
+            JMeterUtils.setProperty("webinsight.report.junit", "yes");
+            ReportConfiguration config =
+                    new WebInsightDataExporter().buildConfiguration(outputDir.toFile());
+            assertFalse(config.isGenerateJunitXml(),
+                    "'yes' is not a boolean this plugin accepts, and it must not enable anything");
+
+            JMeterUtils.setProperty("webinsight.report.junit", "TRUE");
+            assertTrue(new WebInsightDataExporter().buildConfiguration(outputDir.toFile())
+                            .isGenerateJunitXml(),
+                    "...while a recognised value still works, whatever its case");
+        } finally {
+            JMeterUtils.setProperty("webinsight.report.junit", before == null ? "" : before);
+        }
+    }
+}

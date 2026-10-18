@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; background: #f8fafc; }
+    a { color: #3b82f6; }
+    a:hover { color: #1e293b; }
+  </style>
+</helmet>
+<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #f8fafc; color: #1e293b; min-height: 100vh; line-height: 1.6;">
+
+  <header style="background: #ffffff; border-bottom: 1px solid #e2e8f0; padding: 20px 32px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+    <div style="max-width: 1100px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
+      <div>
+        <h1 style="font-size: 1.5rem; font-weight: 600; margin: 0;">Asserts &mdash; Design Spec</h1>
+        <p style="color: #64748b; font-size: 0.875rem; margin: 4px 0 0;">Schema v2 for <code style="font-family: ui-monospace, Menlo, monospace; background: #f1f5f9; padding: 1px 5px; border-radius: 4px;">report-annotations.json</code>, evaluation semantics, and the phase-2 report GUI. Implementation plans: <code style="font-family: ui-monospace, Menlo, monospace; background: #f1f5f9; padding: 1px 5px; border-radius: 4px;">plans/phase-1-assertion-engine-v2.md</code> &middot; <code style="font-family: ui-monospace, Menlo, monospace; background: #f1f5f9; padding: 1px 5px; border-radius: 4px;">plans/phase-2-asserts-gui-v2.md</code></p>
+      </div>
+      <a href="Asserts Prototype.dc.html" style="font-size: 0.85rem; font-weight: 600; background: #3b82f6; color: #ffffff; padding: 8px 16px; border-radius: 8px; text-decoration: none;">Open interactive prototype &rarr;</a>
+    </div>
+  </header>
+
+  <main style="max-width: 1100px; margin: 0 auto; padding: 24px 32px 64px; display: flex; flex-direction: column; gap: 24px;">
+
+    <section data-screen-label="Principles" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+      <h2 style="font-size: 1.125rem; font-weight: 600; margin: 0 0 4px;">1 &middot; What changes and why</h2>
+      <p style="font-size: 0.85rem; color: #64748b; margin: 0 0 16px;">The report displays 13+ metrics per sampler plus run-level stats &mdash; almost none of it gateable. v2 is built on four principles:</p>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px;">
+        <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px;">
+          <div style="font-weight: 600; font-size: 0.85rem;">Declared &equiv; judged</div>
+          <p style="font-size: 0.78rem; color: #64748b; margin: 2px 0 0;">Only rules you wrote decide the verdict. Everything else is reported as data, never judged. One rule on one metric of one sampler is a complete, valid gate.</p>
+        </div>
+        <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px;">
+          <div style="font-weight: 600; font-size: 0.85rem;">Assertable &equiv; displayed</div>
+          <p style="font-size: 0.78rem; color: #64748b; margin: 2px 0 0;">Every number the report shows can be asserted &mdash; any metric, any percentile (p50&hellip;p99.99), per sampler, per group, or for the whole run.</p>
+        </div>
+        <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px;">
+          <div style="font-weight: 600; font-size: 0.85rem;">The tester writes the direction</div>
+          <p style="font-size: 0.78rem; color: #64748b; margin: 2px 0 0;">Bands are explicit predicates (<code style="font-family: ui-monospace, Menlo, monospace;">fail: {"gt": 800}</code>, <code style="font-family: ui-monospace, Menlo, monospace;">fail: {"lt": 30}</code>). The engine needs no per-metric direction table, so latency, throughput and apdex share one rule shape.</p>
+        </div>
+        <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px;">
+          <div style="font-weight: 600; font-size: 0.85rem;">Mistakes are loud</div>
+          <p style="font-size: 0.78rem; color: #64748b; margin: 2px 0 0;">JSON Schema for editor completion; load-time validation naming the rule and the fix; a rule matching nothing is a gate that never ran &mdash; it fails by default.</p>
+        </div>
+      </div>
+      <div style="margin-top: 14px; font-size: 0.8rem; color: #64748b; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px;">
+        <strong style="color: #1e293b;">One engine.</strong> One rule model, one evaluator, one place a run is judged &mdash; not two code paths that phase 2 would have to render and edit twice.
+      </div>
+    </section>
+
+    <section data-screen-label="Schema" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+      <h2 style="font-size: 1.125rem; font-weight: 600; margin: 0 0 4px;">2 &middot; The schema &mdash; <code style="font-family: ui-monospace, Menlo, monospace;">assertions</code></h2>
+      <p style="font-size: 0.85rem; color: #64748b; margin: 0 0 14px;">A new top-level array in the existing annotations file. Comments below are illustrative &mdash; the file is plain JSON.</p>
+      <pre style="background: #0f172a; color: #cbd5e1; border-radius: 8px; padding: 18px 20px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.76rem; line-height: 1.75; overflow-x: auto; margin: 0;">{
+  <span style="color: #93c5fd;">"$schema"</span>: <span style="color: #86efac;">"https://&hellip;/report-annotations.schema.json"</span>,   <span style="color: #64748b;">// IDE completion + typo squiggles</span>
+  <span style="color: #93c5fd;">"assertions"</span>: [
+    {                                                    <span style="color: #64748b;">// the canonical check</span>
+      <span style="color: #93c5fd;">"id"</span>: <span style="color: #86efac;">"checkout-p90"</span>,                             <span style="color: #64748b;">// optional — auto-derived when omitted</span>
+      <span style="color: #93c5fd;">"description"</span>: <span style="color: #86efac;">"Contract limit §4.2"</span>,               <span style="color: #64748b;">// carried into JUnit + failure text</span>
+      <span style="color: #93c5fd;">"target"</span>: { <span style="color: #93c5fd;">"sampler"</span>: <span style="color: #86efac;">"POST /checkout"</span> },       <span style="color: #64748b;">// exactly one target form (§3)</span>
+      <span style="color: #93c5fd;">"metric"</span>: <span style="color: #86efac;">"p90"</span>,
+      <span style="color: #93c5fd;">"warn"</span>: { <span style="color: #93c5fd;">"gt"</span>: <span style="color: #fcd34d;">1200</span> },                          <span style="color: #64748b;">// optional — omit = no warn band</span>
+      <span style="color: #93c5fd;">"fail"</span>: { <span style="color: #93c5fd;">"gt"</span>: <span style="color: #fcd34d;">1500</span> }
+    },
+    {                                                    <span style="color: #64748b;">// a group, with direction flipped</span>
+      <span style="color: #93c5fd;">"target"</span>: { <span style="color: #93c5fd;">"match"</span>: <span style="color: #86efac;">"GET /api/*"</span>, <span style="color: #93c5fd;">"exclude"</span>: [<span style="color: #86efac;">"GET /api/health"</span>] },
+      <span style="color: #93c5fd;">"metric"</span>: <span style="color: #86efac;">"throughput"</span>,
+      <span style="color: #93c5fd;">"fail"</span>: { <span style="color: #93c5fd;">"lt"</span>: <span style="color: #fcd34d;">5</span> },                              <span style="color: #64748b;">// each match must sustain ≥ 5/s</span>
+      <span style="color: #93c5fd;">"tags"</span>: [<span style="color: #86efac;">"full"</span>]                                  <span style="color: #64748b;">// -Jwir.asserts.tags=smoke skips it</span>
+    },
+    {                                                    <span style="color: #64748b;">// gate the run as a whole</span>
+      <span style="color: #93c5fd;">"target"</span>: { <span style="color: #93c5fd;">"scope"</span>: <span style="color: #86efac;">"overall"</span> },
+      <span style="color: #93c5fd;">"metric"</span>: <span style="color: #86efac;">"apdex"</span>,
+      <span style="color: #93c5fd;">"warn"</span>: { <span style="color: #93c5fd;">"lt"</span>: <span style="color: #fcd34d;">0.85</span> }, <span style="color: #93c5fd;">"fail"</span>: { <span style="color: #93c5fd;">"lt"</span>: <span style="color: #fcd34d;">0.70</span> }
+    },
+    {                                                    <span style="color: #64748b;">// any percentile; track without gating</span>
+      <span style="color: #93c5fd;">"target"</span>: { <span style="color: #93c5fd;">"match"</span>: <span style="color: #86efac;">"regex:^GET /(search|browse)"</span> },
+      <span style="color: #93c5fd;">"metric"</span>: <span style="color: #86efac;">"p99.9"</span>,
+      <span style="color: #93c5fd;">"observe"</span>: <span style="color: #fcd34d;">true</span>                                  <span style="color: #64748b;">// reported everywhere, never fails a build</span>
+    },
+    {                                                    <span style="color: #64748b;">// stay inside a corridor</span>
+      <span style="color: #93c5fd;">"target"</span>: { <span style="color: #93c5fd;">"scope"</span>: <span style="color: #86efac;">"overall"</span> },
+      <span style="color: #93c5fd;">"metric"</span>: <span style="color: #86efac;">"throughput"</span>,
+      <span style="color: #93c5fd;">"fail"</span>: { <span style="color: #93c5fd;">"outside"</span>: [<span style="color: #fcd34d;">40</span>, <span style="color: #fcd34d;">80</span>] },              <span style="color: #64748b;">// too slow OR suspiciously fast</span>
+      <span style="color: #93c5fd;">"onMissing"</span>: <span style="color: #86efac;">"skip"</span>, <span style="color: #93c5fd;">"enabled"</span>: <span style="color: #fcd34d;">false</span>          <span style="color: #64748b;">// parked, kept in the file</span>
+    }
+  ]
+}</pre>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 16px;">
+        <div>
+          <div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 8px;">Fields</div>
+          <table style="width: 100%; border-collapse: collapse; font-size: 0.78rem;">
+            <tbody>
+              <tr style="border-top: 1px solid #e2e8f0;"><td style="padding: 5px 8px 5px 0; white-space: nowrap;"><code style="font-family: ui-monospace, Menlo, monospace; font-weight: 600;">id</code></td><td style="padding: 5px 0; color: #64748b;">Unique; auto-derived <code style="font-family: ui-monospace, Menlo, monospace;">slug(target)-metric</code> when omitted. Names the JUnit testcase.</td></tr>
+              <tr style="border-top: 1px solid #e2e8f0;"><td style="padding: 5px 8px 5px 0;"><code style="font-family: ui-monospace, Menlo, monospace; font-weight: 600;">target</code></td><td style="padding: 5px 0; color: #64748b;">Exactly one form &mdash; &sect;3.</td></tr>
+              <tr style="border-top: 1px solid #e2e8f0;"><td style="padding: 5px 8px 5px 0;"><code style="font-family: ui-monospace, Menlo, monospace; font-weight: 600;">metric</code></td><td style="padding: 5px 0; color: #64748b;">Case-insensitive; &sect;3. <code style="font-family: ui-monospace, Menlo, monospace;">p95</code> &equiv; <code style="font-family: ui-monospace, Menlo, monospace;">p95.0</code>, <code style="font-family: ui-monospace, Menlo, monospace;">median</code> &equiv; <code style="font-family: ui-monospace, Menlo, monospace;">p50</code>.</td></tr>
+              <tr style="border-top: 1px solid #e2e8f0;"><td style="padding: 5px 8px 5px 0;"><code style="font-family: ui-monospace, Menlo, monospace; font-weight: 600;">fail / warn</code></td><td style="padding: 5px 0; color: #64748b;">Predicates; <code style="font-family: ui-monospace, Menlo, monospace;">fail</code> tested first. At least one required unless <code style="font-family: ui-monospace, Menlo, monospace;">observe</code>.</td></tr>
+              <tr style="border-top: 1px solid #e2e8f0;"><td style="padding: 5px 8px 5px 0;"><code style="font-family: ui-monospace, Menlo, monospace; font-weight: 600;">observe</code></td><td style="padding: 5px 0; color: #64748b;">Track the value everywhere; never gates. No bands allowed.</td></tr>
+              <tr style="border-top: 1px solid #e2e8f0;"><td style="padding: 5px 8px 5px 0;"><code style="font-family: ui-monospace, Menlo, monospace; font-weight: 600;">onMissing</code></td><td style="padding: 5px 0; color: #64748b;"><code style="font-family: ui-monospace, Menlo, monospace;">fail</code> (default) &middot; <code style="font-family: ui-monospace, Menlo, monospace;">warn</code> &middot; <code style="font-family: ui-monospace, Menlo, monospace;">skip</code> when the target matches nothing.</td></tr>
+              <tr style="border-top: 1px solid #e2e8f0;"><td style="padding: 5px 8px 5px 0;"><code style="font-family: ui-monospace, Menlo, monospace; font-weight: 600;">enabled</code></td><td style="padding: 5px 0; color: #64748b;"><code style="font-family: ui-monospace, Menlo, monospace;">false</code> parks a rule without deleting it (DISABLED in outputs).</td></tr>
+              <tr style="border-top: 1px solid #e2e8f0;"><td style="padding: 5px 8px 5px 0;"><code style="font-family: ui-monospace, Menlo, monospace; font-weight: 600;">tags</code></td><td style="padding: 5px 0; color: #64748b;">Rule-set selection: <code style="font-family: ui-monospace, Menlo, monospace;">-Jwir.asserts.tags=smoke</code> runs matching + untagged rules.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 8px;">Predicates &mdash; exactly one key per band</div>
+          <table style="width: 100%; border-collapse: collapse; font-size: 0.78rem;">
+            <tbody>
+              <tr style="border-top: 1px solid #e2e8f0;"><td style="padding: 5px 8px 5px 0;"><code style="font-family: ui-monospace, Menlo, monospace; font-weight: 600;">gt / gte</code></td><td style="padding: 5px 0; color: #64748b;">breach when actual &gt; / &ge; value &mdash; latency, error rate</td></tr>
+              <tr style="border-top: 1px solid #e2e8f0;"><td style="padding: 5px 8px 5px 0;"><code style="font-family: ui-monospace, Menlo, monospace; font-weight: 600;">lt / lte</code></td><td style="padding: 5px 0; color: #64748b;">breach when actual &lt; / &le; value &mdash; throughput, apdex, sampleCount</td></tr>
+              <tr style="border-top: 1px solid #e2e8f0;"><td style="padding: 5px 8px 5px 0;"><code style="font-family: ui-monospace, Menlo, monospace; font-weight: 600;">outside</code></td><td style="padding: 5px 0; color: #64748b;"><code style="font-family: ui-monospace, Menlo, monospace;">[lo, hi]</code> &mdash; breach when the value leaves the corridor. (Replaces the draft's <code style="font-family: ui-monospace, Menlo, monospace;">between</code>, which read backwards.)</td></tr>
+            </tbody>
+          </table>
+          <div style="margin-top: 14px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 8px;">Rule statuses</div>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+            <span style="padding: 2px 8px; border-radius: 4px; font-size: 0.65rem; font-weight: 700; background: #dcfce7; color: #166534;">PASS</span>
+            <span style="padding: 2px 8px; border-radius: 4px; font-size: 0.65rem; font-weight: 700; background: #fef3c7; color: #92400e;">WARN</span>
+            <span style="padding: 2px 8px; border-radius: 4px; font-size: 0.65rem; font-weight: 700; background: #fee2e2; color: #991b1b;">FAIL</span>
+            <span style="padding: 2px 8px; border-radius: 4px; font-size: 0.65rem; font-weight: 700; background: #fee2e2; color: #991b1b; border: 1px dashed #ef4444;">UNMATCHED&rarr;onMissing</span>
+            <span style="padding: 2px 8px; border-radius: 4px; font-size: 0.65rem; font-weight: 700; background: #dbeafe; color: #1e40af;">OBSERVED</span>
+            <span style="padding: 2px 8px; border-radius: 4px; font-size: 0.65rem; font-weight: 700; background: #f1f5f9; color: #64748b;">DISABLED</span>
+            <span style="padding: 2px 8px; border-radius: 4px; font-size: 0.65rem; font-weight: 700; background: #fee2e2; color: #991b1b; border: 1px solid #ef4444;">INVALID (=FAIL)</span>
+          </div>
+          <p style="font-size: 0.78rem; color: #64748b; margin: 10px 0 0;">Run verdict = worst status across evaluated rules. OBSERVED and DISABLED are neutral. A pattern matching several samplers evaluates each; the rule takes the worst and keeps every match, passing ones included.</p>
+        </div>
+      </div>
+    </section>
+
+    <section data-screen-label="Targets and metrics" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+      <h2 style="font-size: 1.125rem; font-weight: 600; margin: 0 0 16px;">3 &middot; Targets &amp; metric vocabulary</h2>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px;">
+        <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px;">
+          <code style="font-family: ui-monospace, Menlo, monospace; font-size: 0.78rem; font-weight: 600;">{"sampler": "&hellip;"}</code>
+          <p style="font-size: 0.76rem; color: #64748b; margin: 4px 0 0;">One exact name. Naming is an explicit request &mdash; it reaches transaction children and hidden rows. <code style="font-family: ui-monospace, Menlo, monospace;">samplers: [&hellip;]</code> for several.</p>
+        </div>
+        <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px;">
+          <code style="font-family: ui-monospace, Menlo, monospace; font-size: 0.78rem; font-weight: 600;">{"match": "GET /api/*"}</code>
+          <p style="font-size: 0.76rem; color: #64748b; margin: 4px 0 0;">Glob by default; <code style="font-family: ui-monospace, Menlo, monospace;">regex:</code> prefix for full power; optional <code style="font-family: ui-monospace, Menlo, monospace;">exclude</code> globs. Blanket selectors see top-level, non-hidden samplers only.</p>
+        </div>
+        <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px;">
+          <code style="font-family: ui-monospace, Menlo, monospace; font-size: 0.78rem; font-weight: 600;">{"scope": "overall"}</code>
+          <p style="font-size: 0.76rem; color: #64748b; margin: 4px 0 0;">The run as a whole: merged-distribution percentiles, total throughput, overall error rate, apdex, duration, maxThreads.</p>
+        </div>
+      </div>
+      <div style="margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        <div>
+          <div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 6px;">Per-sampler metrics</div>
+          <p style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.76rem; color: #475569; margin: 0; line-height: 2;">sampleCount &middot; errorCount &middot; errorRate<span style="color: #94a3b8;">(%)</span> &middot; mean &middot; median &middot; min &middot; max &middot; stdDev<span style="color: #94a3b8;">(ms)</span> &middot; throughput<span style="color: #94a3b8;">(/s)</span> &middot; apdex &middot; <strong>p50&hellip;p99.99</strong><span style="color: #94a3b8;">(ms)</span></p>
+        </div>
+        <div>
+          <div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 6px;">Overall metrics</div>
+          <p style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.76rem; color: #475569; margin: 0; line-height: 2;">totalSamples &middot; errorRate<span style="color: #94a3b8;">(%)</span> &middot; duration<span style="color: #94a3b8;">(s)</span> &middot; maxThreads &middot; mean &middot; median &middot; <strong>p50&hellip;p99.99</strong><span style="color: #94a3b8;">(ms)</span> &middot; throughput<span style="color: #94a3b8;">(/s)</span> &middot; apdex</p>
+        </div>
+      </div>
+      <p style="font-size: 0.78rem; color: #64748b; margin: 12px 0 0;">Arbitrary percentiles ride the existing t-digest &mdash; nothing new is computed to be displayed, but any quantile can be asserted. The HTML payload always carries the grid p50/p75/p90/p95/p99/p99.9 <em>plus every percentile a rule names</em>, so the phase-2 editor can re-evaluate any rule client-side.</p>
+    </section>
+
+    <section data-screen-label="Outputs and validation" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+      <h2 style="font-size: 1.125rem; font-weight: 600; margin: 0 0 14px;">4 &middot; Outputs &amp; validation</h2>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        <div>
+          <div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 8px;">CI/CD JSON &mdash; new blocks, existing keys untouched</div>
+          <pre style="background: #0f172a; color: #cbd5e1; border-radius: 8px; padding: 14px 16px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.72rem; line-height: 1.7; margin: 0; overflow-x: auto;"><span style="color: #93c5fd;">"gate"</span>: { <span style="color: #93c5fd;">"status"</span>: <span style="color: #86efac;">"FAIL"</span>, <span style="color: #93c5fd;">"declared"</span>: <span style="color: #fcd34d;">7</span>, <span style="color: #93c5fd;">"failed"</span>: <span style="color: #fcd34d;">2</span>,
+          <span style="color: #93c5fd;">"warned"</span>: <span style="color: #fcd34d;">2</span>, <span style="color: #93c5fd;">"passed"</span>: <span style="color: #fcd34d;">2</span>, <span style="color: #93c5fd;">"unmatched"</span>: <span style="color: #fcd34d;">1</span>,
+          <span style="color: #93c5fd;">"observed"</span>: <span style="color: #fcd34d;">1</span>, <span style="color: #93c5fd;">"invalid"</span>: <span style="color: #fcd34d;">0</span> },
+<span style="color: #93c5fd;">"assertions"</span>: [ { <span style="color: #93c5fd;">"id"</span>: <span style="color: #86efac;">"checkout-p95"</span>, <span style="color: #93c5fd;">"status"</span>: <span style="color: #86efac;">"FAIL"</span>,
+    <span style="color: #93c5fd;">"metric"</span>: <span style="color: #86efac;">"p95"</span>, <span style="color: #93c5fd;">"unit"</span>: <span style="color: #86efac;">"ms"</span>, <span style="color: #93c5fd;">"origin"</span>: <span style="color: #86efac;">"file"</span>,
+    <span style="color: #93c5fd;">"results"</span>: [ { <span style="color: #93c5fd;">"sampler"</span>: <span style="color: #86efac;">"POST /checkout"</span>,
+      <span style="color: #93c5fd;">"actual"</span>: <span style="color: #fcd34d;">812</span>, <span style="color: #93c5fd;">"predicate"</span>: <span style="color: #86efac;">"gt"</span>,
+      <span style="color: #93c5fd;">"threshold"</span>: <span style="color: #fcd34d;">800</span>, <span style="color: #93c5fd;">"status"</span>: <span style="color: #86efac;">"FAIL"</span> } ] } ]</pre>
+          <p style="font-size: 0.76rem; color: #64748b; margin: 8px 0 0;">Pipelines gate on <code style="font-family: ui-monospace, Menlo, monospace;">jq -e '.gate.failed == 0'</code> instead of string-matching a status that can't tell WARN from PASS. JUnit gains one testcase per rule &mdash; run-level rules included &mdash; with metric, actual, predicate and threshold in the failure text.</p>
+        </div>
+        <div>
+          <div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 8px;">Validation findings &mdash; loud, named, non-fatal</div>
+          <ul style="font-size: 0.8rem; color: #64748b; margin: 0; padding-left: 20px; line-height: 1.9;">
+            <li>Unknown metric &rarr; nearest-name suggestion (<em>"p90x&hellip; did you mean p90?"</em>)</li>
+            <li>Target matched nothing &rarr; lists the sampler names the run actually contained</li>
+            <li>Bad glob / regex &rarr; position of the error</li>
+            <li>Band with no operator, or several; <code style="font-family: ui-monospace, Menlo, monospace;">observe</code> + bands; non-numeric threshold; <code style="font-family: ui-monospace, Menlo, monospace;">outside</code> not <code style="font-family: ui-monospace, Menlo, monospace;">[lo, hi]</code></li>
+            <li>Unreachable warn band (e.g. warn &gt; 500 with fail &gt; 400 &mdash; fail is tested first, warn can never fire) &rarr; <em>"swapped values?"</em>. Verdicts stay correct, so it is a warning finding in the loader; the phase-2 editor refuses to save it</li>
+            <li>Duplicate id; unknown keys (incl. <code style="font-family: ui-monospace, Menlo, monospace;">apdexThreshold</code>)</li>
+          </ul>
+          <p style="font-size: 0.76rem; color: #64748b; margin: 10px 0 0;">Every finding lands in three places: the JMeter log, the CI/CD JSON, and a notice in the report. An invalid rule renders as INVALID and counts as FAIL &mdash; the report still generates, because the report is the artifact you need to debug the config. The published JSON Schema drives editor completion; the loader guards the runtime.</p>
+        </div>
+      </div>
+    </section>
+
+    <section data-screen-label="Phase 2 surfaces" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+      <h2 style="font-size: 1.125rem; font-weight: 600; margin: 0 0 4px;">5 &middot; Phase 2 &mdash; the GUI loop</h2>
+      <p style="font-size: 0.85rem; color: #64748b; margin: 0 0 14px;">run &rarr; <strong>see</strong> every assert &amp; verdict &rarr; <strong>tune</strong> against the observed number, verdict recomputing as you type &rarr; <strong>save</strong> the annotations file &rarr; next run gates on it. All of it inside the self-contained <code style="font-family: ui-monospace, Menlo, monospace;">file://</code> report &mdash; save = download or clipboard, whole document, notes and unknown keys preserved. Every surface is live in the <a href="Asserts Prototype.dc.html" style="font-weight: 600;">prototype</a>:</p>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px;">
+        <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px;">
+          <div style="font-weight: 600; font-size: 0.85rem;">Summary &middot; gate strip</div>
+          <p style="font-size: 0.76rem; color: #64748b; margin: 2px 0 0;">Verdict, its make-up (failed/warned/passed/observed) and the worst 3 breaches with actual-vs-limit &mdash; the "why" the badge never gave. Header badge itself: unchanged, always the gated verdict.</p>
+        </div>
+        <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px;">
+          <div style="font-weight: 600; font-size: 0.85rem;">Asserts tab</div>
+          <p style="font-size: 0.76rem; color: #64748b; margin: 2px 0 0;">Every rule: target chip, criteria, actual, verdict, matches (expandable, passing included). Unmatched rules render distinctly with a did-you-mean. Empty state teaches the feature.</p>
+        </div>
+        <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px;">
+          <div style="font-weight: 600; font-size: 0.85rem;">Editor with live re-evaluation</div>
+          <p style="font-size: 0.76rem; color: #64748b; margin: 2px 0 0;">One form for every metric. Targets picked from the run (typo-proof), pattern mode shows live matches; bands re-evaluate against the on-screen run as you type, stamped <em>Preview &mdash; unsaved</em>.</p>
+        </div>
+        <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px;">
+          <div style="font-weight: 600; font-size: 0.85rem;">Entry points &amp; seeding</div>
+          <p style="font-size: 0.76rem; color: #64748b; margin: 2px 0 0;">&oplus; on any metric cell pre-fills a rule from that number (fail = +20% rounded nice, warn = 80% of fail). "Generate from run" seeds a whole gate &mdash; per sampler&times;metric or blanket rules &mdash; as drafts to prune.</p>
+        </div>
+      </div>
+      <div style="margin-top: 12px; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; background: #f8fafc;">
+        <div style="font-weight: 600; font-size: 0.85rem;">Assert from charts &mdash; the lines are the rules</div>
+        <p style="font-size: 0.78rem; color: #64748b; margin: 4px 0 0;">Threshold lines stop being decoration: every rule targeting the charted metric draws its band as a line. <strong>Drag</strong> a line to retune that band (a draft edit with live verdict, like typing in the editor); <strong>+ Assert from chart</strong> drops a new line at the clicked level and opens the editor seeded with it; clicking a series point seeds a rule for that sampler + metric. Implementable today: the report's ECharts already draws <code style="font-family: ui-monospace, Menlo, monospace;">markLine</code> thresholds, and ECharts <code style="font-family: ui-monospace, Menlo, monospace;">graphic</code> elements + click events supply drag and point-click &mdash; no backend change, everything flows into the same draft/save model. In phase 2 a chart-authored rule gates the <em>whole-run aggregate</em>; the chart shows the line over the series so that distinction is visible (see the prototype's Timeline tab).</p>
+        <p style="font-size: 0.78rem; color: #64748b; margin: 8px 0 0;"><strong style="color: #1e293b;">Phase 3 hook:</strong> server metrics (CPU, consumer lag, heap) are pure time series, so chart-drag becomes their primary authoring surface and the time axis itself becomes assertable via an <code style="font-family: ui-monospace, Menlo, monospace;">over</code> clause that folds the series into the judged scalar &mdash; <code style="font-family: ui-monospace, Menlo, monospace;">"over": {"sustainedFor": "60s"}</code> (breach only when continuous), <code style="font-family: ui-monospace, Menlo, monospace;">{"window": "30s", "agg": "avg"}</code>; absent = whole-run aggregate, i.e. v2 semantics unchanged. Same bands, same statuses (+ INCONCLUSIVE for silent sources), targets gain <code style="font-family: ui-monospace, Menlo, monospace;">{"source": "prometheus", "metric": "container_cpu_usage_seconds"}</code> &mdash; aligned with the Server Metrics &amp; KPI Gates design. <code style="font-family: ui-monospace, Menlo, monospace;">plans/phase-3-chart-and-server-asserts.md</code></p>
+      </div>
+      <p style="font-size: 0.78rem; color: #64748b; margin: 12px 0 0;"><strong style="color: #1e293b;">Draft model:</strong> edits are drafts (NEW/EDITED markers, unsaved pill, localStorage per run identity). The tab shows the would-be verdict; the header badge never lies about what this run was gated on. Chart threshold lines are the declared rules &mdash; strictest emphasized, others in the tooltip.</p>
+    </section>
+
+    <section data-screen-label="Rollout" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+      <h2 style="font-size: 1.125rem; font-weight: 600; margin: 0 0 14px;">6 &middot; Rollout</h2>
+      <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 300px; border-left: 4px solid #3b82f6; background: #f8fafc; border-radius: 8px; padding: 12px 16px;">
+          <div style="font-weight: 600; font-size: 0.85rem;">Phase 1 &mdash; engine <span style="color: #94a3b8; font-weight: 500;">(backend only)</span></div>
+          <p style="font-size: 0.76rem; color: #64748b; margin: 2px 0 0;">Rule model, evaluator, validator, JSON Schema, CI/CD + JUnit outputs, payload embeds rules/results/vocabulary. <code style="font-family: ui-monospace, Menlo, monospace;">plans/phase-1-assertion-engine-v2.md</code></p>
+        </div>
+        <div style="flex: 1; min-width: 300px; border-left: 4px solid #22c55e; background: #f8fafc; border-radius: 8px; padding: 12px 16px;">
+          <div style="font-weight: 600; font-size: 0.85rem;">Phase 2 &mdash; GUI <span style="color: #94a3b8; font-weight: 500;">(report only, no backend change)</span></div>
+          <p style="font-size: 0.76rem; color: #64748b; margin: 2px 0 0;">Gate strip, tab, editor, seeding, drafts, save. Client evaluator = same algorithm (next-run fidelity tested end-to-end). <code style="font-family: ui-monospace, Menlo, monospace;">plans/phase-2-asserts-gui-v2.md</code></p>
+        </div>
+      </div>
+      <p style="font-size: 0.78rem; color: #64748b; margin: 12px 0 0;"><strong style="color: #1e293b;">Future, deliberately out:</strong> group-aggregate metrics (combined error rate of a matched set), cross-sampler expressions, baseline-aware rules (assert against the compared run), named threshold profiles. The rule model leaves room for each without breaking shape.</p>
+    </section>
+  </main>
+</div>
+</x-dc>
+</body>
+</html>

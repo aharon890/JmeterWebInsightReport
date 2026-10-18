@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="JMeter Web Insight Report" tests="3" failures="2">
+  <testsuite name="JMeter Web Insight Report" tests="3" failures="2">
+    <properties>
+      <property name="webinsight.runId" value="967a1b397b7fb1d2"/>
+    </properties>
+    <testcase name="GET /api/products" classname="performance">
+      <failure message="ASSERT FAIL: p50 119.361 ms breached &gt; 119.36 ms; throughput 8.299 /s breached &lt; 8.3 /s">
+p50: 119.361 ms (FAIL)
+p75: 145.57989 ms (PASS)
+throughput: 8.299 /s (FAIL)
+      </failure>
+    </testcase>
+    <testcase name="GET /api/search" classname="performance">
+      <failure message="ASSERT FAIL: p50 214.746 ms breached &gt; 119.36 ms">
+p50: 214.746 ms (FAIL)
+      </failure>
+    </testcase>
+    <testcase name="POST /api/checkout" classname="performance">
+    </testcase>
+  </testsuite>
+  <testsuite name="JMeter Web Insight Report - assertions" tests="12" failures="6" skipped="0">
+    <properties>
+      <property name="webinsight.runId" value="967a1b397b7fb1d2"/>
+    </properties>
+    <testcase name="fail-on-band" classname="assertions">
+      <failure message="Assertion &apos;fail-on-band&apos;: p50 119.361 ms on GET /api/products breached &gt; 119.36 ms">
+target:   GET /api/products
+metric:   p50
+criteria: fail &gt; 119.36 ms
+  [FAIL] GET /api/products = 119.361 ms
+      </failure>
+    </testcase>
+    <testcase name="fail-across" classname="assertions">
+      <failure message="Assertion &apos;fail-across&apos;: p50 119.361 ms on GET /api/products breached &gt; 119.3605 ms">
+target:   GET /api/products
+metric:   p50
+criteria: fail &gt; 119.3605 ms
+  [FAIL] GET /api/products = 119.361 ms
+      </failure>
+    </testcase>
+    <testcase name="pass-gte-on-band" classname="assertions">
+    </testcase>
+    <testcase name="pass-gt-across" classname="assertions">
+    </testcase>
+    <testcase name="warn-on-band" classname="assertions">
+      <system-out>WARN: Assertion &apos;warn-on-band&apos;: mean 234.912 ms on Whole run breached &gt; 234.91 ms</system-out>
+    </testcase>
+    <testcase name="warn-across" classname="assertions">
+      <system-out>WARN: Assertion &apos;warn-across&apos;: mean 234.912 ms on Whole run breached &gt; 234.9115 ms</system-out>
+    </testcase>
+    <testcase name="fail-lt-on-band" classname="assertions">
+      <failure message="Assertion &apos;fail-lt-on-band&apos;: throughput 8.299 /s on GET /api/products breached &lt; 8.3 /s">
+target:   GET /api/products
+metric:   throughput
+criteria: fail &lt; 8.3 /s
+  [FAIL] GET /api/products = 8.299 /s
+      </failure>
+    </testcase>
+    <testcase name="pass-on-warn-band" classname="assertions">
+    </testcase>
+    <testcase name="multi-match" classname="assertions">
+      <failure message="Assertion &apos;multi-match&apos;: p50 214.75 ms on GET /api/search breached &gt; 119.36 ms">
+target:   GET *
+metric:   p50
+criteria: fail &gt; 119.36 ms
+  [FAIL] GET /api/products = 119.361 ms
+  [FAIL] GET /api/search = 214.75 ms
+      </failure>
+    </testcase>
+    <testcase name="duration-on-band" classname="assertions">
+      <failure message="Assertion &apos;duration-on-band&apos;: duration 48.464 s on Whole run breached &gt; 48.46 s">
+target:   Whole run
+metric:   duration
+criteria: fail &gt; 48.46 s
+  [FAIL] Whole run = 48.464 s
+      </failure>
+    </testcase>
+    <testcase name="errorrate-across" classname="assertions">
+    </testcase>
+    <testcase name="errorrate-fail-on" classname="assertions">
+      <failure message="Assertion &apos;errorrate-fail-on&apos;: errorRate 2.083 % on Whole run breached &gt; 2.08 %">
+target:   Whole run
+metric:   errorRate
+criteria: warn &gt; 1 %  ·  fail &gt; 2.08 %
+  [FAIL] Whole run = 2.083 %
+      </failure>
+    </testcase>
+  </testsuite>
+</testsuites>

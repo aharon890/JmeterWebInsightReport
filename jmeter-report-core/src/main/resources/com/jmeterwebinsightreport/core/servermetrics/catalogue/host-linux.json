@@ -1,0 +1,308 @@
+{
+  "type": "host-linux",
+  "version": 1,
+  "label": "Linux host",
+  "summary": "CPU busy and steal, memory, swap, OOM kills, disk latency, filesystems, network",
+  "exporter": "node_exporter",
+  "source": "node_exporter (prometheus/node_exporter) default collectors (cpu, loadavg, meminfo, vmstat, diskstats, filesystem, netdev, netstat, filefd, stat), names read at master on 2026-10-08. Tools' names checked the same day against Telegraf's cpu, mem, kernel_vmstat, kernel and diskio inputs, Datadog's system, disk and oom_kill integrations, the OpenTelemetry hostmetrics scrapers' documentation, and the CloudWatch agent's Linux metric list (namespace CWAgent). Busy is everything but idle, so iowait and steal count as busy; Telegraf's usage_active is that (cpu.go: total minus idle) and needs report_active = true. AWS/EC2 CPUUtilization is not named: it is the hypervisor's view, not the guest's CPU busy. OTel's system.cpu.utilization is off by default, and is named for steal only, so one file holds one series under that name. Bands are not shipped for CPU, memory or disk: the right number depends on the machine and on whether the test means to saturate it. Nor for NIC errors and drops, the research's warn > 0 included: rx_dropped also counts packets of an unsupported protocol and those L2 filtering discards (rtnl_link_stats64 in include/uapi/linux/if_link.h), so a healthy host's rate need not be 0.",
+  "metrics": [
+    {
+      "name": "cpu.busy.pct",
+      "label": "CPU busy (%)",
+      "category": "CPU",
+      "description": "Time the CPUs were not idle, averaged over the cores; iowait and steal count as busy. Response times climb as it nears 100 %, because run queues form.",
+      "unit": "%",
+      "reduce": "p95",
+      "direction": "higher",
+      "ceiling": 100,
+      "dimension": "per host",
+      "recommended": true,
+      "queries": { "prometheus": "100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"${andMatch}}[1m])))" },
+      "names": {
+        "telegraf": { "metric": "cpu.usage_active", "kind": "gauge", "note": "needs report_active = true in inputs.cpu; tag cpu=cpu-total" },
+        "datadog": null,
+        "otel": null,
+        "cloudwatch": { "metric": "CWAgent:cpu_usage_active", "kind": "gauge", "note": "needs the CloudWatch agent; the cpu-total series, statistic Average. Not AWS/EC2 CPUUtilization, the hypervisor's view" }
+      }
+    },
+    {
+      "name": "cpu.iowait.pct",
+      "label": "CPU iowait (%)",
+      "category": "CPU",
+      "description": "CPU time spent idle while waiting for disk. A rise under load points at storage rather than compute; the disk metrics judge it better.",
+      "unit": "%",
+      "reduce": "p95",
+      "direction": "higher",
+      "ceiling": 100,
+      "dimension": "per host",
+      "recommended": false,
+      "queries": { "prometheus": "100 * avg by (instance) (rate(node_cpu_seconds_total{mode=\"iowait\"${andMatch}}[1m]))" },
+      "names": {
+        "telegraf": { "metric": "cpu.usage_iowait", "kind": "gauge", "note": "tag cpu=cpu-total" },
+        "datadog": { "metric": "system.cpu.iowait", "kind": "gauge" },
+        "cloudwatch": { "metric": "CWAgent:cpu_usage_iowait", "kind": "gauge", "note": "needs the CloudWatch agent; the cpu-total series, statistic Average" }
+      }
+    },
+    {
+      "name": "cpu.steal.pct",
+      "label": "CPU steal (%)",
+      "category": "CPU",
+      "description": "Time the VM wanted a CPU and the hypervisor gave it to another tenant. High steal means the run measured the host, not your system.",
+      "unit": "%",
+      "reduce": "p95",
+      "direction": "higher",
+      "ceiling": 100,
+      "dimension": "per host",
+      "recommended": true,
+      "queries": { "prometheus": "100 * avg by (instance) (rate(node_cpu_seconds_total{mode=\"steal\"${andMatch}}[1m]))" },
+      "names": {
+        "telegraf": { "metric": "cpu.usage_steal", "kind": "gauge", "note": "tag cpu=cpu-total" },
+        "datadog": { "metric": "system.cpu.stolen", "kind": "gauge" },
+        "otel": { "metric": "system.cpu.utilization", "kind": "gauge", "scale": 100, "note": "off by default: enable it in the hostmetrics cpu scraper; state=steal, averaged over cpu" },
+        "cloudwatch": { "metric": "CWAgent:cpu_usage_steal", "kind": "gauge", "note": "needs the CloudWatch agent; the cpu-total series, statistic Average" }
+      }
+    },
+    {
+      "name": "load.per.core",
+      "label": "Load per core",
+      "category": "CPU",
+      "description": "The 1-minute load average divided by the number of CPUs: runnable and disk-blocked tasks per core. Above 1 work is queueing; it lags the load, and disk alone can raise it.",
+      "unit": "",
+      "reduce": "p95",
+      "direction": "higher",
+      "dimension": "per host",
+      "recommended": true,
+      "queries": { "prometheus": "max by (instance) (node_load1${match}) / count by (instance) (node_cpu_seconds_total{mode=\"idle\"${andMatch}})" },
+      "names": {
+        "telegraf": null,
+        "datadog": { "metric": "system.load.norm.1", "kind": "gauge" },
+        "otel": null,
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "memory.available.pct",
+      "label": "Memory available (%)",
+      "category": "Memory",
+      "description": "Memory the kernel can hand out without swapping (MemAvailable), as a percentage of the total. Falling toward 0 comes before swapping and OOM kills.",
+      "unit": "%",
+      "reduce": "min",
+      "across": "min",
+      "direction": "lower",
+      "ceiling": 100,
+      "dimension": "per host",
+      "recommended": true,
+      "queries": { "prometheus": "100 * min by (instance) (node_memory_MemAvailable_bytes${match} / node_memory_MemTotal_bytes${match})" },
+      "names": {
+        "telegraf": { "metric": "mem.available_percent", "kind": "gauge" },
+        "datadog": { "metric": "system.mem.pct_usable", "kind": "gauge", "scale": 100 },
+        "otel": null,
+        "cloudwatch": { "metric": "CWAgent:mem_available_percent", "kind": "gauge", "note": "needs the CloudWatch agent; statistic Minimum" }
+      }
+    },
+    {
+      "name": "swap.pages.rate",
+      "label": "Swap in + out (pages/s)",
+      "category": "Memory",
+      "description": "Pages swapped in and out per second. Any sustained swapping turns memory pressure into disk latency.",
+      "unit": "pages/s",
+      "reduce": "p95",
+      "direction": "higher",
+      "dimension": "per host",
+      "recommended": true,
+      "safeDefault": { "warn": { "gt": 0 } },
+      "queries": { "prometheus": "sum by (instance) (rate(node_vmstat_pswpin${match}[1m]) + rate(node_vmstat_pswpout${match}[1m]))" },
+      "names": {
+        "telegraf": null,
+        "datadog": null,
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "oom.kills",
+      "label": "OOM kills per minute (peak)",
+      "category": "Memory",
+      "description": "Processes the kernel killed to free memory, in any minute of the run. A worker died, and the client results may show it only as errors.",
+      "unit": "/min",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per host",
+      "recommended": true,
+      "safeDefault": { "fail": { "gt": 0 } },
+      "queries": { "prometheus": "sum by (instance) (increase(node_vmstat_oom_kill${match}[1m]))" },
+      "names": {
+        "telegraf": { "metric": "kernel_vmstat.oom_kill", "kind": "counter", "scale": 60 },
+        "datadog": { "metric": "oom_kill.oom_process.count", "kind": "sum-per-period", "scale": 60, "note": "needs the system-probe OOM Kill check (eBPF, kernel 4.9 or later)" },
+        "otel": null,
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "disk.busy.pct",
+      "label": "Disk busy (%)",
+      "category": "Disk",
+      "description": "Share of time the busiest device had I/O in flight (iostat %util). On NVMe and EBS it can read 100 with headroom left, so judge disk latency instead.",
+      "unit": "%",
+      "reduce": "p95",
+      "direction": "higher",
+      "ceiling": 100,
+      "dimension": "per host, its busiest device",
+      "recommended": false,
+      "queries": { "prometheus": "100 * max by (instance) (rate(node_disk_io_time_seconds_total${match}[1m]))" },
+      "names": {
+        "telegraf": { "metric": "diskio.io_util", "kind": "gauge", "note": "one series per device (tag name): export the max per host" },
+        "datadog": { "metric": "system.io.util", "kind": "gauge", "note": "one series per device: export the max by host" },
+        "otel": { "metric": "system.disk.io_time", "kind": "counter", "scale": 100, "note": "seconds, one series per device: keep the device in the instance column" },
+        "cloudwatch": { "metric": "CWAgent:diskio_io_time", "kind": "sum-per-period", "scale": 0.1, "note": "needs the CloudWatch agent; milliseconds, statistic Sum, one series per device (name)" }
+      }
+    },
+    {
+      "name": "disk.await.ms",
+      "label": "Disk latency, await (ms)",
+      "category": "Disk",
+      "description": "Average time an I/O spends queued and served on the slowest device: the disk's share of a slow response.",
+      "unit": "ms",
+      "reduce": "p95",
+      "direction": "higher",
+      "dimension": "per host, its slowest device",
+      "recommended": true,
+      "queries": { "prometheus": "1000 * max by (instance) ((rate(node_disk_read_time_seconds_total${match}[1m]) + rate(node_disk_write_time_seconds_total${match}[1m])) / (rate(node_disk_reads_completed_total${match}[1m]) + rate(node_disk_writes_completed_total${match}[1m])))" },
+      "names": {
+        "telegraf": { "metric": "diskio.io_await", "kind": "gauge", "note": "one series per device (tag name): export the max per host" },
+        "datadog": { "metric": "system.io.await", "kind": "gauge", "note": "one series per device: export the max by host" },
+        "otel": null,
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "disk.queue.depth",
+      "label": "Disk queue (avg requests)",
+      "category": "Disk",
+      "description": "Requests waiting or in service on the busiest device (iostat aqu-sz). Compare it with how many the device serves in parallel.",
+      "unit": "requests",
+      "reduce": "p95",
+      "direction": "higher",
+      "dimension": "per host, its busiest device",
+      "recommended": false,
+      "queries": { "prometheus": "max by (instance) (rate(node_disk_io_time_weighted_seconds_total${match}[1m]))" },
+      "names": {
+        "telegraf": { "metric": "diskio.weighted_io_time", "kind": "counter", "scale": 0.001, "note": "milliseconds, one series per device (tag name): keep the device in the instance column" },
+        "datadog": { "metric": "system.io.avg_q_sz", "kind": "gauge", "note": "one series per device: export the max by host" },
+        "otel": { "metric": "system.disk.weighted_io_time", "kind": "counter", "note": "seconds, one series per device: keep the device in the instance column" },
+        "cloudwatch": { "metric": "CWAgent:diskio_iops_in_progress", "kind": "gauge", "note": "needs the CloudWatch agent; a count taken at each sample, not an average; statistic Maximum, per device (name)" }
+      }
+    },
+    {
+      "name": "filesystem.free.pct",
+      "label": "Filesystem free (%)",
+      "category": "Disk",
+      "description": "Space left on the fullest filesystem, tmpfs and overlay left out. Logs, temp files and uploads fill a disk during a soak, and at 0 writes fail.",
+      "unit": "%",
+      "reduce": "min",
+      "across": "min",
+      "direction": "lower",
+      "ceiling": 100,
+      "dimension": "per host, its fullest filesystem",
+      "recommended": true,
+      "queries": { "prometheus": "100 * min by (instance) (node_filesystem_avail_bytes{fstype!~\"tmpfs|overlay\"${andMatch}} / node_filesystem_size_bytes{fstype!~\"tmpfs|overlay\"${andMatch}})" },
+      "names": {
+        "telegraf": null,
+        "datadog": null,
+        "otel": null,
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "network.bytes.rate",
+      "label": "Network throughput (B/s, rx+tx)",
+      "category": "Network",
+      "description": "Bytes received and sent per second over every interface but loopback. Compare it with the link's or the instance type's bandwidth.",
+      "unit": "B/s",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per host",
+      "recommended": false,
+      "queries": { "prometheus": "sum by (instance) (rate(node_network_receive_bytes_total{device!=\"lo\"${andMatch}}[1m]) + rate(node_network_transmit_bytes_total{device!=\"lo\"${andMatch}}[1m]))" },
+      "names": {
+        "telegraf": null,
+        "datadog": null,
+        "otel": { "metric": "system.network.io", "kind": "counter", "note": "both directions, every device but lo: export the sum per host" },
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "network.errors.rate",
+      "label": "NIC errors + drops (/s)",
+      "category": "Network",
+      "description": "Packets the interfaces dropped or received in error, per second: ring buffers overflowing under load, or a bad link. Drops also count frames the kernel discards for an unknown protocol, so a small steady rate can be healthy: compare it with an idle run.",
+      "unit": "/s",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per host",
+      "recommended": true,
+      "queries": { "prometheus": "sum by (instance) (rate(node_network_receive_errs_total${match}[1m]) + rate(node_network_transmit_errs_total${match}[1m]) + rate(node_network_receive_drop_total${match}[1m]) + rate(node_network_transmit_drop_total${match}[1m]))" },
+      "names": {
+        "telegraf": null,
+        "datadog": null,
+        "otel": null,
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "tcp.retransmit.pct",
+      "label": "TCP retransmits (% of segments sent)",
+      "category": "Network",
+      "description": "Segments sent again, as a percentage of all segments sent: packet loss or congestion between the load generator, the application and its backends. Loss inflates tail latency long before throughput drops.",
+      "unit": "%",
+      "reduce": "p95",
+      "direction": "higher",
+      "ceiling": 100,
+      "dimension": "per host",
+      "recommended": true,
+      "queries": { "prometheus": "100 * sum by (instance) (rate(node_netstat_Tcp_RetransSegs${match}[1m])) / sum by (instance) (rate(node_netstat_Tcp_OutSegs${match}[1m]))" },
+      "names": {
+        "telegraf": null,
+        "datadog": null,
+        "otel": null,
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "fd.used.pct",
+      "label": "File handles used (%)",
+      "category": "Limits",
+      "description": "Open files system-wide, as a percentage of fs.file-max. A process's own limit (ulimit -n) usually bites first, so this one rarely moves.",
+      "unit": "%",
+      "reduce": "max",
+      "direction": "higher",
+      "ceiling": 100,
+      "dimension": "per host",
+      "recommended": false,
+      "queries": { "prometheus": "100 * max by (instance) (node_filefd_allocated${match} / node_filefd_maximum${match})" },
+      "names": {
+        "telegraf": null,
+        "datadog": { "metric": "system.fs.file_handles.in_use", "kind": "gauge", "scale": 100 },
+        "otel": null,
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "context.switches.rate",
+      "label": "Context switches (/s)",
+      "category": "CPU",
+      "description": "How often the kernel switched tasks, per second. A jump while throughput stays flat is time lost to the scheduler: too many threads for the cores.",
+      "unit": "/s",
+      "reduce": "p95",
+      "direction": "higher",
+      "dimension": "per host",
+      "recommended": false,
+      "queries": { "prometheus": "sum by (instance) (rate(node_context_switches_total${match}[1m]))" },
+      "names": {
+        "telegraf": { "metric": "kernel.context_switches", "kind": "counter" },
+        "datadog": { "metric": "system.cpu.context_switches", "kind": "sum-per-period", "note": "a count per check interval" },
+        "otel": null,
+        "cloudwatch": null
+      }
+    }
+  ]
+}

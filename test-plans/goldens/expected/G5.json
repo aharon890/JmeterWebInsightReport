@@ -1,0 +1,176 @@
+{
+  "testName": "JMeter Web Insight Report",
+  "status": "UNKNOWN",
+  "serverStatus": "FAIL",
+  "assertsEvaluated": true,
+  "duration": 48464,
+  "totalSamples": 1200,
+  "totalErrors": 25,
+  "errorRate": 2.08,
+  "samplers": [
+    {
+      "name": "GET /api/products",
+      "sampleCount": 400,
+      "mean": 119.47,
+      "p95": 182.5,
+      "p99": 224.0,
+      "errorRate": 0.0,
+      "throughput": 8.3,
+      "apdex": 1.0
+    },
+    {
+      "name": "GET /api/search",
+      "sampleCount": 400,
+      "mean": 211.41,
+      "p95": 347.0,
+      "p99": 407.0,
+      "errorRate": 2.0,
+      "throughput": 8.28,
+      "apdex": 0.98
+    },
+    {
+      "name": "POST /api/checkout",
+      "sampleCount": 400,
+      "mean": 373.86,
+      "p95": 610.5,
+      "p99": 692.0,
+      "errorRate": 4.25,
+      "throughput": 8.26,
+      "apdex": 0.87
+    }
+  ],
+  "serverComponents": [
+    {
+      "id": "kafka",
+      "label": "Kafka",
+      "type": "custom",
+      "collectionId": "df8778b7fa474d95",
+      "status": "FAIL",
+      "declared": 2,
+      "evaluated": 2,
+      "passed": 1,
+      "warned": 0,
+      "failed": 1,
+      "notJudged": {
+        "total": 0,
+        "disabled": 0,
+        "noMatch": 0,
+        "noValue": 0,
+        "invalidRule": 0,
+        "sourceFailed": 0,
+        "lowCoverage": 0,
+        "loadNotAchieved": 0
+      }
+    },
+    {
+      "id": "db",
+      "label": "DB",
+      "type": "custom",
+      "collectionId": "df8778b7fa474d95",
+      "status": "WARN",
+      "declared": 1,
+      "evaluated": 1,
+      "passed": 0,
+      "warned": 1,
+      "failed": 0,
+      "notJudged": {
+        "total": 0,
+        "disabled": 0,
+        "noMatch": 0,
+        "noValue": 0,
+        "invalidRule": 0,
+        "sourceFailed": 0,
+        "lowCoverage": 0,
+        "loadNotAchieved": 0
+      }
+    }
+  ],
+  "serverAsserts": [
+    {
+      "id": "up-passes",
+      "description": "max 50, comfortably inside",
+      "component": "kafka",
+      "query": "up",
+      "unit": "",
+      "reduce": {
+        "kind": "max"
+      },
+      "across": "max",
+      "status": "PASS",
+      "actual": 49.0,
+      "coverage": 1.0,
+      "instances": 1,
+      "fail": {
+        "gt": 1000.0
+      }
+    },
+    {
+      "id": "up-fails",
+      "description": "a real breach",
+      "component": "kafka",
+      "query": "up",
+      "unit": "",
+      "reduce": {
+        "kind": "max"
+      },
+      "across": "max",
+      "status": "FAIL",
+      "actual": 49.0,
+      "coverage": 1.0,
+      "instances": 1,
+      "warn": {
+        "gt": 10.0
+      },
+      "fail": {
+        "gt": 20.0
+      },
+      "breached": {
+        "gt": 20.0
+      }
+    },
+    {
+      "id": "up-p50-warns",
+      "description": "over warn, under fail",
+      "component": "db",
+      "query": "up",
+      "unit": "",
+      "reduce": {
+        "kind": "p50"
+      },
+      "across": "max",
+      "status": "WARN",
+      "actual": 25.0,
+      "coverage": 1.0,
+      "instances": 1,
+      "warn": {
+        "gt": 10.0
+      },
+      "fail": {
+        "gt": 1000.0
+      },
+      "breached": {
+        "gt": 10.0
+      }
+    }
+  ],
+  "artifacts": {
+    "outputDirectory": "<outputDir>",
+    "html": {
+      "path": "G5-report.html",
+      "outcome": "WRITTEN"
+    },
+    "json": {
+      "path": "G5-report.json",
+      "outcome": "WRITTEN"
+    },
+    "xml": {
+      "path": "G5-report.xml",
+      "outcome": "PLANNED"
+    },
+    "data": {
+      "path": "G5-report-data.js",
+      "outcome": "SKIPPED",
+      "detail": "inline"
+    }
+  }
+}

@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+  <hashTree>
+    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="Single Sampler Test — Edge Case">
+      <stringProp name="TestPlan.comments">Edge case test with a single sampler only. Validates report generation with minimal sampler count.</stringProp>
+      <elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments">
+        <collectionProp name="Arguments.arguments"/>
+      </elementProp>
+    </TestPlan>
+    <hashTree>
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Single Sampler Users">
+        <stringProp name="ThreadGroup.num_threads">${__P(threads,5)}</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">${__P(rampup,3)}</stringProp>
+        <stringProp name="ThreadGroup.duration">${__P(duration,30)}</stringProp>
+        <longProp name="ThreadGroup.delay">0</longProp>
+        <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
+        <boolProp name="ThreadGroup.scheduler">true</boolProp>
+        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController">
+          <intProp name="LoopController.loops">-1</intProp>
+          <boolProp name="LoopController.continue_forever">false</boolProp>
+        </elementProp>
+      </ThreadGroup>
+      <hashTree>
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="GET /api/health" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+
+def random = ThreadLocalRandom.current()
+def delay = random.nextInt(50, 150)
+Thread.sleep(delay)
+
+// 2% error rate
+if (random.nextInt(100) &lt; 2) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;500&quot;)
+    SampleResult.setResponseMessage(&quot;Internal Server Error&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Health check failed&quot;}&apos;, &quot;UTF-8&quot;)
+} else {
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;200&quot;)
+    SampleResult.setResponseMessage(&quot;OK&quot;)
+    SampleResult.setResponseData(&apos;{&quot;status&quot;:&quot;healthy&quot;,&quot;uptime&quot;:99.9}&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(64)
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree>
+          <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="Think Time" enabled="true">
+            <stringProp name="ConstantTimer.delay">200</stringProp>
+          </ConstantTimer>
+          <hashTree/>
+        </hashTree>
+      </hashTree>
+    </hashTree>
+  </hashTree>
+</jmeterTestPlan>

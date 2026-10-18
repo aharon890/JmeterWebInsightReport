@@ -1,0 +1,307 @@
+{
+  "type": "postgres",
+  "version": 1,
+  "label": "Postgres",
+  "summary": "Connections, transactions, locks, cache hits, replication, checkpoints",
+  "exporter": "postgres_exporter",
+  "source": "postgres_exporter (prometheus-community), default collectors. Metric names checked against its documented default set; re-check on an exporter major version. Tools' names checked 2026-10-08 against Telegraf's inputs.postgresql (postgresql.go: it reads pg_stat_database and pg_stat_bgwriter only, so anything from pg_stat_activity, pg_settings or replication needs inputs.postgresql_extensible and has no name here), Datadog's postgres metadata.csv and util.py, the OpenTelemetry postgresqlreceiver documentation.md, and the AWS/RDS and Aurora CloudWatch metric lists, all at master/main. Datadog's activity metrics need collect_activity_metrics; OTel's deadlocks, temp and wal.delay metrics are off by default, and its wal.lag is not named: the receiver's postgresqlreceiver.preciselagmetrics gate (beta, so on, since v0.89.0) records wal.delay in its place (metadata.yaml and scraper.go, checked 2026-10-09); CloudWatch's Deadlocks and BufferCacheHitRatio exist on Aurora only. A ratio or a sum of a tool's metrics is null: export the computed series under the catalogue's name. The six KPIs added on 2026-10-09 were read that day at master. locks.waiting and transactions.idle.in.tx read pg_stat_activity_count's wait_event_type and state labels (the exporter's built-in queries before 0.20.0, its stat_activity collector from 0.20.0, under the same name and labels); the wait_event_type label needs postgres_exporter 0.17.0 or later (absent from v0.16.0's cmd/postgres_exporter, present at v0.17.0, checked 2026-10-09), and an older exporter leaves locks.waiting with no data. checkpoints.requested reads stat_bgwriter's pg_stat_bgwriter_checkpoints_req_total up to PostgreSQL 16 and, from 17, which moved the count to pg_stat_checkpointer, pg_stat_checkpointer_num_requested_total, whose stat_checkpointer collector is off by default. The slot query reads pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn) per slot (the built-in queries before 0.20.0, the replication_slots collector from 0.20.0, under the same name). locks.waiting names no Datadog or OTel metric: Datadog's postgresql.locks covers only the relations listed under relations and postgresql.waiting_queries counts every wait event, not only locks, and OTel's postgresql.database.locks cannot tell a waiting lock from a held one. Telegraf's inputs.postgresql never reads pg_stat_checkpointer, so on PostgreSQL 17 it has no checkpoints_req; Datadog and OTel read it there (Datadog's util.py, OTel's client.go). CloudWatch's CommitThroughput is Aurora PostgreSQL only; OldestReplicationSlotLag is RDS and Aurora PostgreSQL.",
+  "metrics": [
+    {
+      "name": "up",
+      "label": "Exporter can reach the database",
+      "category": "Availability",
+      "description": "1 while postgres_exporter can connect to the database, 0 when it cannot. Any 0 during the run means the database was unreachable for at least one scrape.",
+      "unit": "",
+      "reduce": "min",
+      "across": "min",
+      "direction": "lower",
+      "ceiling": 1,
+      "dimension": "per database server",
+      "recommended": true,
+      "safeDefault": { "fail": { "lt": 1 } },
+      "queries": { "prometheus": "min by (instance) (pg_up${match})" },
+      "names": {
+        "telegraf": null,
+        "datadog": null,
+        "otel": null,
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "connections.used.pct",
+      "label": "Connections used (%)",
+      "category": "Connections",
+      "description": "Backends connected, as a percentage of max_connections. Near 100 % new connections start to be refused.",
+      "unit": "%",
+      "reduce": "max",
+      "direction": "higher",
+      "ceiling": 100,
+      "dimension": "per database server",
+      "recommended": true,
+      "queries": { "prometheus": "100 * sum by (instance) (pg_stat_activity_count${match}) / max by (instance) (pg_settings_max_connections${match})" },
+      "names": {
+        "telegraf": null,
+        "datadog": { "metric": "postgresql.percent_usage_connections", "kind": "gauge", "scale": 100 },
+        "otel": null,
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "connections.active",
+      "label": "Active connections",
+      "category": "Connections",
+      "description": "Backends currently executing a query (state = active).",
+      "unit": "conns",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per database server",
+      "recommended": false,
+      "queries": { "prometheus": "sum by (instance) (pg_stat_activity_count{state=\"active\"${andMatch}})" },
+      "names": {
+        "telegraf": null,
+        "datadog": { "metric": "postgresql.active_queries", "kind": "gauge", "note": "needs collect_activity_metrics; export the sum by host. Sessions of the postgres user are not counted" },
+        "otel": null,
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "transaction.longest.seconds",
+      "label": "Longest open transaction (s)",
+      "category": "Transactions",
+      "description": "Age of the oldest transaction still open. A long one holds locks and blocks vacuum.",
+      "unit": "s",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per database server",
+      "recommended": true,
+      "queries": { "prometheus": "max by (instance) (pg_stat_activity_max_tx_duration${match})" },
+      "names": {
+        "telegraf": null,
+        "datadog": { "metric": "postgresql.activity.xact_start_age", "kind": "gauge", "note": "needs collect_activity_metrics; export the max by host" },
+        "otel": null,
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "transactions.idle.in.tx",
+      "label": "Sessions idle in transaction",
+      "category": "Transactions",
+      "description": "Sessions that began a transaction and sit idle without ending it: a pool leak, or code that holds a transaction open across a remote call. Each keeps its locks and its connection slot.",
+      "unit": "conns",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per database server",
+      "recommended": false,
+      "queries": { "prometheus": "sum by (instance) (pg_stat_activity_count{state=\"idle in transaction\"${andMatch}})" },
+      "names": {
+        "telegraf": null,
+        "datadog": { "metric": "postgresql.transactions.idle_in_transaction", "kind": "gauge", "note": "needs collect_activity_metrics; export the sum by host" },
+        "otel": null,
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "rollback.ratio.pct",
+      "label": "Rolled-back transactions (%)",
+      "category": "Transactions",
+      "description": "Rollbacks as a percentage of all finished transactions, per minute. A rise under load usually means conflicts or application errors.",
+      "unit": "%",
+      "reduce": "max",
+      "direction": "higher",
+      "ceiling": 100,
+      "dimension": "per database server",
+      "recommended": false,
+      "queries": { "prometheus": "100 * sum by (instance) (rate(pg_stat_database_xact_rollback${match}[1m])) / (sum by (instance) (rate(pg_stat_database_xact_commit${match}[1m])) + sum by (instance) (rate(pg_stat_database_xact_rollback${match}[1m])))" },
+      "names": {
+        "telegraf": null,
+        "datadog": null,
+        "otel": null,
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "throughput.commits",
+      "label": "Commits per second (avg)",
+      "category": "Transactions",
+      "description": "Transactions committed per second, averaged over the run. A floor shows the database received the load: it stays low when the traffic never reached it, because something upstream answered or the test pointed at another environment.",
+      "unit": "/s",
+      "reduce": "avg",
+      "across": "min",
+      "direction": "lower",
+      "dimension": "per database server",
+      "recommended": false,
+      "queries": { "prometheus": "sum by (instance) (rate(pg_stat_database_xact_commit${match}[1m]))" },
+      "names": {
+        "telegraf": { "metric": "postgresql.xact_commit", "kind": "counter", "note": "one series per db tag: export the sum per server" },
+        "datadog": { "metric": "postgresql.commits", "kind": "rate", "note": "one series per db tag: export the sum by host" },
+        "otel": { "metric": "postgresql.commits", "kind": "counter", "note": "one series per database: export the sum per server" },
+        "cloudwatch": { "metric": "AWS/RDS:CommitThroughput", "kind": "rate", "note": "Aurora PostgreSQL only; statistic Average, per DBInstanceIdentifier" }
+      }
+    },
+    {
+      "name": "locks.waiting",
+      "label": "Sessions waiting on a lock",
+      "category": "Locks",
+      "description": "Sessions blocked on a lock another session holds, usually on a hot row or table. Brief waits are normal; a count that climbs with the load turns into timeouts.",
+      "unit": "conns",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per database server",
+      "recommended": true,
+      "queries": { "prometheus": "sum by (instance) (pg_stat_activity_count{wait_event_type=\"Lock\"${andMatch}})" },
+      "names": {
+        "telegraf": null,
+        "datadog": null,
+        "otel": null,
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "deadlocks",
+      "label": "Deadlocks per minute (peak)",
+      "category": "Locks",
+      "description": "Deadlocks detected in any minute of the run. Any is worth looking at.",
+      "unit": "/min",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per database server",
+      "recommended": true,
+      "safeDefault": { "fail": { "gt": 0 } },
+      "queries": { "prometheus": "sum by (instance) (increase(pg_stat_database_deadlocks${match}[1m]))" },
+      "names": {
+        "telegraf": { "metric": "postgresql.deadlocks", "kind": "counter", "scale": 60, "note": "one series per db tag: export the sum per server" },
+        "datadog": { "metric": "postgresql.deadlocks", "kind": "rate", "scale": 60, "note": "one series per db tag: export the sum by host" },
+        "otel": { "metric": "postgresql.deadlocks", "kind": "counter", "scale": 60, "note": "off by default: enable it under the postgresql receiver's metrics; export the sum per server" },
+        "cloudwatch": { "metric": "AWS/RDS:Deadlocks", "kind": "rate", "scale": 60, "note": "Aurora PostgreSQL only; statistic Average at a 1-minute period, per DBInstanceIdentifier" }
+      }
+    },
+    {
+      "name": "cache.hit.pct",
+      "label": "Cache hit ratio (%)",
+      "category": "Cache",
+      "description": "Blocks served from shared buffers as a percentage of all blocks read, per minute. A drop under load means the working set no longer fits in memory.",
+      "unit": "%",
+      "reduce": "min",
+      "across": "min",
+      "direction": "lower",
+      "ceiling": 100,
+      "dimension": "per database server",
+      "recommended": true,
+      "queries": { "prometheus": "100 * sum by (instance) (rate(pg_stat_database_blks_hit${match}[1m])) / (sum by (instance) (rate(pg_stat_database_blks_hit${match}[1m])) + sum by (instance) (rate(pg_stat_database_blks_read${match}[1m])))" },
+      "names": {
+        "telegraf": null,
+        "datadog": null,
+        "otel": null,
+        "cloudwatch": { "metric": "AWS/RDS:BufferCacheHitRatio", "kind": "gauge", "note": "Aurora PostgreSQL only; statistic Minimum, per DBInstanceIdentifier" }
+      }
+    },
+    {
+      "name": "replication.lag.seconds",
+      "label": "Replication lag (s)",
+      "category": "Replication",
+      "description": "How far a replica is behind its primary. Reported by replicas only.",
+      "unit": "s",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per replica",
+      "recommended": false,
+      "queries": { "prometheus": "max by (instance) (pg_replication_lag_seconds${match})" },
+      "names": {
+        "telegraf": null,
+        "datadog": { "metric": "postgresql.replication_delay", "kind": "gauge", "note": "reported by the replica" },
+        "otel": { "metric": "postgresql.wal.delay", "kind": "gauge", "note": "off by default: enable it under the postgresql receiver's metrics; operation=replay, read on the primary, one series per replication_client" },
+        "cloudwatch": { "metric": "AWS/RDS:ReplicaLag", "kind": "gauge", "note": "RDS read replicas; statistic Maximum, per DBInstanceIdentifier. Aurora's AuroraReplicaLag is in milliseconds, not this" }
+      }
+    },
+    {
+      "name": "replication.slot.retained.bytes",
+      "label": "WAL held for a replication slot (bytes, worst slot)",
+      "category": "Replication",
+      "description": "WAL the server keeps for its most-lagging replication slot. A slow or stopped slot consumer, such as CDC or a replica, lets it grow under write load until the disk fills.",
+      "unit": "B",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per database server, its most-lagging slot",
+      "recommended": false,
+      "queries": { "prometheus": "max by (instance) (pg_replication_slots_pg_wal_lsn_diff${match})" },
+      "names": {
+        "telegraf": null,
+        "datadog": { "metric": "postgresql.replication_slot.restart_delay_bytes", "kind": "gauge", "note": "one series per slot: export the max by host" },
+        "otel": null,
+        "cloudwatch": { "metric": "AWS/RDS:OldestReplicationSlotLag", "kind": "gauge", "note": "RDS and Aurora PostgreSQL; statistic Maximum, per DBInstanceIdentifier" }
+      }
+    },
+    {
+      "name": "temp.bytes.rate",
+      "label": "Temp files written (bytes/s)",
+      "category": "Disk",
+      "description": "Bytes written to temporary files by queries that ran out of work_mem. Sorts and hashes spilling to disk.",
+      "unit": "B/s",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per database server",
+      "recommended": false,
+      "queries": { "prometheus": "sum by (instance) (rate(pg_stat_database_temp_bytes${match}[1m]))" },
+      "names": {
+        "telegraf": { "metric": "postgresql.temp_bytes", "kind": "counter", "note": "one series per db tag: export the sum per server" },
+        "datadog": { "metric": "postgresql.temp_bytes", "kind": "rate", "note": "one series per db tag: export the sum by host" },
+        "otel": { "metric": "postgresql.temp.io", "kind": "counter", "note": "off by default: enable it under the postgresql receiver's metrics; export the sum per server" },
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "temp.files",
+      "label": "Temp files created per minute (peak)",
+      "category": "Disk",
+      "description": "Temporary files queries created in any minute of the run, each a sort or hash that ran out of work_mem. It counts the spills where temp bytes measures their size: many small spills hide in a bytes rate.",
+      "unit": "/min",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per database server",
+      "recommended": false,
+      "queries": { "prometheus": "sum by (instance) (increase(pg_stat_database_temp_files${match}[1m]))" },
+      "names": {
+        "telegraf": { "metric": "postgresql.temp_files", "kind": "counter", "scale": 60, "note": "one series per db tag: export the sum per server" },
+        "datadog": { "metric": "postgresql.temp_files", "kind": "rate", "scale": 60, "note": "one series per db tag: export the sum by host" },
+        "otel": { "metric": "postgresql.temp_files", "kind": "counter", "scale": 60, "note": "off by default: enable it under the postgresql receiver's metrics; export the sum per server" },
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "checkpoints.requested",
+      "label": "Requested checkpoints per minute (peak)",
+      "category": "Disk",
+      "description": "Checkpoints requested rather than run on schedule, under load mostly because WAL reached max_wal_size, in any minute of the run. Under write load they bring bursts of I/O and latency spikes. On PostgreSQL 17 and later the Prometheus query needs postgres_exporter's stat_checkpointer collector, which is off by default.",
+      "unit": "/min",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per database server",
+      "recommended": false,
+      "queries": { "prometheus": "sum by (instance) (increase(pg_stat_bgwriter_checkpoints_req_total${match}[1m])) or sum by (instance) (increase(pg_stat_checkpointer_num_requested_total${match}[1m]))" },
+      "names": {
+        "telegraf": { "metric": "postgresql.checkpoints_req", "kind": "counter", "scale": 60, "note": "PostgreSQL 16 and earlier: 17 moved it to pg_stat_checkpointer, which the input does not read" },
+        "datadog": { "metric": "postgresql.bgwriter.checkpoints_requested", "kind": "sum-per-period", "scale": 60, "note": "a count per check interval; read from pg_stat_checkpointer on PostgreSQL 17" },
+        "otel": { "metric": "postgresql.bgwriter.checkpoint.count", "kind": "counter", "scale": 60, "note": "type=requested; read from pg_stat_checkpointer on PostgreSQL 17" },
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "database.size.growth",
+      "label": "Database size growth (bytes/min)",
+      "category": "Disk",
+      "description": "How fast the databases grow during the run, as a slope.",
+      "unit": "B",
+      "reduce": "slope",
+      "direction": "higher",
+      "dimension": "per database server",
+      "recommended": false,
+      "queries": { "prometheus": "sum by (instance) (pg_database_size_bytes${match})" },
+      "names": {
+        "telegraf": null,
+        "datadog": { "metric": "postgresql.database_size", "kind": "gauge", "note": "one series per db tag: export the sum by host" },
+        "otel": { "metric": "postgresql.db_size", "kind": "gauge", "note": "one series per database: export the sum per server" },
+        "cloudwatch": null
+      }
+    }
+  ]
+}

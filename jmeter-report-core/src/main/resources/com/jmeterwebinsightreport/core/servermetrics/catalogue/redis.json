@@ -1,0 +1,288 @@
+{
+  "type": "redis",
+  "version": 1,
+  "label": "Redis",
+  "summary": "Memory, evictions, hit ratio, connections, main-thread CPU, replication",
+  "exporter": "redis_exporter",
+  "source": "redis_exporter (oliver006) metric maps, read at master on 2026-10-08 (exporter.go, info.go, slowlog.go); the queries were not run against a live exporter. redis_config_maxclients comes from CONFIG GET and is missing where CONFIG is renamed or denied. Main-thread CPU needs a server that reports used_cpu_*_main_thread. Tools' names checked the same day against Telegraf's inputs.redis (README and redis.go), Datadog's redisdb metadata.csv and constants.py, the OpenTelemetry redisreceiver documentation and the AWS/ElastiCache metric list. Datadog rates hits, misses, commands and CPU at the Agent but sends evictions and rejected connections as raw totals, so those are counters. Lifetime averages (Telegraf keyspace_hitrate, usec_per_call, latencystats percentiles) are not run-window figures and are not named. CloudWatch's Evictions, RejectedConnections and ProcessedCommands are not named: whether they count per period is unverified; nor is CacheHitRate, whose scale is unverified. ElastiCache fixes maxclients at 65,000 per node (AWS blog). INFO's per-replica lag is the seconds since that replica's last ACK, time(NULL) - repl_ack_time (server.c at unstable, checked 2026-10-09), not how far behind it is.",
+  "metrics": [
+    {
+      "name": "up",
+      "label": "Exporter can reach Redis",
+      "category": "Availability",
+      "description": "1 while redis_exporter can reach Redis, 0 when it cannot. Any 0 means Redis was unreachable for at least one scrape, and every other metric is blind for that span.",
+      "unit": "",
+      "reduce": "min",
+      "across": "min",
+      "direction": "lower",
+      "ceiling": 1,
+      "dimension": "per Redis node",
+      "recommended": true,
+      "safeDefault": { "fail": { "lt": 1 } },
+      "queries": { "prometheus": "min by (instance) (redis_up${match})" },
+      "names": {
+        "telegraf": null,
+        "datadog": null,
+        "otel": null,
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "memory.used.pct",
+      "label": "Memory used (% of maxmemory)",
+      "category": "Memory",
+      "description": "Memory Redis uses, as a percentage of maxmemory: at 100 % it evicts keys or, under noeviction, refuses writes. It can pass 100 because buffers count too, and a node with no maxmemory has no series.",
+      "unit": "%",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per Redis node",
+      "recommended": true,
+      "queries": { "prometheus": "100 * max by (instance) (redis_memory_used_bytes${match}) / max by (instance) (redis_memory_max_bytes${match} > 0)" },
+      "names": {
+        "telegraf": null,
+        "datadog": null,
+        "otel": null,
+        "cloudwatch": { "metric": "AWS/ElastiCache:DatabaseMemoryUsagePercentage", "kind": "gauge", "note": "statistic Maximum, per CacheClusterId and CacheNodeId" }
+      }
+    },
+    {
+      "name": "keys.evicted",
+      "label": "Evicted keys per minute (peak)",
+      "category": "Memory",
+      "description": "Keys evicted to stay under maxmemory, in any minute of the run. The working set no longer fits, so misses and backend load follow.",
+      "unit": "/min",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per Redis node",
+      "recommended": true,
+      "queries": { "prometheus": "sum by (instance) (increase(redis_evicted_keys_total${match}[1m]))" },
+      "names": {
+        "telegraf": { "metric": "redis.evicted_keys", "kind": "counter", "scale": 60 },
+        "datadog": { "metric": "redis.keys.evicted", "kind": "counter", "scale": 60, "note": "a raw total since the server started, although metadata.csv calls it a gauge" },
+        "otel": { "metric": "redis.keys.evicted", "kind": "counter", "scale": 60 }
+      }
+    },
+    {
+      "name": "clients.connected.pct",
+      "label": "Client connections (% of maxclients)",
+      "category": "Connections",
+      "description": "Client connections as a percentage of maxclients. A steady climb at constant load usually means a client pool leak.",
+      "unit": "%",
+      "reduce": "max",
+      "direction": "higher",
+      "ceiling": 100,
+      "dimension": "per Redis node",
+      "recommended": false,
+      "queries": { "prometheus": "100 * max by (instance) (redis_connected_clients${match}) / max by (instance) (redis_config_maxclients${match})" },
+      "names": {
+        "telegraf": null,
+        "datadog": null,
+        "otel": null,
+        "cloudwatch": { "metric": "AWS/ElastiCache:CurrConnections", "kind": "gauge", "scale": 0.0015384615384615385, "note": "ElastiCache fixes maxclients at 65,000 per node, so the scale is 100/65000; statistic Maximum, per CacheClusterId and CacheNodeId" }
+      }
+    },
+    {
+      "name": "clients.blocked",
+      "label": "Blocked clients (peak)",
+      "category": "Connections",
+      "description": "Clients waiting on a blocking command such as BLPOP, BRPOP, BLMOVE or BZPOPMIN. A rise means consumers outnumber producers or a queue stalled. On a queue workload some blocked clients are normal.",
+      "unit": "conns",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per Redis node",
+      "recommended": false,
+      "queries": { "prometheus": "max by (instance) (redis_blocked_clients${match})" },
+      "names": {
+        "telegraf": { "metric": "redis.blocked_clients", "kind": "gauge" },
+        "datadog": { "metric": "redis.clients.blocked", "kind": "gauge" },
+        "otel": { "metric": "redis.clients.blocked", "kind": "gauge" },
+        "cloudwatch": { "metric": "AWS/ElastiCache:BlockedConnections", "kind": "gauge", "note": "statistic Maximum, per CacheClusterId and CacheNodeId" }
+      }
+    },
+    {
+      "name": "connections.rejected",
+      "label": "Rejected connections per minute (peak)",
+      "category": "Connections",
+      "description": "Connections refused because maxclients was reached, in any minute of the run. Those clients got errors.",
+      "unit": "/min",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per Redis node",
+      "recommended": true,
+      "safeDefault": { "fail": { "gt": 0 } },
+      "queries": { "prometheus": "sum by (instance) (increase(redis_rejected_connections_total${match}[1m]))" },
+      "names": {
+        "telegraf": { "metric": "redis.rejected_connections", "kind": "counter", "scale": 60 },
+        "datadog": { "metric": "redis.net.rejected", "kind": "counter", "scale": 60, "note": "a raw total since the server started, although metadata.csv calls it a gauge" },
+        "otel": { "metric": "redis.connections.rejected", "kind": "counter", "scale": 60 }
+      }
+    },
+    {
+      "name": "keyspace.hit.pct",
+      "label": "Keyspace hit ratio (%)",
+      "category": "Cache",
+      "description": "Read lookups that found their key, as a percentage, per minute. A drop under load means evictions, expiry, or a test reading keys it never wrote.",
+      "unit": "%",
+      "reduce": "min",
+      "across": "min",
+      "direction": "lower",
+      "ceiling": 100,
+      "dimension": "per Redis node",
+      "recommended": true,
+      "queries": { "prometheus": "100 * sum by (instance) (rate(redis_keyspace_hits_total${match}[1m])) / (sum by (instance) (rate(redis_keyspace_hits_total${match}[1m])) + sum by (instance) (rate(redis_keyspace_misses_total${match}[1m])))" },
+      "names": {
+        "telegraf": null,
+        "datadog": null,
+        "otel": null
+      }
+    },
+    {
+      "name": "commands.rate",
+      "label": "Commands processed per second (avg)",
+      "category": "Throughput",
+      "description": "Commands Redis processed per second, averaged over the run: it shows the load reached Redis. A plateau while client throughput rises points at a client or pool bottleneck, a drop at a stall.",
+      "unit": "ops/s",
+      "reduce": "avg",
+      "across": "min",
+      "direction": "lower",
+      "dimension": "per Redis node",
+      "recommended": false,
+      "queries": { "prometheus": "sum by (instance) (rate(redis_commands_processed_total${match}[1m]))" },
+      "names": {
+        "telegraf": { "metric": "redis.total_commands_processed", "kind": "counter" },
+        "datadog": { "metric": "redis.net.commands", "kind": "rate" },
+        "otel": { "metric": "redis.commands.processed", "kind": "counter" }
+      }
+    },
+    {
+      "name": "command.latency.avg",
+      "label": "Server-side command time (avg, us)",
+      "category": "Latency",
+      "description": "Average CPU time Redis spent per command, per minute. It leaves out queueing, I/O and network, so it explains client latency rather than replacing it.",
+      "unit": "us",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per Redis node",
+      "recommended": true,
+      "queries": { "prometheus": "1e6 * sum by (instance) (rate(redis_commands_duration_seconds_total${match}[1m])) / sum by (instance) (rate(redis_commands_total${match}[1m]))" },
+      "names": {
+        "telegraf": null,
+        "datadog": null,
+        "otel": null,
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "cpu.main.pct",
+      "label": "Main-thread CPU (% of one core)",
+      "category": "CPU",
+      "description": "CPU used by the thread that runs every command, as a percentage of one core. Near 100 % Redis is saturated and every client queues, however many cores the host has.",
+      "unit": "%",
+      "reduce": "max",
+      "direction": "higher",
+      "ceiling": 100,
+      "dimension": "per Redis node",
+      "recommended": true,
+      "queries": { "prometheus": "100 * (sum by (instance) (rate(redis_cpu_sys_main_thread_seconds_total${match}[1m])) + sum by (instance) (rate(redis_cpu_user_main_thread_seconds_total${match}[1m])))" },
+      "names": {
+        "telegraf": null,
+        "datadog": null,
+        "otel": { "metric": "redis.cpu.time", "kind": "counter", "scale": 100, "note": "the sum of state=sys_main_thread and state=user_main_thread" },
+        "cloudwatch": { "metric": "AWS/ElastiCache:EngineCPUUtilization", "kind": "gauge", "note": "statistic Maximum, per CacheClusterId and CacheNodeId" }
+      }
+    },
+    {
+      "name": "replication.link.up",
+      "label": "Replica link to primary up",
+      "category": "Replication",
+      "description": "1 while a replica's link to its primary is up, 0 when it is down: its reads go stale and a failover may follow. Reported by replicas only.",
+      "unit": "",
+      "reduce": "min",
+      "across": "min",
+      "direction": "lower",
+      "ceiling": 1,
+      "dimension": "per replica",
+      "recommended": false,
+      "safeDefault": { "fail": { "lt": 1 } },
+      "queries": { "prometheus": "min by (instance) (redis_master_link_up${match})" },
+      "names": {
+        "telegraf": null,
+        "datadog": null,
+        "otel": null,
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "replication.lag.bytes",
+      "label": "Replication backlog (bytes, worst replica)",
+      "category": "Replication",
+      "description": "Bytes the primary has written that its slowest replica has not yet acknowledged. It grows when the write volume outruns replication.",
+      "unit": "B",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per primary, its slowest replica",
+      "recommended": false,
+      "queries": { "prometheus": "max by (instance) (redis_master_repl_offset${match}) - min by (instance) (redis_connected_slave_offset_bytes${match})" },
+      "names": {
+        "telegraf": null,
+        "datadog": { "metric": "redis.replication.delay", "kind": "gauge", "note": "read on the primary, one series per replica: export the max by host" },
+        "otel": null,
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "replication.lag.seconds",
+      "label": "Replication lag (s)",
+      "category": "Replication",
+      "description": "Seconds since a replica last acknowledged the primary: INFO's per-replica lag, which redis_exporter and Telegraf read on the primary. A whole-second health signal that grows when a replica stalls; CloudWatch's ReplicationLag is the replica's real time lag.",
+      "unit": "s",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per primary, its slowest replica",
+      "recommended": false,
+      "queries": { "prometheus": "max by (instance) (redis_connected_slave_lag_seconds${match})" },
+      "names": {
+        "telegraf": { "metric": "redis_replication.lag", "kind": "gauge", "note": "read on the primary, one series per replica: export the max per server" },
+        "datadog": null,
+        "otel": null,
+        "cloudwatch": { "metric": "AWS/ElastiCache:ReplicationLag", "kind": "gauge", "note": "reported by replica nodes; statistic Maximum, per CacheClusterId and CacheNodeId" }
+      }
+    },
+    {
+      "name": "memory.fragmentation.ratio",
+      "label": "Memory fragmentation ratio",
+      "category": "Memory",
+      "description": "Resident memory divided by the memory Redis allocated. High means memory lost to fragmentation, so the OS may kill Redis before maxmemory; below 1 means pages were swapped out, which is worse.",
+      "unit": "",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per Redis node",
+      "recommended": false,
+      "queries": { "prometheus": "max by (instance) (redis_mem_fragmentation_ratio${match})" },
+      "names": {
+        "telegraf": { "metric": "redis.mem_fragmentation_ratio", "kind": "gauge" },
+        "datadog": { "metric": "redis.mem.fragmentation_ratio", "kind": "gauge" },
+        "otel": { "metric": "redis.memory.fragmentation_ratio", "kind": "gauge" },
+        "cloudwatch": { "metric": "AWS/ElastiCache:MemoryFragmentationRatio", "kind": "gauge", "note": "statistic Maximum, per CacheClusterId and CacheNodeId" }
+      }
+    },
+    {
+      "name": "slowlog.entries",
+      "label": "Slow commands per minute (peak)",
+      "category": "Latency",
+      "description": "Commands slower than slowlog-log-slower-than, in any minute of the run. On a single-threaded server each one stalls every other client for its whole duration.",
+      "unit": "/min",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per Redis node",
+      "recommended": true,
+      "queries": { "prometheus": "sum by (instance) (increase(redis_slowlog_last_id${match}[1m]))" },
+      "names": {
+        "telegraf": null,
+        "datadog": { "metric": "redis.slowlog.micros.count", "kind": "rate", "scale": 60, "note": "new slow-log entries per second; the check reads at most 128 per run, so a burst saturates" },
+        "otel": null,
+        "cloudwatch": null
+      }
+    }
+  ]
+}

@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+  <hashTree>
+    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="Docker Test — Self-Contained REST API Simulation">
+      <stringProp name="TestPlan.comments">Docker-compatible test plan. Fully self-contained with no file paths. All configuration via CLI -J properties. Simulates a typical REST API with 4 endpoints.</stringProp>
+      <elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments">
+        <collectionProp name="Arguments.arguments"/>
+      </elementProp>
+    </TestPlan>
+    <hashTree>
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Docker API Users">
+        <stringProp name="ThreadGroup.num_threads">${__P(threads,10)}</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">${__P(rampup,5)}</stringProp>
+        <stringProp name="ThreadGroup.duration">${__P(duration,30)}</stringProp>
+        <longProp name="ThreadGroup.delay">0</longProp>
+        <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
+        <boolProp name="ThreadGroup.scheduler">true</boolProp>
+        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController">
+          <intProp name="LoopController.loops">-1</intProp>
+          <boolProp name="LoopController.continue_forever">false</boolProp>
+        </elementProp>
+      </ThreadGroup>
+      <hashTree>
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="GET /api/health" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+
+def random = ThreadLocalRandom.current()
+def delay = random.nextInt(20, 80)
+Thread.sleep(delay)
+
+// 0% error rate
+SampleResult.setSuccessful(true)
+SampleResult.setResponseCode(&quot;200&quot;)
+SampleResult.setResponseMessage(&quot;OK&quot;)
+SampleResult.setResponseData(&apos;{&quot;status&quot;:&quot;healthy&quot;,&quot;uptime&quot;:99.99,&quot;version&quot;:&quot;2.1.0&quot;}&apos;, &quot;UTF-8&quot;)
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(48)
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree>
+          <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="Think Time" enabled="true">
+            <stringProp name="ConstantTimer.delay">150</stringProp>
+          </ConstantTimer>
+          <hashTree/>
+        </hashTree>
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="GET /api/data" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+
+def random = ThreadLocalRandom.current()
+def delay = random.nextInt(100, 300)
+Thread.sleep(delay)
+
+// 3% error rate (500)
+if (random.nextInt(100) &lt; 3) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;500&quot;)
+    SampleResult.setResponseMessage(&quot;Internal Server Error&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Data retrieval failed&quot;,&quot;code&quot;:&quot;DB_CONNECTION_ERROR&quot;}&apos;, &quot;UTF-8&quot;)
+} else {
+    def count = random.nextInt(10, 100)
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;200&quot;)
+    SampleResult.setResponseMessage(&quot;OK&quot;)
+    SampleResult.setResponseData(&apos;{&quot;data&quot;:[],&quot;count&quot;:&apos; + count + &apos;,&quot;page&quot;:1,&quot;totalPages&quot;:5}&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(64)
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree>
+          <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="Think Time" enabled="true">
+            <stringProp name="ConstantTimer.delay">150</stringProp>
+          </ConstantTimer>
+          <hashTree/>
+        </hashTree>
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="POST /api/submit" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+
+def random = ThreadLocalRandom.current()
+def delay = random.nextInt(200, 500)
+Thread.sleep(delay)
+
+// 5% error rate (400/500)
+def roll = random.nextInt(100)
+if (roll &lt; 3) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;400&quot;)
+    SampleResult.setResponseMessage(&quot;Bad Request&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Validation failed&quot;,&quot;fields&quot;:[&quot;email&quot;,&quot;name&quot;]}&apos;, &quot;UTF-8&quot;)
+} else if (roll &lt; 5) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;500&quot;)
+    SampleResult.setResponseMessage(&quot;Internal Server Error&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Failed to persist submission&quot;}&apos;, &quot;UTF-8&quot;)
+} else {
+    def id = &quot;SUB-&quot; + System.currentTimeMillis()
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;201&quot;)
+    SampleResult.setResponseMessage(&quot;Created&quot;)
+    SampleResult.setResponseData(&apos;{&quot;id&quot;:&quot;&apos; + id + &apos;&quot;,&quot;status&quot;:&quot;accepted&quot;}&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(256)
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree>
+          <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="Think Time" enabled="true">
+            <stringProp name="ConstantTimer.delay">150</stringProp>
+          </ConstantTimer>
+          <hashTree/>
+        </hashTree>
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="DELETE /api/cleanup" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+
+def random = ThreadLocalRandom.current()
+def delay = random.nextInt(50, 150)
+Thread.sleep(delay)
+
+// 2% error rate (404)
+if (random.nextInt(100) &lt; 2) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;404&quot;)
+    SampleResult.setResponseMessage(&quot;Not Found&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Resource not found for cleanup&quot;}&apos;, &quot;UTF-8&quot;)
+} else {
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;204&quot;)
+    SampleResult.setResponseMessage(&quot;No Content&quot;)
+    SampleResult.setResponseData(&apos;{&quot;deleted&quot;:true}&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+SampleResult.setSentBytes(56)
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree>
+          <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="Think Time" enabled="true">
+            <stringProp name="ConstantTimer.delay">150</stringProp>
+          </ConstantTimer>
+          <hashTree/>
+        </hashTree>
+      </hashTree>
+      <com.jmeterwebinsightreport.report.listener.WebInsightReportListener guiclass="com.jmeterwebinsightreport.report.listener.WebInsightReportListenerGui" testclass="com.jmeterwebinsightreport.report.listener.WebInsightReportListener" testname="Web Insight Report">
+        <boolProp name="ResultCollector.error_logging">false</boolProp>
+        <objProp>
+          <name>saveConfig</name>
+          <value class="SampleSaveConfiguration">
+            <time>true</time>
+            <latency>true</latency>
+            <timestamp>true</timestamp>
+            <success>true</success>
+            <label>true</label>
+            <code>true</code>
+            <message>true</message>
+            <threadName>true</threadName>
+            <dataType>true</dataType>
+            <encoding>false</encoding>
+            <assertions>true</assertions>
+            <subresults>true</subresults>
+            <responseData>false</responseData>
+            <samplerData>false</samplerData>
+            <xml>false</xml>
+            <fieldNames>true</fieldNames>
+            <responseHeaders>false</responseHeaders>
+            <requestHeaders>false</requestHeaders>
+            <responseDataOnError>false</responseDataOnError>
+            <saveAssertionResultsFailureMessage>true</saveAssertionResultsFailureMessage>
+            <assertionsResultsToSave>0</assertionsResultsToSave>
+            <bytes>true</bytes>
+            <sentBytes>true</sentBytes>
+            <url>true</url>
+            <threadCounts>true</threadCounts>
+            <idleTime>true</idleTime>
+            <connectTime>true</connectTime>
+          </value>
+        </objProp>
+      </com.jmeterwebinsightreport.report.listener.WebInsightReportListener>
+      <hashTree/>
+    </hashTree>
+  </hashTree>
+</jmeterTestPlan>

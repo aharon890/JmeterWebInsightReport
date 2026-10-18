@@ -7,6 +7,8 @@
   - [Samplers](Tutorial/04-Samplers-Tab.md)
   - [Errors](Tutorial/05-Errors-Tab.md)
   - [Compare](Tutorial/06-Compare-Tab.md)
+  - [Asserts](Tutorial/12-Asserts-Tab.md)
+  - [Server](Tutorial/13-Server-Tab.md)
   - [Notes](Tutorial/07-Notes-Tab.md)
 
 - **Controls & Settings**
@@ -14,7 +16,7 @@
   - [Dark Mode & Accessibility](Tutorial/09-Dark-Mode-Accessibility.md)
 
 - **Quality & Integration**
-  - [SLA & Apdex](Tutorial/10-SLA-Apdex.md)
+  - [Asserts & Apdex](Tutorial/10-Asserts-Apdex.md)
   - [Export & CI/CD](Tutorial/11-Export-Integration.md)
 
 - **Reference**

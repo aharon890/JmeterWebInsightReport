@@ -1,0 +1,130 @@
+{
+  "type": "jvm",
+  "version": 1,
+  "label": "JVM",
+  "summary": "Heap against its maximum, live heap growth, GC pauses, threads, process CPU",
+  "exporter": "Micrometer (Spring Boot Actuator's /actuator/prometheus)",
+  "source": "Micrometer's JVM binders under the names its Prometheus registry gives them, which is what Spring Boot Actuator serves at /actuator/prometheus: JvmMemoryMetrics, JvmGcMetrics, JvmThreadMetrics, ProcessorMetrics, the Micrometer meter conventions, PrometheusNamingConvention and MicrometerCollector read at Micrometer main, and Spring Boot 4.1.1's JvmMetricsAutoConfiguration and SystemMetricsAutoConfiguration, which register them, on 2026-10-09; the queries were not run against a live service. A gauge's Prometheus name ends in its base unit (jvm_memory_used_bytes, jvm_threads_live_threads) and a timer's in _seconds, with _count, _sum and _max. Other libraries name the same things otherwise (the Prometheus Java client 0.x's jvm_memory_bytes_used, OpenTelemetry's jvm.memory.used), and so does Spring Boot with OpenTelemetry meter conventions configured: write a custom query there. Micrometer passes a pool's MemoryUsage.getMax() through, -1 where the pool has no maximum, so heap.used.pct divides by the maxima above 0 only (G1's eden and survivor pools report -1, and its old pool the whole heap's maximum). Generational ZGC, the only ZGC from JDK 24, and generational Shenandoah give their young pool the whole heap's maximum as well as their old pool (OpenJDK's zServiceability.cpp and shenandoahMemoryPool.cpp at master, read the same day), which would double the denominator, so it leaves out the pools named ZGC Young Generation and Shenandoah Young Gen. jvm.gc.live.data.size is the long-lived pool after a collection, set only after a major collection or one that shrank that pool, and 0 before the first, so heap.live.growth leaves the 0 out: it has no data until the JVM's first such collection, and reads flat over a run with none. jvm_gc_pause_seconds_max is the longest pause in Micrometer's decaying window, 2 minutes by default, so the run's first scrapes can carry a pause from before it; concurrent GC phases go to jvm.gc.concurrent.phase.time, not to the pauses. JvmGcMetrics creates a jvm.gc.pause timer for a gc, action and cause the first time one occurs, so a run's first major collection, or a new cause, starts a series whose first count rate() and increase() take as the baseline: gc.pause.time.pct and gc.pauses.rate miss that first pause. JvmHeapPressureMetrics is not read: its jvm.gc.overhead averages over a 5-minute lookback, and its jvm.memory.usage.after.gc is deprecated. Tools' names checked the same day against Datadog's Java runtime metrics and the OpenTelemetry JVM semantic conventions. Telegraf reads a JVM through inputs.jolokia2, whose measurement and field names are whatever its config gives them, so none is named. Datadog's runtime metrics page labels jvm.thread_count a count, but JMXFetch's default-jmx-metrics.yaml sends it as a gauge of ThreadCount, the count Micrometer's jvm.threads.live reads, so it is named; Datadog's GC time and count come split into major and minor metrics, so those are null. OpenTelemetry's jvm.gc.duration is a histogram, so no single series of it is a pause maximum, share or count. No CloudWatch metric was checked, so none is named. A ratio or a sum of a tool's metrics is null: export the computed series under the catalogue's name.",
+  "metrics": [
+    {
+      "name": "heap.used.pct",
+      "label": "Heap used (% of max)",
+      "category": "Memory",
+      "description": "Heap in use as a percentage of the heap's maximum, at its peak. It saws up and down with every collection, and the peak includes a full young generation, so a healthy JVM under load peaks high: judge it beside heap.live.growth, the leak signal, or against a baseline run. A peak that stays near 100 % means collections no longer free enough, and an OutOfMemoryError comes next.",
+      "unit": "%",
+      "reduce": "max",
+      "direction": "higher",
+      "ceiling": 100,
+      "dimension": "per JVM",
+      "recommended": true,
+      "queries": { "prometheus": "100 * sum by (instance) (jvm_memory_used_bytes{area=\"heap\"${andMatch}}) / sum by (instance) (jvm_memory_max_bytes{area=\"heap\",id!~\"ZGC Young Generation|Shenandoah Young Gen\"${andMatch}} > 0)" },
+      "names": {
+        "telegraf": null,
+        "datadog": null,
+        "otel": null
+      }
+    },
+    {
+      "name": "heap.live.growth",
+      "label": "Live heap after GC, growth (bytes/min)",
+      "category": "Memory",
+      "description": "How fast the old generation grows as measured just after a collection, as a slope: memory the collector could not free. Steady growth under steady load is the signature of a leak. It moves only after a major collection or one that shrank the old generation: there is no data until the JVM's first such collection, and a run with none reads flat.",
+      "unit": "B",
+      "reduce": "slope",
+      "direction": "higher",
+      "dimension": "per JVM",
+      "recommended": true,
+      "queries": { "prometheus": "sum by (instance) (jvm_gc_live_data_size_bytes${match} > 0)" },
+      "names": {
+        "telegraf": null,
+        "datadog": null
+      }
+    },
+    {
+      "name": "gc.pause.max",
+      "label": "Longest GC pause (ms)",
+      "category": "Garbage collection",
+      "description": "The longest stop-the-world pause in the run, or up to 2 minutes before it. Every request in flight waits for it, so it lands directly in the client's maximum and high percentiles.",
+      "unit": "ms",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per JVM",
+      "recommended": true,
+      "queries": { "prometheus": "1000 * max by (instance) (jvm_gc_pause_seconds_max${match})" },
+      "names": {
+        "telegraf": null,
+        "datadog": null,
+        "otel": null
+      }
+    },
+    {
+      "name": "gc.pause.time.pct",
+      "label": "Time paused for GC (%)",
+      "category": "Garbage collection",
+      "description": "Share of wall-clock time the JVM spent in stop-the-world pauses, in its worst minute. A rising share means the collector is struggling to keep up with the allocation rate, usually because the heap is too small for the load.",
+      "unit": "%",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per JVM",
+      "recommended": true,
+      "queries": { "prometheus": "100 * sum by (instance) (rate(jvm_gc_pause_seconds_sum${match}[1m]))" },
+      "names": {
+        "telegraf": null,
+        "datadog": null,
+        "otel": null
+      }
+    },
+    {
+      "name": "gc.pauses.rate",
+      "label": "GC pauses per minute (peak)",
+      "category": "Garbage collection",
+      "description": "Stop-the-world pauses in any minute of the run, minor and major together. It follows the allocation rate: a jump at the same load means more garbage per request.",
+      "unit": "/min",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per JVM",
+      "recommended": false,
+      "queries": { "prometheus": "sum by (instance) (increase(jvm_gc_pause_seconds_count${match}[1m]))" },
+      "names": {
+        "telegraf": null,
+        "datadog": null,
+        "otel": null
+      }
+    },
+    {
+      "name": "threads.live",
+      "label": "Live threads (peak)",
+      "category": "Threads",
+      "description": "Live threads, daemon threads included, at their peak. A count that keeps climbing under constant load means threads are created and never ended: a leak, or a pool without a bound.",
+      "unit": "threads",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per JVM",
+      "recommended": false,
+      "queries": { "prometheus": "max by (instance) (jvm_threads_live_threads${match})" },
+      "names": {
+        "telegraf": null,
+        "datadog": { "metric": "jvm.thread_count", "kind": "gauge", "note": "the runtime metrics page labels it a count; JMXFetch sends a gauge" },
+        "otel": { "metric": "jvm.thread.count", "kind": "gauge", "note": "one series per jvm.thread.daemon and jvm.thread.state: export the sum per instance" }
+      }
+    },
+    {
+      "name": "cpu.process.pct",
+      "label": "Process CPU (% of all CPUs)",
+      "category": "CPU",
+      "description": "CPU the JVM process used, as a percentage of all the CPUs it can see, as the JVM reports it at each scrape. Near 100 % requests queue for CPU, and GC threads compete with the application's.",
+      "unit": "%",
+      "reduce": "p95",
+      "direction": "higher",
+      "ceiling": 100,
+      "dimension": "per JVM",
+      "recommended": true,
+      "queries": { "prometheus": "100 * max by (instance) (process_cpu_usage${match})" },
+      "names": {
+        "telegraf": null,
+        "datadog": { "metric": "jvm.cpu_load.process", "kind": "gauge", "scale": 100 },
+        "otel": { "metric": "jvm.cpu.recent_utilization", "kind": "gauge", "scale": 100 }
+      }
+    }
+  ]
+}

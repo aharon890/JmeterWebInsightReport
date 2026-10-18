@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="JMeter Web Insight Report" tests="3" failures="0">
+  <testsuite name="JMeter Web Insight Report" tests="3" failures="0">
+    <properties>
+      <property name="webinsight.runId" value="967a1b397b7fb1d2"/>
+    </properties>
+    <testcase name="GET /api/products" classname="performance">
+    </testcase>
+    <testcase name="GET /api/search" classname="performance">
+    </testcase>
+    <testcase name="POST /api/checkout" classname="performance">
+    </testcase>
+  </testsuite>
+  <testsuite name="JMeter Web Insight Report - kafka" tests="2" failures="1" skipped="0">
+    <properties>
+      <property name="webinsight.runId" value="967a1b397b7fb1d2"/>
+    </properties>
+    <testcase name="up-passes" classname="server-metrics">
+    </testcase>
+    <testcase name="up-fails" classname="server-metrics">
+      <failure message="Server assert &apos;up-fails&apos;: max 49 breached &gt; 20 - a real breach">
+component: kafka
+query:     up
+reduce:    max across max
+criteria:  warn &gt; 10  ·  fail &gt; 20
+actual:    49
+coverage:  100% of the collected window
+instances: 1
+      </failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="JMeter Web Insight Report - db" tests="1" failures="0" skipped="0">
+    <properties>
+      <property name="webinsight.runId" value="967a1b397b7fb1d2"/>
+    </properties>
+    <testcase name="up-p50-warns" classname="server-metrics">
+      <system-out>WARN: Server assert &apos;up-p50-warns&apos;: p50 25 breached &gt; 10 - over warn, under fail</system-out>
+    </testcase>
+  </testsuite>
+</testsuites>

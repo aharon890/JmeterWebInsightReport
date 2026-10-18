@@ -1,0 +1,173 @@
+{
+  "version": "1.0",
+  "testNotes": "## Load Test \u2014 E-Commerce API\n\n### Objective\nValidate the checkout flow under load with 10 concurrent users.\n\n### Environment\n- **Server:** staging-api.example.com\n- **Database:** PostgreSQL 15 (replica set)\n- **CDN:** CloudFront enabled\n\n### Key Observations\n1. Payment processing shows 15% slow-path rate\n2. Search latency spikes during cache rebuilds\n3. Product catalog reads are consistently fast",
+  "assertions": [
+    {
+      "id": "default:p95",
+      "description": "p95 must stay under 1000",
+      "target": {
+        "match": "*",
+        "exclude": [
+          "GET /api/v2/marketplace/sellers/{sellerId}/products/search?status=active&minRating=4.5&verified=true",
+          "POST /api/v2/orders/checkout/process-payment?provider=stripe&method=card&3dsecure=required&idempotencyKey={uuid}"
+        ]
+      },
+      "metric": "p95",
+      "warn": {
+        "gt": 800.0
+      },
+      "fail": {
+        "gt": 1000.0
+      }
+    },
+    {
+      "id": "default:p99",
+      "description": "p99 must stay under 2000",
+      "target": {
+        "match": "*",
+        "exclude": [
+          "GET /api/v2/marketplace/sellers/{sellerId}/products/search?status=active&minRating=4.5&verified=true",
+          "POST /api/v2/orders/checkout/process-payment?provider=stripe&method=card&3dsecure=required&idempotencyKey={uuid}"
+        ]
+      },
+      "metric": "p99",
+      "warn": {
+        "gt": 1600.0
+      },
+      "fail": {
+        "gt": 2000.0
+      }
+    },
+    {
+      "id": "default:errorRate",
+      "description": "errorRate must stay under 5",
+      "target": {
+        "match": "*",
+        "exclude": [
+          "GET /api/v2/marketplace/sellers/{sellerId}/products/search?status=active&minRating=4.5&verified=true",
+          "POST /api/v2/orders/checkout/process-payment?provider=stripe&method=card&3dsecure=required&idempotencyKey={uuid}"
+        ]
+      },
+      "metric": "errorRate",
+      "warn": {
+        "gt": 4.0
+      },
+      "fail": {
+        "gt": 5.0
+      }
+    },
+    {
+      "id": "default:mean",
+      "description": "mean must stay under 500",
+      "target": {
+        "match": "*",
+        "exclude": [
+          "GET /api/v2/marketplace/sellers/{sellerId}/products/search?status=active&minRating=4.5&verified=true",
+          "POST /api/v2/orders/checkout/process-payment?provider=stripe&method=card&3dsecure=required&idempotencyKey={uuid}"
+        ]
+      },
+      "metric": "mean",
+      "warn": {
+        "gt": 400.0
+      },
+      "fail": {
+        "gt": 500.0
+      }
+    },
+    {
+      "id": "checkout:p95",
+      "description": "p95 must stay under 2000",
+      "target": {
+        "sampler": "POST /api/v2/orders/checkout/process-payment?provider=stripe&method=card&3dsecure=required&idempotencyKey={uuid}"
+      },
+      "metric": "p95",
+      "warn": {
+        "gt": 1600.0
+      },
+      "fail": {
+        "gt": 2000.0
+      }
+    },
+    {
+      "id": "checkout:p99",
+      "description": "p99 must stay under 3000",
+      "target": {
+        "sampler": "POST /api/v2/orders/checkout/process-payment?provider=stripe&method=card&3dsecure=required&idempotencyKey={uuid}"
+      },
+      "metric": "p99",
+      "warn": {
+        "gt": 2400.0
+      },
+      "fail": {
+        "gt": 3000.0
+      }
+    },
+    {
+      "id": "checkout:errorRate",
+      "description": "errorRate must stay under 10",
+      "target": {
+        "sampler": "POST /api/v2/orders/checkout/process-payment?provider=stripe&method=card&3dsecure=required&idempotencyKey={uuid}"
+      },
+      "metric": "errorRate",
+      "warn": {
+        "gt": 8.0
+      },
+      "fail": {
+        "gt": 10.0
+      }
+    },
+    {
+      "id": "search:p95",
+      "description": "p95 must stay under 1500",
+      "target": {
+        "sampler": "GET /api/v2/marketplace/sellers/{sellerId}/products/search?status=active&minRating=4.5&verified=true"
+      },
+      "metric": "p95",
+      "warn": {
+        "gt": 1200.0
+      },
+      "fail": {
+        "gt": 1500.0
+      }
+    },
+    {
+      "id": "search:errorRate",
+      "description": "errorRate must stay under 8",
+      "target": {
+        "sampler": "GET /api/v2/marketplace/sellers/{sellerId}/products/search?status=active&minRating=4.5&verified=true"
+      },
+      "metric": "errorRate",
+      "warn": {
+        "gt": 6.4
+      },
+      "fail": {
+        "gt": 8.0
+      }
+    }
+  ],
+  "samplerNotes": {
+    "POST /api/v2/orders/checkout/process-payment?provider=stripe&method=card&3dsecure=required&idempotencyKey={uuid}": "Includes Stripe 3DS verification \u2014 expect higher latency (300-1200ms). 15% of requests go through slow payment path.",
+    "GET /api/v2/marketplace/sellers/{sellerId}/products/search?status=active&minRating=4.5&verified=true": "Elasticsearch-backed search. Cache rebuild causes periodic spikes.",
+    "GET /api/v2/catalog/products/{productId}/variants?includeInventory=true&warehouse=US-WEST-2&currency=USD": "CDN-cached for 60s. Very low latency expected."
+  },
+  "timelineMarkers": [
+    {
+      "timestamp": 1700000005000,
+      "label": "Ramp-Up Complete",
+      "type": "info",
+      "description": "All 10 threads active"
+    },
+    {
+      "timestamp": 1700000015000,
+      "label": "Cache Rebuild",
+      "type": "warning",
+      "description": "Elasticsearch index rebuild triggered \u2014 expect search latency spike"
+    },
+    {
+      "timestamp": 1700000025000,
+      "label": "DB Failover",
+      "type": "error",
+      "description": "Primary database switched to read replica due to connection pool exhaustion"
+    }
+  ]
+}

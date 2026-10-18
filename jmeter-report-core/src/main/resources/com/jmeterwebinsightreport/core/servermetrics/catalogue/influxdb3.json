@@ -1,0 +1,237 @@
+{
+  "type": "influxdb3",
+  "version": 1,
+  "label": "InfluxDB 3",
+  "summary": "Write and query latency and errors, rejected lines, query permits and OOMs, object store",
+  "exporter": "InfluxDB's own /metrics (v3 Core)",
+  "source": "InfluxDB 3 Core's own /metrics: names read on 2026-10-09 in influxdata/influxdb main at 06200ef (3.12.0-nightly): influxdb3_write/src/write_buffer/metrics.rs, core/trace_http/src/metrics.rs, influxdb3_server/src/route_template.rs, core/iox_query/src/query_log.rs and memory_pool.rs, core/object_store_metrics, core/panic_logging, influxdb3/src/commands/serve/jemalloc.rs, and core/metric_exporters, which adds _total to a counter and _seconds to a duration. InfluxDB 3 has no published metrics reference, and Enterprise is closed source: its names were not read and are unverified, so check them against a running node; in a cluster, read write metrics on ingest nodes and query metrics on query nodes. The queries were not run against a live server. status is ok, client_error, server_error, unexpected_response or aborted (the client hung up), and path one of a fixed set of routes. The duration histograms stop at 10 s, so a p95 reads at most 10. /metrics needs a token unless the server runs with --disable-authz metrics, and Windows builds export no jemalloc_memstats_bytes. up is Prometheus' own series for every target: give the component a match, or up's safe default fails on any other target that is down. Telegraf's inputs.influxdb reads InfluxDB 1.x only; 3.x has no /debug/vars and goes through inputs.prometheus, whose names depend on its metric_version, so no metric names a Telegraf one. Datadog has no InfluxDB check of its own, and OpenTelemetry reaches /metrics only through its Prometheus receiver, whose names were not verified. Amazon Timestream for InfluxDB's CloudWatch metrics are 2.x engine metrics; what a 3.x cluster sends was not verified, so no metric names one.",
+  "metrics": [
+    {
+      "name": "up",
+      "label": "Prometheus can scrape InfluxDB",
+      "category": "Availability",
+      "description": "1 while Prometheus could scrape InfluxDB's /metrics, 0 when it could not: the server was down or restarting, and every other metric is blind for that span. up is Prometheus' own series for every target, so give the component a match that picks InfluxDB's.",
+      "unit": "",
+      "reduce": "min",
+      "across": "min",
+      "direction": "lower",
+      "ceiling": 1,
+      "dimension": "per InfluxDB server",
+      "recommended": true,
+      "safeDefault": { "fail": { "lt": 1 } },
+      "queries": { "prometheus": "min by (instance) (up${match})" },
+      "names": {
+        "telegraf": null
+      }
+    },
+    {
+      "name": "write.requests.rate",
+      "label": "Write requests per second (avg)",
+      "category": "Writes",
+      "description": "Write requests InfluxDB answered per second (/api/v3/write_lp, /api/v2/write and /write), averaged over the run: it shows the write load reached the server. Compare it with JMeter's own rate.",
+      "unit": "/s",
+      "reduce": "avg",
+      "across": "min",
+      "direction": "lower",
+      "dimension": "per InfluxDB server",
+      "recommended": false,
+      "queries": { "prometheus": "sum by (instance) (rate(http_requests_total{path=~\"/api/v3/write_lp|/api/v2/write|/write\"${andMatch}}[1m]))" },
+      "names": {
+        "telegraf": null
+      }
+    },
+    {
+      "name": "write.points.rate",
+      "label": "Points written per second (avg)",
+      "category": "Writes",
+      "description": "Lines InfluxDB accepted per second, averaged over the run: the real ingest rate, which can fall while requests per second look fine if the batches shrink.",
+      "unit": "/s",
+      "reduce": "avg",
+      "across": "min",
+      "direction": "lower",
+      "dimension": "per InfluxDB server",
+      "recommended": false,
+      "queries": { "prometheus": "sum by (instance) (rate(influxdb3_write_lines_total${match}[1m]))" },
+      "names": {
+        "telegraf": null
+      }
+    },
+    {
+      "name": "write.latency.p95",
+      "label": "Write latency p95 (s)",
+      "category": "Writes",
+      "description": "95th percentile of write request time in each minute, from InfluxDB's own histogram. Its top bucket is 10 s, so it never reads past 10.",
+      "unit": "s",
+      "reduce": "max",
+      "direction": "higher",
+      "ceiling": 10,
+      "dimension": "per InfluxDB server",
+      "recommended": true,
+      "queries": { "prometheus": "histogram_quantile(0.95, sum by (instance, le) (rate(http_request_duration_seconds_bucket{path=~\"/api/v3/write_lp|/api/v2/write|/write\"${andMatch}}[1m])))" },
+      "names": {
+        "telegraf": null
+      }
+    },
+    {
+      "name": "write.errors.pct",
+      "label": "Writes failing server-side (%)",
+      "category": "Writes",
+      "description": "Write requests answered with a server error, as a percentage of all write requests. One the client abandoned, a JMeter timeout say, counts as aborted, not as an error.",
+      "unit": "%",
+      "reduce": "max",
+      "direction": "higher",
+      "ceiling": 100,
+      "dimension": "per InfluxDB server",
+      "recommended": true,
+      "safeDefault": { "warn": { "gt": 0 }, "fail": { "gt": 1 } },
+      "queries": { "prometheus": "100 * sum by (instance) (rate(http_requests_total{path=~\"/api/v3/write_lp|/api/v2/write|/write\",status=\"server_error\"${andMatch}}[1m])) / sum by (instance) (rate(http_requests_total{path=~\"/api/v3/write_lp|/api/v2/write|/write\"${andMatch}}[1m]))" },
+      "names": {
+        "telegraf": null
+      }
+    },
+    {
+      "name": "write.rejected",
+      "label": "Rejected points per minute (peak)",
+      "category": "Writes",
+      "description": "Lines InfluxDB rejected from writes, in any minute of the run: data that was sent and not stored.",
+      "unit": "/min",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per InfluxDB server",
+      "recommended": true,
+      "safeDefault": { "warn": { "gt": 0 } },
+      "queries": { "prometheus": "sum by (instance) (increase(influxdb3_write_lines_rejected_total${match}[1m]))" },
+      "names": {
+        "telegraf": null
+      }
+    },
+    {
+      "name": "query.requests.rate",
+      "label": "Query requests per second (avg)",
+      "category": "Queries",
+      "description": "Query requests InfluxDB answered over HTTP per second (SQL, InfluxQL and the 1.x /query), averaged over the run. Flight SQL queries arrive over gRPC and are not counted.",
+      "unit": "/s",
+      "reduce": "avg",
+      "across": "min",
+      "direction": "lower",
+      "dimension": "per InfluxDB server",
+      "recommended": false,
+      "queries": { "prometheus": "sum by (instance) (rate(http_requests_total{path=~\"/api/v3/query_sql|/api/v3/query_influxql|/query\"${andMatch}}[1m]))" },
+      "names": {
+        "telegraf": null
+      }
+    },
+    {
+      "name": "query.latency.p95",
+      "label": "Query latency p95 (s)",
+      "category": "Queries",
+      "description": "95th percentile of query time in each minute, from receipt to end, over HTTP and Flight alike, from the query log's histogram. Its top bucket is 10 s, so it never reads past 10.",
+      "unit": "s",
+      "reduce": "max",
+      "direction": "higher",
+      "ceiling": 10,
+      "dimension": "per InfluxDB server",
+      "recommended": true,
+      "queries": { "prometheus": "histogram_quantile(0.95, sum by (instance, le) (rate(influxdb_iox_query_log_end2end_duration_seconds_bucket${match}[1m])))" },
+      "names": {
+        "telegraf": null
+      }
+    },
+    {
+      "name": "query.errors.pct",
+      "label": "Queries failing (%)",
+      "category": "Queries",
+      "description": "Queries that ended in failure, as a percentage of those that ended (succeeded, failed or were cancelled). A query that does not parse fails too, so check the test's own queries first.",
+      "unit": "%",
+      "reduce": "max",
+      "direction": "higher",
+      "ceiling": 100,
+      "dimension": "per InfluxDB server",
+      "recommended": true,
+      "safeDefault": { "warn": { "gt": 0 }, "fail": { "gt": 1 } },
+      "queries": { "prometheus": "100 * sum by (instance) (rate(influxdb_iox_query_log_phase_entered_total{phase=\"fail\"${andMatch}}[1m])) / sum by (instance) (rate(influxdb_iox_query_log_phase_entered_total{phase=~\"success|fail|cancel\"${andMatch}}[1m]))" },
+      "names": {
+        "telegraf": null
+      }
+    },
+    {
+      "name": "memory.used.bytes",
+      "label": "Memory in use (bytes)",
+      "category": "Memory",
+      "description": "Resident memory, as jemalloc reports it. A steady climb at constant load is a leak, which slope on the same query measures. Windows builds do not export it.",
+      "unit": "B",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per InfluxDB server",
+      "recommended": true,
+      "queries": { "prometheus": "max by (instance) (jemalloc_memstats_bytes{stat=\"resident\"${andMatch}})" },
+      "names": {
+        "telegraf": null
+      }
+    },
+    {
+      "name": "query.permit.wait.p95",
+      "label": "Query permit wait p95 (s)",
+      "category": "Queries",
+      "description": "95th percentile of the time a query waited for an execution permit, in each minute: queueing at the query concurrency limit. Its top bucket is 10 s, so it never reads past 10.",
+      "unit": "s",
+      "reduce": "max",
+      "direction": "higher",
+      "ceiling": 10,
+      "dimension": "per InfluxDB server",
+      "recommended": true,
+      "queries": { "prometheus": "histogram_quantile(0.95, sum by (instance, le) (rate(influxdb_iox_query_log_permit_duration_seconds_bucket${match}[1m])))" },
+      "names": {
+        "telegraf": null
+      }
+    },
+    {
+      "name": "query.ooms",
+      "label": "Query out-of-memory errors per minute (peak)",
+      "category": "Memory",
+      "description": "Queries the query memory pool refused, in any minute of the run: concurrent queries exhausted it. On a healthy server it is 0.",
+      "unit": "/min",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per InfluxDB server",
+      "recommended": true,
+      "safeDefault": { "fail": { "gt": 0 } },
+      "queries": { "prometheus": "sum by (instance) (increase(query_datafusion_query_execution_ooms_total${match}[1m]))" },
+      "names": {
+        "telegraf": null
+      }
+    },
+    {
+      "name": "objectstore.errors",
+      "label": "Object-store errors per minute (peak)",
+      "category": "Storage",
+      "description": "Object-store operations that failed, in any minute of the run. InfluxDB 3 persists to its object store (S3, a file system), so failing calls break persistence or queries.",
+      "unit": "/min",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per InfluxDB server",
+      "recommended": false,
+      "safeDefault": { "warn": { "gt": 0 } },
+      "queries": { "prometheus": "sum by (instance) (increase(object_store_op_duration_seconds_count{result=\"error\"${andMatch}}[1m]))" },
+      "names": {
+        "telegraf": null
+      }
+    },
+    {
+      "name": "panics",
+      "label": "Thread panics per minute (peak)",
+      "category": "Availability",
+      "description": "Thread panics, in any minute of the run. A panic is a crash in waiting and should never happen.",
+      "unit": "/min",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per InfluxDB server",
+      "recommended": true,
+      "safeDefault": { "fail": { "gt": 0 } },
+      "queries": { "prometheus": "sum by (instance) (increase(thread_panic_count_total${match}[1m]))" },
+      "names": {
+        "telegraf": null
+      }
+    }
+  ]
+}

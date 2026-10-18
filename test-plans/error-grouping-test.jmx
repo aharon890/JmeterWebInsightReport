@@ -1,0 +1,311 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+  <hashTree>
+    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="Error Grouping Test">
+      <stringProp name="TestPlan.comments">High-volume test with short sampler names, high error rates, and multiple response messages per response code across samplers.</stringProp>
+      <elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments">
+        <collectionProp name="Arguments.arguments"/>
+      </elementProp>
+    </TestPlan>
+    <hashTree>
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="API Users">
+        <stringProp name="ThreadGroup.num_threads">${__P(threads,20)}</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">${__P(rampup,5)}</stringProp>
+        <stringProp name="ThreadGroup.duration">${__P(duration,30)}</stringProp>
+        <longProp name="ThreadGroup.delay">0</longProp>
+        <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
+        <boolProp name="ThreadGroup.scheduler">true</boolProp>
+        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController">
+          <intProp name="LoopController.loops">-1</intProp>
+          <boolProp name="LoopController.continue_forever">false</boolProp>
+        </elementProp>
+      </ThreadGroup>
+      <hashTree>
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="Login" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def random = ThreadLocalRandom.current()
+SampleResult.setURL(new java.net.URL(&quot;https://api.example.com/v2/auth/login&quot;))
+Thread.sleep(random.nextInt(30, 150))
+
+def roll = random.nextInt(100)
+if (roll &lt; 5) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;401&quot;)
+    SampleResult.setResponseMessage(&quot;Invalid credentials&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Bad username or password&quot;}&apos;, &quot;UTF-8&quot;)
+} else if (roll &lt; 8) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;401&quot;)
+    SampleResult.setResponseMessage(&quot;Token expired&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Session token has expired&quot;}&apos;, &quot;UTF-8&quot;)
+} else if (roll &lt; 10) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;500&quot;)
+    SampleResult.setResponseMessage(&quot;Auth service down&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Auth microservice unreachable&quot;}&apos;, &quot;UTF-8&quot;)
+} else if (roll &lt; 12) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;500&quot;)
+    SampleResult.setResponseMessage(&quot;Database connection failed&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Cannot connect to user DB&quot;}&apos;, &quot;UTF-8&quot;)
+} else if (roll &lt; 14) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;429&quot;)
+    SampleResult.setResponseMessage(&quot;Too Many Requests&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Rate limit exceeded&quot;}&apos;, &quot;UTF-8&quot;)
+} else {
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;200&quot;)
+    SampleResult.setResponseMessage(&quot;OK&quot;)
+    SampleResult.setResponseData(&apos;{&quot;token&quot;:&quot;abc123&quot;}&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree/>
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="GetUsers" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def random = ThreadLocalRandom.current()
+Thread.sleep(random.nextInt(20, 120))
+
+def roll = random.nextInt(100)
+if (roll &lt; 4) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;500&quot;)
+    SampleResult.setResponseMessage(&quot;Internal Server Error&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Unexpected null pointer in user service&quot;}&apos;, &quot;UTF-8&quot;)
+} else if (roll &lt; 7) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;500&quot;)
+    SampleResult.setResponseMessage(&quot;Query timeout&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;SQL query exceeded 30s limit&quot;}&apos;, &quot;UTF-8&quot;)
+} else if (roll &lt; 9) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;503&quot;)
+    SampleResult.setResponseMessage(&quot;Service Unavailable&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;User service is restarting&quot;}&apos;, &quot;UTF-8&quot;)
+} else if (roll &lt; 11) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;429&quot;)
+    SampleResult.setResponseMessage(&quot;Rate limit hit&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Too many requests per second&quot;}&apos;, &quot;UTF-8&quot;)
+} else {
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;200&quot;)
+    SampleResult.setResponseMessage(&quot;OK&quot;)
+    SampleResult.setResponseData(&apos;{&quot;users&quot;:[{&quot;id&quot;:1},{&quot;id&quot;:2}]}&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree/>
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="CreateOrder" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def random = ThreadLocalRandom.current()
+Thread.sleep(random.nextInt(50, 200))
+
+def roll = random.nextInt(100)
+if (roll &lt; 5) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;500&quot;)
+    SampleResult.setResponseMessage(&quot;Order processing failed&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Failed to reserve inventory&quot;}&apos;, &quot;UTF-8&quot;)
+} else if (roll &lt; 8) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;500&quot;)
+    SampleResult.setResponseMessage(&quot;Payment gateway error&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Stripe returned 502&quot;}&apos;, &quot;UTF-8&quot;)
+} else if (roll &lt; 11) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;400&quot;)
+    SampleResult.setResponseMessage(&quot;Invalid order data&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Missing required field: shippingAddress&quot;}&apos;, &quot;UTF-8&quot;)
+} else if (roll &lt; 13) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;400&quot;)
+    SampleResult.setResponseMessage(&quot;Validation failed&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Quantity must be positive&quot;}&apos;, &quot;UTF-8&quot;)
+} else if (roll &lt; 15) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;409&quot;)
+    SampleResult.setResponseMessage(&quot;Duplicate order&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Order already exists for this idempotency key&quot;}&apos;, &quot;UTF-8&quot;)
+} else if (roll &lt; 17) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;429&quot;)
+    SampleResult.setResponseMessage(&quot;Too Many Requests&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Throttled&quot;}&apos;, &quot;UTF-8&quot;)
+} else {
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;201&quot;)
+    SampleResult.setResponseMessage(&quot;Created&quot;)
+    SampleResult.setResponseData(&apos;{&quot;orderId&quot;:&quot;ORD-&apos; + random.nextInt(10000) + &apos;&quot;}&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree/>
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="GetProduct" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def random = ThreadLocalRandom.current()
+Thread.sleep(random.nextInt(15, 80))
+
+def roll = random.nextInt(100)
+if (roll &lt; 3) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;404&quot;)
+    SampleResult.setResponseMessage(&quot;Product not found&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;No product with given ID&quot;}&apos;, &quot;UTF-8&quot;)
+} else if (roll &lt; 5) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;500&quot;)
+    SampleResult.setResponseMessage(&quot;Cache miss fallback failed&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Redis down, DB fallback also failed&quot;}&apos;, &quot;UTF-8&quot;)
+} else if (roll &lt; 7) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;503&quot;)
+    SampleResult.setResponseMessage(&quot;Catalog service overloaded&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Circuit breaker open&quot;}&apos;, &quot;UTF-8&quot;)
+} else {
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;200&quot;)
+    SampleResult.setResponseMessage(&quot;OK&quot;)
+    SampleResult.setResponseData(&apos;{&quot;id&quot;:1,&quot;name&quot;:&quot;Widget&quot;,&quot;price&quot;:29.99}&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree/>
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="Search" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def random = ThreadLocalRandom.current()
+Thread.sleep(random.nextInt(40, 250))
+
+def roll = random.nextInt(100)
+if (roll &lt; 3) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;500&quot;)
+    SampleResult.setResponseMessage(&quot;Elasticsearch cluster red&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Search cluster unhealthy&quot;}&apos;, &quot;UTF-8&quot;)
+} else if (roll &lt; 6) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;504&quot;)
+    SampleResult.setResponseMessage(&quot;Gateway Timeout&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Search took too long&quot;}&apos;, &quot;UTF-8&quot;)
+} else if (roll &lt; 8) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;400&quot;)
+    SampleResult.setResponseMessage(&quot;Bad query syntax&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Invalid search expression&quot;}&apos;, &quot;UTF-8&quot;)
+} else {
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;200&quot;)
+    SampleResult.setResponseMessage(&quot;OK&quot;)
+    SampleResult.setResponseData(&apos;{&quot;hits&quot;:42,&quot;query&quot;:&quot;widget&quot;}&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree/>
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="DeleteItem" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.util.concurrent.ThreadLocalRandom
+def random = ThreadLocalRandom.current()
+Thread.sleep(random.nextInt(20, 100))
+
+def roll = random.nextInt(100)
+if (roll &lt; 4) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;404&quot;)
+    SampleResult.setResponseMessage(&quot;Item not found&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Item already deleted&quot;}&apos;, &quot;UTF-8&quot;)
+} else if (roll &lt; 6) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;403&quot;)
+    SampleResult.setResponseMessage(&quot;Forbidden&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Insufficient permissions&quot;}&apos;, &quot;UTF-8&quot;)
+} else if (roll &lt; 8) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseCode(&quot;500&quot;)
+    SampleResult.setResponseMessage(&quot;Cascade delete failed&quot;)
+    SampleResult.setResponseData(&apos;{&quot;error&quot;:&quot;Foreign key constraint violation&quot;}&apos;, &quot;UTF-8&quot;)
+} else {
+    SampleResult.setSuccessful(true)
+    SampleResult.setResponseCode(&quot;204&quot;)
+    SampleResult.setResponseMessage(&quot;No Content&quot;)
+    SampleResult.setResponseData(&apos;&apos;, &quot;UTF-8&quot;)
+}
+SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)
+          </stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+        </JSR223Sampler>
+        <hashTree/>
+      </hashTree>
+      <com.jmeterwebinsightreport.report.listener.WebInsightReportListener guiclass="com.jmeterwebinsightreport.report.listener.WebInsightReportListenerGui" testclass="com.jmeterwebinsightreport.report.listener.WebInsightReportListener" testname="Web Insight Report">
+        <boolProp name="ResultCollector.error_logging">false</boolProp>
+        <objProp>
+          <name>saveConfig</name>
+          <value class="SampleSaveConfiguration">
+            <time>true</time>
+            <latency>true</latency>
+            <timestamp>true</timestamp>
+            <success>true</success>
+            <label>true</label>
+            <code>true</code>
+            <message>true</message>
+            <threadName>true</threadName>
+            <dataType>true</dataType>
+            <encoding>false</encoding>
+            <assertions>true</assertions>
+            <subresults>true</subresults>
+            <responseData>false</responseData>
+            <samplerData>false</samplerData>
+            <xml>false</xml>
+            <fieldNames>true</fieldNames>
+            <responseHeaders>false</responseHeaders>
+            <requestHeaders>false</requestHeaders>
+            <responseDataOnError>false</responseDataOnError>
+            <saveAssertionResultsFailureMessage>true</saveAssertionResultsFailureMessage>
+            <assertionsResultsToSave>0</assertionsResultsToSave>
+            <bytes>true</bytes>
+            <sentBytes>true</sentBytes>
+            <url>true</url>
+            <threadCounts>true</threadCounts>
+            <idleTime>true</idleTime>
+            <connectTime>true</connectTime>
+          </value>
+        </objProp>
+      </com.jmeterwebinsightreport.report.listener.WebInsightReportListener>
+      <hashTree/>
+    </hashTree>
+  </hashTree>
+</jmeterTestPlan>

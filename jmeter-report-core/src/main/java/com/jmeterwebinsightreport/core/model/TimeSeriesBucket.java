@@ -93,8 +93,10 @@ public class TimeSeriesBucket {
         private double p95;
         private double p99;
         private double max;
-        private double connectTime;
-        private double latency;
+        // Nullable: null means this bucket had no connect-time / latency data (vs a real 0),
+        // so the client can skip it instead of averaging in a spurious zero.
+        private Double connectTime;
+        private Double latency;
         private double receivedBytes;
         private double sentBytes;
         private int[] histogramBins;
@@ -132,11 +134,11 @@ public class TimeSeriesBucket {
         public double getMax() { return max; }
         public void setMax(double max) { this.max = max; }
 
-        public double getConnectTime() { return connectTime; }
-        public void setConnectTime(double connectTime) { this.connectTime = connectTime; }
+        public Double getConnectTime() { return connectTime; }
+        public void setConnectTime(Double connectTime) { this.connectTime = connectTime; }
 
-        public double getLatency() { return latency; }
-        public void setLatency(double latency) { this.latency = latency; }
+        public Double getLatency() { return latency; }
+        public void setLatency(Double latency) { this.latency = latency; }
 
         public double getReceivedBytes() { return receivedBytes; }
         public void setReceivedBytes(double receivedBytes) { this.receivedBytes = receivedBytes; }

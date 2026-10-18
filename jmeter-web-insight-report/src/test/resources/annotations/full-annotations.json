@@ -1,8 +1,7 @@
 {
   "version": "1.0",
   "testNotes": "## Load Test Results\nThis test validates the checkout flow under load.",
-  "verdict": "PASS",
-  "slaThresholds": {
+  "someUnknownBlock": {
     "default": { "p95": 1000, "p99": 2000, "errorRate": 5.0, "meanResponseTime": 500 },
     "POST /api/checkout": { "p95": 2000, "errorRate": 3.0 }
   },

@@ -1,66 +1,76 @@
 # Contributing to JMeter Web Insight Report
 
-Thanks for your interest in contributing! This project is open to contributions of all kinds — bug fixes, features, documentation, and ideas.
+Thanks for your interest in contributing! Bug reports, fixes, features, documentation and ideas are
+all welcome.
 
-## Getting Started
+## Getting started
 
 ### Prerequisites
 
-- Java 11+
+- Java 21+
 - Maven 3.8+
-- Apache JMeter 5.6.3+ (for manual testing)
+- Apache JMeter 5.6.3+, for the scenario suites and for trying a change in a real run
+- Node.js, for the `report.js` unit tests and the Playwright browser suite
+- On Windows, Git Bash: every script is a `.sh`, and each `.bat` is a thin wrapper around one
 
-### Build
-
-```bash
-mvn clean package -DskipTests
-```
-
-The plugin JAR is produced at `jmeter-web-insight-report/target/jmeter-web-insight-report-1.0.0.jar`.
-
-### Run Tests
+### Build and install locally
 
 ```bash
-mvn test
+./scripts/build-and-deploy.sh
 ```
 
-### Test Manually
+This builds both modules, copies the shaded plugin JAR into `$JMETER_HOME/lib/ext/` (removing any
+older one), and registers the `-g -o` exporter. `JMETER_HOME` is auto-detected; set it to pick a
+specific install.
 
-1. Copy the built JAR to JMeter's `lib/ext/` directory
-2. Add the **Web Insight Report** listener to a test plan
-3. Run the test — the report is generated when the test ends
+### Install the git hooks
 
-## Project Structure
+```bash
+./scripts/install-hooks.sh
+```
 
-| Module | Description |
-|--------|-------------|
-| `jmeter-report-core` | Shared models, statistics engine, SLA evaluation |
-| `jmeter-web-insight-report` | Web Insight Report generator plugin |
+The hooks refuse a commit or a push on `main` and run no tests. `main` changes only through a
+pull request.
 
-## Submitting Changes
+## Running the tests
 
-1. Fork the repo and create a branch from `main`
-2. Make your changes
-3. Run `mvn test` and make sure tests pass
-4. Submit a pull request with a clear description of what you changed and why
+```bash
+mvn test                                 # Java, both modules
+./test-plans/scripts/run-sanity.sh       # build, Java + report.js unit tests, static checks,
+                                         # a JMeter smoke run, the browser suite on existing fixtures
+./test-plans/scripts/run-regression.sh   # the same over freshly generated fixtures; run before a push
+```
 
-## Reporting Bugs
+CI runs the fast tier on every push and pull request: `mvn verify`, the `report.js` unit tests and
+the static checks. It never starts JMeter or a browser, so run the regression locally before you
+open a pull request. [docs/Instructions.md](docs/Instructions.md) has the full test matrix.
 
-Use the **Bug Report** issue template. Include:
-- JMeter version
-- Java version
-- Steps to reproduce
-- Expected vs actual behavior
+## Submitting changes
 
-## Feature Requests
+1. Create a branch from `main` named `feat/…`, `fix/…`, `docs/…`, `chore/…` or `refactor/…`.
+2. Make your change, with a test that fails without it.
+3. Run the regression.
+4. Open a pull request that says what changed and why.
 
-Use the **Feature Request** issue template. Describe the use case — understanding *why* helps prioritize.
+## Reporting bugs
 
-## Code Style
+Use the **Bug Report** issue template. Include the JMeter and Java versions, the steps to
+reproduce, and what you expected versus what happened. A report's `.json` file or the console
+lines it printed help a lot.
 
-- Follow existing code conventions in the project
-- Keep dependencies minimal — this plugin runs inside JMeter's classpath
-- The report HTML is a single self-contained file
+## Feature requests
+
+Use the **Feature Request** issue template. Describe the use case: understanding *why* helps
+prioritise.
+
+## Code style
+
+- Follow the conventions of the surrounding code.
+- Keep dependencies minimal. The plugin runs inside JMeter's flat `lib/ext` classpath, and every
+  bundled library must be relocated in the shaded JAR.
+- The report is a single self-contained HTML file with no network dependencies. Keep it that way.
+- Anything taken from a JTL (sampler labels, URLs, response bodies, error messages) goes through
+  `escapeHtml()` before it reaches `innerHTML`.
 
 ## License
 

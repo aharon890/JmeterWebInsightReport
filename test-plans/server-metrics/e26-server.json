@@ -1,0 +1,283 @@
+{
+  "_comment": [
+    "E26 — the Server tab's fixture. Every state the tab can render, in one run, over committed",
+    "inputs so the numbers are constants: two components (both custom, C9), and a server assert for",
+    "each of PASS, WARN, FAIL and six of the seven NOT_JUDGED reasons. SOURCE_FAILED comes from a",
+    "recording that is unreadable on purpose (rec/75a288c0d6898c5f.json, the query `up`): one",
+    "collection has one backend, so there is no second, dead source to fail any more.",
+    "",
+    "Beside the two load rules, four client rules sit near their bands (N3): a mean whose display",
+    "rounding would put it on or across the band it is judged against (three within a hundredth,",
+    "the whole-run mean 0.09 under gt 235, which whole ms puts on it), so",
+    "client-numbers.spec.ts can hold every Asserts-tab surface to the digits rule and the Budget bar",
+    "to the verdict. They name no server assert, so the payload, runId and collectionId do not move.",
+    "",
+    "Read with test-plans/server-metrics/README.md. Its recordings live in rec/ and its collected",
+    "payload is server-metrics.json beside this file."
+  ],
+  "assertions": [
+    {
+      "id": "load:throughput",
+      "description": "the load the run achieved — PASSes on plain.jtl, so its dependants judge",
+      "target": {
+        "scope": "overall"
+      },
+      "metric": "throughput",
+      "fail": {
+        "lt": 0.001
+      }
+    },
+    {
+      "id": "load:unreachable",
+      "description": "a load target this run misses, so its dependants are LOAD_NOT_ACHIEVED",
+      "target": {
+        "scope": "overall"
+      },
+      "metric": "throughput",
+      "fail": {
+        "lt": 100000
+      }
+    },
+    {
+      "id": "checkout-mean-on-band",
+      "description": "N3: a FAIL two decimals put on its band (373.8625 over gt 373.86)",
+      "target": {
+        "sampler": "POST /api/checkout"
+      },
+      "metric": "mean",
+      "fail": {
+        "gt": 373.86
+      }
+    },
+    {
+      "id": "run-mean-whole-ms",
+      "description": "N3: a whole-run PASS whole ms put on its band (234.9117 under gt 235)",
+      "target": {
+        "scope": "overall"
+      },
+      "metric": "mean",
+      "fail": {
+        "gt": 235
+      }
+    },
+    {
+      "id": "search-mean-gte-on-band",
+      "description": "N3: a gte PASS two decimals put on its band (211.405 under gte 211.41)",
+      "target": {
+        "sampler": "GET /api/search"
+      },
+      "metric": "mean",
+      "fail": {
+        "gte": 211.41
+      }
+    },
+    {
+      "id": "products-mean-warns",
+      "description": "N3: a WARN whole ms put across its warn band (119.4675 over warn gt 119.46); fail 1000, not higher, so the mean chart's axis keeps its lines",
+      "target": {
+        "sampler": "GET /api/products"
+      },
+      "metric": "mean",
+      "warn": {
+        "gt": 119.46
+      },
+      "fail": {
+        "gt": 1000
+      }
+    }
+  ],
+  "serverMetrics": {
+    "components": {
+      "kafka": {
+        "type": "custom",
+        "description": "Kafka"
+      },
+      "db": {
+        "type": "custom",
+        "description": "DB"
+      }
+    },
+    "asserts": [
+      {
+        "id": "cpu-headroom",
+        "description": "comfortably inside its limit",
+        "component": "kafka",
+        "query": "cpu",
+        "unit": "%",
+        "reduce": {
+          "kind": "max"
+        },
+        "across": "max",
+        "fail": {
+          "gt": 95
+        }
+      },
+      {
+        "id": "lag-spike",
+        "description": "breaches for a stretch in the middle of the window",
+        "component": "kafka",
+        "query": "lag",
+        "unit": "msgs",
+        "reduce": {
+          "kind": "max"
+        },
+        "across": "max",
+        "warn": {
+          "gt": 300
+        },
+        "fail": {
+          "gt": 500
+        }
+      },
+      {
+        "id": "lag-p50-warns",
+        "description": "over warn, under fail",
+        "component": "db",
+        "query": "lag",
+        "unit": "msgs",
+        "reduce": {
+          "kind": "p50"
+        },
+        "across": "max",
+        "warn": {
+          "gt": 100
+        },
+        "fail": {
+          "gt": 5000
+        }
+      },
+      {
+        "id": "lag-sustained",
+        "description": "the level held for 5 s — the reducer the chart has to agree with",
+        "component": "db",
+        "query": "lag",
+        "unit": "msgs",
+        "reduce": {
+          "kind": "max",
+          "over": {
+            "sustainedFor": "5s"
+          }
+        },
+        "across": "max",
+        "fail": {
+          "gt": 5000
+        }
+      },
+      {
+        "id": "cpu-per-rps",
+        "description": "divideBy the load rule's measured throughput",
+        "component": "db",
+        "query": "cpu",
+        "unit": "%",
+        "reduce": {
+          "kind": "max"
+        },
+        "across": "avg",
+        "divideBy": "load:throughput",
+        "fail": {
+          "gt": 10000
+        }
+      },
+      {
+        "id": "many-instances",
+        "description": "21 instances against a cap of 20 — the tab must say one is not drawn",
+        "component": "db",
+        "query": "many",
+        "unit": "",
+        "reduce": {
+          "kind": "max"
+        },
+        "across": "max",
+        "fail": {
+          "gt": 10000
+        }
+      },
+      {
+        "id": "needs-load",
+        "description": "NOT_JUDGED / LOAD_NOT_ACHIEVED — the load rule it names FAILED",
+        "component": "kafka",
+        "query": "cpu",
+        "unit": "%",
+        "reduce": {
+          "kind": "max"
+        },
+        "across": "max",
+        "requiresLoad": "load:unreachable",
+        "fail": {
+          "gt": 1
+        }
+      },
+      {
+        "id": "sparse-coverage",
+        "description": "NOT_JUDGED / LOW_COVERAGE — a configuration error, fatal under failonerror",
+        "component": "db",
+        "query": "sparse",
+        "unit": "",
+        "reduce": {
+          "kind": "max"
+        },
+        "across": "max",
+        "fail": {
+          "gt": 1
+        }
+      },
+      {
+        "id": "nothing-recorded",
+        "description": "NOT_JUDGED / NO_MATCH — declared, and the directory answers nothing",
+        "component": "db",
+        "query": "nothing",
+        "unit": "",
+        "reduce": {
+          "kind": "max"
+        },
+        "across": "max",
+        "fail": {
+          "gt": 1
+        }
+      },
+      {
+        "id": "source-never-answered",
+        "description": "NOT_JUDGED / SOURCE_FAILED — its recording is unreadable on purpose",
+        "component": "db",
+        "query": "up",
+        "unit": "",
+        "reduce": {
+          "kind": "max"
+        },
+        "across": "max",
+        "fail": {
+          "gt": 1
+        }
+      },
+      {
+        "id": "parked",
+        "description": "NOT_JUDGED / DISABLED",
+        "component": "kafka",
+        "query": "cpu",
+        "unit": "%",
+        "reduce": {
+          "kind": "max"
+        },
+        "across": "max",
+        "enabled": false,
+        "fail": {
+          "gt": 1
+        }
+      },
+      {
+        "id": "typo-reducer",
+        "description": "NOT_JUDGED / INVALID_RULE — fix the file, not the run",
+        "component": "db",
+        "query": "cpu",
+        "unit": "%",
+        "reduce": {
+          "kind": "maxx"
+        },
+        "across": "max",
+        "fail": {
+          "gt": 1
+        }
+      }
+    ]
+  }
+}
