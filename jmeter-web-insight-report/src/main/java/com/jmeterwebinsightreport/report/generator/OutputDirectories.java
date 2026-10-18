@@ -170,7 +170,7 @@ public final class OutputDirectories {
      * statement of intent — whereas {@code -l /data/run.jtl} <em>is</em> the operator naming a
      * directory and putting this run's output in it. Ranking the working directory above that
      * made {@code jmeter -g /data/run.jtl} write the report wherever the shell happened to be,
-     * which is what README, {@code WIKI/FEATURES.md}, the export tutorial and both call sites'
+     * which is what README, {@code docs/FEATURES.md}, the export tutorial and both call sites'
      * own javadoc all said it would not do. Four documents and the code cannot all be right; the
      * documents were right about the results file and wrong about the plan.
      *

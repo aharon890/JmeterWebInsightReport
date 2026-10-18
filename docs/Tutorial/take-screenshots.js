@@ -1,11 +1,11 @@
 /**
- * Captures targeted screenshots for WIKI documentation, from the fixtures in test-results/.
- * Run from test-plans/playwright: node ../../WIKI/Tutorial/take-screenshots.js
- * Only the Server tab's shots (E26, E27): node ../../WIKI/Tutorial/take-screenshots.js --server-only
+ * Captures targeted screenshots for the docs/ tutorial, from the fixtures in test-results/.
+ * Run from test-plans/playwright: node ../../docs/Tutorial/take-screenshots.js
+ * Only the Server tab's shots (E26, E27): node ../../docs/Tutorial/take-screenshots.js --server-only
  * — the rest carry the generation date, so retaking them all churns every image for nothing.
  *
  * @playwright/test is resolved from test-plans/playwright, where it is installed, not from this
- * script's directory: a bare require() resolves from WIKI/Tutorial and fails with "Cannot find
+ * script's directory: a bare require() resolves from docs/Tutorial and fails with "Cannot find
  * module" whatever the cwd. So no NODE_PATH is needed, and the script runs from any cwd.
  */
 const path = require('path');
@@ -14,7 +14,7 @@ const PROJECT = path.resolve(__dirname, '..', '..');
 const { chromium } = require(require.resolve('@playwright/test', {
   paths: [path.resolve(PROJECT, 'test-plans', 'playwright')],
 }));
-const IMG = path.resolve(PROJECT, 'WIKI', 'Tutorial', 'images');
+const IMG = path.resolve(PROJECT, 'docs', 'Tutorial', 'images');
 const RESULTS = path.resolve(PROJECT, 'test-results');
 
 function reportUrl(id) {

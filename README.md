@@ -193,7 +193,7 @@ you diagnose the config, and its Asserts and Server tabs say which rule or serve
 run, and why. It is a configuration error rather than a verdict: a broken rule contributes nothing
 to `gate.status` or `serverStatus`, and a gate that genuinely **FAILED** exits 0 unless you asked
 for `failonassert`. See [Exit codes and the console
-markers](WIKI/Tutorial/11-Export-Integration.md#exit-codes-and-the-console-markers) for the full
+markers](docs/Tutorial/11-Export-Integration.md#exit-codes-and-the-console-markers) for the full
 list, server side included.
 
 The `.json` also carries an `artifacts` object listing the absolute path and outcome of every
@@ -295,8 +295,8 @@ run's gate verdict — and a wrong verdict looks exactly like a right one.
   pattern, or for the whole run, each with its own warn/fail bands. Only what you declare ever
   decides the verdict. The report shows every rule with its verdict, lets you tune a limit
   against the observed number with the verdict recomputing as you type, and saves the updated
-  file for the next run — see [WIKI/Tutorial/10-Asserts-Apdex.md](WIKI/Tutorial/10-Asserts-Apdex.md)
-  and [12-Asserts-Tab.md](WIKI/Tutorial/12-Asserts-Tab.md).
+  file for the next run — see [docs/Tutorial/10-Asserts-Apdex.md](docs/Tutorial/10-Asserts-Apdex.md)
+  and [12-Asserts-Tab.md](docs/Tutorial/12-Asserts-Tab.md).
 
   You can also author them without writing JSON at all: press the ⊕ beside any number in the
   Samplers table, click a level on a timeline chart, or run **Generate from run…**. Every metric
@@ -395,7 +395,7 @@ jmeter -g results.jtl -o report \
   component's `failsBuild` — is refused with a sentence naming the replacement, never half-read.
 
 The full walk-through — reading the Server tab, the editor, Validate query, the reference for
-every key — is [Tutorial 13 — Server tab](WIKI/Tutorial/13-Server-Tab.md).
+every key — is [Tutorial 13 — Server tab](docs/Tutorial/13-Server-Tab.md).
 
 #### Running `wir-collect` from a release
 
@@ -465,7 +465,7 @@ It refuses a verdict — a breached client rule, or a server component FAILing �
 configuration errors to the exit code (`failonerror`, on by default). For `failonerror=false` there
 is a STRICT line that also refuses every check that never ran. Both are copied from
 [`test-plans/goldens/jq-gate.txt`](test-plans/goldens/jq-gate.txt), the one copy, which the build
-runs over the golden documents; [Tutorial 11](WIKI/Tutorial/11-Export-Integration.md#gating-on-the-gate)
+runs over the golden documents; [Tutorial 11](docs/Tutorial/11-Export-Integration.md#gating-on-the-gate)
 explains each, along with `serverComponents[]`, `serverAsserts[]` and the JUnit suites.
 
 ### Run identity
@@ -496,9 +496,9 @@ Filenames bind the four artifacts together, and filenames are not unique per run
 
 ## Documentation
 
-See [WIKI/Tutorial](WIKI/Tutorial/README.md) for full documentation with screenshots covering every tab, feature, and control.
+See [docs/Tutorial](docs/Tutorial/README.md) for full documentation with screenshots covering every tab, feature, and control.
 
-See [WIKI/FEATURES.md](WIKI/FEATURES.md) for the feature list.
+See [docs/FEATURES.md](docs/FEATURES.md) for the feature list.
 
 [`reportExample/web-insight-report.html`](reportExample/web-insight-report.html) is a report the
 current build generated, beside the [annotations file](reportExample/report-annotations.json) that

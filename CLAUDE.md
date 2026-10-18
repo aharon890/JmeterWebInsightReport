@@ -195,7 +195,7 @@ node node_modules/@playwright/test/cli.js test -g "a dragged width survives"
 local install and `.bin/playwright` is a POSIX shim node tries to require as a
 module. Go through `node .../cli.js`, or use `run_playwright` from `common.sh`.
 
-See [WIKI/Instructions.md](WIKI/Instructions.md) for the full matrix.
+See [docs/Instructions.md](docs/Instructions.md) for the full matrix.
 
 ### The gate: the run-tests skill, plus a one-rule hook
 
@@ -841,7 +841,7 @@ A Prometheus-backed type is a JSON file and a line in `index.json`, no Java and 
 Some `oracle` metrics read series only the custom metrics TOML in Tutorial 13 defines, and
 `CatalogueTest` derives those series' names from that block by the exporter's naming rule, so the
 tutorial and the queries cannot drift apart — which is also why `mvn test` in `jmeter-report-core`
-needs the repository's `WIKI/` beside it.
+needs the repository's `docs/` beside it.
 Beside `queries`, a metric may carry `names` — per tool in `Catalogue.TOOLS` (telegraf, datadog, otel,
 cloudwatch) the metric in that tool's export, its `kind`, `scale` and an optional one-line `note`
 saying which series to export (`ToolName`), or `null` for "this tool has no single metric: export the
@@ -1301,7 +1301,7 @@ must work as a lone copy beside a released JAR, so it carries its own `JMETER_HO
 
 **Every text blob is LF, and `verify_line_endings` keeps it that way.** 26 files —
 `report.js`/`.css`/`.html`, two Java sources, both grouping `.jmx` files, all three poms,
-most of `WIKI/` — predated `.gitattributes` and kept CRLF blobs for as long as nobody
+most of `docs/` — predated `.gitattributes` and kept CRLF blobs for as long as nobody
 checked. `eol=` governs the **working tree only**; the blob is LF regardless, which is why
 the `.bat` files pinned `eol=crlf` are CRLF on disk and LF in git.
 
@@ -1330,10 +1330,10 @@ scratch folder is not worth a gate.)
 ## Key Directories
 
 ```
-WIKI/                        Docsify documentation site
-WIKI/Instructions.md         Full test execution guide
-WIKI/FEATURES.md             Feature list (E-numbered, referenced by tests)
-WIKI/TEST-COVERAGE-GAPS.md   Coverage tracker
+docs/                        Docsify documentation site
+docs/Instructions.md         Full test execution guide
+docs/FEATURES.md             Feature list (E-numbered, referenced by tests)
+docs/TEST-COVERAGE-GAPS.md   Coverage tracker
 test-plans/*.jmx             Scenario test plans
 test-plans/annotations/      Assert/annotation fixtures used by E10-E13
 test-plans/goldens/          R06: plain.jtl, the G1-G9 annotation cases (no G6), server-metrics.csv, expected/, jq-gate.txt

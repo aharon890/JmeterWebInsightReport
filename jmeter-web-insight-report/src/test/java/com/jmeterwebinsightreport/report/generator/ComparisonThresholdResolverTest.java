@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * The five {@code webinsight.compare.*} properties are documented in README.md,
- * WIKI/FEATURES.md and WIKI/Tutorial/06-Compare-Tab.md, and before this file nothing
+ * docs/FEATURES.md and docs/Tutorial/06-Compare-Tab.md, and before this file nothing
  * tested them: the layering lived in a private method that read JMeterUtils statically
  * from inside a full generate() run, so deleting it wholesale left every suite green.
  *

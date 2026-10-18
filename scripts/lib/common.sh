@@ -375,7 +375,7 @@ deploy_plugin() {
 }
 
 # The `-g -o` pipeline only produces a Web Insight Report if the exporter is
-# registered in reportgenerator.properties (see WIKI/FEATURES.md). This was a
+# registered in reportgenerator.properties (see docs/FEATURES.md). This was a
 # manual install step, so a fresh JMeter generates only JMeter's own dashboard
 # and the CLI path silently does nothing. Idempotent.
 EXPORTER_PROPERTY="jmeter.reportgenerator.exporter.webinsight.classname"

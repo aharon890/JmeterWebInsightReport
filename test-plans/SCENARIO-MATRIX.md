@@ -17,7 +17,7 @@ provenance. A list that can be generated should be generated.
 
 The 43 scenarios that were designed and never automated *could* not be regenerated — they
 describe work nobody did — so they were moved to
-[TEST-COVERAGE-GAPS.md § 13](../WIKI/TEST-COVERAGE-GAPS.md), where the rest of this project's
+[TEST-COVERAGE-GAPS.md § 13](../docs/TEST-COVERAGE-GAPS.md), where the rest of this project's
 known gaps already live.
 
 This file holds only what a spreadsheet cell is a bad home for: the code facts every

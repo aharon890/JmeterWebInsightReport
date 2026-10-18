@@ -1142,8 +1142,8 @@ fi
 # -----------------------------------------------------------------------------
 # C34: the -Jwebinsight.compare.* thresholds actually reach the verdict.
 #
-#      Five properties documented in README.md, WIKI/FEATURES.md and
-#      WIKI/Tutorial/06-Compare-Tab.md, and until this case nothing executed a single
+#      Five properties documented in README.md, docs/FEATURES.md and
+#      docs/Tutorial/06-Compare-Tab.md, and until this case nothing executed a single
 #      one of them: the layering sat in a private method reading JMeterUtils, so it
 #      could be deleted outright with every suite green.
 #

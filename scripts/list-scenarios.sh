@@ -17,7 +17,7 @@
 #
 #  The scenarios that were designed and never automated are the one thing that
 #  could not be derived this way; they live in
-#  WIKI/TEST-COVERAGE-GAPS.md § "Specified but never automated".
+#  docs/TEST-COVERAGE-GAPS.md § "Specified but never automated".
 #
 #  Usage:
 #    ./scripts/list-scenarios.sh            # grouped by runner, for reading
@@ -71,6 +71,6 @@ case "$MODE" in
         echo ""
         echo "  $(printf '%s\n' "$ROWS" | grep -c .) scenarios across $(printf '%s\n' "$ROWS" | awk -F'\t' '{print $2}' | sort -u | grep -c .) runners"
         echo ""
-        echo "  Designed but not automated: see WIKI/TEST-COVERAGE-GAPS.md § 13."
+        echo "  Designed but not automated: see docs/TEST-COVERAGE-GAPS.md § 13."
         ;;
 esac

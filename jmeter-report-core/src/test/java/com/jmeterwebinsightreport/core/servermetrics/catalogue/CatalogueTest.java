@@ -1330,7 +1330,7 @@ class CatalogueTest {
      */
     @Test
     void theOracleQueriesReadEitherADefaultSeriesOrOneTheTutorialsCustomMetricsDefine() throws Exception {
-        java.util.Set<String> custom = customMetricNames(repoFile("WIKI/Tutorial/13-Server-Tab.md"));
+        java.util.Set<String> custom = customMetricNames(repoFile("docs/Tutorial/13-Server-Tab.md"));
         assertEquals(new java.util.TreeSet<>(Arrays.asList("oracledb_blocked_sessions_value",
                 "oracledb_sysstat_cpu_used_by_this_session", "oracledb_sysstat_parse_count_hard",
                 "oracledb_sysstat_enqueue_deadlocks", "oracledb_log_switches_last_minute")), custom);
@@ -1371,7 +1371,7 @@ class CatalogueTest {
      */
     @Test
     void theTutorialsOracleRequestsCountWhatTheirDescriptionsSay() throws Exception {
-        java.util.Map<String, String> requests = customRequests(repoFile("WIKI/Tutorial/13-Server-Tab.md"));
+        java.util.Map<String, String> requests = customRequests(repoFile("docs/Tutorial/13-Server-Tab.md"));
         String blocked = requests.get("blocked_sessions");
         assertTrue(blocked.contains("where blocking_session_status = 'VALID' and wait_class = 'Application'"), blocked);
         String switches = requests.get("log_switches");
@@ -1682,7 +1682,7 @@ class CatalogueTest {
             if (java.nio.file.Files.isRegularFile(p)) return p;
         }
         throw new AssertionError(relative + " not found above " + start + ": the oracle catalogue's queries are"
-                + " held to the custom metrics TOML in that tutorial, so this test needs the repository's WIKI");
+                + " held to the custom metrics TOML in that tutorial, so this test needs the repository's docs/");
     }
 
     private static void assertBalanced(String where, String q) {

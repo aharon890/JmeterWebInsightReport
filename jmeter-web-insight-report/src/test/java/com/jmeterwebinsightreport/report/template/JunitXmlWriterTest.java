@@ -834,7 +834,7 @@ class JunitXmlWriterTest {
     }
 
     /**
-     * L11's documented example (WIKI/Tutorial/11-Export-Integration.md, "JUnit XML Output"), held to
+     * L11's documented example (docs/Tutorial/11-Export-Integration.md, "JUnit XML Output"), held to
      * the writer: the sampler suite names a sampler's own failing metrics — POST /checkout's p95 in
      * its legacy words, then its p50 — and never a {@code scope: "overall"} rule's. That rule's match
      * is the whole run's, not a sampler's, so it is a testcase of the assertions suite only, and the

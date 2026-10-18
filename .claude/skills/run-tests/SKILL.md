@@ -51,7 +51,7 @@ stamp hashes all of it, so `run-regression.sh` regenerates exactly when a report
 could differ and skips when it cannot. (This list used to be five rendering files,
 which meant a `core/stats` change silently reused fixtures built by the old engine.)
 
-For a change confined to `WIKI/**`, `*.md` or scripts, sanity is enough while
+For a change confined to `docs/**`, `*.md` or scripts, sanity is enough while
 iterating — the pre-push run is still regression, which costs the same as sanity
 when the fixtures are current.
 
