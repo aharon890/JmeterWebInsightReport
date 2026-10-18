@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+Versions 2.x and 3.x were developed in a private repository, imported here as a snapshot for 4.0.0
+without its history. A commit hash this file cites from before that import (`5874e10`, `fa687dc`
+and the like) names a commit in that private history, not in this one.
+
 ## Writing code is a separate decision from being allowed to
 
 **Do not start implementing until you have been told to implement.** Plan, design and
@@ -228,7 +232,7 @@ The division of labour:
 | `run-tests` skill (`.claude/skills/run-tests/`) | run the **full regression** before every push — Claude does this automatically when finishing a feature or fix |
 | `dev-cycle` skill (`.claude/skills/dev-cycle/`) | finish a change: bump, build+deploy, refresh the example, test, commit on a branch |
 | `explore-report` skill (`.claude/skills/explore-report/`) | drive a browser session against a generated report, then turn findings into specs |
-| `prune-actions` skill (`.claude/skills/prune-actions/`) | delete old Actions runs, keeping the newest 10, and clear Actions caches. Dry run unless `--yes`. This repo was the account's entire Actions storage bill until Aug 2026 |
+| `prune-actions` skill (`.claude/skills/prune-actions/`) | delete old Actions runs, keeping the newest 10, and clear Actions caches. Dry run unless `--yes`. Written when this project's private predecessor was the account's entire Actions storage bill (Aug 2026); Actions on a public repository are free, so it is housekeeping now |
 | `.github/workflows/ci.yml` | on every push and PR: `mvn verify`, the `report.js` unit tests, and the static checks (`verify_shaded_jar`, `bash -n`, `verify_script_modes`, `verify_line_endings`, `verify_no_nul_bytes`, `verify_report_js_rules`, `verify_fixture_lists`, `verify_jq_idioms`, the `selftest_*` guards). About a minute. Never launches JMeter, a fixture or a browser |
 | `pre-commit` hook | **refuse** a commit *on* the primary branch; it runs no tests |
 | `pre-push` hook | **refuse** any push that touches the primary branch; it runs no tests |

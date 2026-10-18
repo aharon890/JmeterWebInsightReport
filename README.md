@@ -1,5 +1,10 @@
 # JMeter Web Insight Report
 
+![License](https://img.shields.io/badge/license-Apache%202.0-blue)
+![Java](https://img.shields.io/badge/java-21%2B-orange)
+![Release](https://img.shields.io/github/v/release/aharon890/JmeterWebInsightReport)
+![Build](https://img.shields.io/github/actions/workflow/status/aharon890/JmeterWebInsightReport/ci.yml?branch=main&label=build)
+
 A JMeter plugin that generates modern, interactive web reports from your load test results — a powerful alternative to JMeter's built-in dashboard.
 
 ## Modules
@@ -24,6 +29,27 @@ jmeter-web-insight-report/target/jmeter-web-insight-report-<version>.jar
 place the suite version is defined.
 
 ## Installation
+
+### Download (recommended)
+
+1. Download `jmeter-web-insight-report-X.Y.Z.jar` from the
+   [latest release](https://github.com/aharon890/JmeterWebInsightReport/releases/latest).
+2. Copy it into `$JMETER_HOME/lib/ext/`, removing any older `jmeter-web-insight-report-*.jar`
+   first. One plugin JAR belongs there, never two.
+3. To generate the report with `jmeter -g results.jtl -o dir`, register the exporter by adding one
+   line to `$JMETER_HOME/bin/reportgenerator.properties`:
+
+   ```properties
+   jmeter.reportgenerator.exporter.webinsight.classname=com.jmeterwebinsightreport.report.exporter.WebInsightDataExporter
+   ```
+
+   The listener (GUI and `jmeter -n -t`) needs no registration.
+
+Each release also carries `wir-collect.sh` and `wir-collect.bat`, the server-metrics collector
+(see [Server asserts](#server-asserts)), and `report-annotations.schema.json`,
+which gives an editor completion and typo checking for the annotations file.
+
+### Build from source
 
 The quickest route builds both modules, installs the plugin, and registers the
 `-g -o` CLI exporter in one step:

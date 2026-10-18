@@ -16,7 +16,7 @@
 
     <name>JMeter Web Insight Suite</name>
     <description>A suite of JMeter plugins for modern, interactive test reporting and monitoring.</description>
-    <url>https://github.com/jmeter-web-insight-suite</url>
+    <url>https://github.com/aharon890/JmeterWebInsightReport</url>
 
     <licenses>
         <license>
@@ -32,7 +32,7 @@
 
     <properties>
         <!-- THE version of the whole suite. This is the only place to change it. -->
-        <revision>3.3.0</revision>
+        <revision>4.0.0</revision>
 
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!-- `release` rather than source/target: source/target still compiles against the
