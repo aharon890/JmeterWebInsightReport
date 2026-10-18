@@ -1,0 +1,117 @@
+{
+  "type": "aws-ec2",
+  "version": 1,
+  "label": "AWS EC2",
+  "summary": "CPU credits, EBS burst, IOPS, throughput and limits, network allowances and status checks: what AWS sees outside the guest",
+  "exporter": "CloudWatch AWS/EC2 and AWS/EBS + the agent for ENA",
+  "source": "Amazon CloudWatch's AWS/EC2 and AWS/EBS metric lists, checked 2026-10-08. CloudWatch only: no metric here has a Prometheus query, because the cloudwatch_exporter and YACE names for these are derived, not verified, so each is known as aws-ec2:<metric> and answered by a --csv export (--from cloudwatch). Declare the guest's own resources as a host-linux component beside it. Basic EC2 monitoring is 5-minute data and detailed monitoring 1-minute; CPU credit metrics are 5-minute whatever is enabled, and status checks and AWS/EBS are 1-minute and free, so set --step to the export's period. A datapoint is stamped at the start of its period, and CloudWatch data settles a few minutes after the run: export it then. The EBS IOPS, EBS throughput, EBS limit-exceeded and ENA allowance KPIs are each two to five CloudWatch metrics with no single one to name, so their cloudwatch name is null: each description gives the metric-math expression that computes it, and the result is exported under the catalogue's name, which --csv reads with or without --from. Those metrics were checked on 2026-10-10 against Amazon EBS's CloudWatch metrics page (VolumeReadOps, VolumeWriteOps, VolumeReadBytes, VolumeWriteBytes, VolumeIOPSExceededCheck, VolumeThroughputExceededCheck, each volume its own series by VolumeId), EC2's instance metrics page (EBSReadOps, EBSWriteOps, EBSReadBytes, EBSWriteBytes, InstanceEBSIOPSExceededCheck, InstanceEBSThroughputExceededCheck: Nitro instances, not bare metal), the CloudWatch agent's and EC2's ENA network performance pages (the driver's bw_in_, bw_out_, pps_, conntrack_ and linklocal_allowance_exceeded, cumulative on each network interface since the last driver reset, published by the agent as ethtool_<name> only when its ethtool section lists them in metrics_include, one series per interface (dimensions interface and driver, plus the agent's hostname unless its omit_hostname is true, or in its place what the agent's append_dimensions adds, such as InstanceId), and billed as custom metrics; an instance with several network interfaces sums every one's), the agent's configuration reference (append_dimensions, which also stops the hostname dimension, as omit_hostname does) and CloudWatch's metric-math reference (PERIOD, RATE, METRICS() for every metric in the request and no expression, MAX and SUM of an array, a series per point, and ABS of an array, an array; IF takes no array). Rechecked on 2026-10-16 against the same pages: the volume checks are not published for magnetic (standard) or Multi-Attach enabled volumes, AWS/EC2's EBS metrics are for Nitro instances that are not bare metal, and RATE is the difference from the previous datapoint over the seconds between, so across a driver reset it is negative; the ENA sum clamps each rate at 0 as (SUM(RATE) + SUM(ABS(RATE))) / 2, which reads 0 for a series in the period of its reset. The exceeded checks are 0/1, so the limit KPI is the MAX of the instance's two and every attached volume's two, never their sum. AWS/EC2's EBSReadOps, EBSWriteOps, EBSReadBytes and EBSWriteBytes are 5-minute data under basic monitoring (EC2's page: divide by 300, or by 60 with detailed monitoring), while AWS/EBS is 1-minute: exported at 60 s, each of their datapoints is still five minutes' sum and PERIOD(m1) divides it by 60, five times the rate, so that route needs a period of at least 300 s there. On Nitro instances AWS/EBS also publishes VolumeAvgIOPS (ops/s) and VolumeAvgThroughput (KiB/s), a volume's average over each minute: the descriptions give the sum-per-period form instead, which every instance publishes, and either is exported under the catalogue's name (VolumeAvgThroughput times 1024, for B/s). The ENA counters are Linux's (the agent's ethtool plugin); Windows reads them as the ENA Packets Shaping performance counters, under other names.",
+  "metrics": [
+    {
+      "name": "cpu.credit.balance",
+      "label": "CPU credit balance",
+      "category": "CPU credits",
+      "description": "Credits a burstable (t*) instance has banked: at 0 the CPU is held to its baseline in standard mode, and surplus credits are billed in unlimited mode. CloudWatch reports it every 5 minutes only, even with detailed monitoring, so a short test gets few points: read it as whether it reached 0.",
+      "unit": "credits",
+      "reduce": "min",
+      "across": "min",
+      "direction": "lower",
+      "dimension": "per instance",
+      "recommended": true,
+      "names": {
+        "cloudwatch": { "metric": "AWS/EC2:CPUCreditBalance", "kind": "gauge", "note": "burstable t* instances only; 5-minute data whatever the monitoring; statistic Minimum, per InstanceId" }
+      }
+    },
+    {
+      "name": "ebs.burst.balance.pct",
+      "label": "EBS burst balance (%)",
+      "category": "Storage",
+      "description": "Burst credits left on a gp2, st1 or sc1 volume: at 0 the disk drops to its baseline IOPS and throughput mid-test. AWS/EBS reports it every minute.",
+      "unit": "%",
+      "reduce": "min",
+      "across": "min",
+      "direction": "lower",
+      "ceiling": 100,
+      "dimension": "per volume",
+      "recommended": true,
+      "safeDefault": { "fail": { "lt": 1 } },
+      "names": {
+        "cloudwatch": { "metric": "AWS/EBS:BurstBalance", "kind": "gauge", "note": "gp2, st1 and sc1 volumes only; statistic Minimum, per VolumeId" }
+      }
+    },
+    {
+      "name": "ebs.limit.exceeded",
+      "label": "EBS limit exceeded (0/1)",
+      "category": "Storage",
+      "description": "1 when the workload tried to drive more IOPS or throughput than the instance's EBS limit or a volume's provisioned performance in the last minute: storage was the ceiling. Nitro instances only (the instance checks not on bare metal), and AWS/EBS publishes neither volume check for a magnetic (standard) or Multi-Attach enabled volume, so such a volume's limit goes unseen. No single CloudWatch metric: take the largest of AWS/EC2 InstanceEBSIOPSExceededCheck and InstanceEBSThroughputExceededCheck (per InstanceId) and AWS/EBS VolumeIOPSExceededCheck and VolumeThroughputExceededCheck for every volume attached to the instance (one series per VolumeId), statistic Maximum, with metric math on a graph holding only those, MAX(METRICS()), and export the result as ebs.limit.exceeded.",
+      "unit": "",
+      "reduce": "max",
+      "direction": "higher",
+      "ceiling": 1,
+      "dimension": "per instance",
+      "recommended": true,
+      "safeDefault": { "warn": { "gt": 0 } },
+      "names": {
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "ebs.iops",
+      "label": "EBS IOPS (ops/s)",
+      "category": "Storage",
+      "description": "Read and write operations per second on an EBS volume: compare them with its provisioned IOPS (gp3, io1, io2) or the instance's EBS IOPS limit. No single CloudWatch metric: add AWS/EBS VolumeReadOps and VolumeWriteOps (statistic Sum, per VolumeId; AWS/EC2 EBSReadOps and EBSWriteOps for the instance's total on a Nitro instance that is not bare metal, at a period of at least 300 s under basic monitoring) with metric math, divided by the period, (m1 + m2) / PERIOD(m1), and export the result as ebs.iops.",
+      "unit": "ops/s",
+      "reduce": "p95",
+      "direction": "higher",
+      "dimension": "per volume",
+      "recommended": false,
+      "names": {
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "ebs.throughput.rate",
+      "label": "EBS throughput (B/s)",
+      "category": "Storage",
+      "description": "Bytes read and written per second on an EBS volume: compare them with its provisioned throughput (gp3) or the instance's EBS bandwidth. No single CloudWatch metric: add AWS/EBS VolumeReadBytes and VolumeWriteBytes (statistic Sum, per VolumeId; AWS/EC2 EBSReadBytes and EBSWriteBytes for the instance's total on a Nitro instance that is not bare metal, at a period of at least 300 s under basic monitoring) with metric math, divided by the period, (m1 + m2) / PERIOD(m1), and export the result as ebs.throughput.rate.",
+      "unit": "B/s",
+      "reduce": "p95",
+      "direction": "higher",
+      "dimension": "per volume",
+      "recommended": false,
+      "names": {
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "status.check.failed",
+      "label": "Status check failed (0/1)",
+      "category": "Availability",
+      "description": "1 when the instance, its host or its attached EBS failed AWS's checks: the run then measured an outage, not the system. Reported every minute, free, with basic monitoring.",
+      "unit": "",
+      "reduce": "max",
+      "direction": "higher",
+      "ceiling": 1,
+      "dimension": "per instance",
+      "recommended": true,
+      "safeDefault": { "fail": { "gt": 0 } },
+      "names": {
+        "cloudwatch": { "metric": "AWS/EC2:StatusCheckFailed", "kind": "gauge", "note": "statistic Maximum, per InstanceId; StatusCheckFailed_Instance, _System and _AttachedEBS split it by cause" }
+      }
+    },
+    {
+      "name": "network.allowance.exceeded",
+      "label": "ENA allowance exceeded (packets/min)",
+      "category": "Network",
+      "description": "Packets queued or dropped because the instance hit its bandwidth, packets-per-second or connection-tracking allowance, or a network interface its link-local one: a network ceiling NetworkIn and NetworkOut never show. No single CloudWatch metric: on Linux, list the five in the CloudWatch agent's ethtool metrics_include, then add CWAgent ethtool_bw_in_allowance_exceeded, ethtool_bw_out_allowance_exceeded, ethtool_pps_allowance_exceeded, ethtool_conntrack_allowance_exceeded and ethtool_linklocal_allowance_exceeded (cumulative counters since the driver's last reset, one series per network interface: dimensions interface and driver, plus the agent's hostname (unless its omit_hostname is true) or what its append_dimensions adds instead, InstanceId in AWS's example; statistic Maximum) for every interface of the instance, as a rate per minute with metric math on a graph holding only those, each series' rate clamped at 0, since a driver reset makes it negative and in the sum it would cancel a real exceed, 60 * (SUM(RATE(METRICS())) + SUM(ABS(RATE(METRICS())))) / 2, and export the result as network.allowance.exceeded.",
+      "unit": "/min",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per instance",
+      "recommended": true,
+      "safeDefault": { "warn": { "gt": 0 } },
+      "names": {
+        "cloudwatch": null
+      }
+    }
+  ]
+}

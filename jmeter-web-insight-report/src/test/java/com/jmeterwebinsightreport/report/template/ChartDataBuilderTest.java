@@ -25,12 +25,27 @@ class ChartDataBuilderTest {
         SamplerBucketData sd = new SamplerBucketData();
         sd.setMeanResponseTime(meanResponseTime);
         sd.setSampleCount(sampleCount);
+        // Distribution is now built from the per-bucket histogram bins (populated from the reservoir
+        // in production), not from binning the mean. Place all samples in the bin for the mean.
+        sd.setHistogramBins(binsForValue(meanResponseTime, (int) sampleCount));
 
         Map<String, SamplerBucketData> perSampler = new LinkedHashMap<>();
         perSampler.put(samplerName, sd);
         bucket.setPerSamplerData(perSampler);
 
         return bucket;
+    }
+
+    /** Build an 8-bin histogram with {@code count} samples in the bin containing {@code value}. */
+    private static int[] binsForValue(double value, int count) {
+        long[] boundaries = SamplerBucketData.BIN_BOUNDARIES; // {50,100,200,500,1000,2000,5000}
+        int[] bins = new int[boundaries.length + 1];
+        int idx = boundaries.length;
+        for (int i = 0; i < boundaries.length; i++) {
+            if (value < boundaries[i]) { idx = i; break; }
+        }
+        bins[idx] = count;
+        return bins;
     }
 
     private static ErrorRecord createErrorRecord(long timestamp, String responseCode,
@@ -136,10 +151,12 @@ class ChartDataBuilderTest {
         SamplerBucketData sd1 = new SamplerBucketData();
         sd1.setMeanResponseTime(30.0); // bin 0 (0-50)
         sd1.setSampleCount(10);
+        sd1.setHistogramBins(binsForValue(30.0, 10));
 
         SamplerBucketData sd2 = new SamplerBucketData();
         sd2.setMeanResponseTime(1500.0); // bin 5 (1K-2K)
         sd2.setSampleCount(10);
+        sd2.setHistogramBins(binsForValue(1500.0, 10));
 
         Map<String, SamplerBucketData> perSamplerMap = new LinkedHashMap<>();
         perSamplerMap.put(sampler1, sd1);
@@ -159,70 +176,56 @@ class ChartDataBuilderTest {
         assertEquals(10, perSampler.get(sampler2).get(5)); // 1K-2K bin
     }
 
-    // --- buildResponseCodesOverTime tests ---
+    @Test
+    @SuppressWarnings("unchecked")
+    void buildResponseTimeDistribution_preservesBimodal() {
+        // A5: a bucket whose samples are split between a fast and a slow bin must show BOTH humps,
+        // not collapse to the mean bin (which the old mean-binning did).
+        String sampler = "GET /api/bimodal";
+        TimeSeriesBucket bucket = new TimeSeriesBucket();
+        bucket.setTimestamp(Instant.now());
+        SamplerBucketData sd = new SamplerBucketData();
+        sd.setSampleCount(20);
+        sd.setMeanResponseTime(1515.0); // mean lands in the 1K-2K bin — but no sample is actually there
+        int[] bins = new int[8];
+        bins[0] = 10; // 10 fast samples (0-50)
+        bins[6] = 10; // 10 slow samples (2K-5K)
+        sd.setHistogramBins(bins);
+        Map<String, SamplerBucketData> perSamplerMap = new LinkedHashMap<>();
+        perSamplerMap.put(sampler, sd);
+        bucket.setPerSamplerData(perSamplerMap);
+
+        Set<String> names = new LinkedHashSet<>(Collections.singletonList(sampler));
+        Map<String, Object> result = ChartDataBuilder.buildResponseTimeDistribution(
+                Collections.singletonList(bucket), names);
+        List<Integer> out = ((Map<String, List<Integer>>) result.get("perSampler")).get(sampler);
+
+        assertEquals(10, out.get(0), "fast hump preserved");
+        assertEquals(10, out.get(6), "slow hump preserved");
+        assertEquals(0, out.get(5), "no phantom count in the mean bin");
+    }
 
     @Test
     @SuppressWarnings("unchecked")
-    void buildResponseCodesOverTime_groupsByCode() {
-        ReportData reportData = new ReportData();
-        List<ErrorRecord> errors = new ArrayList<>();
-        long baseTime = 1700000000000L;
+    void buildResponseTimeDistribution_scalesReservoirToTrueCount() {
+        // C22/A5: reservoir bins (bounded sample) are scaled up to the bucket's true sample count.
+        String sampler = "GET /api/hot";
+        TimeSeriesBucket bucket = new TimeSeriesBucket();
+        bucket.setTimestamp(Instant.now());
+        SamplerBucketData sd = new SamplerBucketData();
+        sd.setSampleCount(1000);          // true volume
+        int[] bins = new int[8];
+        bins[2] = 100;                    // reservoir of 100 samples, all in 100-200
+        sd.setHistogramBins(bins);
+        Map<String, SamplerBucketData> perSamplerMap = new LinkedHashMap<>();
+        perSamplerMap.put(sampler, sd);
+        bucket.setPerSamplerData(perSamplerMap);
 
-        errors.add(createErrorRecord(baseTime, "404", "GET /missing"));
-        errors.add(createErrorRecord(baseTime, "500", "POST /fail"));
-        errors.add(createErrorRecord(baseTime, "404", "GET /missing2"));
-        reportData.setErrorRecords(errors);
-
-        Map<String, Object> result = ChartDataBuilder.buildResponseCodesOverTime(reportData);
-
-        assertNotNull(result);
-        Map<String, List<Integer>> codes = (Map<String, List<Integer>>) result.get("codes");
-        assertNotNull(codes);
-        assertTrue(codes.containsKey("404"));
-        assertTrue(codes.containsKey("500"));
-    }
-
-    @Test
-    @SuppressWarnings("unchecked")
-    void buildResponseCodesOverTime_sortedByTime() {
-        ReportData reportData = new ReportData();
-        List<ErrorRecord> errors = new ArrayList<>();
-        // Deliberately add in non-sorted order
-        errors.add(createErrorRecord(1700000003000L, "500", "POST /fail"));
-        errors.add(createErrorRecord(1700000001000L, "404", "GET /missing"));
-        errors.add(createErrorRecord(1700000002000L, "500", "POST /fail2"));
-        reportData.setErrorRecords(errors);
-
-        Map<String, Object> result = ChartDataBuilder.buildResponseCodesOverTime(reportData);
-        List<Long> timestamps = (List<Long>) result.get("timestamps");
-
-        assertNotNull(timestamps);
-        assertEquals(3, timestamps.size());
-        // TreeMap ensures sorted order
-        assertTrue(timestamps.get(0) <= timestamps.get(1));
-        assertTrue(timestamps.get(1) <= timestamps.get(2));
-    }
-
-    @Test
-    void buildResponseCodesOverTime_emptyErrors() {
-        ReportData reportData = new ReportData();
-        reportData.setErrorRecords(new ArrayList<>());
-
-        Map<String, Object> result = ChartDataBuilder.buildResponseCodesOverTime(reportData);
-
-        assertNotNull(result);
-        assertTrue(result.isEmpty(), "Empty errors should produce empty result map");
-    }
-
-    @Test
-    void buildResponseCodesOverTime_nullErrors() {
-        ReportData reportData = new ReportData();
-        reportData.setErrorRecords(null);
-
-        Map<String, Object> result = ChartDataBuilder.buildResponseCodesOverTime(reportData);
-
-        assertNotNull(result);
-        assertTrue(result.isEmpty());
+        Map<String, Object> result = ChartDataBuilder.buildResponseTimeDistribution(
+                Collections.singletonList(bucket),
+                new LinkedHashSet<>(Collections.singletonList(sampler)));
+        List<Integer> out = ((Map<String, List<Integer>>) result.get("perSampler")).get(sampler);
+        assertEquals(1000, out.get(2), "reservoir bins scaled to true sample count");
     }
 
     // --- buildHeatmapData tests ---

@@ -1,0 +1,11 @@
+# JMeter output files (regenerated each run)
+*.jtl
+*.log
+*-output/
+
+# ...except the golden inputs. `*.jtl` above is right for run output — every scenario writes
+# one and none of it belongs in git — but these two are FIXTURES: committed, fixed, and the
+# reason the golden artifacts can be constants at all. Generated once with a seeded RNG and a
+# fixed start timestamp, then frozen. Regenerating them is a deliberate act that rewrites every
+# baseline in goldens/expected/.
+!goldens/*.jtl

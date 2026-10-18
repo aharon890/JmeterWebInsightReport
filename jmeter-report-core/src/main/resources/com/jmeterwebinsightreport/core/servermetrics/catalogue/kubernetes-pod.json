@@ -1,0 +1,97 @@
+{
+  "type": "kubernetes-pod",
+  "version": 1,
+  "label": "Kubernetes pod",
+  "summary": "CPU and memory against limits, throttling, restarts, OOM kills; match by namespace/pod",
+  "exporter": "cAdvisor (the kubelet's) and kube-state-metrics",
+  "source": "cAdvisor's container metrics as the kubelet serves them (/metrics/cadvisor) and kube-state-metrics' pod metrics: cAdvisor's docs/storage/prometheus.md, kube-state-metrics' docs/metrics/workload/pod-metrics.md and internal/store/pod.go (v2.20.0 the latest release), and kubernetes-mixin's recording rules and CPUThrottlingHigh alert for the selectors, all read at master/main on 2026-10-09; the queries were not run against a live cluster. Every query is per namespace, pod and container, and three divide a cAdvisor series by a kube-state-metrics one, joined on those three labels: give the component a match on namespace, pod or container (namespace=\"shop\", pod=~\"api-.*\"), labels both carry; a match on job or instance empties one side of the join. As kubernetes-mixin does, the CPU and memory series take image!=\"\", which leaves out the pod-level and pause-container cgroups, and the throttling counters container!=\"\". kube_pod_container_resource_limits is Stable; the kube-state-metrics docs recommend kube-scheduler's kube_pod_resource_limit as more precise (it counts pod-level resources), which a custom query can read. A container with no CPU or memory limit has no limit series and no CFS periods, so its percentages have no data. kube_pod_container_status_last_terminated_reason is EXPERIMENTAL in the docs (ALPHA in pod.go) and holds the reason of the container's last termination until the next one, so restarts.oom counts a minute's restarts only while that reason is OOMKilled, and reads 0 for every other container. kubernetes-mixin's CPUThrottlingHigh fires above 25 % with severity info, so no band ships for throttling. Tools' names checked the same day against Telegraf's inputs.kube_inventory and inputs.kubernetes READMEs (both write the measurement kubernetes_pod_container), Datadog's kubelet and kubernetes_state_core metadata.csv, and the OpenTelemetry kubeletstats and k8s_cluster receivers' documentation.md and kubeletstats' cpu.go and mem.go. OTel's k8s.container.memory_limit_utilization divides memory usage, not the working set, and Datadog's kubernetes.memory.usage_pct is described per pod, so neither is named. OTel has the last terminated reason as a resource attribute only. CloudWatch Container Insights was not checked, so no CloudWatch metric is named. A ratio of a tool's metrics is null: export the computed series under the catalogue's name.",
+  "metrics": [
+    {
+      "name": "cpu.limit.used.pct",
+      "label": "CPU used (% of limit)",
+      "category": "CPU",
+      "description": "CPU the container used, as a percentage of its CPU limit. Near 100 % the kernel throttles it, so latency climbs long before the node runs out of CPU. It can read a little past 100, because the usage is a rate estimated over a minute of scrapes.",
+      "unit": "%",
+      "reduce": "p95",
+      "direction": "higher",
+      "dimension": "per container",
+      "recommended": true,
+      "queries": { "prometheus": "100 * sum by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{container!=\"\",image!=\"\"${andMatch}}[1m])) / sum by (namespace, pod, container) (kube_pod_container_resource_limits{resource=\"cpu\"${andMatch}})" },
+      "names": {
+        "telegraf": null,
+        "datadog": null,
+        "otel": { "metric": "k8s.container.cpu_limit_utilization", "kind": "gauge", "scale": 100, "note": "off by default: enable it under the kubeletstats receiver's metrics" }
+      }
+    },
+    {
+      "name": "cpu.throttled.pct",
+      "label": "CPU throttled periods (%)",
+      "category": "CPU",
+      "description": "Share of the container's CPU scheduling periods in which it hit its limit and had to wait, in the worst minute. Throttling stalls every thread of the process at once, so it shows up as latency spikes even when average CPU looks moderate.",
+      "unit": "%",
+      "reduce": "max",
+      "direction": "higher",
+      "ceiling": 100,
+      "dimension": "per container",
+      "recommended": true,
+      "queries": { "prometheus": "100 * sum by (namespace, pod, container) (rate(container_cpu_cfs_throttled_periods_total{container!=\"\"${andMatch}}[1m])) / sum by (namespace, pod, container) (rate(container_cpu_cfs_periods_total{container!=\"\"${andMatch}}[1m]))" },
+      "names": {
+        "telegraf": null,
+        "datadog": null,
+        "otel": null
+      }
+    },
+    {
+      "name": "memory.limit.used.pct",
+      "label": "Memory working set (% of limit)",
+      "category": "Memory",
+      "description": "The container's working set, the memory the kernel cannot easily reclaim, as a percentage of its memory limit, at its peak. At 100 % the container is OOM-killed and restarted.",
+      "unit": "%",
+      "reduce": "max",
+      "direction": "higher",
+      "ceiling": 100,
+      "dimension": "per container",
+      "recommended": true,
+      "queries": { "prometheus": "100 * max by (namespace, pod, container) (container_memory_working_set_bytes{container!=\"\",image!=\"\"${andMatch}}) / max by (namespace, pod, container) (kube_pod_container_resource_limits{resource=\"memory\"${andMatch}})" },
+      "names": {
+        "telegraf": null
+      }
+    },
+    {
+      "name": "restarts",
+      "label": "Container restarts per minute (peak)",
+      "category": "Availability",
+      "description": "Times a container restarted in any minute of the run. A restart during a test is a crash, a failed liveness probe or an OOM kill, and the client results show it only as a burst of errors. Without a match on the component's namespace or pod, every container in the cluster is judged.",
+      "unit": "/min",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per container",
+      "recommended": true,
+      "safeDefault": { "fail": { "gt": 0 } },
+      "queries": { "prometheus": "sum by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total${match}[1m]))" },
+      "names": {
+        "telegraf": { "metric": "kubernetes_pod_container.restarts_total", "kind": "counter", "scale": 60, "note": "inputs.kube_inventory; one series per container_name" },
+        "datadog": { "metric": "kubernetes_state.container.restarts", "kind": "counter", "scale": 60, "note": "a raw restart count, although metadata.csv calls it a gauge; one series per kube_container_name" },
+        "otel": { "metric": "k8s.container.restarts", "kind": "counter", "scale": 60, "note": "k8s_cluster receiver; a raw restart count, although documented as a gauge" }
+      }
+    },
+    {
+      "name": "restarts.oom",
+      "label": "Restarts after an OOM kill, per minute (peak)",
+      "category": "Availability",
+      "description": "Container restarts in any minute of the run whose last termination was an out-of-memory kill: the container reached its memory limit. It reads kube-state-metrics' last-terminated reason, which is experimental. Without a match on the component's namespace or pod, every container in the cluster is judged.",
+      "unit": "/min",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per container",
+      "recommended": false,
+      "safeDefault": { "fail": { "gt": 0 } },
+      "queries": { "prometheus": "sum by (namespace, pod, container) (increase(kube_pod_container_status_restarts_total${match}[1m]) and on (namespace, pod, container) kube_pod_container_status_last_terminated_reason{reason=\"OOMKilled\"${andMatch}}) or 0 * sum by (namespace, pod, container) (kube_pod_container_status_restarts_total${match})" },
+      "names": {
+        "telegraf": null,
+        "datadog": null,
+        "otel": null
+      }
+    }
+  ]
+}

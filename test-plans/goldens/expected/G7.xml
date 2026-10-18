@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="JMeter Web Insight Report" tests="3" failures="0">
+  <testsuite name="JMeter Web Insight Report" tests="3" failures="0">
+    <properties>
+      <property name="webinsight.runId" value="967a1b397b7fb1d2"/>
+    </properties>
+    <testcase name="GET /api/products" classname="performance">
+    </testcase>
+    <testcase name="GET /api/search" classname="performance">
+    </testcase>
+    <testcase name="POST /api/checkout" classname="performance">
+    </testcase>
+  </testsuite>
+  <testsuite name="JMeter Web Insight Report - db" tests="2" failures="1" skipped="0">
+    <properties>
+      <property name="webinsight.runId" value="967a1b397b7fb1d2"/>
+    </properties>
+    <testcase name="up-passes" classname="server-metrics">
+    </testcase>
+    <testcase name="sparse-low-coverage" classname="server-metrics">
+      <failure message="Server assert was collected below the coverage floor: coverage 6% of the collected window is below the floor 90%">
+component: db
+query:     sparse
+reduce:    max across max
+criteria:  fail &gt; 1
+problem:   Server assert was collected below the coverage floor: coverage 6% of the collected window is below the floor 90%
+coverage:  6% of the collected window
+instances: 1
+      </failure>
+    </testcase>
+  </testsuite>
+</testsuites>

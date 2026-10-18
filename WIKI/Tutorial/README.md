@@ -1,0 +1,25 @@
+# Web Insight Report — Tutorial
+
+Complete documentation of the Web Insight Report features and behavior. Each page documents the current behavior — this serves as the functional specification.
+
+## Pages
+
+| # | Page | Description |
+|---|------|-------------|
+| 1 | [Overview](01-Overview.md) | Report layout, header, tabs, filter bar, output files |
+| 2 | [Summary Tab](02-Summary-Tab.md) | Metric cards, Apdex, response time chart, Top 5 slowest, Copy Summary |
+| 3 | [Timeline Tab](03-Timeline-Tab.md) | 9 chart types, chart controls, hide/show, fullscreen, heatmap, granularity |
+| 4 | [Samplers Tab](04-Samplers-Tab.md) | Statistics table, 14 columns, sort/search/column toggle, detail expansion, transaction controllers |
+| 5 | [Errors Tab](05-Errors-Tab.md) | Error charts, summary table, detail table with expandable rows |
+| 6 | [Compare Tab](06-Compare-Tab.md) | Baseline comparison, regression detection, threshold controls |
+| 7 | [Notes Tab](07-Notes-Tab.md) | Markdown notes, verdict, timeline markers, annotation editor |
+| 8 | [Filter Bar](08-Filter-Bar.md) | Palette, line thickness, metric toggle, granularity, sampler filter, presets |
+| 9 | [Dark Mode & Accessibility](09-Dark-Mode-Accessibility.md) | Dark mode, colorblind mode, palette recommendations |
+| 10 | [Asserts & Apdex](10-Asserts-Apdex.md) | Assertion rules, targets, metrics, predicates, verdict logic, Apdex |
+| 11 | [Export & Integration](11-Export-Integration.md) | CSV export, Copy Summary, CI/CD JSON, JUnit XML, external data mode |
+| 12 | [Asserts Tab](12-Asserts-Tab.md) | The gate strip, the rules table, the assert editor, drafts, saving, seeding, cell verdicts, chart interactions |
+| 13 | [Server Tab](13-Server-Tab.md) | Server asserts (expected) against collected metrics (actual): the three steps, `wir-collect`, the header chip, `serverStatus`, gates, the editor, and the `serverMetrics` reference |
+
+## Screenshots
+
+Screenshots in the `images/` folder are captured from generated test reports and show the actual UI.

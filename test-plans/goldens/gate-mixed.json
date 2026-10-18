@@ -1,0 +1,74 @@
+{
+  "_comment": [
+    "Every status a gate can produce, in one document, against a committed JTL.",
+    "",
+    "The point is coverage of the OUTPUT, not of the engine: PASS, WARN and FAIL alongside all",
+    "four NOT_JUDGED reasons, so the golden .json and .xml carry every branch of the counts, the",
+    "attainment block, the per-sampler assertStatus and the JUnit testcase shapes. A change that",
+    "moves any of them on an unedited file shows up as a diff in a pull request, which is the",
+    "property the deleted snapshot fixtures had and nothing replaced.",
+    "",
+    "Thresholds are pinned to the fixed JTL and are not meant to be realistic."
+  ],
+  "assertions": [
+    {
+      "id": "products-p95-passes",
+      "description": "comfortably inside its band",
+      "target": { "sampler": "GET /api/products" },
+      "metric": "p95",
+      "fail": { "gt": 100000 }
+    },
+    {
+      "id": "checkout-p95-fails",
+      "description": "a real breach, measured",
+      "target": { "sampler": "POST /api/checkout" },
+      "metric": "p95",
+      "warn": { "gt": 10 },
+      "fail": { "gt": 20 }
+    },
+    {
+      "id": "search-mean-warns",
+      "description": "over warn, under fail",
+      "target": { "sampler": "GET /api/search" },
+      "metric": "mean",
+      "warn": { "gt": 20 },
+      "fail": { "gt": 100000 }
+    },
+    {
+      "id": "run-error-rate",
+      "description": "whole-run scope, with attainment",
+      "target": { "scope": "overall" },
+      "metric": "errorRate",
+      "fail": { "gt": 50 }
+    },
+    {
+      "id": "parked-rule",
+      "description": "NOT_JUDGED / DISABLED",
+      "target": { "sampler": "GET /api/products" },
+      "metric": "p99",
+      "enabled": false,
+      "fail": { "gt": 1 }
+    },
+    {
+      "id": "renamed-sampler",
+      "description": "NOT_JUDGED / NO_MATCH — a plan running a subset is legitimate",
+      "target": { "sampler": "GET /api/this-sampler-was-renamed" },
+      "metric": "p95",
+      "fail": { "gt": 1 }
+    },
+    {
+      "id": "offgrid-percentile",
+      "description": "NOT_JUDGED / NO_VALUE — well-formed, unanswerable by this run",
+      "target": { "sampler": "GET /api/products" },
+      "metric": "p99.97",
+      "fail": { "gt": 1 }
+    },
+    {
+      "id": "typo-metric",
+      "description": "NOT_JUDGED / INVALID_RULE — fix the file, not the run",
+      "target": { "sampler": "GET /api/products" },
+      "metric": "p95x",
+      "fail": { "gt": 1 }
+    }
+  ]
+}

@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="JMeter Web Insight Report" tests="3" failures="0">
+  <testsuite name="JMeter Web Insight Report" tests="3" failures="0">
+    <properties>
+      <property name="webinsight.runId" value="967a1b397b7fb1d2"/>
+    </properties>
+    <testcase name="GET /api/products" classname="performance">
+    </testcase>
+    <testcase name="GET /api/search" classname="performance">
+    </testcase>
+    <testcase name="POST /api/checkout" classname="performance">
+    </testcase>
+  </testsuite>
+  <testsuite name="JMeter Web Insight Report - assertions" tests="7" failures="6" skipped="0">
+    <properties>
+      <property name="webinsight.runId" value="967a1b397b7fb1d2"/>
+    </properties>
+    <testcase name="half-readable-band" classname="assertions">
+      <failure message="rule could not run: fail has 2 operators (gt, lt) — exactly one is allowed — so this rule declares a limit it cannot apply, and would report PASS without ever testing fail">
+target:   GET /api/products
+metric:   p95
+criteria: warn &gt; 100000 ms
+problem:  rule could not run: fail has 2 operators (gt, lt) — exactly one is allowed — so this rule declares a limit it cannot apply, and would report PASS without ever testing fail
+      </failure>
+    </testcase>
+    <testcase name="unreachable-band" classname="assertions">
+      <failure message="rule could not run: fail can never fire: &lt; -19 ms is unreachable because this metric is never negative. The rule reports PASS on every run, including one that measured nothing at all. A tolerance meant as a percentage is written as a fraction — 0.2, not 20.">
+target:   GET /api/products
+metric:   p95
+criteria: fail &lt; -19 ms
+problem:  rule could not run: fail can never fire: &lt; -19 ms is unreachable because this metric is never negative. The rule reports PASS on every run, including one that measured nothing at all. A tolerance meant as a percentage is written as a fraction — 0.2, not 20.
+      </failure>
+    </testcase>
+    <testcase name="retired-observe" classname="assertions">
+      <failure message="rule could not run: &quot;observe&quot; is no longer a rule modifier. It meant &quot;report this and never gate&quot;, and a rule that keeps its bands without it does gate — so leaving it in place would silently invert what the rule was written to do. Delete the bands to stop the rule judging, or delete &quot;observe&quot; to let it judge.">
+target:   POST /api/checkout
+metric:   p95
+criteria: fail &gt; 1 ms
+problem:  rule could not run: &quot;observe&quot; is no longer a rule modifier. It meant &quot;report this and never gate&quot;, and a rule that keeps its bands without it does gate — so leaving it in place would silently invert what the rule was written to do. Delete the bands to stop the rule judging, or delete &quot;observe&quot; to let it judge.
+      </failure>
+    </testcase>
+    <testcase name="retired-onmissing" classname="assertions">
+      <failure message="rule could not run: &quot;onMissing&quot; is no longer a rule modifier. A target that matches nothing is now NOT_JUDGED / NO_MATCH and never fails the run on its own, because a plan running a subset is legitimate — so a rule relying on &quot;onMissing&quot;: &quot;fail&quot; would pass where it used to fail. Delete the key; if a missing sampler must stop the build, assert on it in the pipeline.">
+target:   GET /api/search
+metric:   p95
+criteria: fail &gt; 100000 ms
+problem:  rule could not run: &quot;onMissing&quot; is no longer a rule modifier. A target that matches nothing is now NOT_JUDGED / NO_MATCH and never fails the run on its own, because a plan running a subset is legitimate — so a rule relying on &quot;onMissing&quot;: &quot;fail&quot; would pass where it used to fail. Delete the key; if a missing sampler must stop the build, assert on it in the pipeline.
+      </failure>
+    </testcase>
+    <testcase name="retired-outside-operator" classname="assertions">
+      <failure message="rule could not run: fail outside is no longer an operator. A corridor is two rules: one with &quot;lt&quot; at the low bound and one with &quot;gt&quot; at the high bound. Written that way each says which end was missed, and each reports how far past its own limit the run was. — so this rule declares a limit it cannot apply, and would report PASS without ever testing fail">
+target:   GET /api/search
+metric:   mean
+criteria: 
+problem:  rule could not run: fail outside is no longer an operator. A corridor is two rules: one with &quot;lt&quot; at the low bound and one with &quot;gt&quot; at the high bound. Written that way each says which end was missed, and each reports how far past its own limit the run was. — so this rule declares a limit it cannot apply, and would report PASS without ever testing fail
+      </failure>
+    </testcase>
+    <testcase name="unreadable-target" classname="assertions">
+      <failure message="rule could not run: target has more than one form (sampler, match) — exactly one is allowed">
+target:   target has more than one form (sampler, match) — exactly one is allowed
+metric:   p95
+criteria: fail &gt; 1 ms
+problem:  rule could not run: target has more than one form (sampler, match) — exactly one is allowed
+      </failure>
+    </testcase>
+    <testcase name="healthy-control" classname="assertions">
+    </testcase>
+  </testsuite>
+</testsuites>

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="JMeter Web Insight Report" tests="3" failures="2">
+  <testsuite name="JMeter Web Insight Report" tests="3" failures="2">
+    <properties>
+      <property name="webinsight.runId" value="967a1b397b7fb1d2"/>
+    </properties>
+    <testcase name="GET /api/products" classname="performance">
+      <failure message="ASSERT FAIL: p99.97 292 ms breached &gt; 1 ms">
+P95: 183ms (PASS)
+p99.97: 292 ms (FAIL)
+      </failure>
+    </testcase>
+    <testcase name="GET /api/search" classname="performance">
+    </testcase>
+    <testcase name="POST /api/checkout" classname="performance">
+      <failure message="ASSERT FAIL: P95 611ms exceeds threshold">
+P95: 611ms (FAIL)
+      </failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="JMeter Web Insight Report - assertions" tests="8" failures="3" skipped="2">
+    <properties>
+      <property name="webinsight.runId" value="967a1b397b7fb1d2"/>
+    </properties>
+    <testcase name="products-p95-passes" classname="assertions">
+    </testcase>
+    <testcase name="checkout-p95-fails" classname="assertions">
+      <failure message="Assertion &apos;checkout-p95-fails&apos;: p95 610.50 ms on POST /api/checkout breached &gt; 20 ms - a real breach, measured">
+target:   POST /api/checkout
+metric:   p95
+criteria: warn &gt; 10 ms  ·  fail &gt; 20 ms
+  [FAIL] POST /api/checkout = 610.50 ms
+      </failure>
+    </testcase>
+    <testcase name="search-mean-warns" classname="assertions">
+      <system-out>WARN: Assertion &apos;search-mean-warns&apos;: mean 211.41 ms on GET /api/search breached &gt; 20 ms - over warn, under fail</system-out>
+    </testcase>
+    <testcase name="run-error-rate" classname="assertions">
+    </testcase>
+    <testcase name="parked-rule" classname="assertions">
+      <skipped message="rule was parked with enabled: false"/>
+    </testcase>
+    <testcase name="renamed-sampler" classname="assertions">
+      <skipped message="rule matched nothing in this run"/>
+    </testcase>
+    <testcase name="offgrid-percentile" classname="assertions">
+      <failure message="Assertion &apos;offgrid-percentile&apos;: p99.97 292 ms on GET /api/products breached &gt; 1 ms - NOT_JUDGED / NO_VALUE — well-formed, unanswerable by this run">
+target:   GET /api/products
+metric:   p99.97
+criteria: fail &gt; 1 ms
+  [FAIL] GET /api/products = 292 ms
+      </failure>
+    </testcase>
+    <testcase name="typo-metric" classname="assertions">
+      <failure message="rule could not run: unknown metric &apos;p95x&apos; — did you mean &apos;p95&apos;?">
+target:   GET /api/products
+metric:   p95x
+criteria: fail &gt; 1
+problem:  rule could not run: unknown metric &apos;p95x&apos; — did you mean &apos;p95&apos;?
+      </failure>
+    </testcase>
+  </testsuite>
+</testsuites>

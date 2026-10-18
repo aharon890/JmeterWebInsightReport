@@ -1,0 +1,1595 @@
+{
+  "_comment": [
+    "The contract between the Java engine and the report's client-side evaluator.",
+    "",
+    "Phase 2 lets a tester tune a threshold in the browser and watch the verdict recompute, then",
+    "save the file so the next run gates on it. That only means anything if the two evaluators",
+    "agree — and two independently written implementations drift between the runs that test them.",
+    "So neither owns the definition: this file does. AssertionParityTest runs it in Java and a",
+    "Playwright spec runs it in the browser, and both must produce the statuses below.",
+    "",
+    "Add a case here whenever either side gains behaviour. A case that only one side can pass is",
+    "the bug this file exists to catch.",
+    "",
+    "A case's `expect.attainment` (AF5b) is how much of the fail band the rule used, as",
+    "Attainment.of and the page's Budget column (attainmentFor) compute it: the worst match's actual,",
+    "the fail threshold, the fraction consumed and whether the fail band fired - or null where the",
+    "question does not apply (no fail band, a rule that decided nothing, a divisor of zero). Java",
+    "had AttainmentTest and the page nothing but one fixture's bar colour; AssertionParityTest,",
+    "asserts-parity.test.js and asserts-parity.spec.ts now hold both to these."
+  ],
+  "samplers": [
+    { "name": "GET /api/products", "sampleCount": 1500, "errorCount": 0,  "errorRate": 0.0,
+      "mean": 120, "median": 110, "p90": 180, "p95": 240, "p99": 380,
+      "min": 40, "max": 620, "stdDev": 55, "throughput": 12.5, "apdex": 0.98,
+      "meanLatency": 100, "meanConnectTime": 15,
+      "receivedBytesPerSec": 45056, "sentBytesPerSec": 8192 },
+    { "name": "POST /api/checkout", "sampleCount": 900, "errorCount": 45, "errorRate": 5.0,
+      "mean": 640, "median": 580, "p90": 820, "p95": 1120, "p99": 1680,
+      "min": 150, "max": 2100, "stdDev": 220, "throughput": 7.5, "apdex": 0.61,
+      "meanLatency": 600, "meanConnectTime": 22,
+      "receivedBytesPerSec": 122880, "sentBytesPerSec": 30720 },
+    { "name": "POST /api/health-probe", "sampleCount": 300, "errorCount": 0, "errorRate": 0.0,
+      "mean": 20, "median": 18, "p90": 30, "p95": 38, "p99": 55,
+      "min": 5, "max": 70, "stdDev": 8, "throughput": 2.5, "apdex": 1.0,
+      "meanLatency": 15, "meanConnectTime": 4,
+      "receivedBytesPerSec": 1024, "sentBytesPerSec": 512 },
+    { "name": "TC Browse", "sampleCount": 600, "errorCount": 6, "errorRate": 1.0,
+      "mean": 310, "median": 290, "p90": 400, "p95": 520, "p99": 760,
+      "min": 90, "max": 900, "stdDev": 110, "throughput": 5.0, "apdex": 0.88,
+      "meanLatency": 290, "meanConnectTime": 18,
+      "receivedBytesPerSec": 61440, "sentBytesPerSec": 12288,
+      "transactionController": true },
+    { "name": "TC Browse-0", "sampleCount": 600, "errorCount": 6, "errorRate": 1.0,
+      "mean": 1400, "median": 1350, "p90": 1600, "p95": 1900, "p99": 2400,
+      "min": 900, "max": 2600, "stdDev": 300, "throughput": 5.0, "apdex": 0.20,
+      "meanLatency": 1350, "meanConnectTime": 25,
+      "receivedBytesPerSec": 30720, "sentBytesPerSec": 6144,
+      "parent": "TC Browse" },
+    { "name": "JSR223 Setup", "sampleCount": 12, "errorCount": 0, "errorRate": 0.0,
+      "mean": 2200, "median": 2100, "p90": 2600, "p95": 2900, "p99": 3200,
+      "min": 1800, "max": 3400, "stdDev": 400, "throughput": 0.1, "apdex": 0.0,
+      "meanLatency": 2100, "meanConnectTime": 0,
+      "receivedBytesPerSec": 0, "sentBytesPerSec": 0 },
+    { "name": "GET /api/never-ran", "sampleCount": 0, "errorCount": 0, "errorRate": 0.0,
+      "mean": 0, "median": 0, "p90": 0, "p95": 0, "p99": 0,
+      "min": 0, "max": 0, "stdDev": 0, "throughput": 0.0, "apdex": 0.0,
+      "meanLatency": 0, "meanConnectTime": 0,
+      "receivedBytesPerSec": 0, "sentBytesPerSec": 0 }
+  ],
+  "_errorSummariesComment": [
+    "What ErrorSummary aggregates, in the shape the payload ships. errorClass is computed once",
+    "in Java by ErrorClass.of() and carried as a field, so the browser reads it rather than",
+    "re-deriving — there is one classifier, not two that can drift.",
+    "",
+    "checkout has 45 errors: 20 protocol (503), 15 non-protocol (a 200 JMeter still failed),",
+    "10 transport. They sum to the errorCount the sampler reports, which is what makes",
+    "class= a partition rather than a second opinion."
+  ],
+  "errorSummaries": [
+    { "samplerName": "POST /api/checkout", "responseCode": "503",
+      "errorClass": "protocol", "occurrenceCount": 20 },
+    { "samplerName": "POST /api/checkout", "responseCode": "200",
+      "errorClass": "nonProtocol", "occurrenceCount": 15 },
+    { "samplerName": "POST /api/checkout",
+      "responseCode": "Non HTTP response code: java.net.ConnectException",
+      "errorClass": "transport", "occurrenceCount": 10 },
+    { "samplerName": "TC Browse", "responseCode": "500",
+      "errorClass": "protocol", "occurrenceCount": 6 },
+    { "_comment": [
+        "A child sampler's errors, which whole-run scope must not count. The code was the",
+        "literal string CHILD-ONLY, chosen as a label rather than as data — and it derives to",
+        "transport, while this row states protocol. Java derives; the browser reads the stated",
+        "token from the payload. So the two evaluators were being handed different data by the",
+        "file that exists to stop exactly that, and no assertion compared them until the",
+        "harness started cross-checking these two fields.",
+        "It is 500 now: a real code that derives to the class it declares, and the same code as",
+        "its parent, which is what a transaction child would actually carry." ],
+      "samplerName": "TC Browse-0", "responseCode": "500",
+      "errorClass": "protocol", "occurrenceCount": 6 }
+  ],
+
+  "hiddenSamplers": ["JSR223 Setup", "GET /api/never-ran"],
+  "metadata": { "durationMillis": 120000, "totalThreads": 20 },
+
+  "_extraPercentilesComment": [
+    "Quantiles off the standard p50/p75/p90/p95/p99/p99.9 grid, as the retained digest would",
+    "answer them. Java reads them through a PercentileSource; the browser reads them from the",
+    "assertPercentiles block of the payload.",
+    "",
+    "p85 is here because the two sides used to key this map differently and only a fractional",
+    "percentile ever proved it: Java wrote String.valueOf(85.0) — '85.0' — and the browser asked",
+    "for String(85), which is '85'. The lookup missed, a miss is NaN, and a rule the engine",
+    "passed rendered INVALID in the report. p97.5 spelled identically on both sides, so the",
+    "vectors that existed could not see it. A whole number is the case that matters.",
+    "",
+    "The keys in E notation are RB8's: GatePayloadBuilder.percentileKey files a quantile below",
+    "0.001 under Double.toString's spelling, 1.0E-4, where String(1e-4) is '0.0001', and the",
+    "subnormal 4.9E-324 under Java's two digits, where String() writes '5e-324'. The page looked",
+    "both up by String() and missed, so a rule the run judged read NO_VALUE on the page.",
+    "99.99999999999999 is the last double below 100, which a hex spelling rounds to."
+  ],
+  "extraPercentiles": {
+    "GET /api/products": { "85": 165, "97.5": 300 },
+    "POST /api/checkout": { "85": 700, "97.5": 1400, "1.0E-4": 150, "1.0E-10": 150,
+                            "4.9E-324": 150, "99.99999999999999": 2100 },
+    "__overall__":       { "85": 480, "97.5": 980 }
+  },
+
+  "cases": [
+    {
+      "_comment": [
+        "Error-classified metrics. A 2% error rate that is all 404s from a stale data file is",
+        "not the same run as 2% connection resets under load, and one scalar covered both.",
+        "",
+        "The three properties these pin: a typo is INVALID and never a silent match; no matching",
+        "error is a real zero rather than a failure to answer; and the whole-run scope counts",
+        "top-level samplers only."
+      ],
+      "name": "class= partitions one sampler's errors",
+      "rule": { "id": "checkout-nonprotocol", "target": { "sampler": "POST /api/checkout" },
+                "metric": "errorCount:class=nonProtocol", "fail": { "gt": 100 } },
+      "expect": { "status": "PASS", "matched": 1,
+                  "matches": [{ "sampler": "POST /api/checkout", "actual": 15, "status": "PASS" }],
+                  "attainment": { "actual": 15, "failThreshold": 100, "consumed": 0.15, "breached": false } }
+    },
+    {
+      "name": "class=protocol counts only the HTTP failures",
+      "rule": { "id": "checkout-protocol", "target": { "sampler": "POST /api/checkout" },
+                "metric": "errorCount:class=protocol", "fail": { "gt": 10 } },
+      "expect": { "status": "FAIL", "matched": 1,
+                  "matches": [{ "sampler": "POST /api/checkout", "actual": 20, "status": "FAIL" }],
+                  "attainment": { "actual": 20, "failThreshold": 10, "consumed": 2, "breached": true } }
+    },
+    {
+      "name": "errorRate with a class is a percentage of that sampler's samples",
+      "rule": { "id": "checkout-transport-rate", "target": { "sampler": "POST /api/checkout" },
+                "metric": "errorRate:class=transport", "fail": { "gt": 5 } },
+      "expect": { "status": "PASS", "matched": 1,
+                  "matches": [{ "sampler": "POST /api/checkout", "actual": 1.1111, "status": "PASS" }] }
+    },
+    {
+      "name": "code= is a glob over the code string, which is where JMeter writes the exception",
+      "rule": { "id": "checkout-connect", "target": { "sampler": "POST /api/checkout" },
+                "metric": "errorCount:code=Non HTTP*", "fail": { "gt": 0 } },
+      "expect": { "status": "FAIL", "matched": 1,
+                  "matches": [{ "sampler": "POST /api/checkout", "actual": 10, "status": "FAIL" }],
+                  "_attainment": "gt 0: the threshold is the whole budget and it is zero, so no fraction - null, not Infinity",
+                  "attainment": null }
+    },
+    {
+      "name": "no matching error is a real zero, and passes cleanly",
+      "rule": { "id": "checkout-404", "target": { "sampler": "POST /api/checkout" },
+                "metric": "errorRate:code=404", "fail": { "gt": 0.5 } },
+      "expect": { "status": "PASS", "matched": 1,
+                  "matches": [{ "sampler": "POST /api/checkout", "actual": 0, "status": "PASS" }],
+                  "attainment": { "actual": 0, "failThreshold": 0.5, "consumed": 0, "breached": false } }
+    },
+    {
+      "name": "a floor under a real zero FAILs, and its budget has no fraction",
+      "rule": { "id": "checkout-404-floor", "target": { "sampler": "POST /api/checkout" },
+                "metric": "errorCount:code=404", "fail": { "lt": 5 } },
+      "expect": { "status": "FAIL", "matched": 1,
+                  "matches": [{ "sampler": "POST /api/checkout", "actual": 0, "status": "FAIL" }],
+                  "_attainment": "lt 5 against a measured 0: the run is the divisor and it is zero - null, as Attainment.of guards it",
+                  "attainment": null }
+    },
+    {
+      "name": "the whole-run scope counts top-level samplers and not their children",
+      "_comment": [
+        "26 protocol errors across top-level samplers (checkout 20 + TC Browse 6) out of 3312",
+        "top-level samples = 0.785%. Counting TC Browse-0's 6 as well would give 32 and 0.966%,",
+        "so a band at 0.9 discriminates the two without pinning a long decimal — the property",
+        "under test is the exclusion, not the arithmetic."
+      ],
+      "rule": { "id": "run-protocol", "target": { "scope": "overall" },
+                "metric": "errorRate:class=protocol", "fail": { "gt": 0.9 } },
+      "expect": { "status": "PASS", "matched": 1 }
+    },
+    {
+      "name": "a mistyped selector key is INVALID, never a silent match on every error",
+      "rule": { "id": "typo-key", "target": { "sampler": "POST /api/checkout" },
+                "metric": "errorRate:clss=nonProtocol", "fail": { "gt": 0 } },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "INVALID_RULE", "matched": 0, "reason": "class=" }
+    },
+    {
+      "name": "an unknown class name is INVALID and never falls through to all errors",
+      "rule": { "id": "typo-class", "target": { "sampler": "POST /api/checkout" },
+                "metric": "errorRate:class=funcional", "fail": { "gt": 0 } },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "INVALID_RULE", "matched": 0, "reason": "unknown error class" }
+    },
+    {
+      "_comment": [
+        "An unusable regex in code=. This parsed cleanly and threw PatternSyntaxException out of",
+        "the evaluator from inside the per-summary matching loop, killing report generation — and",
+        "only on runs that HAD errors, because a clean run never enters the loop. The pattern is",
+        "compiled at parse time now, so it is rejected like every other selector typo."
+      ],
+      "name": "an unusable regex in code= is INVALID, not a crash",
+      "rule": { "id": "bad-regex", "target": { "sampler": "POST /api/checkout" },
+                "metric": "errorRate:code=regex:[", "fail": { "gt": 0 } },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "INVALID_RULE", "matched": 0, "reason": "is not a valid pattern" }
+    },
+    {
+      "_comment": [
+        "The other half of the same fix: rejecting the broken pattern must not cost the working",
+        "one. regex: is why code= needs no closed vocabulary — '5xx except 503' has no glob."
+      ],
+      "name": "a valid regex: in code= still selects, and is anchored",
+      "rule": { "id": "good-regex", "target": { "sampler": "POST /api/checkout" },
+                "metric": "errorCount:code=regex:5[0-9]{2}", "fail": { "gt": 0 } },
+      "expect": { "status": "FAIL", "matched": 1,
+                  "matches": [ { "sampler": "POST /api/checkout", "actual": 20, "status": "FAIL" } ] }
+    },
+    {
+      "_comment": [
+        "code= is case-sensitive, on both sides. Documented rather than changed: class=transport",
+        "is the way to select these, and 'matched nothing' is a legitimate answer for a code glob,",
+        "so a case-blind match would be guessing at intent. Pinned because the two evaluators",
+        "build their patterns separately — Pattern.quote here, a character-class escape there —",
+        "and a CASE_INSENSITIVE flag added to one of them is a silent divergence otherwise."
+      ],
+      "name": "a code= glob is case-sensitive, and matching nothing is a clean zero",
+      "rule": { "id": "wrong-case", "target": { "sampler": "POST /api/checkout" },
+                "metric": "errorCount:code=non http*", "fail": { "gt": 0 } },
+      "expect": { "status": "PASS", "matched": 1,
+                  "matches": [ { "sampler": "POST /api/checkout", "actual": 0, "status": "PASS" } ] }
+    },
+    {
+      "_comment": [
+        "The reason substring was 'take a selector', which BOTH the right answer and the wrong",
+        "one contain: Java resolved the base through the fixed-name map, which holds no",
+        "percentiles, and answered \"'p95' is not a metric\" — false, and it sends the reader to",
+        "fix the wrong half of the expression. The vector passed against both. It now asserts",
+        "the clause only the correct message has." ],
+      "name": "a metric that cannot take a selector says so, and says which thing is wrong",
+      "rule": { "id": "p95-selector", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p95:class=protocol", "fail": { "gt": 0 } },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "INVALID_RULE", "matched": 0, "reason": "does not take a selector" }
+    },
+    {
+      "name": "errorCount is sampler-only, and its qualified form inherits that",
+      "rule": { "id": "run-errorcount-class", "target": { "scope": "overall" },
+                "metric": "errorCount:class=transport", "fail": { "gt": 0 } },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "INVALID_RULE", "matched": 0,
+                  "reason": "is not available for the whole run" }
+    },
+    {
+      "name": "latency is assertable — it was measured and drawn all along, just unnameable",
+      "rule": { "id": "checkout-ttfb", "target": { "sampler": "POST /api/checkout" },
+                "metric": "latency", "warn": { "gt": 400 }, "fail": { "gt": 800 } },
+      "expect": { "status": "WARN", "matched": 1,
+                  "matches": [{ "sampler": "POST /api/checkout", "actual": 600, "status": "WARN" }],
+                  "_attainment": "a WARN is measured against the FAIL band: the budget is fail's, not warn's",
+                  "attainment": { "actual": 600, "failThreshold": 800, "consumed": 0.75, "breached": false } }
+    },
+    {
+      "name": "a rule with only a warn band has no budget",
+      "rule": { "id": "products-warn-only", "target": { "sampler": "GET /api/products" },
+                "metric": "p95", "warn": { "gt": 200 } },
+      "expect": { "status": "WARN", "matched": 1,
+                  "matches": [{ "sampler": "GET /api/products", "actual": 240, "status": "WARN" }],
+                  "_attainment": "Attainment.of: no fail band, so no budget to have used - null, never a fraction of warn",
+                  "attainment": null }
+    },
+    {
+      "name": "connectTime is its own metric — a TLS/DNS/pool regression elapsed cannot see",
+      "rule": { "id": "checkout-connect", "target": { "sampler": "POST /api/checkout" },
+                "metric": "connectTime", "fail": { "gt": 20 } },
+      "expect": { "status": "FAIL", "matched": 1,
+                  "matches": [{ "sampler": "POST /api/checkout", "actual": 22, "status": "FAIL" }] }
+    },
+    {
+      "name": "receivedKbPerSec is KILOBYTES — the number the samplers table shows, not bytes",
+      "rule": { "id": "products-recv", "target": { "sampler": "GET /api/products" },
+                "metric": "receivedKbPerSec", "fail": { "gt": 100 } },
+      "expect": { "status": "PASS", "matched": 1,
+                  "matches": [{ "sampler": "GET /api/products", "actual": 44, "status": "PASS" }] }
+    },
+    {
+      "name": "sentKbPerSec divides the same way on both sides",
+      "rule": { "id": "checkout-sent", "target": { "sampler": "POST /api/checkout" },
+                "metric": "sentKbPerSec", "fail": { "gt": 25 } },
+      "expect": { "status": "FAIL", "matched": 1,
+                  "matches": [{ "sampler": "POST /api/checkout", "actual": 30, "status": "FAIL" }] }
+    },
+    {
+      "_comment": [
+        "Scope validity, in both directions. These are the cases that caught the client",
+        "evaluator resolving a metric its scope does not have instead of rejecting it: both",
+        "sides reached INVALID, so `status` agreed and only `matched` — 0 against 1 — differed.",
+        "`reason` is asserted too now, because 'INVALID for the right reason' is the part that",
+        "was actually broken, and a status alone could not express it."
+      ],
+      "name": "latency has no whole-run value, so an overall-scoped rule is INVALID",
+      "rule": { "id": "run-latency", "target": { "scope": "overall" },
+                "metric": "latency", "fail": { "gt": 100 } },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "INVALID_RULE", "matched": 0,
+                  "reason": "is not available for the whole run" }
+    },
+    {
+      "name": "stdDev has no whole-run value either — rejected before anything is resolved",
+      "rule": { "id": "run-stddev", "target": { "scope": "overall" },
+                "metric": "stdDev", "fail": { "gt": 100 } },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "INVALID_RULE", "matched": 0,
+                  "reason": "is not available for the whole run" }
+    },
+    {
+      "name": "maxThreads is whole-run only, so a per-sampler rule naming it is INVALID",
+      "rule": { "id": "sampler-threads", "target": { "sampler": "GET /api/products" },
+                "metric": "maxThreads", "fail": { "gt": 10 } },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "INVALID_RULE", "matched": 0,
+                  "reason": "is not available per sampler" }
+    },
+    {
+      "name": "an arbitrary percentile is exempt from the scope check — valid in both",
+      "rule": { "id": "run-p975", "target": { "scope": "overall" },
+                "metric": "p97.5", "fail": { "gt": 100000 } },
+      "expect": { "status": "PASS", "matched": 1 }
+    },
+    {
+      "name": "gt band fails above the threshold",
+      "rule": { "id": "checkout-p95", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p95", "warn": { "gt": 650 }, "fail": { "gt": 800 } },
+      "expect": { "status": "FAIL", "matched": 1,
+                  "matches": [{ "sampler": "POST /api/checkout", "actual": 1120, "status": "FAIL" }] }
+    },
+    {
+      "name": "a value on the fail threshold does not fail — gt is strict",
+      "rule": { "id": "edge-exact-fail", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p95", "fail": { "gt": 1120 } },
+      "expect": { "status": "PASS", "matched": 1,
+                  "_attainment": "all of the budget used and not breached: breached is the predicate, never consumed >= 1",
+                  "attainment": { "actual": 1120, "failThreshold": 1120, "consumed": 1, "breached": false } }
+    },
+    {
+      "name": "gte fails on the threshold, where gt did not",
+      "rule": { "id": "edge-exact-gte", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p95", "fail": { "gte": 1120 } },
+      "expect": { "status": "FAIL", "matched": 1 }
+    },
+    {
+      "name": "warn fires when fail does not",
+      "rule": { "id": "checkout-warn-only", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p95", "warn": { "gt": 1000 }, "fail": { "gt": 2000 } },
+      "expect": { "status": "WARN", "matched": 1 }
+    },
+    {
+      "name": "fail is tested before warn when both would breach",
+      "rule": { "id": "both-breach", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p95", "warn": { "gt": 100 }, "fail": { "gt": 200 } },
+      "expect": { "status": "FAIL", "matched": 1 }
+    },
+    {
+      "name": "lt band for a lower-is-worse metric",
+      "rule": { "id": "products-throughput", "target": { "sampler": "GET /api/products" },
+                "metric": "throughput", "fail": { "lt": 20 } },
+      "expect": { "status": "FAIL", "matched": 1,
+                  "_attainment": "lower is worse, so the run is the divisor: 20 / 12.5",
+                  "attainment": { "actual": 12.5, "failThreshold": 20, "consumed": 1.6, "breached": true } }
+    },
+    {
+      "name": "lte is strict about the boundary too",
+      "rule": { "id": "products-throughput-lte", "target": { "sampler": "GET /api/products" },
+                "metric": "throughput", "fail": { "lte": 12.5 } },
+      "expect": { "status": "FAIL", "matched": 1,
+                  "attainment": { "actual": 12.5, "failThreshold": 12.5, "consumed": 1, "breached": true } }
+    },
+    {
+      "_why": [
+        "The corridor these three replace was ONE rule with two bounds (outside: [lo, hi]).",
+        "It is two rules now, and each names which end was missed - which the corridor never",
+        "could, because two thresholds have no single number to report against." ],
+      "name": "a lower bound fires when the value falls under it",
+      "rule": { "id": "corridor-low", "target": { "sampler": "GET /api/products" },
+                "metric": "throughput", "fail": { "lt": 20 } },
+      "expect": { "status": "FAIL", "matched": 1 }
+    },
+    {
+      "name": "an upper bound fires when the value climbs past it",
+      "rule": { "id": "corridor-high", "target": { "sampler": "GET /api/products" },
+                "metric": "throughput", "fail": { "gt": 5 } },
+      "expect": { "status": "FAIL", "matched": 1 }
+    },
+    {
+      "name": "a strict bound does not fire exactly on the boundary",
+      "rule": { "id": "corridor-inside", "target": { "sampler": "GET /api/products" },
+                "metric": "throughput", "fail": { "lt": 12.5 } },
+      "expect": { "status": "PASS", "matched": 1,
+                  "_why": "throughput is exactly 12.5 here and lt is strict. This is the boundary claim the retired corridor vector carried as \"boundaries included\"." }
+    },
+    {
+      "name": "a glob matches several samplers and the rule takes the worst",
+      "rule": { "id": "api-errors", "target": { "match": "POST /api/*" },
+                "metric": "errorRate", "warn": { "gt": 2 }, "fail": { "gt": 4 } },
+      "expect": { "status": "FAIL", "matched": 2,
+                  "matches": [{ "sampler": "POST /api/checkout", "actual": 5.0, "status": "FAIL" },
+                              { "sampler": "POST /api/health-probe", "actual": 0.0, "status": "PASS" }],
+                  "_attainment": "the worst match is the budget's: 5 of 4, not the probe's 0",
+                  "attainment": { "actual": 5, "failThreshold": 4, "consumed": 1.25, "breached": true } }
+    },
+    {
+      "_why": [
+        "REV-18 / NIT-2: the one definition of a rule's worst match (L13, RuleResult.worstJudged() and",
+        "the page's worstOfMatches) on a corridor - a warn band pointing away from the fail band. Severity",
+        "first: the two WARNs outrank the products PASS. Then, within one status, the furthest past the",
+        "band THAT status was decided against: a WARN by the warn band, `lt 10`, so the probe's 2.5 and",
+        "not the checkout's 7.5. Both sides took the direction of the fail band whatever the status, and",
+        "named 7.5 - the WARN nearest to passing. No vector had opposite-direction bands, so nothing",
+        "held the two sides to severity-first on a corridor either."
+      ],
+      "name": "a corridor rule's worst WARN is the furthest past the warn band",
+      "rule": { "id": "corridor-worst-warn", "target": { "match": "*/api/*" },
+                "metric": "throughput", "warn": { "lt": 10 }, "fail": { "gt": 100 } },
+      "expect": { "status": "WARN", "matched": 3,
+                  "matches": [{ "sampler": "GET /api/products", "actual": 12.5, "status": "PASS" },
+                              { "sampler": "POST /api/checkout", "actual": 7.5, "status": "WARN" },
+                              { "sampler": "POST /api/health-probe", "actual": 2.5, "status": "WARN" }],
+                  "_attainment": "the budget is the fail band's (gt 100), measured at the worst match: 2.5 of 100, where it used to be 7.5 of 100",
+                  "attainment": { "actual": 2.5, "failThreshold": 100, "consumed": 0.025, "breached": false } }
+    },
+    {
+      "name": "exclude removes a sampler the glob selected",
+      "rule": { "id": "api-errors-excluding-probe", "target": { "match": "POST /api/*",
+                "exclude": ["POST /api/health-probe"] },
+                "metric": "errorRate", "fail": { "gt": 4 } },
+      "expect": { "status": "FAIL", "matched": 1 }
+    },
+    {
+      "name": "an escaped-and-anchored exclude means the one name it spells",
+      "_why": [
+        "The shape AssertionTarget.exactly() emits for a literal sampler name. It has to",
+        "compile to the same matcher in java.util.regex and in JavaScript RegExp — the 1.4.14",
+        "shape did not, and no vector here covered a regex: exclude at all, which is how it",
+        "shipped. Without this the client judges the sampler the engine exempted and rescores",
+        "the rule: E12's legacy:default:mean read PASS from the engine and FAIL in the report."
+      ],
+      "rule": { "id": "api-errors-excluding-probe-exact",
+                "target": { "match": "POST /api/*",
+                            "exclude": ["regex:^POST /api/health\\-probe$"] },
+                "metric": "errorRate", "fail": { "gt": 4 } },
+      "expect": { "status": "FAIL", "matched": 1,
+                  "matches": [{ "sampler": "POST /api/checkout", "actual": 5.0, "status": "FAIL" }] }
+    },
+    {
+      "name": "the 1.4.14 quoted exclude still means its one name",
+      "_why": [
+        "Files saved by 1.4.14 carry regex:\\Q…\\E on disk — ruleToJson wrote the exclude back",
+        "verbatim — so both engines must keep reading it even though nothing emits it now."
+      ],
+      "rule": { "id": "api-errors-excluding-probe-quoted",
+                "target": { "match": "POST /api/*",
+                            "exclude": ["regex:\\QPOST /api/health-probe\\E"] },
+                "metric": "errorRate", "fail": { "gt": 4 } },
+      "expect": { "status": "FAIL", "matched": 1,
+                  "matches": [{ "sampler": "POST /api/checkout", "actual": 5.0, "status": "FAIL" }] }
+    },
+    {
+      "name": "an unanchored regex target matches the whole name, not a substring",
+      "_why": [
+        "Java matches with matches(), JavaScript with test(). The only regex: vector that",
+        "existed anchored itself, so the divergence was invisible: 'checkout' selected nothing",
+        "in the engine and one sampler in the report."
+      ],
+      "rule": {
+        "id": "unanchored-regex",
+        "target": {
+          "match": "regex:checkout"
+        },
+        "metric": "p95",
+        "fail": {
+          "gt": 1
+        }
+      },
+      "expect": {
+        "status": "NOT_JUDGED",
+        "notJudged": "NO_MATCH",
+        "matched": 0,
+        "unmatched": true,
+        "_whyStatus": "matches nothing at either end, so there is nothing to judge"
+      }
+    },
+    {
+      "name": "a glob never reaches a transaction child",
+      "rule": { "id": "blanket-p95", "target": { "match": "*" },
+                "metric": "p95", "fail": { "gt": 1500 } },
+      "expect": { "status": "PASS", "matched": 4,
+                  "_why": "TC Browse-0 has p95 1900 and would fail, but it is a child; JSR223 Setup has 2900 and is hidden; GET /api/never-ran is hidden too. The four judged are the visible top-level rows — including TC Browse itself, which is an ordinary target despite being a controller." }
+    },
+    {
+      "name": "naming a transaction child reaches it",
+      "rule": { "id": "named-child", "target": { "sampler": "TC Browse-0" },
+                "metric": "p95", "fail": { "gt": 1500 } },
+      "expect": { "status": "FAIL", "matched": 1 }
+    },
+    {
+      "name": "naming a hidden utility sampler reaches it",
+      "rule": { "id": "named-hidden", "target": { "sampler": "JSR223 Setup" },
+                "metric": "p95", "fail": { "gt": 1500 } },
+      "expect": { "status": "FAIL", "matched": 1 }
+    },
+    {
+      "name": "regex: opts out of glob escaping",
+      "rule": { "id": "regex-target", "target": { "match": "regex:^POST /api/(checkout|health-probe)$" },
+                "metric": "errorRate", "fail": { "gt": 4 } },
+      "expect": { "status": "FAIL", "matched": 2 }
+    },
+    {
+      "name": "glob metacharacters in a sampler name are literal",
+      "rule": { "id": "literal-name", "target": { "match": "GET /api/products" },
+                "metric": "p95", "fail": { "gt": 10000 } },
+      "expect": { "status": "PASS", "matched": 1 }
+    },
+    {
+      "name": "a target that matches nothing is not judged",
+      "rule": { "id": "typo-target", "target": { "sampler": "POST /api/carts/add-item" },
+                "metric": "p90", "fail": { "gt": 400 } },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "NO_MATCH", "matched": 0, "unmatched": true,
+                  "_why": "The rule was not evaluated, so there is no performance status to report. The configuration problem is carried by the finding and the unmatched count, not by a verdict.",
+                  "attainment": null }
+    },
+    {
+      "name": "an unmatched target never gates, whatever the rule wanted",
+      "rule": { "id": "typo-warn", "target": { "sampler": "POST /api/carts/add-item" },
+                "metric": "p90", "fail": { "gt": 400 } },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "NO_MATCH", "matched": 0, "unmatched": true,
+                  "_why": "Bands are irrelevant when nothing was selected to compare them against." }
+    },
+    {
+      "name": "a matched row with no samples is not judged as fast",
+      "rule": { "id": "zero-sample-row", "target": { "sampler": "GET /api/never-ran" },
+                "metric": "p95", "fail": { "gt": 100 } },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "NO_MATCH", "matched": 0, "unmatched": true,
+                  "_why": "its p95 is 0 only because nothing ran; judging it would report success for a gate that never executed" }
+    },
+    {
+      "name": "a rule well clear of its band is PASS, and carries the actual",
+      "rule": { "id": "search-tail", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p99", "fail": { "gt": 5000 } },
+      "expect": { "status": "PASS", "matched": 1,
+                  "matches": [{ "sampler": "POST /api/checkout", "actual": 1680, "status": "PASS" }] }
+    },
+    {
+      "name": "enabled false parks a rule",
+      "rule": { "id": "parked", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p95", "fail": { "gt": 1 }, "enabled": false },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "DISABLED", "matched": 0, "attainment": null }
+    },
+    {
+      "name": "an unknown metric is INVALID, not PASS",
+      "rule": { "id": "typo-metric", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p95x", "fail": { "gt": 100 } },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "INVALID_RULE", "matched": 0,
+                  "_why": "an unresolvable metric produces no value, no band breaches, and the rule would report success — the exact way a gate silently stops being one" }
+    },
+    {
+      "name": "a rule with no bands is INVALID",
+      "rule": { "id": "no-bands", "target": { "sampler": "POST /api/checkout" }, "metric": "p95" },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "INVALID_RULE", "matched": 0 }
+    },
+    {
+      "name": "median is p50",
+      "rule": { "id": "median-alias", "target": { "sampler": "POST /api/checkout" },
+                "metric": "median", "fail": { "gt": 579 } },
+      "expect": { "status": "FAIL", "matched": 1,
+                  "matches": [{ "sampler": "POST /api/checkout", "actual": 580, "status": "FAIL" }] }
+    },
+    {
+      "name": "p95 and p95.0 are the same metric",
+      "rule": { "id": "percentile-alias", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p95.0", "fail": { "gt": 1000 } },
+      "expect": { "status": "FAIL", "matched": 1,
+                  "matches": [{ "sampler": "POST /api/checkout", "actual": 1120, "status": "FAIL" }] }
+    },
+    {
+      "name": "p50 and median are one metric, spelled p50",
+      "rule": { "id": "checkout-p50", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p50", "fail": { "gt": 579 } },
+      "expect": { "status": "FAIL", "matched": 1,
+                  "_why": "the same 580 the 'median' case above measures. Both spellings have to",
+                  "_why2": "reach the same stored value AND canonicalise to the same name, or a",
+                  "_why3": "chart filtering rules by metric name draws one of them and not the other.",
+                  "matches": [{ "sampler": "POST /api/checkout", "actual": 580, "status": "FAIL" }] }
+    },
+    {
+      "name": "a whole-number percentile off the grid resolves on both sides",
+      "rule": { "id": "checkout-p85", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p85", "warn": { "gt": 600 }, "fail": { "gt": 800 } },
+      "expect": { "status": "WARN", "matched": 1,
+                  "_why": "p85 is 700: above the warn band, below the fail band. It resolved to",
+                  "matches": [{ "sampler": "POST /api/checkout", "actual": 700, "status": "WARN" }],
+                  "attainment": { "actual": 700, "failThreshold": 800, "consumed": 0.875, "breached": false } }
+    },
+    {
+      "name": "a fractional percentile off the grid resolves on both sides",
+      "rule": { "id": "products-p975", "target": { "sampler": "GET /api/products" },
+                "metric": "p97.5", "fail": { "gt": 250 } },
+      "expect": { "status": "FAIL", "matched": 1,
+                  "matches": [{ "sampler": "GET /api/products", "actual": 300, "status": "FAIL" }] }
+    },
+    {
+      "name": "an off-grid percentile the run cannot answer is INVALID, not a pass",
+      "rule": { "id": "products-p85-missing", "target": { "sampler": "POST /api/health-probe" },
+                "metric": "p85", "fail": { "gt": 1 } },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "NO_VALUE", "matched": 1,
+                  "_why": "no digest for this sampler, so the quantile is unanswerable. Zero would",
+                  "_why2": "be a legitimate measurement and would pass every 'must be under' band.",
+                  "_whyRule": "every match was unmeasurable, so the RULE is NO_VALUE too. Had one other sampler answered, the rule would carry that one's verdict instead - which is the bug the old fold had, where one NaN poisoned the whole rule.",
+                  "matches": [{ "sampler": "POST /api/health-probe", "actual": null, "status": "NOT_JUDGED" }],
+                  "_attainment": "a rule that decided nothing used no budget: null, never consumed 0",
+                  "attainment": null }
+    },
+    {
+      "name": "scope overall judges the run",
+      "rule": { "id": "run-errors", "target": { "scope": "overall" },
+                "metric": "errorRate", "fail": { "gt": 2 } },
+      "expect": { "status": "PASS", "matched": 1,
+                  "_why": "51 errors over the 3300 top-level samples is 1.55%; the transaction child is excluded" }
+    },
+    {
+      "name": "scope overall throughput is samples over test duration",
+      "rule": { "id": "run-throughput", "target": { "scope": "overall" },
+                "metric": "throughput", "fail": { "lt": 30 } },
+      "expect": { "status": "FAIL", "matched": 1,
+                  "_why": "3300 samples over 120s is 27.5/s, not the 27.6 you get by summing per-sampler rates" }
+    },
+    {
+      "name": "a samplers list targets several by name",
+      "rule": { "id": "explicit-list", "target": { "samplers": ["GET /api/products", "TC Browse-0"] },
+                "metric": "p95", "fail": { "gt": 1500 } },
+      "expect": { "status": "FAIL", "matched": 2 }
+    },
+    {
+      "name": "a samplers list silently ignores names that did not run",
+      "rule": { "id": "list-with-absentee", "target": { "samplers": ["GET /api/products", "nope"] },
+                "metric": "p95", "fail": { "gt": 10000 } },
+      "expect": { "status": "PASS", "matched": 1 }
+    },
+    {
+      "_why": [
+        "RB8 (a): how a percentile is SPELLED. MetricRef.parse trims the name (String.trim: every char",
+        "up to U+0020 and nothing else), lower-cases it, and reads what follows the p through",
+        "Double.parseDouble, which trims again and takes Java's whole floating-point grammar: a sign,",
+        "digits with a point anywhere, an exponent, an f/F/d/D suffix, a hex float. The page's",
+        "parseMetric read /^p(\\d+(?:\\.\\d+)?)$/ and called every other spelling INVALID_RULE, so a rule",
+        "the run judged read INVALID on the page after any edit. Java owns the run, so the page now",
+        "reads the percentile through WIR.javaText.parseDouble, Java's grammar, and names it as",
+        "canonicalPercentileName does. `expect.metric` is the canonical name every runner checks: the",
+        "one GatePayloadBuilder ships, and the one ruleFromJson must arrive at from the file's spelling."
+      ],
+      "name": "a percentile spelled with Java's double suffix is that percentile",
+      "rule": { "id": "spelled-suffix", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p95d", "fail": { "gt": 1000 } },
+      "expect": { "status": "FAIL", "matched": 1, "metric": "p95",
+                  "matches": [{ "sampler": "POST /api/checkout", "actual": 1120, "status": "FAIL" }] }
+    },
+    {
+      "name": "a percentile in capitals with a float suffix is read lower-cased",
+      "rule": { "id": "spelled-capitals", "target": { "sampler": "POST /api/checkout" },
+                "metric": "P95F", "fail": { "gt": 2000 } },
+      "expect": { "status": "PASS", "matched": 1, "metric": "p95",
+                  "matches": [{ "sampler": "POST /api/checkout", "actual": 1120, "status": "PASS" }] }
+    },
+    {
+      "name": "a percentile with a plus sign",
+      "rule": { "id": "spelled-plus", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p+95", "fail": { "gt": 1000 } },
+      "expect": { "status": "FAIL", "matched": 1, "metric": "p95" }
+    },
+    {
+      "name": "a percentile with an exponent is the percentile it multiplies out to",
+      "rule": { "id": "spelled-exponent", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p8.5E1", "warn": { "gt": 600 }, "fail": { "gt": 800 } },
+      "expect": { "status": "WARN", "matched": 1, "metric": "p85",
+                  "matches": [{ "sampler": "POST /api/checkout", "actual": 700, "status": "WARN" }] }
+    },
+    {
+      "name": "a percentile with a leading point and an exponent",
+      "rule": { "id": "spelled-leading-point", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p.95e2", "fail": { "gt": 1000 } },
+      "expect": { "status": "FAIL", "matched": 1, "metric": "p95" }
+    },
+    {
+      "name": "a percentile with a trailing point",
+      "rule": { "id": "spelled-trailing-point", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p95.", "fail": { "gt": 1000 } },
+      "expect": { "status": "FAIL", "matched": 1, "metric": "p95" }
+    },
+    {
+      "name": "a percentile written as a hex float",
+      "rule": { "id": "spelled-hex", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p0x55p0", "warn": { "gt": 600 }, "fail": { "gt": 800 } },
+      "expect": { "status": "WARN", "matched": 1, "metric": "p85",
+                  "matches": [{ "sampler": "POST /api/checkout", "actual": 700, "status": "WARN" }] }
+    },
+    {
+      "name": "a fractional percentile written as a hex float",
+      "rule": { "id": "spelled-hex-fraction", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p0x1.86p6", "fail": { "gt": 1000 } },
+      "expect": { "status": "FAIL", "matched": 1, "metric": "p97.5",
+                  "matches": [{ "sampler": "POST /api/checkout", "actual": 1400, "status": "FAIL" }] }
+    },
+    {
+      "name": "whitespace between the p and its number is trimmed, as parseDouble trims it",
+      "rule": { "id": "spelled-inner-tab", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p\t95", "fail": { "gt": 1000 } },
+      "expect": { "status": "FAIL", "matched": 1, "metric": "p95" }
+    },
+    {
+      "_why": "String.trim takes a control character off the name; JavaScript's trim() does not.",
+      "name": "a control character before the name is trimmed, as String.trim trims it",
+      "rule": { "id": "spelled-outer-control", "target": { "sampler": "POST /api/checkout" },
+                "metric": "\u0001p95", "fail": { "gt": 1000 } },
+      "expect": { "status": "FAIL", "matched": 1, "metric": "p95" }
+    },
+    {
+      "_why": [
+        "Java's own name for a percentile below 0.001 is in E notation, and it has to read back. The",
+        "page kept the file's spelling there since 3.1.48 (percentileName) because parseMetric could",
+        "not read it, and looked the value up under String(1e-4), '0.0001', where the payload files it",
+        "under '1.0E-4': NO_VALUE on the page for a rule the run judged."
+      ],
+      "name": "a percentile below 0.001 in Java's own spelling",
+      "rule": { "id": "small-java-name", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p1.0E-4", "fail": { "gt": 100 } },
+      "expect": { "status": "FAIL", "matched": 1, "metric": "p1.0E-4",
+                  "matches": [{ "sampler": "POST /api/checkout", "actual": 150, "status": "FAIL" }] }
+    },
+    {
+      "name": "a percentile below 0.001 in plain digits is named in E notation",
+      "rule": { "id": "small-plain", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p0.0001", "fail": { "gt": 200 } },
+      "expect": { "status": "PASS", "matched": 1, "metric": "p1.0E-4",
+                  "matches": [{ "sampler": "POST /api/checkout", "actual": 150, "status": "PASS" }] }
+    },
+    {
+      "_why": "RB8 (b): canonicalPercentileName trimmed a trailing zero off the exponent and named this p1.0E-1, which reads back as p0.1.",
+      "name": "a percentile whose exponent ends in a zero keeps the zero",
+      "rule": { "id": "small-exponent-zero", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p0.0000000001", "fail": { "gt": 100 } },
+      "expect": { "status": "FAIL", "matched": 1, "metric": "p1.0E-10",
+                  "matches": [{ "sampler": "POST /api/checkout", "actual": 150, "status": "FAIL" }] }
+    },
+    {
+      "_why": "Double.MIN_VALUE: Double.toString writes it 4.9E-324, where String() writes 5e-324.",
+      "name": "the smallest double is a percentile, named with Java's two digits",
+      "rule": { "id": "small-subnormal", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p0x1p-1074", "fail": { "gt": 100 } },
+      "expect": { "status": "FAIL", "matched": 1, "metric": "p4.9E-324" }
+    },
+    {
+      "name": "a hex float past the half-way point below the smallest double rounds up to it",
+      "rule": { "id": "small-rounded-up", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p0x1.8p-1075", "fail": { "gt": 100 } },
+      "expect": { "status": "FAIL", "matched": 1, "metric": "p4.9E-324" }
+    },
+    {
+      "name": "a hex float just under the tie below 100 rounds down, to the last double below it",
+      "rule": { "id": "just-below-100", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p0x1.8ffffffffffff7p6", "fail": { "gt": 2000 } },
+      "expect": { "status": "FAIL", "matched": 1, "metric": "p99.99999999999999",
+                  "matches": [{ "sampler": "POST /api/checkout", "actual": 2100, "status": "FAIL" }] }
+    },
+    {
+      "_why": "Refused by both: what Double.parseDouble throws on, or reads to a number outside (0, 100).",
+      "name": "an exponent with no digits is not a percentile",
+      "rule": { "id": "refused-dangling-exponent", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p1e", "fail": { "gt": 100 } },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "INVALID_RULE", "matched": 0,
+                  "reason": "unknown metric 'p1e'" }
+    },
+    {
+      "name": "a hex float with no binary exponent is not a percentile",
+      "rule": { "id": "refused-hex-no-exponent", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p0x1", "fail": { "gt": 100 } },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "INVALID_RULE", "matched": 0,
+                  "reason": "unknown metric 'p0x1'" }
+    },
+    {
+      "name": "two suffixes are not a percentile",
+      "rule": { "id": "refused-two-suffixes", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p95dd", "fail": { "gt": 100 } },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "INVALID_RULE", "matched": 0,
+                  "reason": "unknown metric 'p95dd'" }
+    },
+    {
+      "name": "an exponent that reaches 100 is max, not a percentile",
+      "rule": { "id": "refused-exponent-100", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p1e2", "fail": { "gt": 100 } },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "INVALID_RULE", "matched": 0,
+                  "reason": "unknown metric 'p1e2'" }
+    },
+    {
+      "name": "a hex float exactly half the smallest double rounds to even, which is 0",
+      "rule": { "id": "refused-hex-tie-to-zero", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p0x1p-1075", "fail": { "gt": 100 } },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "INVALID_RULE", "matched": 0,
+                  "reason": "unknown metric 'p0x1p-1075'" }
+    },
+    {
+      "name": "a hex float on the tie below 100 rounds to even, which is 100",
+      "rule": { "id": "refused-hex-tie-to-100", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p0x1.8ffffffffffff8p6", "fail": { "gt": 100 } },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "INVALID_RULE", "matched": 0,
+                  "reason": "unknown metric 'p0x1.8ffffffffffff8p6'" }
+    },
+    {
+      "_why": "String.trim keeps U+00A0, so Double.parseDouble refuses the number it pads.",
+      "name": "a no-break space between the p and its number is not trimmed",
+      "rule": { "id": "refused-inner-nbsp", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p\u00a095", "fail": { "gt": 100 } },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "INVALID_RULE", "matched": 0,
+                  "reason": "unknown metric 'p\u00a095'" }
+    },
+    {
+      "_why": [
+        "String.trim keeps U+00A0, so the name does not start with p and is no metric; JavaScript's",
+        "trim() took it off and the page judged p95. The page then called it a metric in the wrong",
+        "scope, 'not available per sampler', and this case asserted no `reason` for that; it says",
+        "'unknown metric', as Java does, since parseMetric knows the metrics (RB14). detailCases",
+        "holds the whole sentence, the suggestion included."
+      ],
+      "name": "a no-break space before the name is not trimmed",
+      "rule": { "id": "refused-outer-nbsp", "target": { "sampler": "POST /api/checkout" },
+                "metric": "\u00a0p95", "fail": { "gt": 100 } },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "INVALID_RULE", "matched": 0,
+                  "reason": "unknown metric '\u00a0p95'" }
+    },
+    {
+      "_why": [
+        "RB14 (1): MetricRef.parseQualified trims each half with String.trim, which keeps U+00A0, so",
+        "the key is not class and the rule is refused - a CONFIG ERROR. The page's parseQualifiedMetric",
+        "trimmed with JavaScript's trim(), took the space off, and judged errorRate:class=protocol."
+      ],
+      "name": "a no-break space after a selector's colon is not trimmed from its key",
+      "rule": { "id": "refused-selector-nbsp-key", "target": { "sampler": "POST /api/checkout" },
+                "metric": "errorRate:\u00a0class=protocol", "fail": { "gt": 0 } },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "INVALID_RULE", "matched": 0,
+                  "reason": "unknown selector '\u00a0class'" }
+    },
+    {
+      "name": "a no-break space after a selector's class is not trimmed from its value",
+      "rule": { "id": "refused-selector-nbsp-class", "target": { "sampler": "POST /api/checkout" },
+                "metric": "errorRate:class=protocol\u00a0", "fail": { "gt": 0 } },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "INVALID_RULE", "matched": 0,
+                  "reason": "unknown error class 'protocol\u00a0'" }
+    },
+    {
+      "name": "a no-break space before a selector's colon is not trimmed from its metric",
+      "rule": { "id": "refused-selector-nbsp-base", "target": { "sampler": "POST /api/checkout" },
+                "metric": "errorRate\u00a0:class=protocol", "fail": { "gt": 0 } },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "INVALID_RULE", "matched": 0,
+                  "reason": "'errorRate\u00a0' is not a metric" }
+    },
+    {
+      "_why": [
+        "RB14 (1), the verdict a trim moves: Java keeps the no-break space at the end of the glob, so",
+        "code=5* followed by one matches no response code and the count is 0, a PASS under gt 0. The",
+        "page trimmed it to code=5* and counted the checkout's 20 503s, a FAIL."
+      ],
+      "name": "a no-break space ending a code glob is part of the glob",
+      "rule": { "id": "selector-nbsp-glob", "target": { "sampler": "POST /api/checkout" },
+                "metric": "errorCount:code=5*\u00a0", "fail": { "gt": 0 } },
+      "expect": { "status": "PASS", "matched": 1,
+                  "matches": [{ "sampler": "POST /api/checkout", "actual": 0, "status": "PASS" }] }
+    },
+    {
+      "_why": [
+        "RB14 (1): MetricRef.classToken compares with String.equalsIgnoreCase, whose one-char case",
+        "mappings make the long s (U+017F) an s, so Java judges this as transport. The page looked",
+        "the value up lower-cased, which leaves the long s as it is, and refused the rule."
+      ],
+      "name": "a class is matched as String.equalsIgnoreCase matches it",
+      "rule": { "id": "selector-long-s", "target": { "sampler": "POST /api/checkout" },
+                "metric": "errorRate:class=tran\u017fport", "fail": { "gt": 5 } },
+      "expect": { "status": "PASS", "matched": 1,
+                  "matches": [{ "sampler": "POST /api/checkout", "actual": 1.1111, "status": "PASS" }] }
+    },
+    {
+      "_why": "No metric begins with p but the percentiles, so a p-name that is not one is no metric, as Java says.",
+      "name": "a name beginning with p that is not a percentile is an unknown metric",
+      "rule": { "id": "refused-p-word", "target": { "sampler": "POST /api/checkout" },
+                "metric": "pineapple", "fail": { "gt": 100 } },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "INVALID_RULE", "matched": 0,
+                  "reason": "unknown metric 'pineapple'" }
+    },
+    {
+      "_why": "MetricRef.problemWith names the base by its canonical name, as the page now does.",
+      "name": "a spelled percentile that cannot take a selector is named canonically",
+      "rule": { "id": "spelled-selector", "target": { "sampler": "POST /api/checkout" },
+                "metric": "p95d:class=protocol", "fail": { "gt": 0 } },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "INVALID_RULE", "matched": 0,
+                  "reason": "'p95' does not take a selector" }
+    },
+    {
+      "_why": [
+        "RB14 (2): a name that is no metric is 'unknown metric' on both sides. The page read only its",
+        "shape and called it 'not available per sampler', a metric in the wrong place."
+      ],
+      "name": "a name that is no metric is an unknown metric, not one in the wrong scope",
+      "rule": { "id": "refused-typo", "target": { "sampler": "POST /api/checkout" },
+                "metric": "thruughput", "fail": { "gt": 100 } },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "INVALID_RULE", "matched": 0,
+                  "reason": "unknown metric 'thruughput'" }
+    },
+    {
+      "_why": "RB14 (3): the page told it 'does not take a selector', which is the sentence for a real metric.",
+      "name": "a name that is no metric, with a selector, is not a metric",
+      "rule": { "id": "refused-typo-selector", "target": { "sampler": "POST /api/checkout" },
+                "metric": "thruughput:class=protocol", "fail": { "gt": 0 } },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "INVALID_RULE", "matched": 0,
+                  "reason": "'thruughput' is not a metric, so it cannot take a selector" }
+    },
+    {
+      "_why": "A name every JavaScript object inherits is no metric either: an own-key lookup, not obj[name].",
+      "name": "a name every object inherits is an unknown metric",
+      "rule": { "id": "refused-inherited-name", "target": { "scope": "overall" },
+                "metric": "constructor", "fail": { "gt": 0 } },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "INVALID_RULE", "matched": 0,
+                  "reason": "unknown metric 'constructor'" }
+    },
+    {
+      "_why": "The page read the base as SELECTABLE_METRICS['constructor'], a function, and whyUnusable threw on it.",
+      "name": "a name every object inherits, with a selector, is not a metric",
+      "rule": { "id": "refused-inherited-selector", "target": { "sampler": "POST /api/checkout" },
+                "metric": "constructor:class=protocol", "fail": { "gt": 0 } },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "INVALID_RULE", "matched": 0,
+                  "reason": "'constructor' is not a metric, so it cannot take a selector" }
+    }
+  ],
+  "gateCases": [
+    {
+      "name": "the run verdict is the worst rule",
+      "ruleIds": ["checkout-p95", "run-errors", "search-tail", "parked"],
+      "expect": { "status": "FAIL", "declared": 4, "evaluated": 3,
+                  "passed": 2, "warned": 0, "failed": 1, "notJudged": { "total": 1, "disabled": 1, "noMatch": 0, "noValue": 0, "invalidRule": 0 } }
+    },
+    {
+      "_why": "A parked rule and a rule that found nothing to judge are the two ways a declared rule ends up deciding nothing. Neither is a pass.",
+      "name": "not-judged rules alone decide nothing",
+      "ruleIds": ["typo-target", "parked"],
+      "expect": { "status": null, "declared": 2, "evaluated": 1,
+                  "passed": 0, "warned": 0, "failed": 0, "notJudged": { "total": 2, "disabled": 1, "noMatch": 1, "noValue": 0, "invalidRule": 0 } }
+    },
+    {
+      "_why": [
+        "THE headline behaviour change. This case was called 'an invalid rule fails the gate'",
+        "and asserted status INVALID, because INVALID was a status that outranked FAIL - so one",
+        "mistyped metric name failed a build while no measured number had exceeded anything.",
+        "",
+        "The gate is PASS: run-errors was measured and passed, typo-metric measured nothing and",
+        "so decides nothing. The broken rule has not vanished - notJudged.invalidRule is 1, and",
+        "that is the number a pipeline gates on if it wants to be strict:",
+        "jq -e '.gate.failed == 0 and .gate.notJudged.invalidRule == 0'" ],
+      "name": "a rule the file got wrong does not decide the gate, and is counted on its own",
+      "ruleIds": ["run-errors", "typo-metric"],
+      "expect": { "status": "PASS", "declared": 2, "evaluated": 2,
+                  "passed": 1, "warned": 0, "failed": 0,
+                  "notJudged": { "total": 1, "disabled": 0, "noMatch": 0, "noValue": 0, "invalidRule": 1 } }
+    },
+    {
+      "_why": "Every unmatched rule is NOT_JUDGED / NO_MATCH, so the gate has nothing that gates and its status is null - NOT EVALUATED. The noMatch COUNT is what survives, and it is the thing a pipeline can gate on by choice.",
+      "name": "unmatched rules are counted, and decide nothing",
+      "ruleIds": ["typo-target", "typo-warn"],
+      "expect": { "status": null, "declared": 2, "evaluated": 2,
+                  "passed": 0, "warned": 0, "failed": 0,
+                  "notJudged": { "total": 2, "disabled": 0, "noMatch": 2, "noValue": 0, "invalidRule": 0 } }
+    }
+  ],
+  "targetCases": [
+    {
+      "_why": [
+        "M7d X (review:C): how a TARGET is read, which is also what names an id-less rule - and a",
+        "server assert's requiresLoad/divideBy finds its rule by that name. AssertionRuleMapper.readTarget",
+        "is the definition: a blank or empty value is not a form, more than one form is INVALID (picking",
+        "one would judge something nobody asked for), and scope is compared case-insensitively. An",
+        "INVALID target's rule is called by its label - its written id, or 'assertions[i]' - never a",
+        "derived one. ruleFromJson read {samplers: []} as 'group-...', {scope, sampler} as the scope,",
+        "{sampler: ''} as a sampler named '', and {scope: 'Overall'} as unreadable.",
+        "Each `rule` is the file's i-th entry (`index`, 0 when absent). `expect.kind` is the target kind",
+        "(sampler, samplers, match, overall, invalid), `expect.id` the id the rule is judged under,",
+        "`expect.problem` an INVALID target's whole sentence. MapperParityTest runs these through the",
+        "mapper, asserts-parity.test.js and asserts-parity.spec.ts through ruleFromJson."
+      ],
+      "name": "an empty samplers list is not a form",
+      "rule": { "target": { "samplers": [] }, "metric": "a.b.c", "fail": { "gt": 1 } },
+      "expect": { "kind": "invalid", "id": "assertions[0]",
+                  "problem": "target is empty — it needs one of \"sampler\", \"samplers\", \"match\" or {\"scope\": \"overall\"}" }
+    },
+    {
+      "name": "a blank sampler is not a form",
+      "rule": { "target": { "sampler": "   " }, "metric": "throughput", "fail": { "lt": 1 } },
+      "index": 3,
+      "expect": { "kind": "invalid", "id": "assertions[3]",
+                  "problem": "target is empty — it needs one of \"sampler\", \"samplers\", \"match\" or {\"scope\": \"overall\"}" }
+    },
+    {
+      "name": "two forms are refused, never one of them picked",
+      "rule": { "target": { "scope": "overall", "sampler": "GET /api/products" }, "metric": "throughput", "fail": { "lt": 1 } },
+      "expect": { "kind": "invalid", "id": "assertions[0]",
+                  "problem": "target has more than one form (sampler, scope) — exactly one is allowed" }
+    },
+    {
+      "name": "a written id names a rule whose target is refused",
+      "rule": { "id": " named ", "target": { "sampler": "A", "samplers": ["B"], "match": "C" }, "metric": "p95", "fail": { "gt": 1 } },
+      "expect": { "kind": "invalid", "id": "named",
+                  "problem": "target has more than one form (sampler, samplers, match) — exactly one is allowed" }
+    },
+    {
+      "name": "a blank form beside a real one is no second form",
+      "rule": { "target": { "sampler": "", "samplers": ["A"] }, "metric": "p95", "fail": { "gt": 1 } },
+      "expect": { "kind": "samplers", "id": "a-p95" }
+    },
+    {
+      "name": "a blank match beside the scope is no second form",
+      "rule": { "target": { "match": "  ", "scope": "overall" }, "metric": "throughput", "fail": { "lt": 1 } },
+      "expect": { "kind": "overall", "id": "run-throughput" }
+    },
+    {
+      "name": "scope is compared case-insensitively",
+      "rule": { "target": { "scope": "Overall" }, "metric": "throughput", "fail": { "lt": 1 } },
+      "expect": { "kind": "overall", "id": "run-throughput" }
+    },
+    {
+      "name": "a scope that is not overall is refused, as written",
+      "rule": { "target": { "scope": " overall " }, "metric": "throughput", "fail": { "lt": 1 } },
+      "expect": { "kind": "invalid", "id": "assertions[0]",
+                  "problem": "scope must be \"overall\", not \" overall \"" }
+    },
+    {
+      "name": "no target at all",
+      "rule": { "metric": "p95", "fail": { "gt": 1 } },
+      "expect": { "kind": "invalid", "id": "assertions[0]",
+                  "problem": "no target — add one of \"sampler\", \"samplers\", \"match\" or {\"scope\": \"overall\"}" }
+    },
+    {
+      "name": "a null target is no target",
+      "rule": { "target": null, "metric": "p95", "fail": { "gt": 1 } },
+      "expect": { "kind": "invalid", "id": "assertions[0]",
+                  "problem": "no target — add one of \"sampler\", \"samplers\", \"match\" or {\"scope\": \"overall\"}" }
+    },
+    {
+      "name": "an empty target",
+      "rule": { "target": {}, "metric": "p95", "fail": { "gt": 1 } },
+      "index": 2,
+      "expect": { "kind": "invalid", "id": "assertions[2]",
+                  "problem": "target is empty — it needs one of \"sampler\", \"samplers\", \"match\" or {\"scope\": \"overall\"}" }
+    },
+    {
+      "name": "a sampler keeps its spaces - only the form test trims",
+      "rule": { "target": { "sampler": " GET /api/products " }, "metric": "p95", "fail": { "gt": 1 } },
+      "expect": { "kind": "sampler", "id": "get-api-products-p95" }
+    },
+    {
+      "_why": [
+        "M7d X review follow-up: a target field written as a NUMBER. Jackson coerces it to text and",
+        "used to keep the literal ('2.0' for 2.0), while JSON.parse keeps only the value ('2'). Both",
+        "sides now read a number in a text field by its value, written as ServerMetricsMapper.numberText",
+        "writes it: an integral value below 1e15 as a long, anything else as Double.toString."
+      ],
+      "name": "a scope written as the number 2.0 reads as the text 2",
+      "rule": { "target": { "scope": 2.0 }, "metric": "throughput", "fail": { "lt": 1 } },
+      "expect": { "kind": "invalid", "id": "assertions[0]",
+                  "problem": "scope must be \"overall\", not \"2\"" }
+    },
+    {
+      "name": "a scope written as a number below 1e-3 reads in E notation",
+      "rule": { "target": { "scope": 1e-7 }, "metric": "throughput", "fail": { "lt": 1 } },
+      "expect": { "kind": "invalid", "id": "assertions[0]",
+                  "problem": "scope must be \"overall\", not \"1.0E-7\"" }
+    },
+    {
+      "name": "a sampler written as a number from 1e7 is the sampler Java names it",
+      "rule": { "target": { "sampler": 12345678.5 }, "metric": "p95", "fail": { "gt": 1 } },
+      "expect": { "kind": "sampler", "id": "1-23456785e7-p95" }
+    }
+  ],
+  "_unitsComment": [
+    "The page's assertMetrics vocabulary, as GatePayloadBuilder ships it: MetricRef.vocabulary() for",
+    "each scope, in its order, and the unit each name is printed with. The node runner has no page,",
+    "so it is handed these; a detailCase's unit and an unknown metric's 'did you mean' (RB14: the",
+    "first of two equally near names wins, so the order is part of the answer) come from them.",
+    "MapperParityTest fails if either list stops being MetricRef.vocabulary() or any unit stops being",
+    "the unit Java prints, so this copy cannot drift."
+  ],
+  "vocabulary": {
+    "sampler": ["sampleCount", "errorCount", "errorRate", "mean", "min", "max", "stdDev", "throughput",
+                "apdex", "latency", "connectTime", "receivedKbPerSec", "sentKbPerSec",
+                "p50", "p75", "p90", "p95", "p99", "p99.9"],
+    "overall": ["totalSamples", "errorRate", "duration", "maxThreads", "mean", "throughput", "apdex",
+                "p50", "p75", "p90", "p95", "p99", "p99.9"]
+  },
+  "units": { "sampleCount": "", "errorCount": "", "errorRate": "%", "mean": "ms", "min": "ms",
+             "max": "ms", "stdDev": "ms", "throughput": "/s", "apdex": "", "latency": "ms",
+             "connectTime": "ms", "receivedKbPerSec": "KB/s", "sentKbPerSec": "KB/s",
+             "totalSamples": "", "duration": "s", "maxThreads": "", "p50": "ms", "p75": "ms",
+             "p90": "ms", "p95": "ms", "p99": "ms", "p99.9": "ms" },
+  "detailCases": [
+    {
+      "_why": [
+        "M7d X review follow-up: the whole INVALID_RULE sentence of a refusal, character for character.",
+        "The first six print a number. Usability.addIfUnreachable writes the band as",
+        "Predicate.describe does - the operator, Predicate.trim(value), the unit - and the mirror wrote",
+        "it with the table's display formatter: '< -1,234 ms' for -1234.5, '< -0.2 /s' for -0.25 (a",
+        "wrong value), grouped by the reader's locale. This refusal exists for migrated tolerances",
+        "(lt -19 x target), where two decimals are normal, so the board and the CI/CD JSON printed",
+        "different limits. Each `rule` goes through the production parser on every side:",
+        "AssertionRuleMapper + Usability.refusal in MapperParityTest, ruleFromJson + whyUnusable in",
+        "asserts-parity.test.js and asserts-parity.spec.ts.",
+        "L12: a band is written in plain digits. Predicate.trim wrote Double.toString's E notation",
+        "below 1e-3 and from 1e7 (-5.0E-4, -1.23456785E7), and cast an integral band to a long, which",
+        "saturates at 2^63: a band of -1e19 read -9223372036854775808. Every digit of an integral band",
+        "below 2^63 is still written, 2^62's included - never the shortest digits padded with zeros. From",
+        "2^63 an integral band is Double.toString's shortest digits written out, as any other band is:",
+        "-1e23 is -100000000000000000000000, not the nearest double's exact -99999999999999991611392."
+      ],
+      "name": "a dead mean band keeps its decimals and no grouping",
+      "rule": { "id": "dead-mean", "target": { "sampler": "GET /api/products" }, "metric": "mean", "fail": { "lt": -1234.5 } },
+      "expect": { "detail": "fail can never fire: < -1234.5 ms is unreachable because this metric is never negative. The rule reports PASS on every run, including one that measured nothing at all. A tolerance meant as a percentage is written as a fraction — 0.2, not 20." }
+    },
+    {
+      "name": "a dead throughput band is not rounded to one decimal",
+      "rule": { "id": "dead-throughput", "target": { "scope": "overall" }, "metric": "throughput", "fail": { "lt": -0.25 } },
+      "expect": { "detail": "fail can never fire: < -0.25 /s is unreachable because this metric is never negative. The rule reports PASS on every run, including one that measured nothing at all. A tolerance meant as a percentage is written as a fraction — 0.2, not 20." }
+    },
+    {
+      "name": "a dead band below 1e-3 is written in plain digits",
+      "rule": { "id": "dead-tiny", "target": { "sampler": "GET /api/products" }, "metric": "mean", "warn": { "lte": -0.0005 }, "fail": { "gt": 500 } },
+      "expect": { "detail": "warn can never fire: ≤ -0.0005 ms is unreachable because this metric is never negative. The rule reports PASS on every run, including one that measured nothing at all. A tolerance meant as a percentage is written as a fraction — 0.2, not 20." }
+    },
+    {
+      "name": "a dead band from 1e7 is written in plain digits",
+      "rule": { "id": "dead-huge", "target": { "sampler": "GET /api/products" }, "metric": "errorRate", "fail": { "lt": -12345678.5 } },
+      "expect": { "detail": "fail can never fire: < -12345678.5 % is unreachable because this metric is never negative. The rule reports PASS on every run, including one that measured nothing at all. A tolerance meant as a percentage is written as a fraction — 0.2, not 20." }
+    },
+    {
+      "name": "a dead integral band past a long's range is written whole, never saturated",
+      "rule": { "id": "dead-beyond-long", "target": { "sampler": "GET /api/products" }, "metric": "mean", "fail": { "lt": -1e19 } },
+      "expect": { "detail": "fail can never fire: < -10000000000000000000 ms is unreachable because this metric is never negative. The rule reports PASS on every run, including one that measured nothing at all. A tolerance meant as a percentage is written as a fraction — 0.2, not 20." }
+    },
+    {
+      "name": "a dead integral band inside a long's range keeps every digit, not the shortest padded with zeros",
+      "rule": { "id": "dead-two-to-the-62", "target": { "sampler": "GET /api/products" }, "metric": "mean", "fail": { "lt": -4611686018427387904 } },
+      "expect": { "detail": "fail can never fire: < -4611686018427387904 ms is unreachable because this metric is never negative. The rule reports PASS on every run, including one that measured nothing at all. A tolerance meant as a percentage is written as a fraction — 0.2, not 20." }
+    },
+    {
+      "name": "a dead integral band past 2^63 is Double.toString's shortest digits written out, not the double's exact value",
+      "rule": { "id": "dead-past-two-to-the-63", "target": { "sampler": "GET /api/products" }, "metric": "mean", "fail": { "lt": -1e23 } },
+      "expect": { "detail": "fail can never fire: < -100000000000000000000000 ms is unreachable because this metric is never negative. The rule reports PASS on every run, including one that measured nothing at all. A tolerance meant as a percentage is written as a fraction — 0.2, not 20." }
+    },
+    {
+      "name": "the migrated tolerance shape: an integral dead band is written as a long",
+      "rule": { "id": "dead-tolerance", "target": { "scope": "overall" }, "metric": "throughput", "warn": { "lt": -19 }, "fail": { "lt": -38 } },
+      "expect": { "detail": "warn can never fire: < -19 /s is unreachable because this metric is never negative. The rule reports PASS on every run, including one that measured nothing at all. A tolerance meant as a percentage is written as a fraction — 0.2, not 20." }
+    },
+    {
+      "name": "a dead band of negative zero is written as 0",
+      "rule": { "id": "dead-negative-zero", "target": { "sampler": "GET /api/products" }, "metric": "mean", "fail": { "lt": -0.0 } },
+      "expect": { "detail": "fail can never fire: < 0 ms is unreachable because this metric is never negative. The rule reports PASS on every run, including one that measured nothing at all. A tolerance meant as a percentage is written as a fraction — 0.2, not 20." }
+    },
+    {
+      "_why": [
+        "A bare JSON number past Double.MAX_VALUE overflows to Infinity INSIDE the parser, so it reached",
+        "AssertionRuleMapper.asNumber as a Number - and only its text arm refused NaN and the infinities.",
+        "`gt Infinity` cannot be breached: the rule PASSed every run with no finding and exit 0, and",
+        "`lt Infinity` FAILed every run, while the page reading the same file refused it in other words",
+        "('not number', no suffix). The client mapper now reads a band through ServerMetricsMapper's",
+        "asNumber and describe, which refuse it on both arms and name it 'the number Infinity', and the",
+        "page ends every unreadable-band sentence as Usability.unreadableBand does. MapperParityTest hands",
+        "the mapper the vector's TREE: a text round trip writes DoubleNode(Infinity) as the quoted",
+        "\"Infinity\", which the text arm refuses as text."
+      ],
+      "name": "a fail band that overflows to Infinity is refused, never a band nothing can breach",
+      "rule": { "id": "overflow-gt", "target": { "sampler": "GET /api/products" }, "metric": "mean", "fail": { "gt": 1e400 } },
+      "expect": { "detail": "fail gt must be a number, not the number Infinity — so this rule declares a limit it cannot apply, and would report PASS without ever testing fail" }
+    },
+    {
+      "name": "an lt band that overflows to Infinity is refused, never a breach on every run",
+      "rule": { "id": "overflow-lt", "target": { "scope": "overall" }, "metric": "throughput", "fail": { "lt": 1e400 } },
+      "expect": { "detail": "fail lt must be a number, not the number Infinity — so this rule declares a limit it cannot apply, and would report PASS without ever testing fail" }
+    },
+    {
+      "name": "a band that overflows to -Infinity is unreadable, not merely unreachable",
+      "rule": { "id": "overflow-negative", "target": { "sampler": "GET /api/products" }, "metric": "mean", "fail": { "lt": -1e400 } },
+      "expect": { "detail": "fail lt must be a number, not the number -Infinity — so this rule declares a limit it cannot apply, and would report PASS without ever testing fail" }
+    },
+    {
+      "name": "an overflowed warn band beside a readable fail band refuses the rule",
+      "rule": { "id": "overflow-warn", "target": { "sampler": "GET /api/products" }, "metric": "mean", "warn": { "gt": 1e400 }, "fail": { "gt": 100000 } },
+      "expect": { "detail": "warn gt must be a number, not the number Infinity — so this rule declares a limit it cannot apply, and would report PASS without ever testing warn" }
+    },
+    {
+      "name": "a quoted Infinity is named as the text it is, in the whole sentence",
+      "rule": { "id": "quoted-infinity", "target": { "sampler": "GET /api/products" }, "metric": "mean", "fail": { "gt": "Infinity" } },
+      "expect": { "detail": "fail gt must be a number, not the text \"Infinity\" — so this rule declares a limit it cannot apply, and would report PASS without ever testing fail" }
+    },
+    {
+      "name": "two operators in one band: the whole sentence, as G3 reports it",
+      "rule": { "id": "two-operators", "target": { "sampler": "GET /api/products" }, "metric": "mean", "fail": { "gt": 100, "lt": 50 } },
+      "expect": { "detail": "fail has 2 operators (gt, lt) — exactly one is allowed — so this rule declares a limit it cannot apply, and would report PASS without ever testing fail" }
+    },
+    {
+      "name": "the retired outside operator: the whole sentence, as G3 reports it",
+      "rule": { "id": "outside-operator", "target": { "sampler": "GET /api/products" }, "metric": "mean", "fail": { "outside": [1, 2] } },
+      "expect": { "detail": "fail outside is no longer an operator. A corridor is two rules: one with \"lt\" at the low bound and one with \"gt\" at the high bound. Written that way each says which end was missed, and each reports how far past its own limit the run was. — so this rule declares a limit it cannot apply, and would report PASS without ever testing fail" }
+    },
+    {
+      "_why": [
+        "The page looked an operator up on a plain object, so a key every object inherits -",
+        "constructor, toString, valueOf - was accepted as an operator no measurement can breach: PASS on",
+        "Open file and Edit document, where Predicate.Op.fromKey refuses it and the run is a CONFIG",
+        "ERROR. It is now an own-key lookup on the trimmed, lower-cased key, as the server mirror reads",
+        "one. The accepted spellings Java trims and lower-cases (\"GT\", \" gt \") are pinned in js-unit:",
+        "a detailCase is a refusal."
+      ],
+      "name": "an operator every object inherits is not an operator",
+      "rule": { "id": "prototype-key-operator", "target": { "sampler": "GET /api/products" }, "metric": "mean", "fail": { "constructor": 100 } },
+      "expect": { "detail": "fail operator 'constructor' is not one of gt, gte, lt, lte — so this rule declares a limit it cannot apply, and would report PASS without ever testing fail" }
+    },
+    {
+      "_why": [
+        "Usability.check names what the file declared and the loader could not read FIRST, before the",
+        "target; the page named the target first. They agreed only while Java took 1e400 as a band, so",
+        "the overflow guard alone would have put Java's band sentence on the board on load and the",
+        "page's target sentence there after any unrelated edit."
+      ],
+      "name": "an unreadable band is named before an unreadable target, as Usability.check orders them",
+      "rule": { "id": "overflow-no-target", "target": {}, "metric": "mean", "fail": { "gt": 1e400 } },
+      "expect": { "detail": "fail gt must be a number, not the number Infinity — so this rule declares a limit it cannot apply, and would report PASS without ever testing fail" }
+    },
+    {
+      "_why": [
+        "Batch H review: how an operator key is normalised, held where Java's words can be compared.",
+        "Predicate.Op.fromKey reads the key trimmed as String.trim trims it - code points up to U+0020",
+        "only - and lower-cased, while every sentence names the key AS WRITTEN, and the retired-corridor",
+        "sentence answers the literal key `outside` alone. So `GT` beside an overflowed value is read as",
+        "gt and refused as `fail GT`; `OUTSIDE` is an unknown operator, not the corridor; and a key",
+        "padded with a no-break space is unknown, because String.trim keeps U+00A0 where JavaScript's",
+        "trim() strips it - a page reading the key with trim() would judge a rule the run refuses as a",
+        "CONFIG ERROR. The accepted spellings are pinned in js-unit; these three are the refusals."
+      ],
+      "name": "an operator read in any case is still named as written when its value is refused",
+      "rule": { "id": "upper-case-operator-overflow", "target": { "sampler": "GET /api/products" }, "metric": "mean", "fail": { "GT": 1e400 } },
+      "expect": { "detail": "fail GT must be a number, not the number Infinity — so this rule declares a limit it cannot apply, and would report PASS without ever testing fail" }
+    },
+    {
+      "name": "OUTSIDE in capitals is an unknown operator, not the retired corridor",
+      "rule": { "id": "upper-case-outside", "target": { "sampler": "GET /api/products" }, "metric": "mean", "fail": { "OUTSIDE": [1, 2] } },
+      "expect": { "detail": "fail operator 'OUTSIDE' is not one of gt, gte, lt, lte — so this rule declares a limit it cannot apply, and would report PASS without ever testing fail" }
+    },
+    {
+      "_why": "RB14 (1)'s sentence: String.trim keeps the no-break space, so the key is unknown and named with it.",
+      "name": "a no-break space after a selector's colon is named with the key",
+      "rule": { "id": "unknown-selector-nbsp", "target": { "sampler": "POST /api/checkout" }, "metric": "errorRate:\u00a0class=protocol", "fail": { "gt": 0 } },
+      "expect": { "detail": "unknown selector '\u00a0class' — use class= or code=" }
+    },
+    {
+      "_why": "RB8's no-break space before p95, now the whole sentence: the name as written, and p95 offered.",
+      "name": "a no-break space before a percentile is an unknown metric, and the percentile is offered",
+      "rule": { "id": "unknown-nbsp-p95", "target": { "sampler": "POST /api/checkout" }, "metric": "\u00a0p95", "fail": { "gt": 100 } },
+      "expect": { "detail": "unknown metric '\u00a0p95' — did you mean 'p95'?" }
+    },
+    {
+      "name": "a no-break space is not trimmed from an operator, because String.trim does not trim it",
+      "rule": { "id": "nbsp-padded-operator", "target": { "sampler": "GET /api/products" }, "metric": "mean", "fail": { "\u00a0gt": 100 } },
+      "expect": { "detail": "fail operator '\u00a0gt' is not one of gt, gte, lt, lte — so this rule declares a limit it cannot apply, and would report PASS without ever testing fail" }
+    },
+    {
+      "_why": [
+        "Batch L review (S3, L21): a metric spelled as MetricRef.parse reads it but not as the",
+        "vocabulary spells it. Java's sentence carries the metric's unit and its canonical name; the",
+        "page looked the unit up by the exact name and quoted the rule's name as written, so a",
+        "re-parsed `Throughput` rule said '< -0.25 is unreachable' and a qualified errorRate '< -1",
+        "is unreachable', and a wrong-scope `TotalSamples` was named as written where Usability names",
+        "metric.canonicalName(). The page now reads the name and the unit through metricRef."
+      ],
+      "name": "a dead band on a metric spelled in another case carries the metric's unit",
+      "rule": { "id": "dead-throughput-case", "target": { "scope": "overall" }, "metric": "Throughput", "fail": { "lt": -0.25 } },
+      "expect": { "detail": "fail can never fire: < -0.25 /s is unreachable because this metric is never negative. The rule reports PASS on every run, including one that measured nothing at all. A tolerance meant as a percentage is written as a fraction — 0.2, not 20." }
+    },
+    {
+      "name": "a dead band on a qualified error metric carries its base metric's unit",
+      "rule": { "id": "dead-qualified", "target": { "scope": "overall" }, "metric": "errorRate:class=protocol", "fail": { "lt": -1 } },
+      "expect": { "detail": "fail can never fire: < -1 % is unreachable because this metric is never negative. The rule reports PASS on every run, including one that measured nothing at all. A tolerance meant as a percentage is written as a fraction — 0.2, not 20." }
+    },
+    {
+      "name": "a metric asked in the wrong scope is named as MetricRef names it, whatever its spelling",
+      "rule": { "id": "wrong-scope-case", "target": { "sampler": "GET /api/products" }, "metric": "TotalSamples", "fail": { "gt": 1 } },
+      "expect": { "detail": "metric 'totalSamples' is not available per sampler" }
+    },
+    {
+      "_why": [
+        "RB14 (2): Usability's sentence for a name that is no metric, with MetricRef.nearestName's",
+        "suggestion. The page said \"metric 'thruughput' is not available per sampler\": parseMetric",
+        "read only the shape, so whyUnusable's scope test was the first to refuse it."
+      ],
+      "name": "a name that is no metric is unknown, with the metric it is nearest",
+      "rule": { "id": "unknown-typo", "target": { "sampler": "GET /api/products" }, "metric": "thruughput", "fail": { "gt": 1 } },
+      "expect": { "detail": "unknown metric 'thruughput' — did you mean 'throughput'?" }
+    },
+    {
+      "_why": "RB14 (3): MetricRef.problemWith's sentence for a base that is no metric. The page said \"'thruughput' does not take a selector\".",
+      "name": "a name that is no metric, with a selector, is not a metric",
+      "rule": { "id": "unknown-typo-selector", "target": { "sampler": "GET /api/products" }, "metric": "thruughput:class=protocol", "fail": { "gt": 1 } },
+      "expect": { "detail": "'thruughput' is not a metric, so it cannot take a selector. Only errorRate and errorCount can." }
+    },
+    {
+      "_why": [
+        "The suggestion is the scope's: totalSamples is a whole-run metric, so per sampler nothing is",
+        "near enough to offer, and over the whole run it is offered. The page took its candidates from",
+        "nowhere before RB14; it takes them from the vocabulary of the rule's scope, as Java does."
+      ],
+      "name": "a sampler rule is offered only a sampler metric",
+      "rule": { "id": "unknown-scope-sampler", "target": { "sampler": "GET /api/products" }, "metric": "totalSamplez", "fail": { "gt": 1 } },
+      "expect": { "detail": "unknown metric 'totalSamplez'" }
+    },
+    {
+      "name": "a whole-run rule is offered a whole-run metric",
+      "rule": { "id": "unknown-scope-overall", "target": { "scope": "overall" }, "metric": "totalSamplez", "fail": { "gt": 1 } },
+      "expect": { "detail": "unknown metric 'totalSamplez' — did you mean 'totalSamples'?" }
+    },
+    {
+      "_why": [
+        "mean, min and max are each one edit from 'man'; MetricRef.nearestName keeps the first it",
+        "meets, in MetricRef.vocabulary()'s order, so mean."
+      ],
+      "name": "of names equally near, the first in the vocabulary is offered",
+      "rule": { "id": "unknown-tie", "target": { "sampler": "GET /api/products" }, "metric": "man", "fail": { "gt": 1 } },
+      "expect": { "detail": "unknown metric 'man' — did you mean 'mean'?" }
+    },
+    {
+      "_why": [
+        "The cut-off is a third of the trimmed length in whole characters, and never under 2:",
+        "'meen' padded with spaces is 4 characters once trimmed, 1 edit from mean, and the name in",
+        "the sentence is the file's, spaces and all."
+      ],
+      "name": "the suggestion reads the trimmed name, and the sentence names the name as written",
+      "rule": { "id": "unknown-padded", "target": { "sampler": "GET /api/products" }, "metric": "  meen  ", "fail": { "gt": 1 } },
+      "expect": { "detail": "unknown metric '  meen  ' — did you mean 'mean'?" }
+    },
+    {
+      "_why": [
+        "The floor of 2: a third of 'mena' is 1 in whole characters, and it is 2 edits from mean (and",
+        "from min, which comes later), so only the floor offers it. A cut-off of a third alone, or a",
+        "floor of 1, says \"unknown metric 'mena'\" where Java offers mean."
+      ],
+      "name": "a short name two edits off is still offered its metric: the cut-off is never under 2",
+      "rule": { "id": "unknown-short", "target": { "sampler": "GET /api/products" }, "metric": "mena", "fail": { "gt": 1 } },
+      "expect": { "detail": "unknown metric 'mena' — did you mean 'mean'?" }
+    },
+    {
+      "name": "a name nothing is near is unknown, with no suggestion",
+      "rule": { "id": "unknown-far", "target": { "sampler": "GET /api/products" }, "metric": "xyz", "fail": { "gt": 1 } },
+      "expect": { "detail": "unknown metric 'xyz'" }
+    }
+  ],
+
+  "_bandTextCasesComment": [
+    "L2 / CN25: a band written as TEXT, read as AssertionRuleMapper reads it - through",
+    "ServerMetricsMapper.asNumber, which trims with String.trim, parses with Double.parseDouble and",
+    "refuses NaN and the infinities. The page's bandNumber read the text with trim() and Number(), so",
+    "\"0x10\" was 16, \"0o17\" was 15 and a no-break space was trimmed, where Java refuses all three,",
+    "and \"1d\" and \"0x1p3\" were refused where Java reads 1 and 8. Since K a band Java refuses is",
+    "carried and written back, so the editor read \"0x10\" as a band, offered no refusal, and an",
+    "unedited Save turned the row from INVALID into a page verdict (CN25).",
+    "Each `text` is the value of `fail: {gt: ...}` on a mean rule. `expect.value` is the band Java",
+    "reads, compared exactly; `expect.refused` means Java refuses it as the text it is, in",
+    "Usability.unreadableBand's whole sentence. MapperParityTest runs these through the mapper,",
+    "asserts-parity.test.js and asserts-parity.spec.ts through ruleFromJson."
+  ],
+  "bandTextCases": [
+    { "name": "a quoted decimal is its number", "text": "100", "expect": { "value": 100 } },
+    { "name": "spaces round it are trimmed, as String.trim trims them", "text": "  250.5  ", "expect": { "value": 250.5 } },
+    { "name": "a control character round it is trimmed, as String.trim trims it", "text": "\t300\n", "expect": { "value": 300 } },
+    { "name": "a plus sign", "text": "+5", "expect": { "value": 5 } },
+    { "name": "a leading point", "text": ".5", "expect": { "value": 0.5 } },
+    { "name": "a trailing point", "text": "5.", "expect": { "value": 5 } },
+    { "name": "an exponent", "text": "1.5e3", "expect": { "value": 1500 } },
+    { "name": "Java's double suffix is read, where Number() refused it", "text": "1d", "expect": { "value": 1 } },
+    { "name": "Java's float suffix in capitals", "text": "2.5F", "expect": { "value": 2.5 } },
+    { "name": "a hex float is read, where Number() refused it", "text": "0x1p3", "expect": { "value": 8 } },
+    { "name": "a hex float with a fraction", "text": "0x1.8p1", "expect": { "value": 3 } },
+    { "name": "a hex integer with no binary exponent is refused, where Number() read 16", "text": "0x10", "expect": { "refused": true } },
+    { "name": "a binary literal is refused, where Number() read 3", "text": "0b11", "expect": { "refused": true } },
+    { "name": "an octal literal is refused, where Number() read 15", "text": "0o17", "expect": { "refused": true } },
+    { "name": "a no-break space is not trimmed, so the number it pads is refused", "text": "\u00a0100", "expect": { "refused": true } },
+    { "name": "an empty text is refused, never zero", "text": "", "expect": { "refused": true } },
+    { "name": "a blank text is refused", "text": "   ", "expect": { "refused": true } },
+    { "name": "a unit suffix is refused", "text": "50ms", "expect": { "refused": true } },
+    { "name": "a digit separator is refused", "text": "1_000", "expect": { "refused": true } },
+    { "name": "a thousands comma is refused", "text": "1,000", "expect": { "refused": true } },
+    { "name": "two suffixes are refused", "text": "1dd", "expect": { "refused": true } },
+    { "name": "Infinity is refused: no measurement breaches it", "text": "Infinity", "expect": { "refused": true } },
+    { "name": "infinity in lower case is no number at all", "text": "infinity", "expect": { "refused": true } },
+    { "name": "NaN is refused: a band that never fires", "text": "NaN", "expect": { "refused": true } },
+    { "name": "a decimal past the largest double overflows to Infinity, and is refused", "text": "1e400", "expect": { "refused": true } }
+  ],
+
+  "_migrationCasesComment": [
+    "M5 exploratory F1: the legacy loadValidity block, migrated into assertions[] as the run",
+    "migrates it (ReportAnnotations.migrateLegacyBlocks -> LoadValidityMigration). The page used to",
+    "read a file's assertions[] and nothing else, so Open file... on E25's own annotations file showed",
+    "one rule fewer than the report - and a Download then dropped the load check altogether, because",
+    "the page never writes loadValidity back. Each case is a whole document; `expect.assertions` is",
+    "the list Java ends with, compared by value (a null field and an absent one alike, as Jackson",
+    "binds them). MapperParityTest runs these through AnnotationLoader's mapper and the migration;",
+    "asserts-parity.test.js and asserts-parity.spec.ts through the page's migrateLoadValidity."
+  ],
+  "migrationCases": [
+    {
+      "name": "a target and both bands become one overall rule, appended after the file's own",
+      "document": {
+        "assertions": [ { "id": "checkout-p95", "target": { "sampler": "POST /api/checkout" }, "metric": "p95", "fail": { "gt": 900 } } ],
+        "loadValidity": { "target": 0.002, "warn": { "tolerance": 0.25 }, "fail": { "tolerance": 0.5 } }
+      },
+      "expect": { "assertions": [
+        { "id": "checkout-p95", "target": { "sampler": "POST /api/checkout" }, "metric": "p95", "fail": { "gt": 900 } },
+        { "id": "load:throughput", "description": "Load validity — asked for 0.002 throughput. A run that never reached its target load cannot validate a threshold written for that load.", "target": { "scope": "overall" }, "metric": "throughput", "warn": { "lt": 0.0015 }, "fail": { "lt": 0.001 } }
+      ] }
+    },
+    {
+      "name": "an integral target is written without a fraction, and a named metric is trimmed",
+      "document": { "loadValidity": { "metric": " throughput ", "target": 100, "fail": { "tolerance": 0.1 } } },
+      "expect": { "assertions": [
+        { "id": "load:throughput", "description": "Load validity — asked for 100 throughput. A run that never reached its target load cannot validate a threshold written for that load.", "target": { "scope": "overall" }, "metric": "throughput", "fail": { "lt": 90 } }
+      ] }
+    },
+    {
+      "name": "another metric names the rule after itself",
+      "document": { "loadValidity": { "metric": "errorCount", "target": 5, "warn": { "tolerance": 0.3 } } },
+      "expect": { "assertions": [
+        { "id": "load:errorCount", "description": "Load validity — asked for 5 errorCount. A run that never reached its target load cannot validate a threshold written for that load.", "target": { "scope": "overall" }, "metric": "errorCount", "warn": { "lt": 3.5 } }
+      ] }
+    },
+    {
+      "name": "a blank metric is the default, throughput",
+      "document": { "loadValidity": { "metric": "   ", "target": 10, "fail": { "tolerance": 0.05 } } },
+      "expect": { "assertions": [
+        { "id": "load:throughput", "description": "Load validity — asked for 10 throughput. A run that never reached its target load cannot validate a threshold written for that load.", "target": { "scope": "overall" }, "metric": "throughput", "fail": { "lt": 9.5 } }
+      ] }
+    },
+    {
+      "name": "a target written as numeric text is read by its value",
+      "document": { "loadValidity": { "target": "0.5", "fail": { "tolerance": 0.2 } } },
+      "expect": { "assertions": [
+        { "id": "load:throughput", "description": "Load validity — asked for 0.5 throughput. A run that never reached its target load cannot validate a threshold written for that load.", "target": { "scope": "overall" }, "metric": "throughput", "fail": { "lt": 0.4 } }
+      ] }
+    },
+    {
+      "name": "an empty band is a tolerance of zero: the target itself is the floor",
+      "document": { "loadValidity": { "target": 50, "warn": {} } },
+      "expect": { "assertions": [
+        { "id": "load:throughput", "description": "Load validity — asked for 50 throughput. A run that never reached its target load cannot validate a threshold written for that load.", "target": { "scope": "overall" }, "metric": "throughput", "warn": { "lt": 50 } }
+      ] }
+    },
+    {
+      "name": "a tolerance below zero is clamped to zero",
+      "document": { "loadValidity": { "target": 50, "fail": { "tolerance": -0.5 } } },
+      "expect": { "assertions": [
+        { "id": "load:throughput", "description": "Load validity — asked for 50 throughput. A run that never reached its target load cannot validate a threshold written for that load.", "target": { "scope": "overall" }, "metric": "throughput", "fail": { "lt": 50 } }
+      ] }
+    },
+    {
+      "name": "a tolerance of 1 or more is NOT clamped: the dead band is left for Usability to refuse",
+      "document": { "loadValidity": { "target": 1000, "fail": { "tolerance": 20 } } },
+      "expect": { "assertions": [
+        { "id": "load:throughput", "description": "Load validity — asked for 1000 throughput. A run that never reached its target load cannot validate a threshold written for that load.", "target": { "scope": "overall" }, "metric": "throughput", "fail": { "lt": -19000 } }
+      ] }
+    },
+    {
+      "name": "no target declares nothing, and the block is consumed",
+      "document": {
+        "assertions": [ { "id": "checkout-p95", "target": { "sampler": "POST /api/checkout" }, "metric": "p95", "fail": { "gt": 900 } } ],
+        "loadValidity": { "warn": { "tolerance": 0.1 } }
+      },
+      "expect": { "assertions": [
+        { "id": "checkout-p95", "target": { "sampler": "POST /api/checkout" }, "metric": "p95", "fail": { "gt": 900 } }
+      ] }
+    },
+    {
+      "name": "a target at or below zero declares nothing",
+      "document": { "loadValidity": { "target": 0, "fail": { "tolerance": 0.1 } } },
+      "expect": { "assertions": [] }
+    },
+    {
+      "name": "a block with neither band declares nothing — the consequence was never defaulted",
+      "document": { "loadValidity": { "target": 10 } },
+      "expect": { "assertions": [] }
+    },
+    {
+      "name": "a rule already called load:<metric>, in any case, keeps the block from adding a second",
+      "document": {
+        "assertions": [ { "id": "LOAD:Throughput", "target": { "scope": "overall" }, "metric": "throughput", "fail": { "lt": 1 } } ],
+        "loadValidity": { "target": 10, "fail": { "tolerance": 0.5 } }
+      },
+      "expect": { "assertions": [
+        { "id": "LOAD:Throughput", "target": { "scope": "overall" }, "metric": "throughput", "fail": { "lt": 1 } }
+      ] }
+    },
+    {
+      "name": "no block, nothing migrated",
+      "document": { "assertions": [ { "id": "checkout-p95", "target": { "sampler": "POST /api/checkout" }, "metric": "p95", "fail": { "gt": 900 } } ] },
+      "expect": { "assertions": [
+        { "id": "checkout-p95", "target": { "sampler": "POST /api/checkout" }, "metric": "p95", "fail": { "gt": 900 } }
+      ] }
+    },
+    {
+      "_why": [
+        "L3 / CN26: a target or a tolerance that is not a finite number. Jackson binds a Double from a",
+        "number or from text - trimmed, \"NaN\", \"Infinity\", \"-Infinity\" and its own \"INF\" and \"-INF\"",
+        "included, and the rest through Double.parseDouble - and a bare 1e400 is Infinity by the time",
+        "it is bound. The run migrated such a block into a rule whose band no measurement can be",
+        "compared with, refused in the mapper's words for a band (`fail lt must be a number, not the",
+        "number NaN`) that name nothing the file wrote; an infinite target wrote (long) Infinity into",
+        "the description; a -Infinity target read as a target at or below zero and declared nothing;",
+        "and a -Infinity tolerance was clamped to 0, a band of the target itself that the run judged.",
+        "The page's jacksonDouble read text only by /digits/, so a \"NaN\" target migrated nothing and a",
+        "Download dropped the load check, and a \"NaN\" tolerance migrated to a judged `lt target`.",
+        "Now the migration builds the rule, never clamps a non-finite tolerance, and refuses each band",
+        "it could not build with a sentence naming the field; `expect.detail` is the migrated rule's",
+        "INVALID_RULE detail, and a non-finite band is written as Jackson writes it, as text. The",
+        "runners read the migrated rule through the production parser on both sides: the mapper and",
+        "Usability.refusal in MapperParityTest (which also wants a finding naming the field),",
+        "ruleFromJson and whyUnusable in asserts-parity.test.js and asserts-parity.spec.ts."
+      ],
+      "name": "a NaN target written as text is refused, in a sentence naming the field",
+      "document": { "loadValidity": { "target": "NaN", "fail": { "tolerance": 0.1 } } },
+      "expect": { "assertions": [
+        { "id": "load:throughput", "description": "Load validity — asked for NaN throughput. A run that never reached its target load cannot validate a threshold written for that load.", "target": { "scope": "overall" }, "metric": "throughput", "fail": { "lt": "NaN" } }
+      ],
+        "detail": "loadValidity.target must be a finite number, not NaN — so this rule declares a limit it cannot apply, and would report PASS without ever testing fail" }
+    },
+    {
+      "name": "a target that overflows to Infinity is refused, and named as Java names it, never as a long",
+      "document": { "loadValidity": { "target": 1e400, "warn": { "tolerance": 0.25 } } },
+      "expect": { "assertions": [
+        { "id": "load:throughput", "description": "Load validity — asked for Infinity throughput. A run that never reached its target load cannot validate a threshold written for that load.", "target": { "scope": "overall" }, "metric": "throughput", "warn": { "lt": "Infinity" } }
+      ],
+        "detail": "loadValidity.target must be a finite number, not Infinity — so this rule declares a limit it cannot apply, and would report PASS without ever testing warn" }
+    },
+    {
+      "name": "a target of -Infinity is refused, never read as a target at or below zero that declares nothing",
+      "document": { "loadValidity": { "target": "-Infinity", "fail": { "tolerance": 0.1 } } },
+      "expect": { "assertions": [
+        { "id": "load:throughput", "description": "Load validity — asked for -Infinity throughput. A run that never reached its target load cannot validate a threshold written for that load.", "target": { "scope": "overall" }, "metric": "throughput", "fail": { "lt": "-Infinity" } }
+      ],
+        "detail": "loadValidity.target must be a finite number, not -Infinity — so this rule declares a limit it cannot apply, and would report PASS without ever testing fail" }
+    },
+    {
+      "name": "a NaN tolerance is refused, in a sentence naming its band's field",
+      "document": { "loadValidity": { "target": 100, "fail": { "tolerance": "NaN" } } },
+      "expect": { "assertions": [
+        { "id": "load:throughput", "description": "Load validity — asked for 100 throughput. A run that never reached its target load cannot validate a threshold written for that load.", "target": { "scope": "overall" }, "metric": "throughput", "fail": { "lt": "NaN" } }
+      ],
+        "detail": "loadValidity.fail.tolerance must be a finite number, not NaN — so this rule declares a limit it cannot apply, and would report PASS without ever testing fail" }
+    },
+    {
+      "name": "a tolerance of -Infinity is refused, never clamped to a band of the target itself",
+      "document": { "loadValidity": { "target": 100, "warn": { "tolerance": "-Infinity" }, "fail": { "tolerance": 0.5 } } },
+      "expect": { "assertions": [
+        { "id": "load:throughput", "description": "Load validity — asked for 100 throughput. A run that never reached its target load cannot validate a threshold written for that load.", "target": { "scope": "overall" }, "metric": "throughput", "warn": { "lt": "Infinity" }, "fail": { "lt": 50 } }
+      ],
+        "detail": "loadValidity.warn.tolerance must be a finite number, not -Infinity — so this rule declares a limit it cannot apply, and would report PASS without ever testing warn" }
+    },
+    {
+      "name": "Jackson's own INF spelling of a tolerance is Infinity, and refused",
+      "document": { "loadValidity": { "target": 100, "fail": { "tolerance": "INF" } } },
+      "expect": { "assertions": [
+        { "id": "load:throughput", "description": "Load validity — asked for 100 throughput. A run that never reached its target load cannot validate a threshold written for that load.", "target": { "scope": "overall" }, "metric": "throughput", "fail": { "lt": "-Infinity" } }
+      ],
+        "detail": "loadValidity.fail.tolerance must be a finite number, not Infinity — so this rule declares a limit it cannot apply, and would report PASS without ever testing fail" }
+    },
+    {
+      "name": "a target and a tolerance in Double.parseDouble's grammar are read by their value",
+      "document": { "loadValidity": { "target": " 0x1.9p6 ", "fail": { "tolerance": "0.1d" } } },
+      "expect": { "assertions": [
+        { "id": "load:throughput", "description": "Load validity — asked for 100 throughput. A run that never reached its target load cannot validate a threshold written for that load.", "target": { "scope": "overall" }, "metric": "throughput", "fail": { "lt": 90 } }
+      ] }
+    },
+    {
+      "name": "a blank target is no target, as Jackson reads blank text into a Double",
+      "document": { "loadValidity": { "target": "  ", "fail": { "tolerance": 0.1 } } },
+      "expect": { "assertions": [] }
+    }
+  ]
+}

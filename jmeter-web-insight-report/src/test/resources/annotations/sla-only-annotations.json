@@ -1,6 +1,0 @@
-{
-  "version": "1.0",
-  "slaThresholds": {
-    "default": { "p95": 500, "p99": 1000, "errorRate": 5.0, "meanResponseTime": 300 }
-  }
-}

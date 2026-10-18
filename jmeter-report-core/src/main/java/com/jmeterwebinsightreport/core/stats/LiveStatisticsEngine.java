@@ -4,6 +4,7 @@ import com.jmeterwebinsightreport.core.model.*;
 import com.jmeterwebinsightreport.core.util.FormatUtil;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -33,12 +34,33 @@ public class LiveStatisticsEngine {
     private final Map<String, SamplerAggregator> aggregators = new ConcurrentHashMap<>();
     private final Map<Long, TimeBucketAggregator> timeBuckets = new ConcurrentHashMap<>();
     private final List<ErrorRecord> errorRecords = new ArrayList<>();
+    /** Unbounded per-(sampler|code) error aggregation — feeds summaries and error charts.
+     *  Detailed {@link #errorRecords} are capped for memory, but these counts never are.
+     *  Guarded by the {@code errorRecords} monitor. */
+    private final Map<String, long[]> errorSummaryCounts = new LinkedHashMap<>();
+    private final Map<String, ErrorRecord> errorSummaryFirst = new LinkedHashMap<>();
+    /** Real transaction-controller hierarchy, captured from actual sample sub-results
+     *  (parent label -> ordered child labels). Used instead of guessing from name prefixes,
+     *  which false-positives on REST-style names like "GET /api/users" vs "GET /api/users/{id}".
+     *  Every sampler thread can register a child concurrently, so the sets are synchronized;
+     *  LinkedHashSet (rather than a concurrent set) keeps child order deterministic. */
+    private final Map<String, Set<String>> explicitTransactions = new ConcurrentHashMap<>();
+    /** Of those parents, the ones whose sub-results really came from a Transaction Controller.
+     *  Embedded resources, redirect chains and retries also produce sub-results, and nesting
+     *  them is right (the parent's elapsed time already contains them) — but labelling a plain
+     *  HTTP sampler as a Transaction Controller in the report is not. */
+    private final Set<String> transactionControllerParents = ConcurrentHashMap.newKeySet();
 
     private final AtomicLong totalSamples = new AtomicLong();
     private final AtomicLong totalErrors = new AtomicLong();
     private final AtomicInteger maxActiveThreads = new AtomicInteger();
     private final AtomicLong firstTimestamp = new AtomicLong(Long.MAX_VALUE);
     private final AtomicLong lastTimestamp = new AtomicLong(Long.MIN_VALUE);
+    /** End of the last sample (start + elapsed). The per-sampler throughput window ends
+     *  here, so the test duration — which the header's total-throughput tile and cicd.json
+     *  divide by — has to end here too, or one report measures rates over two different
+     *  window definitions. */
+    private final AtomicLong lastSampleEnd = new AtomicLong(Long.MIN_VALUE);
 
     private long rampUpDurationMillis;
     private double apdexThreshold = 500;
@@ -59,7 +81,9 @@ public class LiveStatisticsEngine {
                              long bytesReceived, long bytesSent, long timestamp,
                              long connectTime, long latency) {
         // Per-sampler aggregation
-        aggregators.computeIfAbsent(samplerName, k -> new SamplerAggregator(k))
+        // The aggregator counts Apdex buckets as samples arrive, so it needs the threshold now.
+        // setApdexThreshold is always called during setup, before any sample is recorded.
+        aggregators.computeIfAbsent(samplerName, k -> new SamplerAggregator(k, apdexThreshold))
                 .addSample(responseTime, isSuccess, bytesReceived, bytesSent, timestamp,
                         connectTime, latency);
 
@@ -76,6 +100,7 @@ public class LiveStatisticsEngine {
         }
         updateMinLong(firstTimestamp, timestamp);
         updateMaxLong(lastTimestamp, timestamp);
+        updateMaxLong(lastSampleEnd, timestamp + Math.max(0, responseTime));
     }
 
     /**
@@ -94,6 +119,22 @@ public class LiveStatisticsEngine {
                             long timestamp, String threadName,
                             String requestUrl, String requestHeaders, String responseBody) {
         synchronized (errorRecords) {
+            // Unbounded aggregation for summaries and error charts — updated for every error.
+            String key = samplerName + "|" + responseCode;
+            long[] c = errorSummaryCounts.get(key);
+            if (c == null) {
+                c = new long[]{0};
+                errorSummaryCounts.put(key, c);
+                ErrorRecord agg = new ErrorRecord();
+                agg.setSamplerName(samplerName);
+                agg.setResponseCode(responseCode);
+                agg.setResponseMessage(responseMessage);
+                agg.setTimestamp(timestamp);
+                errorSummaryFirst.put(key, agg);
+            }
+            c[0]++;
+
+            // Detailed records (URL/headers/body) are capped to bound memory.
             if (errorRecords.size() >= MAX_ERROR_RECORDS) {
                 return;
             }
@@ -123,10 +164,41 @@ public class LiveStatisticsEngine {
      */
     public void updateActiveThreads(int activeThreads, long timestamp) {
         maxActiveThreads.updateAndGet(current -> Math.max(current, activeThreads));
+        // computeIfAbsent, not get: only pre-existing buckets were updated, so any caller
+        // ordering where the thread count arrives before the sample — or a timestamp landing
+        // in the next second — silently lost the per-bucket value.
         long bucketKey = timestamp / 1000 * 1000;
-        TimeBucketAggregator bucket = timeBuckets.get(bucketKey);
-        if (bucket != null) {
-            bucket.updateActiveThreads(activeThreads);
+        timeBuckets.computeIfAbsent(bucketKey, TimeBucketAggregator::new)
+                .updateActiveThreads(activeThreads);
+    }
+
+    /**
+     * Record a real transaction-controller relationship observed from a sample's sub-results.
+     * Called by the listener for each (transaction parent, child sample) pair.
+     */
+    public void recordTransaction(String parentLabel, String childLabel) {
+        recordTransaction(parentLabel, childLabel, true);
+    }
+
+    /**
+     * @param fromTransactionController true when the parent sample was produced by a
+     *        Transaction Controller. Any sub-result nests its child so the child's time is not
+     *        counted twice, but only a real controller is presented as one in the report.
+     */
+    public void recordTransaction(String parentLabel, String childLabel,
+                                  boolean fromTransactionController) {
+        if (parentLabel == null || childLabel == null || parentLabel.equals(childLabel)) {
+            return;
+        }
+        // ConcurrentHashMap makes set *creation* atomic, but the add must be guarded too:
+        // every thread finishing the same Transaction Controller mutates the same set, and
+        // an unsynchronized HashMap resize can silently drop a child registration — which
+        // then leaves that child unmarked and double-counted in the tiles and percentiles.
+        explicitTransactions
+                .computeIfAbsent(parentLabel, k -> Collections.synchronizedSet(new LinkedHashSet<>()))
+                .add(childLabel);
+        if (fromTransactionController) {
+            transactionControllerParents.add(parentLabel);
         }
     }
 
@@ -134,7 +206,18 @@ public class LiveStatisticsEngine {
         this.rampUpDurationMillis = rampUpDurationMillis;
     }
 
+    /**
+     * @param maxResponseBodyLength characters of response body to keep per error record
+     * @throws IllegalArgumentException if negative — a negative limit would make the
+     *         truncating substring in {@link #recordError} throw for every failed sample,
+     *         and JMeter swallows listener exceptions per event, so error details would
+     *         silently disappear while the run still looked healthy.
+     */
     public void setMaxResponseBodyLength(int maxResponseBodyLength) {
+        if (maxResponseBodyLength < 0) {
+            throw new IllegalArgumentException(
+                    "maxResponseBodyLength must be >= 0, got " + maxResponseBodyLength);
+        }
         this.maxResponseBodyLength = maxResponseBodyLength;
     }
 
@@ -177,6 +260,14 @@ public class LiveStatisticsEngine {
     }
 
     /**
+     * True when the number of errors exceeded the detailed-record cap, i.e. the detailed
+     * {@link #getErrorRecords()} list is a truncated sample of all errors.
+     */
+    public boolean isErrorRecordsTruncated() {
+        return totalErrors.get() > MAX_ERROR_RECORDS;
+    }
+
+    /**
      * Build complete ReportData from the engine's current state.
      */
     public ReportData buildReportData(String testName) {
@@ -186,7 +277,7 @@ public class LiveStatisticsEngine {
         TestMetadata metadata = new TestMetadata();
         metadata.setTestName(testName);
         long first = firstTimestamp.get();
-        long last = lastTimestamp.get();
+        long last = lastSampleEnd.get();
         if (first != Long.MAX_VALUE) {
             metadata.setStartTime(Instant.ofEpochMilli(first));
         }
@@ -196,12 +287,21 @@ public class LiveStatisticsEngine {
         if (first != Long.MAX_VALUE && last != Long.MIN_VALUE) {
             metadata.setDurationMillis(last - first);
         }
-        metadata.setTotalSamples((int) totalSamples.get());
-        metadata.setTotalErrors((int) totalErrors.get());
+        metadata.setTotalSamples(totalSamples.get());
+        metadata.setTotalErrors(totalErrors.get());
         metadata.setTotalThreads(maxActiveThreads.get());
-        metadata.setReportGeneratedAt(FormatUtil.formatTimestamp(Instant.now()));
+        /* One instant for both: the formatted text the JSON carries, and the ISO the page turns into
+           the reader's zone (SF38). Millisecond precision, which every browser's Date.parse takes. */
+        Instant generatedAt = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+        metadata.setReportGeneratedAt(FormatUtil.formatTimestamp(generatedAt));
+        metadata.setReportGeneratedAtIso(generatedAt.toString());
         metadata.setRampUpDurationMillis(rampUpDurationMillis);
         data.setMetadata(metadata);
+
+        // The T every Apdex score in this data was computed against. An apdex assertion
+        // asserts this configuration as much as it asserts the score, so the number has to
+        // travel with the data rather than stay behind in the engine.
+        data.setApdexThreshold(apdexThreshold);
 
         // Sampler statistics
         data.setSamplerStatistics(getStatisticsSnapshot());
@@ -211,17 +311,66 @@ public class LiveStatisticsEngine {
 
         // Error records
         data.setErrorRecords(getErrorRecords());
-
-        // Error summaries — aggregate from error records
-        data.setErrorSummaries(buildErrorSummaries());
+        data.setErrorRecordsTruncated(isErrorRecordsTruncated());
 
         // Auto-hide utility samplers and 0-request samplers
         data.setHiddenSamplers(computeHiddenSamplers(data.getSamplerStatistics()));
 
-        // Detect transaction controller hierarchy
+        // Detect transaction controller hierarchy. Must run before the error summaries, which
+        // express counts as a percentage of the top-level population — that population is only
+        // known once children have been marked.
         data.setTransactionHierarchy(detectTransactionHierarchy(data.getSamplerStatistics()));
 
+        // Error summaries — aggregate from error records
+        data.setErrorSummaries(buildErrorSummaries());
+
+        // Overall percentiles across the merged distribution of top-level samplers (true global
+        // percentile, not an average of per-sampler percentiles). Done after hierarchy detection so
+        // transaction children are excluded (their times are already inside their parent).
+        computeOverallPercentiles(data);
+
         return data;
+    }
+
+    /**
+     * Merge the response-time digests of all top-level samplers, set the true overall
+     * percentiles, and keep every distribution reachable from the report data.
+     *
+     * <p>The four percentiles below are the ones the report renders. The digests they came
+     * from used to be dropped here, which meant p99.9 — or any quantile a rule names — could
+     * not be answered afterwards at any price. They are now attached to {@link ReportData};
+     * see {@link com.jmeterwebinsightreport.core.model.PercentileSource} for why that is
+     * preferable to deciding the percentile set before the statistics are built.
+     *
+     * <p>The merged digest excludes transaction children for the same reason the percentiles
+     * always did: their time is already inside their parent, so including them weights those
+     * samples twice.
+     */
+    private void computeOverallPercentiles(ReportData data) {
+        TDigestPercentileCalculator overall = new TDigestPercentileCalculator();
+        Map<String, com.jmeterwebinsightreport.core.model.PercentileSource> sources =
+                new LinkedHashMap<>();
+
+        for (SamplerStatistics stat : data.getSamplerStatistics()) {
+            SamplerAggregator agg = aggregators.get(stat.getSamplerName());
+            if (agg == null) {
+                continue;
+            }
+            // Every sampler gets a source, children included: naming a sampler in a rule is an
+            // explicit request to judge it, and that has always reached transaction children.
+            sources.put(stat.getSamplerName(), agg.percentileSource());
+            if (stat.getParentSamplerName() == null) {
+                agg.mergePercentilesInto(overall);
+            }
+        }
+
+        if (overall.getCount() > 0) {
+            data.setOverallMedian(overall.getPercentile(50));
+            data.setOverallP90(overall.getPercentile(90));
+            data.setOverallP95(overall.getPercentile(95));
+            data.setOverallP99(overall.getPercentile(99));
+        }
+        data.attachPercentileSources(sources, overall);
     }
 
     /**
@@ -249,66 +398,63 @@ public class LiveStatisticsEngine {
     }
 
     /**
-     * Detect transaction controllers by looking for samplers whose names are prefixes
-     * of other sampler names (e.g., "Login Flow" containing "Login Flow-0", "Login Flow-1").
-     * Also handles JMeter's default Transaction Controller naming where the parent has
-     * the same name as a group prefix.
+     * Build the transaction-controller hierarchy from real relationships observed via sample
+     * sub-results (see {@link #recordTransaction}). Only genuine parent/child pairs are grouped —
+     * there is no name-prefix guessing, so REST-style names are never falsely nested or hidden.
+     * When no sub-result relationships were seen (e.g. JTL/CLI mode, where sub-results are flattened),
+     * this returns an empty hierarchy and every sampler is treated as top-level.
      */
     private Map<String, List<String>> detectTransactionHierarchy(List<SamplerStatistics> stats) {
-        if (stats.isEmpty()) return new LinkedHashMap<>();
+        Map<String, List<String>> hierarchy = new LinkedHashMap<>();
+        if (stats.isEmpty() || explicitTransactions.isEmpty()) {
+            return hierarchy;
+        }
 
-        // Build a map for O(1) lookup by name
         Map<String, SamplerStatistics> statsByName = new LinkedHashMap<>(stats.size());
         for (SamplerStatistics stat : stats) {
             statsByName.put(stat.getSamplerName(), stat);
         }
 
-        // Sort names lexicographically — parents will appear before children
-        List<String> sortedNames = new ArrayList<>(statsByName.keySet());
-        Collections.sort(sortedNames);
+        for (Map.Entry<String, Set<String>> entry : explicitTransactions.entrySet()) {
+            String parent = entry.getKey();
+            SamplerStatistics parentStat = statsByName.get(parent);
+            if (parentStat == null) continue;
 
-        Map<String, List<String>> hierarchy = new LinkedHashMap<>();
-
-        // For each name, check preceding names as potential parents (closest prefix match)
-        for (int i = 0; i < sortedNames.size(); i++) {
-            String name = sortedNames.get(i);
-            // Scan backwards for the longest prefix match
-            for (int j = i - 1; j >= 0; j--) {
-                String candidate = sortedNames.get(j);
-                if (name.startsWith(candidate)
-                        && name.length() > candidate.length()
-                        && isSeparatorChar(name.charAt(candidate.length()))) {
-                    hierarchy.computeIfAbsent(candidate, k -> new ArrayList<>()).add(name);
-                    // Mark parent/child via O(1) map lookup
-                    SamplerStatistics parentStat = statsByName.get(candidate);
-                    parentStat.setTransactionController(true);
-                    SamplerStatistics childStat = statsByName.get(name);
-                    childStat.setParentSamplerName(candidate);
-                    break; // Only assign to the closest (longest) parent prefix
-                }
-                // Optimization: if candidate is not a prefix at all, and it's
-                // lexicographically too different, we can stop searching
-                if (!name.startsWith(candidate.substring(0, Math.min(candidate.length(), 1)))) {
-                    break;
-                }
+            // Snapshot under the set's own monitor — Collections.synchronizedSet does not
+            // guard iteration.
+            Set<String> childSet = entry.getValue();
+            List<String> observedChildren;
+            synchronized (childSet) {
+                observedChildren = new ArrayList<>(childSet);
             }
-        }
 
-        // Set child lists on parent statistics
-        for (Map.Entry<String, List<String>> entry : hierarchy.entrySet()) {
-            SamplerStatistics parentStat = statsByName.get(entry.getKey());
-            parentStat.setChildSamplerNames(entry.getValue());
+            List<String> children = new ArrayList<>();
+            for (String child : observedChildren) {
+                SamplerStatistics childStat = statsByName.get(child);
+                if (childStat == null || child.equals(parent)) continue;
+                children.add(child);
+                childStat.setParentSamplerName(parent);
+            }
+            if (!children.isEmpty()) {
+                // Nest every parent that produced sub-results, but only badge the ones that
+                // really are Transaction Controllers.
+                parentStat.setTransactionController(transactionControllerParents.contains(parent));
+                parentStat.setChildSamplerNames(children);
+                hierarchy.put(parent, children);
+            }
         }
 
         return hierarchy;
     }
 
-    private static boolean isSeparatorChar(char c) {
-        return c == '-' || c == ' ' || c == '/';
-    }
-
     /**
      * Build error summaries by grouping error records by response code.
+     *
+     * <p>The rows include transaction children — a failing child is worth showing even though
+     * its parent also counts as failed — so "% of all samples" divides by EVERY recorded
+     * sample, the population those rows are drawn from. Dividing by the top-level count
+     * instead mixed a child-inclusive numerator with a child-free denominator, which can push
+     * a row past 100% and makes the rows disagree with their own total.
      */
     private List<ErrorSummary> buildErrorSummaries() {
         long total = totalSamples.get();
@@ -317,17 +463,15 @@ public class LiveStatisticsEngine {
             return Collections.emptyList();
         }
 
-        // Group by sampler + response code
-        List<ErrorRecord> snapshot;
-        synchronized (errorRecords) {
-            snapshot = new ArrayList<>(errorRecords);
-        }
+        // Group by sampler + response code — from the UNBOUNDED aggregation (not the capped list),
+        // so counts and percentages are correct even when > MAX_ERROR_RECORDS errors occurred.
         Map<String, Long> counts = new LinkedHashMap<>();
-        Map<String, ErrorRecord> firstRecords = new LinkedHashMap<>();
-        for (ErrorRecord record : snapshot) {
-            String key = record.getSamplerName() + "|" + record.getResponseCode();
-            counts.merge(key, 1L, Long::sum);
-            firstRecords.putIfAbsent(key, record);
+        Map<String, ErrorRecord> firstRecords;
+        synchronized (errorRecords) {
+            for (Map.Entry<String, long[]> e : errorSummaryCounts.entrySet()) {
+                counts.put(e.getKey(), e.getValue()[0]);
+            }
+            firstRecords = new LinkedHashMap<>(errorSummaryFirst);
         }
 
         List<ErrorSummary> result = new ArrayList<>(counts.size());
@@ -355,12 +499,17 @@ public class LiveStatisticsEngine {
         timeBuckets.clear();
         synchronized (errorRecords) {
             errorRecords.clear();
+            errorSummaryCounts.clear();
+            errorSummaryFirst.clear();
         }
+        explicitTransactions.clear();
+        transactionControllerParents.clear();
         totalSamples.set(0);
         totalErrors.set(0);
         maxActiveThreads.set(0);
         firstTimestamp.set(Long.MAX_VALUE);
         lastTimestamp.set(Long.MIN_VALUE);
+        lastSampleEnd.set(Long.MIN_VALUE);
     }
 
     private static void updateMinLong(AtomicLong target, long value) {

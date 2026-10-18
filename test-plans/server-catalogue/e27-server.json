@@ -1,0 +1,38 @@
+{
+  "_comment": [
+    "E27 - the Server tab's catalogue fixture: two catalogue components (postgres, kafka), one assert each,",
+    "and every other catalogue metric the CSV carries collected beside them (D1), so the metric picker, the",
+    "thresholds step and Generate have this run's values to show. Read with test-plans/server-catalogue/README.md."
+  ],
+  "serverMetrics": {
+    "components": {
+      "orders-db": {
+        "type": "postgres",
+        "description": "Orders DB"
+      },
+      "events": {
+        "type": "kafka",
+        "description": "Event bus"
+      }
+    },
+    "asserts": [
+      {
+        "component": "orders-db",
+        "metric": "connections.used.pct",
+        "fail": {
+          "gt": 85
+        }
+      },
+      {
+        "component": "events",
+        "metric": "consumer.lag.max",
+        "warn": {
+          "gt": 500
+        },
+        "fail": {
+          "gt": 2000
+        }
+      }
+    ]
+  }
+}

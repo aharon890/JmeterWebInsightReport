@@ -1,0 +1,1052 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; background: #f8fafc; }
+    a { color: #3b82f6; }
+    a:hover { color: #1e293b; }
+    @keyframes wirToast { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes wirSlide { from { transform: translateX(40px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  </style>
+</helmet>
+<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #f8fafc; color: #1e293b; min-height: 100vh; line-height: 1.6; padding-bottom: 48px;">
+
+  <div style="background: #eef2ff; border-bottom: 1px solid #e2e8f0; padding: 8px 32px; font-size: 0.78rem; color: #3730a3; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+    <span style="font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.68rem; background: #3b82f6; color: #ffffff; padding: 2px 8px; border-radius: 10px;">Design prototype</span>
+    <span>Phase-2 target UI on sample run data — everything is interactive: edit rules, generate from run, download the JSON.</span>
+    <a href="Asserts Spec.dc.html" style="font-weight: 600;">Schema &amp; semantics spec &rarr;</a>
+  </div>
+
+  <header data-screen-label="Report header" style="background: #ffffff; border-bottom: 1px solid #e2e8f0; padding: 16px 32px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+    <div style="max-width: 1400px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
+      <div>
+        <h1 style="font-size: 1.5rem; font-weight: 600; margin: 0;">Web Insight Report</h1>
+        <p style="color: #64748b; font-size: 0.875rem; margin: 4px 0 0;">report-stress-test.jmx &middot; 2026-07-30 14:02 &middot; 12m 00s &middot; 50 threads</p>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <sc-if value="{{ dirtyPill }}" hint-placeholder-val="{{ false }}">
+          <span title="Draft edits change the saved file, never this badge" style="padding: 4px 10px; border-radius: 20px; font-size: 0.68rem; font-weight: 700; background: #eef2ff; color: #3730a3; border: 1px dashed #3b82f6;">{{ dirtyLabel }}</span>
+        </sc-if>
+        <span style="padding: 6px 16px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; background: {{ gatedChip.bg }}; color: {{ gatedChip.fg }};">ASSERTS {{ gatedChip.label }}</span>
+      </div>
+    </div>
+  </header>
+
+  <nav style="background: #ffffff; border-bottom: 2px solid #e2e8f0;">
+    <div style="max-width: 1400px; margin: 0 auto; padding: 0 32px; display: flex;">
+      <button onClick="{{ goSummary }}" style="padding: 12px 24px; border: none; background: none; font-size: 0.875rem; cursor: pointer; font-family: inherit; margin-bottom: -2px; font-weight: {{ tabSummaryW }}; color: {{ tabSummaryC }}; border-bottom: {{ tabSummaryB }};">Summary</button>
+      <button onClick="{{ goAsserts }}" style="padding: 12px 24px; border: none; background: none; font-size: 0.875rem; cursor: pointer; font-family: inherit; margin-bottom: -2px; font-weight: {{ tabAssertsW }}; color: {{ tabAssertsC }}; border-bottom: {{ tabAssertsB }};">Asserts</button>
+      <button onClick="{{ goSamplers }}" style="padding: 12px 24px; border: none; background: none; font-size: 0.875rem; cursor: pointer; font-family: inherit; margin-bottom: -2px; font-weight: {{ tabSamplersW }}; color: {{ tabSamplersC }}; border-bottom: {{ tabSamplersB }};">Samplers</button>
+      <button onClick="{{ goTimeline }}" style="padding: 12px 24px; border: none; background: none; font-size: 0.875rem; cursor: pointer; font-family: inherit; margin-bottom: -2px; font-weight: {{ tabTimelineW }}; color: {{ tabTimelineC }}; border-bottom: {{ tabTimelineB }};">Timeline</button>
+      <button style="padding: 12px 24px; border: none; background: none; font-size: 0.875rem; color: #cbd5e1; cursor: default; font-family: inherit;">Errors</button>
+      <button style="padding: 12px 24px; border: none; background: none; font-size: 0.875rem; color: #cbd5e1; cursor: default; font-family: inherit;">Compare</button>
+    </div>
+  </nav>
+
+  <main style="max-width: 1400px; margin: 0 auto; padding: 24px 32px;">
+
+    <sc-if value="{{ isSummary }}" hint-placeholder-val="{{ false }}">
+      <section data-screen-label="Summary — gate strip">
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-left: 4px solid {{ gateAccent }}; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 18px 22px; display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap;">
+          <div style="min-width: 190px;">
+            <div style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 6px;">Quality gate</div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="padding: 6px 16px; border-radius: 20px; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; background: {{ gatedChip.bg }}; color: {{ gatedChip.fg }};">{{ gatedChip.label }}</span>
+              <span style="font-size: 0.8rem; color: #64748b;">{{ gateDeclaredText }}</span>
+            </div>
+            <div style="display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap;">
+              <span style="padding: 2px 8px; border-radius: 4px; font-size: 0.68rem; font-weight: 700; background: #fee2e2; color: #991b1b;">{{ cFailed }}</span>
+              <span style="padding: 2px 8px; border-radius: 4px; font-size: 0.68rem; font-weight: 700; background: #fef3c7; color: #92400e;">{{ cWarned }}</span>
+              <span style="padding: 2px 8px; border-radius: 4px; font-size: 0.68rem; font-weight: 700; background: #dcfce7; color: #166534;">{{ cPassed }}</span>
+              <span style="padding: 2px 8px; border-radius: 4px; font-size: 0.68rem; font-weight: 700; background: #dbeafe; color: #1e40af;">{{ cObserved }}</span>
+            </div>
+          </div>
+          <div style="flex: 1; min-width: 320px;">
+            <div style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 6px;">Worst breaches</div>
+            <div style="display: flex; flex-direction: column; gap: 5px;">
+              <sc-for list="{{ breaches }}" as="b" hint-placeholder-count="3">
+                <div style="display: flex; align-items: baseline; gap: 8px; font-size: 0.82rem;">
+                  <span style="padding: 1px 6px; border-radius: 4px; font-size: 0.62rem; font-weight: 700; background: {{ b.chip.bg }}; color: {{ b.chip.fg }}; flex-shrink: 0;">{{ b.chip.label }}</span>
+                  <code style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.78rem; color: #1e293b;">{{ b.id }}</code>
+                  <span style="color: #64748b; font-size: 0.78rem;">{{ b.text }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <button onClick="{{ goAsserts }}" style-hover="background: #2563eb;" style="font-family: inherit; font-size: 0.82rem; font-weight: 600; background: #3b82f6; color: #ffffff; border: none; padding: 9px 16px; border-radius: 8px; cursor: pointer; align-self: center;">Open Asserts &rarr;</button>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px; margin-top: 16px;">
+          <sc-for list="{{ summaryCards }}" as="c" hint-placeholder-count="4">
+            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 16px 18px;">
+              <div style="font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; display: flex; gap: 6px; align-items: center;">{{ c.label }}
+                <sc-if value="{{ c.badge }}" hint-placeholder-val="{{ false }}"><span style="padding: 1px 6px; border-radius: 4px; font-size: 0.6rem; font-weight: 700; background: {{ c.badgeBg }}; color: {{ c.badgeFg }};">{{ c.badge }}</span></sc-if>
+              </div>
+              <div style="font-size: 1.5rem; font-weight: 700; margin-top: 2px;">{{ c.value }}</div>
+              <div style="font-size: 0.75rem; color: #94a3b8;">{{ c.sub }}</div>
+            </div>
+          </sc-for>
+        </div>
+        <p style="font-size: 0.78rem; color: #94a3b8; margin: 14px 2px 0;">The gate strip is the only Summary change — the verdict, its make-up, and the worst numbers, without opening a tab. Cards and everything below stay as they are today.</p>
+      </section>
+    </sc-if>
+
+    <sc-if value="{{ isAsserts }}" hint-placeholder-val="{{ false }}">
+      <section data-screen-label="Asserts tab" style="display: flex; flex-direction: column; gap: 16px;">
+
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 14px 18px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+          <span style="padding: 5px 14px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; background: {{ gatedChip.bg }}; color: {{ gatedChip.fg }};">{{ gatedChip.label }}</span>
+          <span style="font-size: 0.82rem; color: #64748b;">{{ gateCountsLine }}</span>
+          <label style="display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: #64748b; margin-left: auto;">Tags
+            <select value="{{ tagFilter }}" onChange="{{ onTagFilter }}" style="font-family: inherit; font-size: 0.8rem; padding: 5px 8px; border: 1px solid #e2e8f0; border-radius: 6px; background: #f8fafc; color: #1e293b;">
+              <option value="all">All rules</option>
+              <option value="smoke">smoke</option>
+              <option value="full">full</option>
+            </select>
+          </label>
+          <button onClick="{{ onOpenWizard }}" style-hover="background: #f1f5f9;" style="font-family: inherit; font-size: 0.8rem; font-weight: 600; background: #ffffff; color: #1e293b; border: 1px solid #e2e8f0; padding: 8px 14px; border-radius: 8px; cursor: pointer;">Generate from run&hellip;</button>
+          <button onClick="{{ onAddAssert }}" style-hover="background: #2563eb;" style="font-family: inherit; font-size: 0.8rem; font-weight: 600; background: #3b82f6; color: #ffffff; border: none; padding: 8px 14px; border-radius: 8px; cursor: pointer;">+ Add assert</button>
+          <div style="position: relative;">
+            <button onClick="{{ onToggleSaveMenu }}" style-hover="background: #f1f5f9;" style="font-family: inherit; font-size: 0.8rem; font-weight: 600; background: #ffffff; color: #1e293b; border: 1px solid #e2e8f0; padding: 8px 14px; border-radius: 8px; cursor: pointer;">Save &#9662;</button>
+            <sc-if value="{{ saveMenuOpen }}" hint-placeholder-val="{{ false }}">
+              <div style="position: absolute; right: 0; top: 40px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 8px 24px rgba(15,23,42,0.14); min-width: 250px; z-index: 40; overflow: hidden;">
+                <button onClick="{{ onDownload }}" style-hover="background: #f1f5f9;" style="display: block; width: 100%; text-align: left; font-family: inherit; font-size: 0.82rem; padding: 10px 14px; border: none; background: none; cursor: pointer; color: #1e293b;"><strong>Download</strong> report-annotations.json</button>
+                <button onClick="{{ onCopyFile }}" style-hover="background: #f1f5f9;" style="display: block; width: 100%; text-align: left; font-family: inherit; font-size: 0.82rem; padding: 10px 14px; border: none; background: none; cursor: pointer; color: #1e293b;">Copy whole file to clipboard</button>
+                <button onClick="{{ onCopyAsserts }}" style-hover="background: #f1f5f9;" style="display: block; width: 100%; text-align: left; font-family: inherit; font-size: 0.82rem; padding: 10px 14px; border: none; background: none; cursor: pointer; color: #1e293b;">Copy assertions array only</button>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+
+        <sc-if value="{{ dirtyPill }}" hint-placeholder-val="{{ false }}">
+          <div style="background: #eef2ff; border: 1px dashed #3b82f6; border-radius: 8px; padding: 10px 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 0.82rem; color: #3730a3;">
+            <strong>{{ dirtyLabel }}</strong>
+            <span>Verdict if saved and re-run:</span>
+            <span style="padding: 2px 10px; border-radius: 12px; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; background: {{ draftChip.bg }}; color: {{ draftChip.fg }};">{{ draftChip.label }}</span>
+            <span style="color: #64748b;">The header badge stays on the verdict this run was actually gated on.</span>
+            <button onClick="{{ onDownload }}" style="font-family: inherit; font-size: 0.76rem; font-weight: 600; background: #3b82f6; color: #ffffff; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; margin-left: auto;">Download to apply</button>
+            <button onClick="{{ onDiscard }}" style="font-family: inherit; font-size: 0.76rem; font-weight: 600; background: none; color: #3730a3; border: 1px solid #3b82f6; padding: 6px 12px; border-radius: 6px; cursor: pointer;">Discard drafts</button>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ hasRules }}" hint-placeholder-val="{{ true }}">
+          <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.82rem;">
+              <thead>
+                <tr style="background: #f8fafc;">
+                  <th style="text-align: left; padding: 10px 8px 10px 18px; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; width: 92px;">Status</th>
+                  <th style="text-align: left; padding: 10px 8px; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b;">Rule</th>
+                  <th style="text-align: left; padding: 10px 8px; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b;">Target</th>
+                  <th style="text-align: left; padding: 10px 8px; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b;">Metric</th>
+                  <th style="text-align: left; padding: 10px 8px; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b;">Criteria</th>
+                  <th style="text-align: right; padding: 10px 8px; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b;">Actual</th>
+                  <th style="text-align: center; padding: 10px 8px; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; width: 74px;">Matches</th>
+                  <th style="width: 190px;"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <sc-for list="{{ ruleRows }}" as="r" hint-placeholder-count="6">
+                  <tr style-hover="background: #f1f5f9;" style="border-top: 1px solid #e2e8f0; background: {{ r.rowBg }}; opacity: {{ r.rowOpacity }};">
+                    <td style="padding: 10px 8px 10px 18px; vertical-align: top;">
+                      <span style="padding: 2px 8px; border-radius: 4px; font-size: 0.65rem; font-weight: 700; background: {{ r.chip.bg }}; color: {{ r.chip.fg }}; white-space: nowrap;">{{ r.chip.label }}</span>
+                    </td>
+                    <td style="padding: 10px 8px; vertical-align: top;">
+                      <div style="display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap;">
+                        <code style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; font-weight: 600;">{{ r.id }}</code>
+                        <sc-if value="{{ r.draftTag }}" hint-placeholder-val="{{ false }}"><span style="padding: 1px 6px; border-radius: 4px; font-size: 0.58rem; font-weight: 700; background: #eef2ff; color: #3730a3; border: 1px dashed #3b82f6;">{{ r.draftTag }}</span></sc-if>
+                      </div>
+                      <sc-if value="{{ r.desc }}" hint-placeholder-val="{{ false }}"><div style="font-size: 0.74rem; color: #94a3b8; max-width: 300px;">{{ r.desc }}</div></sc-if>
+                    </td>
+                    <td style="padding: 10px 8px; vertical-align: top;">
+                      <div style="display: flex; gap: 6px; align-items: center;">
+                        <span style="padding: 1px 6px; border-radius: 4px; font-size: 0.58rem; font-weight: 700; background: #f1f5f9; color: #475569; letter-spacing: 0.04em; flex-shrink: 0;">{{ r.targetKind }}</span>
+                        <span title="{{ r.targetFull }}" style="font-size: 0.78rem; color: #1e293b; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 230px; display: inline-block;">{{ r.targetText }}</span>
+                      </div>
+                    </td>
+                    <td style="padding: 10px 8px; vertical-align: top; white-space: nowrap;"><code style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.78rem;">{{ r.metricText }}</code></td>
+                    <td style="padding: 10px 8px; vertical-align: top; font-size: 0.78rem; color: #475569; white-space: nowrap;">{{ r.criteriaText }}</td>
+                    <td style="padding: 10px 8px; vertical-align: top; text-align: right; white-space: nowrap; font-weight: {{ r.actualWeight }}; color: {{ r.actualColor }};">{{ r.actualText }}</td>
+                    <td style="padding: 10px 8px; vertical-align: top; text-align: center;">
+                      <sc-if value="{{ r.expandable }}" hint-placeholder-val="{{ true }}">
+                        <button onClick="{{ r.onExpand }}" style-hover="background: #eef2ff;" style="font-family: inherit; font-size: 0.74rem; font-weight: 600; color: #3b82f6; background: none; border: 1px solid #e2e8f0; border-radius: 6px; padding: 2px 8px; cursor: pointer;">{{ r.matchCount }} {{ r.expandGlyph }}</button>
+                      </sc-if>
+                      <sc-if value="{{ r.noMatch }}" hint-placeholder-val="{{ false }}"><span style="font-size: 0.72rem; color: #94a3b8;">&mdash;</span></sc-if>
+                    </td>
+                    <td style="padding: 10px 18px 10px 8px; vertical-align: top; text-align: right; white-space: nowrap;">
+                      <button onClick="{{ r.onEdit }}" style-hover="color: #1e293b;" style="font-family: inherit; font-size: 0.74rem; font-weight: 600; color: #3b82f6; background: none; border: none; cursor: pointer; padding: 2px 5px;">Edit</button>
+                      <button onClick="{{ r.onDup }}" style-hover="color: #1e293b;" style="font-family: inherit; font-size: 0.74rem; font-weight: 600; color: #64748b; background: none; border: none; cursor: pointer; padding: 2px 5px;">Duplicate</button>
+                      <button onClick="{{ r.onToggle }}" style-hover="color: #1e293b;" style="font-family: inherit; font-size: 0.74rem; font-weight: 600; color: #64748b; background: none; border: none; cursor: pointer; padding: 2px 5px;">{{ r.toggleLabel }}</button>
+                      <button onClick="{{ r.onDel }}" style-hover="color: #991b1b;" style="font-family: inherit; font-size: 0.74rem; font-weight: 600; color: #94a3b8; background: none; border: none; cursor: pointer; padding: 2px 5px;">Delete</button>
+                    </td>
+                  </tr>
+                  <sc-if value="{{ r.showUnmatchedNote }}" hint-placeholder-val="{{ false }}">
+                    <tr style="background: #fffbeb;">
+                      <td></td>
+                      <td colspan="7" style="padding: 6px 18px 10px 8px; font-size: 0.76rem; color: #92400e; border-left: 3px dashed #f59e0b;">Matched nothing in this run &mdash; the gate never executed (onMissing: {{ r.onMissingText }}). {{ r.suggestion }}</td>
+                    </tr>
+                  </sc-if>
+                  <sc-if value="{{ r.expanded }}" hint-placeholder-val="{{ false }}">
+                    <tr style="background: #f8fafc;">
+                      <td></td>
+                      <td colspan="7" style="padding: 4px 18px 12px 8px;">
+                        <div style="display: flex; flex-direction: column; gap: 3px; border-left: 3px solid #e2e8f0; padding-left: 12px;">
+                          <sc-for list="{{ r.matches }}" as="m" hint-placeholder-count="2">
+                            <div style="display: flex; align-items: center; gap: 10px; font-size: 0.78rem;">
+                              <span style="padding: 1px 6px; border-radius: 4px; font-size: 0.6rem; font-weight: 700; background: {{ m.chip.bg }}; color: {{ m.chip.fg }}; width: 58px; text-align: center; flex-shrink: 0;">{{ m.chip.label }}</span>
+                              <span title="{{ m.nameFull }}" style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.75rem; color: #475569; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 480px;">{{ m.name }}</span>
+                              <span style="color: #1e293b; font-weight: 600; margin-left: auto;">{{ m.actualText }}</span>
+                            </div>
+                          </sc-for>
+                        </div>
+                      </td>
+                    </tr>
+                  </sc-if>
+                </sc-for>
+              </tbody>
+            </table>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ noRules }}" hint-placeholder-val="{{ false }}">
+          <div style="background: #ffffff; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 48px 24px; text-align: center;">
+            <div style="font-size: 1.05rem; font-weight: 600;">No asserts declared</div>
+            <p style="font-size: 0.85rem; color: #64748b; max-width: 460px; margin: 6px auto 18px;">This run was reported, not judged. Declare what matters &mdash; only declared checks ever decide a verdict.</p>
+            <div style="display: flex; gap: 10px; justify-content: center;">
+              <button onClick="{{ onAddAssert }}" style="font-family: inherit; font-size: 0.82rem; font-weight: 600; background: #3b82f6; color: #ffffff; border: none; padding: 9px 16px; border-radius: 8px; cursor: pointer;">+ Add your first assert</button>
+              <button onClick="{{ onOpenWizard }}" style="font-family: inherit; font-size: 0.82rem; font-weight: 600; background: #ffffff; color: #1e293b; border: 1px solid #e2e8f0; padding: 9px 16px; border-radius: 8px; cursor: pointer;">Generate from this run&hellip;</button>
+            </div>
+          </div>
+        </sc-if>
+
+        <p style="font-size: 0.76rem; color: #94a3b8; margin: 0 2px;">The report is one self-contained file &mdash; it cannot write to disk. Save downloads the whole annotations document (notes, markers and unknown keys preserved) or copies it; drop it next to the JTL and the next run gates on it.</p>
+      </section>
+    </sc-if>
+
+    <sc-if value="{{ isSamplers }}" hint-placeholder-val="{{ false }}">
+      <section data-screen-label="Samplers tab">
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow-x: auto;">
+          <div style="padding: 12px 18px 0; font-size: 0.78rem; color: #94a3b8;">Hover any number for <strong style="color: #3b82f6;">&oplus; assert this</strong> &middot; click a badge to see which rules judged that sampler.</div>
+          <table style="width: 100%; border-collapse: collapse; font-size: 0.78rem; margin-top: 8px;">
+            <thead>
+              <tr style="background: #f8fafc;">
+                <th style="text-align: left; padding: 8px 8px 8px 18px; font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b;">Sampler</th>
+                <sc-for list="{{ colHeads }}" as="h" hint-placeholder-count="8">
+                  <th style="text-align: right; padding: 8px 8px; font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; white-space: nowrap;">{{ h }}</th>
+                </sc-for>
+              </tr>
+            </thead>
+            <tbody>
+              <sc-for list="{{ samplerRows }}" as="s" hint-placeholder-count="6">
+                <tr style-hover="background: #f1f5f9;" style="border-top: 1px solid #e2e8f0;">
+                  <td style="padding: 7px 8px 7px 18px; max-width: 340px;">
+                    <div style="display: flex; align-items: center; gap: 7px;">
+                      <sc-if value="{{ s.hasBadge }}" hint-placeholder-val="{{ false }}">
+                        <button onClick="{{ s.onBadge }}" title="Which rules judged this sampler" style="padding: 1px 6px; border-radius: 4px; font-size: 0.6rem; font-weight: 700; background: {{ s.badgeBg }}; color: {{ s.badgeFg }}; border: none; cursor: pointer; font-family: inherit; flex-shrink: 0;">{{ s.badgeLabel }}</button>
+                      </sc-if>
+                      <span title="{{ s.nameFull }}" style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.74rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ s.name }}</span>
+                    </div>
+                  </td>
+                  <sc-for list="{{ s.cells }}" as="c" hint-placeholder-count="8">
+                    <td style="padding: 7px 8px; text-align: right; white-space: nowrap;">
+                      <span style="display: inline-flex; align-items: center; gap: 3px;">{{ c.text }}
+                        <button onClick="{{ c.onAssert }}" title="{{ c.title }}" style-hover="opacity: 1; color: #3b82f6;" style="opacity: 0.18; font-family: inherit; font-size: 0.85rem; font-weight: 700; color: #64748b; background: none; border: none; cursor: pointer; padding: 0 1px; line-height: 1;">&oplus;</button>
+                      </span>
+                    </td>
+                  </sc-for>
+                </tr>
+                <sc-if value="{{ s.expanded }}" hint-placeholder-val="{{ false }}">
+                  <tr style="background: #f8fafc;">
+                    <td colspan="12" style="padding: 6px 18px 12px 32px;">
+                      <div style="border-left: 3px solid #e2e8f0; padding-left: 12px; display: flex; flex-direction: column; gap: 3px;">
+                        <sc-if value="{{ s.noJudged }}" hint-placeholder-val="{{ false }}"><span style="font-size: 0.76rem; color: #94a3b8;">No rules target this sampler &mdash; it is reported, not judged. Use &oplus; on a metric to add one.</span></sc-if>
+                        <sc-for list="{{ s.judged }}" as="j" hint-placeholder-count="1">
+                          <div style="display: flex; align-items: center; gap: 10px; font-size: 0.76rem;">
+                            <span style="padding: 1px 6px; border-radius: 4px; font-size: 0.6rem; font-weight: 700; background: {{ j.chip.bg }}; color: {{ j.chip.fg }}; width: 58px; text-align: center; flex-shrink: 0;">{{ j.chip.label }}</span>
+                            <code style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.72rem;">{{ j.ruleId }}</code>
+                            <span style="color: #64748b;">{{ j.line }}</span>
+                          </div>
+                        </sc-for>
+                      </div>
+                    </td>
+                  </tr>
+                </sc-if>
+              </sc-for>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </sc-if>
+
+    <sc-if value="{{ isTimeline }}" hint-placeholder-val="{{ false }}">
+      <section data-screen-label="Timeline tab — assert from chart" style="display: flex; flex-direction: column; gap: 16px;">
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 16px 18px;">
+          <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+            <div>
+              <div style="font-size: 0.9rem; font-weight: 600;">Throughput over time &mdash; whole run</div>
+              <div style="font-size: 0.74rem; color: #94a3b8;">req/s per 20s bucket &middot; threshold lines are the rules themselves</div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; margin-left: auto;">
+              <span style="padding: 2px 8px; border-radius: 4px; font-size: 0.62rem; font-weight: 700; background: {{ chStatusChip.bg }}; color: {{ chStatusChip.fg }};">{{ chStatusChip.label }}</span>
+              <span style="font-size: 0.76rem; color: #64748b;">{{ chStatusText }}</span>
+              <button onClick="{{ onTogglePlace }}" style-hover="background: #2563eb; color: #ffffff;" style="font-family: inherit; font-size: 0.78rem; font-weight: 600; background: {{ chPlaceBg }}; color: {{ chPlaceFg }}; border: 1px solid #3b82f6; padding: 7px 13px; border-radius: 8px; cursor: pointer;">{{ chPlaceLabel }}</button>
+            </div>
+          </div>
+          <div style="overflow-x: auto; margin-top: 10px;">
+            <svg width="820" height="240" onMouseMove="{{ onChartMove }}" onMouseUp="{{ onChartUp }}" onMouseLeave="{{ onChartLeave }}" style="display: block; cursor: {{ chCursor }}; user-select: none;">
+              <sc-for list="{{ chGrid }}" as="g" hint-placeholder-count="6">
+                <line x1="46" x2="730" y1="{{ g.y }}" y2="{{ g.y }}" stroke="#f1f5f9" stroke-width="1"></line>
+                <text x="38" y="{{ g.ty }}" text-anchor="end" font-size="10" fill="#94a3b8" font-family="ui-monospace, Menlo, monospace">{{ g.label }}</text>
+              </sc-for>
+              <sc-for list="{{ chXLabels }}" as="g" hint-placeholder-count="3">
+                <text x="{{ g.x }}" y="232" text-anchor="middle" font-size="10" fill="#94a3b8" font-family="ui-monospace, Menlo, monospace">{{ g.label }}</text>
+              </sc-for>
+              <path d="{{ chArea }}" fill="rgba(59,130,246,0.08)"></path>
+              <path d="{{ chLine }}" fill="none" stroke="#3b82f6" stroke-width="2"></path>
+              <line x1="46" x2="730" y1="{{ chAggY }}" y2="{{ chAggY }}" stroke="#22c55e" stroke-width="1" stroke-dasharray="2 3"></line>
+              <text x="50" y="{{ chAggTy }}" font-size="9" fill="#166534" font-family="ui-monospace, Menlo, monospace">run aggregate {{ chAggLabel }}</text>
+              <sc-if value="{{ chHasRule }}" hint-placeholder-val="{{ true }}">
+                <line x1="46" x2="730" y1="{{ chFailY }}" y2="{{ chFailY }}" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="6 4"></line>
+                <text x="50" y="{{ chFailTy }}" font-size="9" font-weight="700" fill="#991b1b" font-family="ui-monospace, Menlo, monospace">{{ chRuleId }}</text>
+                <g onMouseDown="{{ onHandleDown }}" style="cursor: grab;">
+                  <rect x="734" y="{{ chHandleY }}" width="84" height="34" rx="5" fill="#fee2e2" stroke="#ef4444" stroke-width="1"></rect>
+                  <text x="776" y="{{ chHandleTy1 }}" text-anchor="middle" font-size="9.5" font-weight="700" fill="#991b1b" font-family="ui-monospace, Menlo, monospace">fail {{ chFailOp }} {{ chFailVal }} /s</text>
+                  <text x="776" y="{{ chHandleTy2 }}" text-anchor="middle" font-size="8.5" fill="#991b1b" font-family="ui-monospace, Menlo, monospace">&#8597; drag to retune</text>
+                </g>
+              </sc-if>
+              <sc-if value="{{ chGhostShow }}" hint-placeholder-val="{{ false }}">
+                <line x1="46" x2="730" y1="{{ chGhostY }}" y2="{{ chGhostY }}" stroke="#3b82f6" stroke-width="1.5" stroke-dasharray="4 4" pointer-events="none"></line>
+                <text x="52" y="{{ chGhostTy }}" font-size="10" font-weight="700" fill="#1d4ed8" font-family="ui-monospace, Menlo, monospace" pointer-events="none">{{ chGhostLabel }}</text>
+              </sc-if>
+            </svg>
+          </div>
+          <div style="font-size: 0.76rem; color: #64748b; margin-top: 8px;">{{ chBreachNote }}</div>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px;">
+          <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+            <div style="font-weight: 600; font-size: 0.85rem;">Drag the line = retune the rule</div>
+            <p style="font-size: 0.76rem; color: #64748b; margin: 4px 0 0;">The red line <em>is</em> <code style="font-family: ui-monospace, Menlo, monospace;">run-throughput</code>'s fail band. Release to keep &mdash; it becomes a draft edit like any other: EDITED marker, unsaved pill, verdict recomputed, saved on download. In the real report this is an ECharts <code style="font-family: ui-monospace, Menlo, monospace;">graphic</code> drag handle on the existing markLine.</p>
+          </div>
+          <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+            <div style="font-weight: 600; font-size: 0.85rem;">Place a new assert on the chart</div>
+            <p style="font-size: 0.76rem; color: #64748b; margin: 4px 0 0;"><strong>+ Assert from chart</strong>, click a level &mdash; the editor opens seeded with that value. In phase 2 the rule still gates the <em>run aggregate</em> (green line), not each bucket; the chart makes that distinction visible instead of hiding it. Clicking a series point seeds that sampler + metric the same way.</p>
+          </div>
+          <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+            <div style="font-weight: 600; font-size: 0.85rem;">Phase 3 &mdash; the time axis becomes assertable</div>
+            <p style="font-size: 0.76rem; color: #64748b; margin: 4px 0 6px;">Server metrics (CPU, lag, heap) are pure time series &mdash; chart-drag becomes their primary authoring surface, and an <code style="font-family: ui-monospace, Menlo, monospace;">over</code> clause folds the series into the judged scalar:</p>
+            <pre style="background: #0f172a; color: #cbd5e1; border-radius: 6px; padding: 8px 10px; font-family: ui-monospace, Menlo, monospace; font-size: 0.66rem; line-height: 1.6; margin: 0; overflow-x: auto;">"target": { "source": "prometheus",
+  "metric": "container_cpu_usage_seconds" },
+"fail": { "gt": 85 },
+"over": { "sustainedFor": "60s" }</pre>
+          </div>
+        </div>
+      </section>
+    </sc-if>
+  </main>
+
+  <sc-if value="{{ editorOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ onEdCancel }}" style="position: fixed; inset: 0; background: rgba(15,23,42,0.32); z-index: 50;"></div>
+    <div data-screen-label="Assert editor" style="position: fixed; top: 0; right: 0; bottom: 0; width: 470px; max-width: 92vw; background: #ffffff; box-shadow: -12px 0 32px rgba(15,23,42,0.18); z-index: 51; display: flex; flex-direction: column; animation: wirSlide 0.18s ease-out;">
+      <div style="padding: 16px 22px; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between;">
+        <div style="font-size: 1rem; font-weight: 600;">{{ edTitle }}</div>
+        <button onClick="{{ onEdCancel }}" style="font-family: inherit; font-size: 1.1rem; color: #64748b; background: none; border: none; cursor: pointer;">&times;</button>
+      </div>
+      <div style="flex: 1; overflow-y: auto; padding: 18px 22px; display: flex; flex-direction: column; gap: 18px;">
+
+        <div>
+          <div style="font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 7px;">Target</div>
+          <div style="display: flex; gap: 0; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+            <sc-for list="{{ modeBtns }}" as="m" hint-placeholder-count="4">
+              <button onClick="{{ m.onPick }}" style="flex: 1; font-family: inherit; font-size: 0.74rem; padding: 8px 4px; border: none; cursor: pointer; background: {{ m.bg }}; color: {{ m.fg }}; font-weight: {{ m.w }};">{{ m.label }}</button>
+            </sc-for>
+          </div>
+          <sc-if value="{{ edShowSamplerSelect }}" hint-placeholder-val="{{ false }}">
+            <select value="{{ edSampler }}" onChange="{{ onEdSampler }}" style="width: 100%; margin-top: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.76rem; padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; color: #1e293b;">
+              <sc-for list="{{ samplerOptions }}" as="o" hint-placeholder-count="4"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+            </select>
+            <div style="font-size: 0.72rem; color: #94a3b8; margin-top: 5px;">Names come from the loaded run &mdash; naming a sampler also reaches hidden rows and transaction children.</div>
+          </sc-if>
+          <sc-if value="{{ edShowSamplersChecks }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-top: 10px; border: 1px solid #e2e8f0; border-radius: 8px; max-height: 150px; overflow-y: auto; padding: 6px 10px; display: flex; flex-direction: column; gap: 2px;">
+              <sc-for list="{{ samplerChecks }}" as="o" hint-placeholder-count="5">
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 0.74rem; cursor: pointer;">
+                  <input type="checkbox" checked="{{ o.checked }}" onChange="{{ o.onToggle }}" />
+                  <span title="{{ o.nameFull }}" style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.72rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ o.label }}</span>
+                </label>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{ edShowPattern }}" hint-placeholder-val="{{ false }}">
+            <input value="{{ edPattern }}" onInput="{{ onEdPattern }}" placeholder="GET /api/*   or   regex:^POST /(a|b)" style="width: 100%; box-sizing: border-box; margin-top: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.78rem; padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; color: #1e293b;" />
+            <input value="{{ edExclude }}" onInput="{{ onEdExclude }}" placeholder="exclude (comma-separated globs), e.g. GET /health, *.ico" style="width: 100%; box-sizing: border-box; margin-top: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.74rem; padding: 7px 10px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; color: #64748b;" />
+            <div style="font-size: 0.72rem; color: #94a3b8; margin-top: 5px;">Patterns see top-level, non-hidden samplers. Glob by default; prefix with regex: for full power.</div>
+          </sc-if>
+          <sc-if value="{{ edShowOverallNote }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size: 0.74rem; color: #64748b; margin-top: 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px;">Gates the run as a whole &mdash; merged-distribution percentiles, total throughput, overall error rate, apdex.</div>
+          </sc-if>
+          <sc-if value="{{ edMatchesShow }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-top: 10px; border: 1px solid {{ edMatchesBorder }}; background: {{ edMatchesBg }}; border-radius: 8px; padding: 8px 12px;">
+              <div style="font-size: 0.72rem; font-weight: 700; color: {{ edMatchesColor }};">{{ edMatchesText }}</div>
+              <sc-for list="{{ edMatchNames }}" as="n" hint-placeholder-count="2">
+                <div style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.7rem; color: #475569; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ n }}</div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+
+        <div>
+          <div style="font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 7px;">Metric</div>
+          <select value="{{ edMetric }}" onChange="{{ onEdMetric }}" style="width: 100%; font-family: inherit; font-size: 0.82rem; padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; color: #1e293b;">
+            <sc-for list="{{ metricOptions }}" as="o" hint-placeholder-count="8"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+          </select>
+        </div>
+
+        <div>
+          <div style="display: flex; align-items: baseline; justify-content: space-between;">
+            <div style="font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 7px;">Criteria</div>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.74rem; color: #475569; cursor: pointer;">
+              <input type="checkbox" checked="{{ edObserve }}" onChange="{{ onEdObserve }}" /> Observe only (never gates)
+            </label>
+          </div>
+          <sc-if value="{{ edBandsOn }}" hint-placeholder-val="{{ true }}">
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <sc-if value="{{ edWarnOn }}" hint-placeholder-val="{{ true }}">
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <span style="width: 44px; font-size: 0.72rem; font-weight: 700; color: #92400e; background: #fef3c7; border-radius: 4px; text-align: center; padding: 3px 0;">WARN</span>
+                  <span style="font-size: 0.76rem; color: #64748b;">if</span>
+                  <select value="{{ edWarnOp }}" onChange="{{ onEdWarnOp }}" style="font-family: inherit; font-size: 0.82rem; padding: 7px 8px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc;">
+                    <sc-for list="{{ opOptions }}" as="o" hint-placeholder-count="4"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+                  </select>
+                  <input value="{{ edWarnVal }}" onInput="{{ onEdWarnVal }}" style="flex: 1; width: 60px; font-family: inherit; font-size: 0.85rem; padding: 7px 10px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc;" />
+                  <span style="font-size: 0.76rem; color: #94a3b8; min-width: 24px;">{{ edUnit }}</span>
+                  <button onClick="{{ onWarnRemove }}" title="Remove warn band" style="font-family: inherit; font-size: 0.9rem; color: #94a3b8; background: none; border: none; cursor: pointer;">&times;</button>
+                </div>
+              </sc-if>
+              <sc-if value="{{ edWarnOff }}" hint-placeholder-val="{{ false }}">
+                <button onClick="{{ onWarnAdd }}" style="align-self: flex-start; font-family: inherit; font-size: 0.74rem; font-weight: 600; color: #92400e; background: none; border: 1px dashed #f59e0b; border-radius: 6px; padding: 4px 10px; cursor: pointer;">+ Warn band</button>
+              </sc-if>
+              <sc-if value="{{ edFailOn }}" hint-placeholder-val="{{ true }}">
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <span style="width: 44px; font-size: 0.72rem; font-weight: 700; color: #991b1b; background: #fee2e2; border-radius: 4px; text-align: center; padding: 3px 0;">FAIL</span>
+                  <span style="font-size: 0.76rem; color: #64748b;">if</span>
+                  <select value="{{ edFailOp }}" onChange="{{ onEdFailOp }}" style="font-family: inherit; font-size: 0.82rem; padding: 7px 8px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc;">
+                    <sc-for list="{{ opOptions }}" as="o" hint-placeholder-count="4"><option value="{{ o.v }}">{{ o.label }}</option></sc-for>
+                  </select>
+                  <input value="{{ edFailVal }}" onInput="{{ onEdFailVal }}" style="flex: 1; width: 60px; font-family: inherit; font-size: 0.85rem; padding: 7px 10px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc;" />
+                  <span style="font-size: 0.76rem; color: #94a3b8; min-width: 24px;">{{ edUnit }}</span>
+                  <button onClick="{{ onFailRemove }}" title="Remove fail band" style="font-family: inherit; font-size: 0.9rem; color: #94a3b8; background: none; border: none; cursor: pointer;">&times;</button>
+                </div>
+              </sc-if>
+              <sc-if value="{{ edFailOff }}" hint-placeholder-val="{{ false }}">
+                <button onClick="{{ onFailAdd }}" style="align-self: flex-start; font-family: inherit; font-size: 0.74rem; font-weight: 600; color: #991b1b; background: none; border: 1px dashed #ef4444; border-radius: 6px; padding: 4px 10px; cursor: pointer;">+ Fail band</button>
+              </sc-if>
+              <div style="font-size: 0.72rem; color: #94a3b8;">{{ edBandNote }}</div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ edObserve }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size: 0.74rem; color: #1e40af; background: #dbeafe; border-radius: 8px; padding: 8px 12px;">Value is recorded in the report, the CI/CD JSON and JUnit &mdash; but never affects the verdict. Useful while converging on a threshold.</div>
+          </sc-if>
+        </div>
+
+        <div style="border: 1px dashed #3b82f6; background: #f8fafc; border-radius: 8px; padding: 10px 14px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #3730a3;">Preview &mdash; unsaved</span>
+            <span style="padding: 2px 10px; border-radius: 12px; font-size: 0.66rem; font-weight: 700; text-transform: uppercase; background: {{ edPrevChip.bg }}; color: {{ edPrevChip.fg }};">{{ edPrevChip.label }}</span>
+            <span style="font-size: 0.72rem; color: #64748b;">against this run, as you type</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 3px; margin-top: 7px;">
+            <sc-for list="{{ edPrevRows }}" as="p" hint-placeholder-count="2">
+              <div style="display: flex; align-items: center; gap: 8px; font-size: 0.76rem;">
+                <span style="padding: 1px 6px; border-radius: 4px; font-size: 0.58rem; font-weight: 700; background: {{ p.chip.bg }}; color: {{ p.chip.fg }}; width: 56px; text-align: center; flex-shrink: 0;">{{ p.chip.label }}</span>
+                <span title="{{ p.nameFull }}" style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.7rem; color: #475569; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;">{{ p.name }}</span>
+                <span style="font-weight: 600;">{{ p.actualText }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <label style="font-size: 0.72rem; color: #64748b; font-weight: 600;">Rule id
+            <input value="{{ edId }}" onInput="{{ onEdId }}" placeholder="{{ edIdAuto }}" style="width: 100%; box-sizing: border-box; margin-top: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.78rem; padding: 7px 10px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; font-weight: 400;" />
+          </label>
+          <label style="font-size: 0.72rem; color: #64748b; font-weight: 600;">If target matches nothing
+            <select value="{{ edOnMissing }}" onChange="{{ onEdOnMissing }}" style="width: 100%; margin-top: 4px; font-family: inherit; font-size: 0.8rem; padding: 7px 8px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; font-weight: 400;">
+              <option value="fail">fail (default) — gate did not run</option>
+              <option value="warn">warn</option>
+              <option value="skip">skip silently</option>
+            </select>
+          </label>
+          <label style="font-size: 0.72rem; color: #64748b; font-weight: 600; grid-column: 1 / -1;">Description
+            <input value="{{ edDesc }}" onInput="{{ onEdDesc }}" placeholder="carried into failure messages and JUnit" style="width: 100%; box-sizing: border-box; margin-top: 4px; font-family: inherit; font-size: 0.8rem; padding: 7px 10px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; font-weight: 400;" />
+          </label>
+          <label style="font-size: 0.72rem; color: #64748b; font-weight: 600;">Tags
+            <input value="{{ edTags }}" onInput="{{ onEdTags }}" placeholder="smoke, full" style="width: 100%; box-sizing: border-box; margin-top: 4px; font-family: inherit; font-size: 0.8rem; padding: 7px 10px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; font-weight: 400;" />
+          </label>
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 0.78rem; color: #1e293b; align-self: end; padding-bottom: 8px; cursor: pointer;">
+            <input type="checkbox" checked="{{ edEnabled }}" onChange="{{ onEdEnabled }}" /> Enabled
+          </label>
+        </div>
+      </div>
+      <div style="padding: 14px 22px; border-top: 1px solid #e2e8f0; display: flex; align-items: center; gap: 10px;">
+        <sc-if value="{{ edError }}" hint-placeholder-val="{{ false }}"><span style="font-size: 0.74rem; color: #991b1b; flex: 1;">{{ edError }}</span></sc-if>
+        <sc-if value="{{ edNoError }}" hint-placeholder-val="{{ true }}"><span style="flex: 1;"></span></sc-if>
+        <button onClick="{{ onEdCancel }}" style="font-family: inherit; font-size: 0.82rem; font-weight: 600; background: #ffffff; color: #1e293b; border: 1px solid #e2e8f0; padding: 9px 16px; border-radius: 8px; cursor: pointer;">Cancel</button>
+        <button onClick="{{ onEdSave }}" disabled="{{ edInvalid }}" style="font-family: inherit; font-size: 0.82rem; font-weight: 600; background: {{ edSaveBg }}; color: #ffffff; border: none; padding: 9px 18px; border-radius: 8px; cursor: pointer;">{{ edSaveLabel }}</button>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ wizardOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ onWzCancel }}" style="position: fixed; inset: 0; background: rgba(15,23,42,0.32); z-index: 50;"></div>
+    <div data-screen-label="Generate from run wizard" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 580px; max-width: 94vw; max-height: 90vh; overflow-y: auto; background: #ffffff; border-radius: 12px; box-shadow: 0 24px 64px rgba(15,23,42,0.28); z-index: 51; padding: 22px 26px;">
+      <div style="font-size: 1.05rem; font-weight: 600;">Generate asserts from this run</div>
+      <p style="font-size: 0.8rem; color: #64748b; margin: 4px 0 16px;">Seeds a credible gate from observed values; prune and tighten afterwards. Added as drafts &mdash; nothing is saved until you download.</p>
+      <div style="display: flex; flex-direction: column; gap: 16px;">
+        <div>
+          <div style="font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 6px;">Shape</div>
+          <div style="display: flex; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+            <sc-for list="{{ wzModeBtns }}" as="m" hint-placeholder-count="2">
+              <button onClick="{{ m.onPick }}" style="flex: 1; font-family: inherit; font-size: 0.76rem; padding: 9px 6px; border: none; cursor: pointer; background: {{ m.bg }}; color: {{ m.fg }}; font-weight: {{ m.w }};">{{ m.label }}</button>
+            </sc-for>
+          </div>
+          <div style="font-size: 0.72rem; color: #94a3b8; margin-top: 5px;">{{ wzModeNote }}</div>
+        </div>
+        <div>
+          <div style="font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 6px;">Metrics</div>
+          <div style="display: flex; gap: 14px; flex-wrap: wrap;">
+            <sc-for list="{{ wzMetrics }}" as="m" hint-placeholder-count="5">
+              <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; cursor: pointer;">
+                <input type="checkbox" checked="{{ m.checked }}" onChange="{{ m.onToggle }}" /> <code style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.76rem;">{{ m.label }}</code>
+              </label>
+            </sc-for>
+          </div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px;">
+          <label style="font-size: 0.74rem; color: #64748b; font-weight: 600;">Headroom over observed: <strong style="color: #1e293b;">+{{ wzHeadroom }}%</strong>
+            <input type="range" min="5" max="50" step="5" value="{{ wzHeadroom }}" onInput="{{ onWzHeadroom }}" style="width: 100%; margin-top: 6px;" />
+          </label>
+          <label style="font-size: 0.74rem; color: #64748b; font-weight: 600;">Warn at <strong style="color: #1e293b;">{{ wzWarnPct }}%</strong> of fail
+            <input type="range" min="60" max="95" step="5" value="{{ wzWarnPct }}" onInput="{{ onWzWarnPct }}" style="width: 100%; margin-top: 6px;" />
+          </label>
+        </div>
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px;">
+          <div style="font-size: 0.72rem; font-weight: 700; color: #475569;">{{ wzPreviewText }}</div>
+          <div style="display: flex; flex-direction: column; gap: 2px; margin-top: 6px;">
+            <sc-for list="{{ wzSample }}" as="l" hint-placeholder-count="3">
+              <code style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.7rem; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ l }}</code>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+      <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+        <button onClick="{{ onWzCancel }}" style="font-family: inherit; font-size: 0.82rem; font-weight: 600; background: #ffffff; color: #1e293b; border: 1px solid #e2e8f0; padding: 9px 16px; border-radius: 8px; cursor: pointer;">Cancel</button>
+        <button onClick="{{ onWzAdd }}" style="font-family: inherit; font-size: 0.82rem; font-weight: 600; background: #3b82f6; color: #ffffff; border: none; padding: 9px 18px; border-radius: 8px; cursor: pointer;">{{ wzAddLabel }}</button>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ toastMsg }}" hint-placeholder-val="{{ false }}">
+    <div style="position: fixed; bottom: 22px; right: 22px; background: #0f172a; color: #f8fafc; font-size: 0.82rem; padding: 10px 18px; border-radius: 8px; box-shadow: 0 8px 24px rgba(15,23,42,0.3); z-index: 60; animation: wirToast 0.2s ease-out;">{{ toastMsg }}</div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;: {&quot;width&quot;: 1440, &quot;height&quot;: 900}, &quot;initialTab&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;asserts&quot;, &quot;summary&quot;, &quot;samplers&quot;], &quot;default&quot;: &quot;asserts&quot;, &quot;tsType&quot;: &quot;'asserts' | 'summary' | 'samplers'&quot;, &quot;section&quot;: &quot;Demo&quot;}}">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    const S = [
+      { name: 'POST /api/auth/login', count: 4200, err: 12, mean: 215, med: 190, p75: 260, p90: 320, p95: 380, p99: 540, p999: 820, min: 45, max: 890, std: 95, tput: 5.8, apdex: 0.96 },
+      { name: 'GET /health', count: 1800, err: 0, mean: 42, med: 38, p75: 52, p90: 65, p95: 78, p99: 96, p999: 130, min: 12, max: 140, std: 18, tput: 2.5, apdex: 1.0 },
+      { name: 'POST /api/v2/enterprise/checkout/payment-gateway/process-transaction', count: 3600, err: 54, mean: 480, med: 420, p75: 560, p90: 690, p95: 812, p99: 1240, p999: 1980, min: 120, max: 2100, std: 210, tput: 5.0, apdex: 0.78 },
+      { name: 'POST /api/batch/import-products-from-csv-with-validation-and-enrichment', count: 900, err: 31, mean: 720, med: 650, p75: 820, p90: 980, p95: 1150, p99: 1480, p999: 2260, min: 200, max: 2400, std: 260, tput: 1.25, apdex: 0.61 },
+      { name: 'GET /api/v2/marketplace/sellers/{sellerId}/products/search?status=active&minRating=4.5&verified=true', count: 5200, err: 89, mean: 540, med: 470, p75: 640, p90: 790, p95: 920, p99: 1310, p999: 2650, min: 90, max: 2800, std: 240, tput: 7.2, apdex: 0.72 },
+      { name: 'POST /api/integrations/third-party/webhook-callback-handler/process-event', count: 2400, err: 41, mean: 390, med: 340, p75: 460, p90: 580, p95: 660, p99: 940, p999: 1450, min: 80, max: 1600, std: 150, tput: 3.3, apdex: 0.85 },
+      { name: 'GET /api/products/{id}', count: 6800, err: 14, mean: 130, med: 110, p75: 160, p90: 210, p95: 260, p99: 380, p999: 640, min: 30, max: 720, std: 70, tput: 9.4, apdex: 0.98 },
+      { name: 'GET /favicon.ico', count: 950, err: 2, mean: 28, med: 24, p75: 34, p90: 45, p95: 55, p99: 78, p999: 110, min: 8, max: 120, std: 12, tput: 1.3, apdex: 1.0 }
+    ];
+    S.forEach(s => { s.errRate = s.count ? (s.err / s.count) * 100 : 0; });
+    this.S = S;
+    this.OV = { totalSamples: 25850, errorRate: 0.94, duration: 720, maxThreads: 50, mean: 320, median: 280, p90: 720, p95: 890, p99: 1290, p999: 2210, throughput: 35.9, apdex: 0.84 };
+    this.buckets = [31, 33, 36, 38, 40, 41, 39, 37, 36, 34, 32, 29, 27, 26, 28, 31, 34, 36, 38, 39, 40, 41, 40, 38, 37, 36, 35, 34, 33, 32, 33, 34, 36, 37, 38, 36];
+    const R = (o) => Object.assign({ onMissing: 'fail', enabled: true, observe: false, tags: [], origin: 'file', draftState: null, description: '' }, o);
+    this.state = {
+      tab: props.initialTab === 'summary' || props.initialTab === 'samplers' ? props.initialTab : 'asserts',
+      rules: [
+        R({ id: 'checkout-p95', description: 'Payment gateway limit from contract §4.2', target: { sampler: S[2].name }, metric: 'p95', warn: { op: 'gt', val: 650 }, fail: { op: 'gt', val: 800 }, tags: ['smoke', 'full'] }),
+        R({ id: 'api-error-rate', description: 'No API family may exceed 5% errors', target: { match: 'POST /api/*' }, metric: 'errorRate', warn: { op: 'gt', val: 2 }, fail: { op: 'gt', val: 5 }, tags: ['full'] }),
+        R({ id: 'run-throughput', target: { scope: 'overall' }, metric: 'throughput', fail: { op: 'lt', val: 30 }, tags: ['smoke'] }),
+        R({ id: 'run-apdex', target: { scope: 'overall' }, metric: 'apdex', warn: { op: 'lt', val: 0.85 }, fail: { op: 'lt', val: 0.7 } }),
+        R({ id: 'health-p99', description: 'No warn band — straight to fail', target: { sampler: 'GET /health' }, metric: 'p99', fail: { op: 'gt', val: 150 } }),
+        R({ id: 'carts-p90', description: 'Typo demo: sampler did not run', target: { sampler: 'POST /api/carts/add-item' }, metric: 'p90', fail: { op: 'gt', val: 400 } }),
+        R({ id: 'search-tail', description: 'Watching the tail while we converge', target: { match: 'GET /api/v2/marketplace/*' }, metric: 'p99.9', observe: true })
+      ],
+      deletions: 0, tagFilter: 'all',
+      expandedRule: null, expandedSampler: null, saveMenuOpen: false, toast: '',
+      chart: { drag: false, place: false, pending: null, hover: null },
+      editor: null, wizard: null
+    };
+    this.gatedSnapshot = this.gate(this.state.rules.map(r => this.evalRule(r)));
+  }
+
+  // ---- reference evaluation algorithm (mirrors the Java engine) ----
+  isMs(m) { return /^p\d/.test(m) || ['mean', 'median', 'min', 'max', 'stdDev'].includes(m); }
+  unit(m) { if (this.isMs(m)) return 'ms'; if (m === 'errorRate') return '%'; if (m === 'throughput') return '/s'; if (m === 'duration') return 's'; return ''; }
+  sVal(st, m) {
+    const map = { sampleCount: st.count, errorCount: st.err, errorRate: st.errRate, mean: st.mean, median: st.med, 'p50': st.med, 'p75': st.p75, 'p90': st.p90, 'p95': st.p95, 'p99': st.p99, 'p99.9': st.p999, min: st.min, max: st.max, stdDev: st.std, throughput: st.tput, apdex: st.apdex };
+    return map[m];
+  }
+  oVal(m) {
+    const o = this.OV;
+    const map = { totalSamples: o.totalSamples, errorRate: o.errorRate, duration: o.duration, maxThreads: o.maxThreads, mean: o.mean, median: o.median, 'p50': o.median, 'p90': o.p90, 'p95': o.p95, 'p99': o.p99, 'p99.9': o.p999, throughput: o.throughput, apdex: o.apdex };
+    return map[m];
+  }
+  globRe(g) {
+    if (g.startsWith('regex:')) { try { return new RegExp(g.slice(6)); } catch (e) { return null; } }
+    const esc = s => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp('^' + g.split('*').map(esc).join('.*') + '$');
+  }
+  matchTarget(t) {
+    if (!t) return [];
+    if (t.scope === 'overall') return ['__overall__'];
+    if (t.sampler) return this.S.filter(s => s.name === t.sampler).map(s => s.name);
+    if (t.samplers) return this.S.filter(s => t.samplers.includes(s.name)).map(s => s.name);
+    if (t.match) {
+      const re = this.globRe(t.match); if (!re) return [];
+      let names = this.S.filter(s => re.test(s.name)).map(s => s.name);
+      (t.exclude || []).forEach(x => { const xr = this.globRe(x); if (xr) names = names.filter(n => !xr.test(n)); });
+      return names;
+    }
+    return [];
+  }
+  band(v, b) { if (!b || b.val === '' || isNaN(+b.val)) return false; const t = +b.val; return b.op === 'gt' ? v > t : b.op === 'gte' ? v >= t : b.op === 'lt' ? v < t : v <= t; }
+  evalRule(rule) {
+    if (!rule.enabled) return { rule, status: 'DISABLED', matches: [], unmatched: false };
+    const names = this.matchTarget(rule.target);
+    if (!names.length) {
+      const st = rule.onMissing === 'skip' ? 'SKIP' : rule.onMissing === 'warn' ? 'WARN' : 'FAIL';
+      return { rule, status: st, matches: [], unmatched: true };
+    }
+    const matches = names.map(n => {
+      const actual = n === '__overall__' ? this.oVal(rule.metric) : this.sVal(this.S.find(s => s.name === n), rule.metric);
+      let st = 'PASS';
+      if (rule.observe) st = 'OBSERVED';
+      else if (this.band(actual, rule.fail)) st = 'FAIL';
+      else if (this.band(actual, rule.warn)) st = 'WARN';
+      return { name: n === '__overall__' ? 'Whole run' : n, actual, status: st };
+    });
+    const rank = { FAIL: 3, WARN: 2, PASS: 1, OBSERVED: 0 };
+    let worst = matches[0];
+    matches.forEach(m => { if (rank[m.status] > rank[worst.status]) worst = m; });
+    return { rule, status: rule.observe ? 'OBSERVED' : worst.status, matches, worst, unmatched: false };
+  }
+  gate(evals) {
+    const g = { passed: 0, warned: 0, failed: 0, observed: 0, disabled: 0, unmatched: 0, declared: evals.length };
+    let verdict = 'PASS';
+    evals.forEach(e => {
+      if (e.status === 'DISABLED') g.disabled++;
+      else if (e.status === 'OBSERVED') g.observed++;
+      else if (e.status === 'SKIP') g.disabled++;
+      else if (e.status === 'FAIL') { g.failed++; verdict = 'FAIL'; }
+      else if (e.status === 'WARN') { g.warned++; if (verdict !== 'FAIL') verdict = 'WARN'; }
+      else g.passed++;
+      if (e.unmatched && e.status !== 'SKIP') g.unmatched++;
+    });
+    g.verdict = verdict;
+    return g;
+  }
+
+  // ---- formatting ----
+  chip(st) {
+    const c = { PASS: ['#dcfce7', '#166534'], WARN: ['#fef3c7', '#92400e'], FAIL: ['#fee2e2', '#991b1b'], OBSERVED: ['#dbeafe', '#1e40af'], DISABLED: ['#f1f5f9', '#64748b'], SKIP: ['#f1f5f9', '#64748b'] }[st] || ['#f1f5f9', '#64748b'];
+    return { bg: c[0], fg: c[1], label: st === 'OBSERVED' ? 'OBSERVE' : st };
+  }
+  num(v, m) {
+    if (v === undefined || v === null || isNaN(v)) return '—';
+    if (this.isMs(m) || m === 'duration') return Math.round(v).toLocaleString();
+    if (m === 'errorRate') return (Math.round(v * 100) / 100).toString();
+    if (m === 'throughput') return (Math.round(v * 10) / 10).toString();
+    if (m === 'apdex') return v.toFixed(2);
+    return Math.round(v).toLocaleString();
+  }
+  fmt(v, m) { const u = this.unit(m); return this.num(v, m) + (u ? ' ' + u : ''); }
+  opSym(op) { return { gt: '>', gte: '≥', lt: '<', lte: '≤' }[op] || op; }
+  bandText(kind, b, m) { return b ? kind + ' ' + this.opSym(b.op) + ' ' + this.fmt(+b.val, m) : null; }
+  trunc(s, n) { return s.length > n ? s.slice(0, n - 1) + '…' : s; }
+  slug(rule) {
+    let base = rule.target.scope === 'overall' ? 'run' : rule.target.match ? rule.target.match : rule.target.sampler || 'group';
+    base = base.toLowerCase().replace(/regex:/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').split('-').filter(Boolean).slice(-3).join('-').slice(0, 28);
+    return (base || 'rule') + '-' + rule.metric.replace('.', '');
+  }
+  niceUp(v) {
+    if (v <= 0) return v;
+    const k = Math.pow(10, Math.floor(Math.log10(v)));
+    for (const m of [1, 1.5, 2, 2.5, 3, 4, 5, 7.5, 10]) if (m * k >= v - 1e-9) return m * k;
+    return 10 * k;
+  }
+  seedBands(metric, actual) {
+    const lowerBad = metric === 'throughput' || metric === 'apdex';
+    if (lowerBad) {
+      const fail = metric === 'apdex' ? Math.round(actual * 0.8 * 100) / 100 : Math.round(actual * 0.8 * 10) / 10;
+      const warn = metric === 'apdex' ? Math.round(actual * 0.9 * 100) / 100 : Math.round(actual * 0.9 * 10) / 10;
+      return { warn: { op: 'lt', val: warn }, fail: { op: 'lt', val: fail } };
+    }
+    let fail = this.niceUp(actual * 1.2);
+    if (metric === 'errorRate') fail = Math.max(Math.round(fail * 100) / 100, 0.5);
+    const warn = this.isMs(metric) ? Math.round(fail * 0.8) : Math.round(fail * 0.8 * 100) / 100;
+    return { warn: { op: 'gt', val: warn }, fail: { op: 'gt', val: fail } };
+  }
+  leven(a, b) {
+    const m = a.length, n = b.length; if (!m || !n) return m + n;
+    let prev = Array.from({ length: n + 1 }, (_, j) => j);
+    for (let i = 1; i <= m; i++) { const cur = [i]; for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = cur; }
+    return prev[n];
+  }
+
+  // ---- mutations ----
+  set(patch) { this.setState(patch); }
+  openEditor(rule, editingId) {
+    const t = rule.target || {};
+    this.set({
+      saveMenuOpen: false,
+      editor: {
+        editingId: editingId || null,
+        mode: t.scope === 'overall' ? 'overall' : t.match ? 'pattern' : t.samplers ? 'samplers' : 'sampler',
+        sampler: t.sampler || this.S[0].name,
+        samplers: t.samplers || [],
+        pattern: t.match || 'POST /api/*',
+        exclude: (t.exclude || []).join(', '),
+        metric: rule.metric || 'p95',
+        warn: rule.warn ? { op: rule.warn.op, val: String(rule.warn.val) } : null,
+        fail: rule.fail ? { op: rule.fail.op, val: String(rule.fail.val) } : null,
+        observe: !!rule.observe, onMissing: rule.onMissing || 'fail',
+        id: rule.id || '', idTouched: !!rule.id, description: rule.description || '',
+        tags: (rule.tags || []).join(', '), enabled: rule.enabled !== false
+      }
+    });
+  }
+  edPatch(p) { this.set({ editor: Object.assign({}, this.state.editor, p) }); }
+  editorRule() {
+    const e = this.state.editor;
+    const target = e.mode === 'overall' ? { scope: 'overall' } : e.mode === 'pattern' ? Object.assign({ match: e.pattern }, e.exclude.trim() ? { exclude: e.exclude.split(',').map(s => s.trim()).filter(Boolean) } : {}) : e.mode === 'samplers' ? { samplers: e.samplers } : { sampler: e.sampler };
+    const b = x => x && x.val !== '' && !isNaN(+x.val) ? { op: x.op, val: +x.val } : null;
+    return {
+      id: e.id.trim(), description: e.description.trim(), target, metric: e.metric,
+      warn: e.observe ? null : b(e.warn), fail: e.observe ? null : b(e.fail),
+      observe: e.observe, onMissing: e.onMissing, enabled: e.enabled,
+      tags: e.tags.split(',').map(s => s.trim()).filter(Boolean), origin: 'file'
+    };
+  }
+  saveEditor() {
+    const e = this.state.editor; const r = this.editorRule();
+    if (!r.id) r.id = this.slug(r);
+    const rules = this.state.rules.slice();
+    if (e.editingId) {
+      const i = rules.findIndex(x => x.id === e.editingId);
+      r.draftState = rules[i].draftState === 'new' ? 'new' : 'edited';
+      rules[i] = r;
+    } else { r.draftState = 'new'; rules.push(r); }
+    this.set({ rules, editor: null });
+    this.toast(e.editingId ? 'Rule updated — draft' : 'Rule added — draft');
+  }
+  buildDoc() {
+    const bands = b => b ? { [b.op]: b.val } : undefined;
+    const doc = {
+      $schema: 'https://jmeter-web-insight.dev/schema/report-annotations.schema.json',
+      version: '1.0',
+      testNotes: '20-sampler stress test with assert validation.',
+      verdict: 'Checkout and batch import exceeded their limits.',
+      assertions: this.state.rules.map(r => {
+        const o = { id: r.id, target: r.target, metric: r.metric };
+        if (r.description) o.description = r.description;
+        if (r.observe) o.observe = true;
+        if (r.warn) o.warn = bands(r.warn);
+        if (r.fail) o.fail = bands(r.fail);
+        if (r.onMissing !== 'fail') o.onMissing = r.onMissing;
+        if (!r.enabled) o.enabled = false;
+        if (r.tags.length) o.tags = r.tags;
+        return o;
+      }),
+      samplerNotes: { 'POST /api/v2/enterprise/checkout/payment-gateway/process-transaction': 'Critical payment flow — gateway timeout spikes at 15:00' },
+      timelineMarkers: [{ timestamp: 1773750180000, label: 'DB pool saturated', type: 'warning' }]
+    };
+    return JSON.stringify(doc, null, 2);
+  }
+  toast(msg) { this.set({ toast: msg }); clearTimeout(this._tt); this._tt = setTimeout(() => this.set({ toast: '' }), 3000); }
+
+  renderVals() {
+    const st = this.state;
+    const seg = (active) => active ? { bg: '#3b82f6', fg: '#ffffff', w: '700' } : { bg: '#ffffff', fg: '#64748b', w: '500' };
+    const tagged = st.tagFilter === 'all' ? st.rules : st.rules.filter(r => !r.tags.length || r.tags.includes(st.tagFilter));
+    const evals = tagged.map(r => this.evalRule(r));
+    const g = this.gate(evals);
+    const gated = this.gatedSnapshot;
+    const dirtyCount = st.rules.filter(r => r.draftState).length + st.deletions;
+    const rank = { FAIL: 0, WARN: 1, PASS: 2, OBSERVED: 3, SKIP: 4, DISABLED: 5 };
+    const sorted = evals.slice().sort((a, b) => rank[a.status] - rank[b.status] || a.rule.id.localeCompare(b.rule.id));
+
+    const ruleRows = sorted.map(ev => {
+      const r = ev.rule; const t = r.target;
+      const targetKind = t.scope === 'overall' ? 'OVERALL' : t.match ? 'PATTERN' : t.samplers ? 'LIST' : 'SAMPLER';
+      const targetFull = t.scope === 'overall' ? 'Whole run' : t.match ? t.match + (t.exclude ? '  − ' + t.exclude.join(', ') : '') : t.samplers ? t.samplers.join(', ') : t.sampler;
+      const crit = r.observe ? 'observe only' : [this.bandText('warn', r.warn, r.metric), this.bandText('fail', r.fail, r.metric)].filter(Boolean).join('  ·  ');
+      const worstBad = ev.worst && (ev.worst.status === 'FAIL' || ev.worst.status === 'WARN');
+      let suggestion = '';
+      if (ev.unmatched && t.sampler) {
+        let best = null, bd = 1e9;
+        this.S.forEach(s => { const d = this.leven(t.sampler.toLowerCase().slice(0, 40), s.name.toLowerCase().slice(0, 40)); if (d < bd) { bd = d; best = s.name; } });
+        if (best && bd < t.sampler.length * 0.7) suggestion = 'Did you mean "' + this.trunc(best, 44) + '"?';
+      }
+      return {
+        key: r.id, id: r.id, desc: r.description || '',
+        chip: this.chip(ev.status),
+        rowBg: r.draftState ? '#fdfdff' : 'transparent',
+        rowOpacity: r.enabled ? '1' : '0.55',
+        draftTag: r.draftState === 'new' ? 'NEW' : r.draftState === 'edited' ? 'EDITED' : false,
+        targetKind, targetText: this.trunc(targetFull, 36), targetFull,
+        metricText: r.metric, criteriaText: crit,
+        actualText: ev.unmatched ? '— no data —' : ev.worst ? this.fmt(ev.worst.actual, r.metric) : '—',
+        actualWeight: worstBad ? '700' : '500', actualColor: ev.worst && ev.worst.status === 'FAIL' ? '#ef4444' : ev.worst && ev.worst.status === 'WARN' ? '#b45309' : '#1e293b',
+        expandable: ev.matches.length > 0, noMatch: ev.matches.length === 0,
+        matchCount: String(ev.matches.length), expandGlyph: st.expandedRule === r.id ? '▴' : '▾',
+        expanded: st.expandedRule === r.id,
+        matches: ev.matches.map(m => ({ name: this.trunc(m.name, 64), nameFull: m.name, actualText: this.fmt(m.actual, r.metric), chip: this.chip(m.status) })),
+        showUnmatchedNote: ev.unmatched, onMissingText: r.onMissing, suggestion,
+        onExpand: () => this.set({ expandedRule: st.expandedRule === r.id ? null : r.id }),
+        onEdit: () => this.openEditor(r, r.id),
+        onDup: () => { const c = JSON.parse(JSON.stringify(r)); c.id = r.id + '-copy'; c.draftState = 'new'; this.set({ rules: st.rules.concat([c]) }); this.toast('Duplicated as ' + c.id); },
+        onToggle: () => { const rules = st.rules.map(x => x.id === r.id ? Object.assign({}, x, { enabled: !x.enabled, draftState: x.draftState || 'edited' }) : x); this.set({ rules }); },
+        toggleLabel: r.enabled ? 'Disable' : 'Enable',
+        onDel: () => { this.set({ rules: st.rules.filter(x => x.id !== r.id), deletions: st.deletions + (r.draftState === 'new' ? 0 : 1) }); this.toast('Deleted ' + r.id + ' — draft'); }
+      };
+    });
+
+    const breaches = sorted.filter(e => e.status === 'FAIL' || e.status === 'WARN').slice(0, 3).map(e => ({
+      id: e.rule.id, chip: this.chip(e.status),
+      text: e.unmatched ? 'matched nothing — gate never ran' : e.rule.metric + ' ' + this.fmt(e.worst.actual, e.rule.metric) + '  vs  ' + (e.rule.fail ? 'fail ' + this.opSym(e.rule.fail.op) + ' ' + this.num(+e.rule.fail.val, e.rule.metric) : 'warn ' + this.opSym(e.rule.warn.op) + ' ' + this.num(+e.rule.warn.val, e.rule.metric))
+    }));
+
+    // sampler tab
+    const judgedBy = {};
+    evals.forEach(ev => ev.matches.forEach(m => { (judgedBy[m.name] = judgedBy[m.name] || []).push({ ev, m }); }));
+    const cols = [['Samples', 'sampleCount'], ['Errors', 'errorCount'], ['Error %', 'errorRate'], ['Mean', 'mean'], ['Median', 'median'], ['p90', 'p90'], ['p95', 'p95'], ['p99', 'p99'], ['Max', 'max'], ['Thr/s', 'throughput'], ['Apdex', 'apdex']];
+    const samplerRows = this.S.map(s => {
+      const js = judgedBy[s.name] || [];
+      let worst = null; const rk = { FAIL: 3, WARN: 2, PASS: 1, OBSERVED: 0 };
+      js.forEach(j => { if (!worst || rk[j.m.status] > rk[worst]) worst = j.m.status; });
+      return {
+        name: this.trunc(s.name, 52), nameFull: s.name,
+        hasBadge: !!worst, badgeLabel: worst || '', badgeBg: worst ? this.chip(worst).bg : '', badgeFg: worst ? this.chip(worst).fg : '',
+        onBadge: () => this.set({ expandedSampler: st.expandedSampler === s.name ? null : s.name }),
+        expanded: st.expandedSampler === s.name,
+        noJudged: js.length === 0,
+        judged: js.map(j => ({
+          ruleId: j.ev.rule.id, chip: this.chip(j.m.status),
+          line: j.ev.rule.metric + ' = ' + this.fmt(j.m.actual, j.ev.rule.metric) + (j.ev.rule.observe ? ' (observed)' : j.ev.rule.fail ? '  · fail ' + this.opSym(j.ev.rule.fail.op) + ' ' + this.num(+j.ev.rule.fail.val, j.ev.rule.metric) : '')
+        })),
+        cells: cols.map(([label, m]) => ({
+          text: this.num(this.sVal(s, m), m),
+          title: 'Assert ' + m + ' of this sampler',
+          onAssert: () => { const seeded = this.seedBands(m, this.sVal(s, m)); this.openEditor({ target: { sampler: s.name }, metric: m === 'sampleCount' || m === 'errorCount' ? 'errorRate' : m, warn: seeded.warn, fail: seeded.fail, onMissing: 'fail', enabled: true, tags: [] }, null); this.set({ tab: 'samplers' }); }
+        }))
+      };
+    });
+
+    // editor
+    const e = st.editor;
+    let ed = {};
+    if (e) {
+      const draftRule = this.editorRule();
+      const ev = this.evalRule(draftRule);
+      const dupId = draftRule.id && st.rules.some(r => r.id === draftRule.id && r.id !== e.editingId);
+      const noBands = !e.observe && !draftRule.warn && !draftRule.fail;
+      let deadWarn = false;
+      if (!e.observe && draftRule.warn && draftRule.fail) {
+        const dir = op => (op === 'gt' || op === 'gte') ? 1 : -1;
+        if (dir(draftRule.warn.op) === dir(draftRule.fail.op)) deadWarn = dir(draftRule.warn.op) === 1 ? draftRule.warn.val >= draftRule.fail.val : draftRule.warn.val <= draftRule.fail.val;
+      }
+      const err = dupId ? 'Rule id "' + draftRule.id + '" already exists.' : noBands ? 'Add a warn or fail band — or mark the rule observe-only.' : deadWarn ? 'Warn never fires: fail ' + this.opSym(draftRule.fail.op) + ' ' + draftRule.fail.val + ' is tested first and already covers warn ' + this.opSym(draftRule.warn.op) + ' ' + draftRule.warn.val + '. Swapped values?' : '';
+      const names = this.matchTarget(draftRule.target);
+      const isPatternish = e.mode === 'pattern' || e.mode === 'samplers';
+      ed = {
+        editorOpen: true,
+        edTitle: e.editingId ? 'Edit assert — ' + e.editingId : 'New assert',
+        modeBtns: [['sampler', 'One sampler'], ['samplers', 'Several'], ['pattern', 'Pattern'], ['overall', 'Whole run']].map(([v, label]) => Object.assign({ label, onPick: () => this.edPatch({ mode: v }) }, seg(e.mode === v))),
+        edShowSamplerSelect: e.mode === 'sampler', edShowSamplersChecks: e.mode === 'samplers', edShowPattern: e.mode === 'pattern', edShowOverallNote: e.mode === 'overall',
+        samplerOptions: (this.S.some(s => s.name === e.sampler) ? [] : [{ v: e.sampler, label: this.trunc(e.sampler, 40) + ' (not in this run)' }]).concat(this.S.map(s => ({ v: s.name, label: this.trunc(s.name, 58) }))),
+        samplerChecks: this.S.map(s => ({ label: this.trunc(s.name, 52), nameFull: s.name, checked: e.samplers.includes(s.name), onToggle: () => this.edPatch({ samplers: e.samplers.includes(s.name) ? e.samplers.filter(x => x !== s.name) : e.samplers.concat([s.name]) }) })),
+        edSampler: e.sampler, onEdSampler: (x) => this.edPatch({ sampler: x.target.value }),
+        edPattern: e.pattern, onEdPattern: (x) => this.edPatch({ pattern: x.target.value }),
+        edExclude: e.exclude, onEdExclude: (x) => this.edPatch({ exclude: x.target.value }),
+        edMatchesShow: isPatternish,
+        edMatchesText: names.length ? 'Matches ' + names.length + ' sampler' + (names.length > 1 ? 's' : '') + ' in this run' : 'Matches nothing in this run — the rule would ' + e.onMissing + ' (onMissing)',
+        edMatchesColor: names.length ? '#166534' : '#92400e', edMatchesBg: names.length ? '#f0fdf4' : '#fffbeb', edMatchesBorder: names.length ? '#bbf7d0' : '#fde68a',
+        edMatchNames: names.slice(0, 4).map(n => this.trunc(n, 60)).concat(names.length > 4 ? ['+ ' + (names.length - 4) + ' more'] : []),
+        edMetric: e.metric, onEdMetric: (x) => this.edPatch({ metric: x.target.value }),
+        metricOptions: (e.mode === 'overall'
+          ? ['totalSamples', 'errorRate', 'duration', 'maxThreads', 'mean', 'median', 'p90', 'p95', 'p99', 'p99.9', 'throughput', 'apdex']
+          : ['sampleCount', 'errorCount', 'errorRate', 'mean', 'median', 'p75', 'p90', 'p95', 'p99', 'p99.9', 'min', 'max', 'stdDev', 'throughput', 'apdex']
+        ).map(m => ({ v: m, label: m + (this.unit(m) ? '  (' + this.unit(m) + ')' : '') })),
+        edObserve: e.observe, onEdObserve: () => this.edPatch({ observe: !e.observe }),
+        edBandsOn: !e.observe,
+        edWarnOn: !!e.warn, edWarnOff: !e.warn,
+        edWarnOp: e.warn ? e.warn.op : 'gt', edWarnVal: e.warn ? e.warn.val : '',
+        onEdWarnOp: (x) => this.edPatch({ warn: { op: x.target.value, val: e.warn.val } }),
+        onEdWarnVal: (x) => this.edPatch({ warn: { op: e.warn.op, val: x.target.value } }),
+        onWarnAdd: () => this.edPatch({ warn: { op: e.fail ? e.fail.op : 'gt', val: '' } }),
+        onWarnRemove: () => this.edPatch({ warn: null }),
+        edFailOn: !!e.fail, edFailOff: !e.fail,
+        edFailOp: e.fail ? e.fail.op : 'gt', edFailVal: e.fail ? e.fail.val : '',
+        onEdFailOp: (x) => this.edPatch({ fail: { op: x.target.value, val: e.fail.val } }),
+        onEdFailVal: (x) => this.edPatch({ fail: { op: e.fail.op, val: x.target.value } }),
+        onFailAdd: () => this.edPatch({ fail: { op: e.warn ? e.warn.op : 'gt', val: '' } }),
+        onFailRemove: () => this.edPatch({ fail: null }),
+        edBandNote: !e.warn && e.fail ? 'No warn band — the rule goes straight from pass to fail. That is a choice, not an accident.' : 'Bands judge the whole-run aggregate — the number in the report table. fail is tested first, then warn; the schema also supports outside: [lo, hi].',
+        edUnit: this.unit(e.metric),
+        opOptions: [{ v: 'gt', label: '>' }, { v: 'gte', label: '≥' }, { v: 'lt', label: '<' }, { v: 'lte', label: '≤' }],
+        edPrevChip: this.chip(ev.status === 'SKIP' ? 'DISABLED' : ev.status),
+        edPrevRows: ev.matches.slice(0, 5).map(m => ({ name: this.trunc(m.name, 44), nameFull: m.name, actualText: this.fmt(m.actual, e.metric), chip: this.chip(m.status) })),
+        edId: e.id, onEdId: (x) => this.edPatch({ id: x.target.value, idTouched: true }), edIdAuto: this.slug(draftRule) + ' (auto)',
+        edOnMissing: e.onMissing, onEdOnMissing: (x) => this.edPatch({ onMissing: x.target.value }),
+        edDesc: e.description, onEdDesc: (x) => this.edPatch({ description: x.target.value }),
+        edTags: e.tags, onEdTags: (x) => this.edPatch({ tags: x.target.value }),
+        edEnabled: e.enabled, onEdEnabled: () => this.edPatch({ enabled: !e.enabled }),
+        edError: err, edNoError: !err, edInvalid: !!err, edSaveBg: err ? '#94a3b8' : '#3b82f6',
+        edSaveLabel: e.editingId ? 'Save changes' : 'Add rule',
+        onEdSave: () => { if (!err) this.saveEditor(); },
+        onEdCancel: () => this.set({ editor: null })
+      };
+    } else ed = { editorOpen: false };
+
+    // wizard
+    const w = st.wizard;
+    let wz = {};
+    if (w) {
+      const sel = Object.keys(w.metrics).filter(k => w.metrics[k]);
+      const count = w.mode === 'per' ? this.S.length * sel.length : sel.length;
+      const mkLimit = (m, v) => { const s = this.seedBands(m, v * (1 + (m === 'throughput' || m === 'apdex' ? 0 : w.headroom / 100 - 0.2))); return s; };
+      const sample = [];
+      if (w.mode === 'per') {
+        for (const s of this.S.slice(0, 3)) for (const m of sel.slice(0, 1)) { const v = this.sVal(s, m); const f = this.seedBands(m, v).fail; sample.push(this.slug({ target: { sampler: s.name }, metric: m }) + '  ·  ' + m + '  fail ' + this.opSym(f.op) + ' ' + this.num(+f.val, m) + '  (observed ' + this.num(v, m) + ')'); }
+      } else {
+        for (const m of sel.slice(0, 3)) { const worst = Math.max(...this.S.map(s => this.sVal(s, m))); const f = this.seedBands(m, worst).fail; sample.push('all-' + m.replace('.', '') + '  ·  match: *   fail ' + this.opSym(f.op) + ' ' + this.num(+f.val, m)); }
+      }
+      wz = {
+        wizardOpen: true,
+        wzModeBtns: [['per', 'Per sampler × metric'], ['blanket', 'One blanket rule per metric']].map(([v, label]) => Object.assign({ label, onPick: () => this.set({ wizard: Object.assign({}, w, { mode: v }) }) }, seg(w.mode === v))),
+        wzModeNote: w.mode === 'per' ? 'Each sampler gets its own limits seeded from its own observed values.' : 'One match: * rule per metric, seeded from the worst observed value.',
+        wzMetrics: ['p95', 'p99', 'errorRate', 'throughput', 'apdex'].map(k => ({ label: k, checked: !!w.metrics[k], onToggle: () => this.set({ wizard: Object.assign({}, w, { metrics: Object.assign({}, w.metrics, { [k]: !w.metrics[k] }) }) }) })),
+        wzHeadroom: String(w.headroom), onWzHeadroom: (x) => this.set({ wizard: Object.assign({}, w, { headroom: +x.target.value }) }),
+        wzWarnPct: String(w.warnPct), onWzWarnPct: (x) => this.set({ wizard: Object.assign({}, w, { warnPct: +x.target.value }) }),
+        wzPreviewText: 'Will create ' + count + ' draft rules · fail = observed +' + w.headroom + '% rounded to a nice number · warn = ' + w.warnPct + '% of fail',
+        wzSample: sample,
+        wzAddLabel: 'Add ' + count + ' draft rules',
+        onWzAdd: () => {
+          const rules = st.rules.slice(); const used = new Set(rules.map(r => r.id));
+          const add = (target, metric, actual) => {
+            const seeded = this.seedBands(metric, actual);
+            let id = this.slug({ target, metric }); let i = 2; while (used.has(id)) id = id + '-' + (i++); used.add(id);
+            rules.push({ id, description: 'Generated from run (headroom +' + w.headroom + '%)', target, metric, warn: seeded.warn, fail: seeded.fail, observe: false, onMissing: 'fail', enabled: true, tags: [], origin: 'file', draftState: 'new' });
+          };
+          if (w.mode === 'per') this.S.forEach(s => sel.forEach(m => add({ sampler: s.name }, m, this.sVal(s, m))));
+          else sel.forEach(m => { const worst = (m === 'throughput' || m === 'apdex') ? Math.min(...this.S.map(s => this.sVal(s, m))) : Math.max(...this.S.map(s => this.sVal(s, m))); add({ match: '*' }, m, worst); });
+          this.set({ rules, wizard: null }); this.toast('Added ' + count + ' draft rules — tune, then download');
+        },
+        onWzCancel: () => this.set({ wizard: null })
+      };
+    } else wz = { wizardOpen: false };
+
+    // ---- chart demo (Timeline tab) ----
+    const CB = this.buckets, CG = { L: 46, R: 730, T: 14, B: 214, MAX: 50 };
+    const cy = v => CG.B - (Math.max(0, Math.min(CG.MAX, v)) / CG.MAX) * (CG.B - CG.T);
+    const cx = i => CG.L + i * (CG.R - CG.L) / (CB.length - 1);
+    const ch = st.chart;
+    const chartRule = st.rules.find(r => r.target && r.target.scope === 'overall' && r.metric === 'throughput' && r.fail && r.enabled);
+    const chFailNum = ch.drag && ch.pending !== null ? ch.pending : chartRule ? +chartRule.fail.val : null;
+    const agg = this.OV.throughput;
+    const chLine = CB.map((v, i) => (i ? 'L' : 'M') + cx(i).toFixed(1) + ' ' + cy(v).toFixed(1)).join(' ');
+    const svgVal = e => { const r = e.currentTarget.getBoundingClientRect(); return Math.round(Math.max(0, Math.min(CG.MAX, (CG.B - (e.clientY - r.top)) / (CG.B - CG.T) * CG.MAX)) * 2) / 2; };
+    const chBand = chartRule && chFailNum !== null ? { op: chartRule.fail.op, val: chFailNum } : null;
+    const chStatus = chBand ? (this.band(agg, chBand) ? 'FAIL' : chartRule.warn && this.band(agg, chartRule.warn) ? 'WARN' : 'PASS') : null;
+    const chBreach = chBand ? CB.filter(v => this.band(v, chBand)).length : 0;
+    const handleY = chBand ? Math.max(CG.T + 4, Math.min(CG.B - 38, cy(chFailNum) - 17)) : 0;
+    const chv = {
+      chGrid: [0, 10, 20, 30, 40, 50].map(v => ({ y: cy(v), ty: cy(v) + 3.5, label: String(v) })),
+      chXLabels: [{ x: cx(0), label: '0:00' }, { x: cx(18), label: '6:00' }, { x: cx(35), label: '12:00' }],
+      chLine, chArea: chLine + ' L ' + cx(CB.length - 1).toFixed(1) + ' ' + CG.B + ' L ' + CG.L + ' ' + CG.B + ' Z',
+      chAggY: cy(agg), chAggTy: cy(agg) - 5, chAggLabel: agg + ' /s',
+      chHasRule: !!chBand,
+      chFailY: chBand ? cy(chFailNum) : 0, chFailTy: chBand ? cy(chFailNum) + 12 : 0,
+      chHandleY: handleY, chHandleTy1: handleY + 14, chHandleTy2: handleY + 26,
+      chFailOp: chartRule ? this.opSym(chartRule.fail.op) : '', chFailVal: chFailNum === null ? '' : String(chFailNum),
+      chRuleId: chartRule ? chartRule.id : '',
+      chStatusChip: chStatus ? this.chip(chStatus) : this.chip('DISABLED'),
+      chStatusText: chBand ? 'aggregate ' + agg + ' /s vs fail ' + this.opSym(chartRule.fail.op) + ' ' + chFailNum + ' /s' + (ch.drag ? ' — release to keep' : '') : 'No enabled rule targets overall throughput — place one on the chart.',
+      chBreachNote: chBand ? (chBreach ? chBreach + ' of ' + CB.length + ' buckets (~' + chBreach * 20 + 's) breach the line bucket-wise, yet the rule gates the run aggregate (' + agg + ' /s → ' + chStatus + '). Catching sustained dips like this is exactly what the phase-3 over clause adds.' : 'No bucket breaches the line; the aggregate gates at ' + chStatus + '.') : 'Click + Assert from chart, then click the level you want to gate at.',
+      chCursor: ch.drag ? 'ns-resize' : ch.place ? 'crosshair' : 'default',
+      chGhostShow: ch.place && ch.hover !== null, chGhostY: ch.hover !== null ? cy(ch.hover) : 0, chGhostTy: ch.hover !== null ? cy(ch.hover) - 6 : 0,
+      chGhostLabel: ch.hover !== null ? 'new assert · fail < ' + ch.hover + ' /s — click to create' : '',
+      chPlaceBg: ch.place ? '#3b82f6' : '#ffffff', chPlaceFg: ch.place ? '#ffffff' : '#3b82f6',
+      chPlaceLabel: ch.place ? 'Cancel placing' : '+ Assert from chart',
+      onTogglePlace: () => this.set({ chart: { drag: false, place: !ch.place, pending: null, hover: null } }),
+      onHandleDown: () => this.set({ chart: { drag: true, place: false, pending: chFailNum, hover: null } }),
+      onChartMove: e => { const v = svgVal(e); if (ch.drag) this.set({ chart: Object.assign({}, ch, { pending: v }) }); else if (ch.place) this.set({ chart: Object.assign({}, ch, { hover: v }) }); },
+      onChartUp: () => {
+        if (ch.drag && ch.pending !== null && chartRule) {
+          const rules = st.rules.map(x => x.id === chartRule.id ? Object.assign({}, x, { fail: { op: x.fail.op, val: ch.pending }, draftState: x.draftState || 'edited' }) : x);
+          this.set({ rules, chart: { drag: false, place: false, pending: null, hover: null } });
+          this.toast(chartRule.id + ' retuned from chart: fail ' + this.opSym(chartRule.fail.op) + ' ' + ch.pending + ' /s — draft');
+        } else if (ch.place && ch.hover !== null) {
+          this.set({ chart: { drag: false, place: false, pending: null, hover: null } });
+          this.openEditor({ target: { scope: 'overall' }, metric: 'throughput', warn: null, fail: { op: 'lt', val: ch.hover }, onMissing: 'fail', enabled: true, tags: [] }, null);
+        }
+      },
+      onChartLeave: () => { if (ch.drag) this.set({ chart: Object.assign({}, ch, { drag: false, pending: null }) }); else if (ch.hover !== null) this.set({ chart: Object.assign({}, ch, { hover: null }) }); }
+    };
+    const tabSty = (name) => ({ C: st.tab === name ? '#3b82f6' : '#64748b', W: st.tab === name ? '600' : '500', B: st.tab === name ? '2px solid #3b82f6' : '2px solid transparent' });
+    const ts = tabSty('summary'), ta = tabSty('asserts'), tp = tabSty('samplers'), tt = tabSty('timeline');
+    const gc = this.chip(gated.verdict), dc = this.chip(g.verdict);
+
+    return Object.assign({
+      gatedChip: gc, draftChip: dc, gateAccent: gc.label === 'FAIL' ? '#ef4444' : gc.label === 'WARN' ? '#f59e0b' : '#22c55e',
+      dirtyPill: dirtyCount > 0, dirtyLabel: dirtyCount + ' unsaved change' + (dirtyCount === 1 ? '' : 's'),
+      tabSummaryC: ts.C, tabSummaryW: ts.W, tabSummaryB: ts.B,
+      tabAssertsC: ta.C, tabAssertsW: ta.W, tabAssertsB: ta.B,
+      tabSamplersC: tp.C, tabSamplersW: tp.W, tabSamplersB: tp.B,
+      tabTimelineC: tt.C, tabTimelineW: tt.W, tabTimelineB: tt.B,
+      goSummary: () => this.set({ tab: 'summary' }), goAsserts: () => this.set({ tab: 'asserts' }), goSamplers: () => this.set({ tab: 'samplers' }), goTimeline: () => this.set({ tab: 'timeline' }),
+      isSummary: st.tab === 'summary', isAsserts: st.tab === 'asserts', isSamplers: st.tab === 'samplers', isTimeline: st.tab === 'timeline',
+      gateDeclaredText: g.declared + ' rules declared — only these decide the verdict',
+      gateCountsLine: g.declared + ' declared · ' + g.failed + ' failed · ' + g.warned + ' warned · ' + g.passed + ' passed · ' + g.observed + ' observed' + (g.unmatched ? ' · ' + g.unmatched + ' unmatched' : '') + (g.disabled ? ' · ' + g.disabled + ' off' : ''),
+      cFailed: g.failed + ' failed', cWarned: g.warned + ' warned', cPassed: g.passed + ' passed', cObserved: g.observed + ' observed',
+      breaches,
+      summaryCards: [
+        { label: 'Total Samples', value: '25,850', sub: '35.9 req/s sustained', badge: false },
+        { label: 'Error Rate', value: '0.94%', sub: '243 errors', badge: false },
+        { label: 'Overall p95', value: '890 ms', sub: 'merged distribution', badge: false },
+        { label: 'Apdex Score', value: '0.84', sub: 'threshold 500 ms', badge: 'WARN', badgeBg: '#fef3c7', badgeFg: '#92400e' }
+      ],
+      tagFilter: st.tagFilter, onTagFilter: (x) => this.set({ tagFilter: x.target.value }),
+      onOpenWizard: () => this.set({ wizard: { mode: 'per', metrics: { p95: true, errorRate: true }, headroom: 20, warnPct: 80 }, saveMenuOpen: false }),
+      onAddAssert: () => this.openEditor({ target: { sampler: this.S[0].name }, metric: 'p95', warn: { op: 'gt', val: '' }, fail: { op: 'gt', val: '' }, onMissing: 'fail', enabled: true, tags: [] }, null),
+      onToggleSaveMenu: () => this.set({ saveMenuOpen: !st.saveMenuOpen }),
+      saveMenuOpen: st.saveMenuOpen,
+      onDownload: () => { const blob = new Blob([this.buildDoc()], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'report-annotations.json'; a.click(); this.set({ saveMenuOpen: false }); this.toast('report-annotations.json downloaded — drop it next to your JTL'); },
+      onCopyFile: () => { navigator.clipboard.writeText(this.buildDoc()); this.set({ saveMenuOpen: false }); this.toast('Whole annotations file copied'); },
+      onCopyAsserts: () => { navigator.clipboard.writeText(JSON.stringify(JSON.parse(this.buildDoc()).assertions, null, 2)); this.set({ saveMenuOpen: false }); this.toast('assertions array copied'); },
+      onDiscard: () => { this.set({ rules: st.rules.filter(r => r.draftState !== 'new').map(r => Object.assign({}, r, { draftState: null })), deletions: 0 }); this.toast('Drafts discarded (demo keeps edits simple)'); },
+      hasRules: ruleRows.length > 0, noRules: ruleRows.length === 0,
+      ruleRows,
+      colHeads: cols.map(c => c[0]),
+      samplerRows,
+      toastMsg: st.toast
+    }, ed, wz, chv);
+  }
+}
+</script>
+</body>
+</html>

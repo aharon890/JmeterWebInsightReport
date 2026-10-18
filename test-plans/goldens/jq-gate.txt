@@ -1,0 +1,64 @@
+# The jq a pipeline gates a Web Insight Report run with, over the CI/CD JSON (<name>.json).
+#
+# THIS FILE IS THE ONE COPY. Documentation, javadoc and plans copy a line from here; nothing
+# else is a source. Every line is RUN, by jq, over the golden documents in expected/ named on the
+# CASES line — verify_jq_idioms (scripts/lib/common.sh), in S03, R03 and CI — and must answer
+# exactly what is written beside it. jq is the source of truth: test-plans/js-unit/jq-gate.test.js
+# runs a hand-translated JavaScript copy of each line over the same goldens, so the check also
+# runs on a machine with no jq, and it refuses to pass once a line here no longer matches the text
+# its translation was written for.
+#
+# Why a file and a check, rather than a sentence in the docs: the idiom D8 documented,
+#   .gate.failed == 0 and ([.serverGates[] | select(.failsBuild) | .failed] | add // 0) == 0
+# errored ("Cannot iterate over null", jq exit 5) on every client-only run, because serverGates is
+# written only once server gates were evaluated, and read false on every server-only run, because
+# `gate` is written only when a client rule was declared. Nothing ever ran it.
+# selftest_jq_idioms feeds that idiom back in and demands a refusal.
+#
+# Why G5-G8: in G4 the client gate already FAILs, so it decides both lines on its own, and the
+# server half was run over no document where it mattered — a wrong key (.serverVerdict), a deleted
+# server clause and an inverted failsBuild test all passed this check. G5-G8 declare no client
+# rule, and each is a document where one clause alone decides the answer. selftest_jq_idioms
+# mutates each clause of the lines below, one at a time, and demands that every mutant is refused,
+# so the goldens cannot stop discriminating without the selftest saying which clause went blind.
+#
+# The two idioms (product call, M7d):
+#   DEFAULT  the verdicts. The client half passes a run that declared no client rule; the server
+#            half fails only on serverStatus FAIL (D24: the worst over the components). A
+#            component that judged nothing reads NOT_EVALUATED and is not refused here. Whether
+#            the run exits 1 depends on WHY it judged nothing: failonerror (the default) exits 1
+#            for INVALID_RULE, SOURCE_FAILED and LOW_COVERAGE, and for a refused payload an
+#            enabled server assert needed - configuration errors, not verdicts. It does NOT for
+#            NO_MATCH, NO_VALUE, DISABLED or LOAD_NOT_ACHIEVED, nor for a component with no
+#            asserts: those exit 0, and neither DEFAULT nor STRICT refuses them. The four
+#            not-judged reasons are counted in serverComponents[].notJudged; a component with no
+#            asserts is counted in none of them - it reads status NOT_EVALUATED with declared 0.
+#            A query that matches nothing therefore passes the build - check notJudged.noMatch if
+#            that must fail it. Pair DEFAULT with failonerror, or use STRICT.
+#   STRICT   DEFAULT, and also no check the file asked for that never ran, as far as the JSON
+#            can show it: INVALID_RULE on the client gate and on any server gate (a defect in the
+#            file, D4); SOURCE_FAILED / LOW_COVERAGE on any server gate — every component builds
+#            since C6, so there is no observe-only gate to exempt; and any ERROR finding — which is how the two config errors that leave no
+#            gate to count reach the JSON: an annotations file that could not be read (finding
+#            "annotations"), and a refused payload a building gate needed ("serverMetrics.payload",
+#            G8). It is meant for failonerror=false; what it cannot see is an artifact that failed
+#            to be written, which the exit code reports and no JSON can.
+#
+# Format: one CASES line naming the golden documents in column order, then one line per idiom —
+# NAME, the expected answer over each case (true = jq -e exits 0, false = exits 1; any other exit
+# is an error and never matches), then the program, to the end of the line.
+#   G1  no annotations                     no gate, no server block
+#   G2  gate-mixed.json                    client gate FAILs (2 failed, 1 invalidRule)
+#   G3  gate-broken.json                   client gate PASSes with 6 invalidRule; no server block
+#   G4  gate-server.json + payload         client gate FAILs; serverStatus FAIL (kafka)
+#   G5  gate-server-fail.json + payload    no client rule; kafka FAILs: serverStatus FAIL
+#   G7  gate-server-coverage.json + payload no client rule; db PASSes with one LOW_COVERAGE
+#                                          assert: serverStatus PASS over a config error
+#   (G6, the observe-only gate, was retired with failsBuild — C6. Ids are not reused.)
+#   G8  gate-server-fail.json, no payload  refused where kafka builds: no server block, and one
+#                                          ERROR finding (serverMetrics.payload)
+#
+CASES      G1    G2    G3    G4    G5    G7    G8
+# NAME     G1    G2    G3    G4    G5    G7    G8     program
+DEFAULT    true  false true  false false true  true   (.gate.failed // 0) == 0 and (.serverStatus // "PASS") != "FAIL"
+STRICT     true  false false false false false false  (.gate.failed // 0) == 0 and (.serverStatus // "PASS") != "FAIL" and (.gate.notJudged.invalidRule // 0) == 0 and ([.serverComponents[]? | .notJudged.invalidRule + .notJudged.sourceFailed + .notJudged.lowCoverage] | add // 0) == 0 and ([.findings[]? | select(.severity == "error")] | length) == 0

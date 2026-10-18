@@ -1,0 +1,197 @@
+{
+  "_comment": [
+    "G4: client load rules plus a serverMetrics block, so the golden .json and .xml carry every",
+    "branch of the server outputs — two components, PASS, WARN and FAIL, DISABLED, NO_MATCH,",
+    "LOW_COVERAGE, INVALID_RULE, LOAD_NOT_ACHIEVED via requiresLoad on a client rule, a ratio via",
+    "divideBy and a sustainedFor tolerance — against the committed server-metrics.csv",
+    "and the committed server-metrics.json collected from plain.jtl under the default title.",
+    "Both components are custom (C9): every assert writes the query its CSV rows are named by.",
+    "",
+    "Thresholds are pinned to that data (values 1..50 over the window) and are not realistic."
+  ],
+  "assertions": [
+    {
+      "id": "load:throughput",
+      "description": "the load the run was meant to achieve — PASSes on plain.jtl",
+      "target": {
+        "scope": "overall"
+      },
+      "metric": "throughput",
+      "fail": {
+        "lt": 0.001
+      }
+    },
+    {
+      "id": "load:unreachable",
+      "description": "a load target this run misses — FAILs, so its dependents are LOAD_NOT_ACHIEVED",
+      "target": {
+        "scope": "overall"
+      },
+      "metric": "throughput",
+      "fail": {
+        "lt": 100000
+      }
+    },
+    {
+      "id": "checkout-p95-fails",
+      "description": "a real breach, measured",
+      "target": {
+        "sampler": "POST /api/checkout"
+      },
+      "metric": "p95",
+      "warn": {
+        "gt": 10
+      },
+      "fail": {
+        "gt": 20
+      }
+    }
+  ],
+  "serverMetrics": {
+    "components": {
+      "kafka": {
+        "type": "custom",
+        "description": "Kafka"
+      },
+      "db": {
+        "type": "custom",
+        "description": "DB"
+      }
+    },
+    "asserts": [
+      {
+        "id": "up-passes",
+        "description": "max 50, comfortably inside",
+        "component": "kafka",
+        "query": "up",
+        "reduce": {
+          "kind": "max"
+        },
+        "fail": {
+          "gt": 1000
+        }
+      },
+      {
+        "id": "up-fails",
+        "description": "a real breach",
+        "component": "kafka",
+        "query": "up",
+        "unit": "msgs",
+        "reduce": {
+          "kind": "max"
+        },
+        "warn": {
+          "gt": 10
+        },
+        "fail": {
+          "gt": 20
+        }
+      },
+      {
+        "id": "up-p50-warns",
+        "description": "over warn, under fail",
+        "component": "db",
+        "query": "up",
+        "reduce": {
+          "kind": "p50"
+        },
+        "warn": {
+          "gt": 10
+        },
+        "fail": {
+          "gt": 1000
+        }
+      },
+      {
+        "id": "up-sustained",
+        "description": "the level held for 10 s",
+        "component": "db",
+        "query": "up",
+        "reduce": {
+          "kind": "max",
+          "over": {
+            "sustainedFor": "10s"
+          }
+        },
+        "fail": {
+          "gt": 1000
+        }
+      },
+      {
+        "id": "up-per-rps",
+        "description": "divideBy the load rule's measured throughput",
+        "component": "db",
+        "query": "up",
+        "reduce": {
+          "kind": "max"
+        },
+        "divideBy": "load:throughput",
+        "fail": {
+          "gt": 1000000
+        }
+      },
+      {
+        "id": "up-needs-load",
+        "description": "NOT_JUDGED / LOAD_NOT_ACHIEVED — the load rule it names FAILED",
+        "component": "kafka",
+        "query": "up",
+        "reduce": {
+          "kind": "max"
+        },
+        "requiresLoad": "load:unreachable",
+        "fail": {
+          "gt": 1
+        }
+      },
+      {
+        "id": "sparse-low-coverage",
+        "description": "NOT_JUDGED / LOW_COVERAGE — a configuration error, fatal under failonerror",
+        "component": "db",
+        "query": "sparse",
+        "reduce": {
+          "kind": "max"
+        },
+        "fail": {
+          "gt": 1
+        }
+      },
+      {
+        "id": "nothing-recorded",
+        "description": "NOT_JUDGED / NO_MATCH",
+        "component": "db",
+        "query": "nothing",
+        "reduce": {
+          "kind": "max"
+        },
+        "fail": {
+          "gt": 1
+        }
+      },
+      {
+        "id": "parked",
+        "description": "NOT_JUDGED / DISABLED",
+        "component": "kafka",
+        "query": "up",
+        "reduce": {
+          "kind": "max"
+        },
+        "fail": {
+          "gt": 1
+        },
+        "enabled": false
+      },
+      {
+        "id": "typo-reducer",
+        "description": "NOT_JUDGED / INVALID_RULE — fix the file, not the run",
+        "component": "db",
+        "query": "up",
+        "reduce": {
+          "kind": "maxx"
+        },
+        "fail": {
+          "gt": 1
+        }
+      }
+    ]
+  }
+}

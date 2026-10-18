@@ -37,7 +37,10 @@
     --color-error-code-text: #991b1b;
     --color-total-row-bg: #f0f4ff;
     --color-ramp-badge-bg: #f1f5f9;
-    --color-ramp-badge-text: #64748b;
+    /* #475569, 6.9:1 on the badge's #f1f5f9: #64748b was 4.34:1, under 4.5:1 for the 12px bold
+       neutral badge — ASSERTS NOT EVALUATED, and since SF47 Server · NOT COLLECTED / REFUSED on every
+       interim and refused run. */
+    --color-ramp-badge-text: #475569;
     --color-ramp-badge-border: #e2e8f0;
     --radius: 8px;
     --shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
@@ -107,6 +110,15 @@ body {
 .badge-fail {
     background: var(--badge-fail-bg);
     color: var(--badge-fail-text);
+}
+
+/* Nothing was declared, so nothing was judged. The neutral ramp, not the green one — the same
+   pair .wir-chip-not_evaluated uses in the Asserts tab, so the header badge and the tab's own
+   verdict chip describe the same state in the same colour instead of one saying "pass" while
+   the other says "not evaluated". */
+.badge-none {
+    background: var(--color-ramp-badge-bg);
+    color: var(--color-ramp-badge-text);
 }
 
 /* Tab Navigation */
@@ -451,6 +463,8 @@ label.checked .sampler-checkbox-box {
     font-size: 0.8rem;
     cursor: pointer;
     user-select: none;
+    /* Anchors the .col-resize-handle strip to this cell's right edge. */
+    position: relative;
 }
 
 .stats-table thead th:hover {
@@ -482,6 +496,24 @@ label.checked .sampler-checkbox-box {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+/* The sampler column holds the only free-text values in the table, so it gets a
+   wider cap than the shared 320px above and — more importantly — a floor. Every
+   other column is `white-space: nowrap`, which leaves this as the only column
+   the auto table layout is able to shrink, and the name span is `flex: 1` with
+   `min-width: 0`, so its min-content contribution is zero. An engine that sizes
+   the column from that contribution collapses it to just the assert badge and the
+   names render as "GET /api/...". The floor below makes that impossible.
+   Scoped by id and class rather than :first-child so both rules follow the
+   sampler column after a drag-reorder instead of sticking to whichever column
+   happens to be physically first. */
+#samplerTable tbody td.sampler-name-td {
+    max-width: 520px;
+}
+
+#samplerTable:not(.cols-frozen) .sampler-name-cell {
+    min-width: 260px;
 }
 
 .sampler-name-cell {
@@ -525,6 +557,54 @@ tr:hover .sampler-name-cell .row-hide-btn {
 
 .stats-table tbody tr:nth-child(even):hover {
     background: var(--color-bg-row-hover);
+}
+
+/* Column resize — a grab strip on the right edge of every header cell.
+   The header is already a sort button and a reorder drag source, so the strip
+   sits above both (z-index) and swallows the events that would otherwise sort
+   or start an HTML5 column drag. */
+.col-resize-handle {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 7px;
+    height: 100%;
+    cursor: col-resize;
+    user-select: none;
+    z-index: 2;
+}
+
+.col-resize-handle::after {
+    content: "";
+    position: absolute;
+    top: 25%;
+    right: 3px;
+    width: 1px;
+    height: 50%;
+    background: var(--color-border);
+    transition: background 0.12s, height 0.12s;
+}
+
+.col-resize-handle:hover::after,
+.col-resize-handle.dragging::after {
+    background: var(--color-primary);
+    width: 2px;
+    top: 0;
+    height: 100%;
+}
+
+/* While dragging, the cursor must not flicker back to `pointer` as it crosses
+   cells, and text must not select under the pointer. */
+body.col-resizing,
+body.col-resizing * {
+    cursor: col-resize !important;
+    user-select: none !important;
+}
+
+/* Once widths are pinned the table sizes itself, so let the wrapper scroll
+   rather than squeezing columns back down. */
+.stats-table.cols-frozen {
+    table-layout: fixed;
 }
 
 .cell-error {
@@ -1163,12 +1243,12 @@ tr.sampler-expanded .sampler-expand-icon {
     background: #fef2f2;
 }
 
-/* SLA Mini Badges */
-.sla-badge-mini {
+/* Assert Mini Badges */
+.assert-badge-mini {
     display: inline-block;
-    padding: 1px 5px;
-    border-radius: 3px;
-    font-size: 0.6rem;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.7rem;
     font-weight: 700;
     letter-spacing: 0.03em;
     text-transform: uppercase;
@@ -1176,22 +1256,22 @@ tr.sampler-expanded .sampler-expand-icon {
     margin-right: 6px;
 }
 
-.sla-badge-mini.sla-badge-inline {
+.assert-badge-mini.assert-badge-inline {
     margin-left: 4px;
     margin-right: 0;
 }
 
-.sla-badge-pass {
+.assert-badge-pass {
     background: var(--badge-pass-bg);
     color: var(--badge-pass-text);
 }
 
-.sla-badge-warn {
+.assert-badge-warn {
     background: var(--badge-warn-bg);
     color: var(--badge-warn-text);
 }
 
-.sla-badge-fail {
+.assert-badge-fail {
     background: var(--badge-fail-bg);
     color: var(--badge-fail-text);
 }
@@ -1422,7 +1502,11 @@ body.cb-mode {
 body.cb-mode sup.delta-good { color: #2563eb; }
 body.cb-mode sup.delta-bad { color: #ea580c; }
 
+/* --color-success is the colour-blind blue on dark too: the light one, #2563eb, is 2.83:1 on the
+   #1e293b a transparent dark chart shows — the Asserts tab's dotted "run aggregate" line was under
+   the 3:1 the chart lines reach (SF37). #60a5fa is 5.75:1 there, and what sup.delta-good uses. */
 body.dark-mode.cb-mode {
+    --color-success: #60a5fa;
     --badge-pass-bg: #1e3a5f;
     --badge-pass-text: #93c5fd;
     --badge-fail-bg: #7c2d12;
@@ -1505,33 +1589,6 @@ body.dark-mode.cb-mode sup.delta-bad { color: #fb923c; }
     border-bottom: 2px solid var(--color-primary);
 }
 
-.sampler-detail-panel {
-    padding: 16px 24px;
-    background: var(--color-bg);
-}
-
-.sampler-detail-panel h3 {
-    font-size: 1rem;
-    font-weight: 600;
-    margin-bottom: 12px;
-    color: var(--color-text);
-}
-
-.sampler-detail-charts {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-}
-
-.sampler-detail-chart {
-    width: 100%;
-    height: 280px;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    padding: 8px;
-}
-
 /* Transaction Controller Hierarchy */
 .transaction-parent td:first-child {
     font-weight: 600;
@@ -1549,21 +1606,6 @@ body.dark-mode.cb-mode sup.delta-bad { color: #fb923c; }
     transition: transform 0.2s;
 }
 
-.tc-expanded .tc-icon {
-    transform: rotate(90deg);
-}
-
-.transaction-child.tc-hidden {
-    display: none;
-}
-
-/* Filter bar transaction hierarchy */
-.filter-sampler-child {
-    margin-left: 16px;
-    font-size: 0.75rem;
-    opacity: 0.85;
-}
-
 /* Error expandable rows */
 .error-row-main {
     cursor: pointer;
@@ -1575,54 +1617,6 @@ body.dark-mode.cb-mode sup.delta-bad { color: #fb923c; }
 
 .error-detail-row td {
     padding: 0 !important;
-}
-
-.error-detail-content {
-    padding: 12px 24px;
-    background: var(--color-bg);
-    font-size: 0.8rem;
-}
-
-.error-detail-content h4 {
-    font-size: 0.8rem;
-    font-weight: 600;
-    margin: 8px 0 4px;
-    color: var(--color-text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
-.error-detail-content h4:first-child {
-    margin-top: 0;
-}
-
-.error-detail-content pre {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: 4px;
-    padding: 8px 12px;
-    font-size: 0.75rem;
-    overflow-x: auto;
-    max-height: 200px;
-    overflow-y: auto;
-    white-space: pre-wrap;
-    word-break: break-all;
-}
-
-.error-detail-content .error-url {
-    font-family: monospace;
-    color: var(--color-primary);
-    word-break: break-all;
-}
-
-/* Engineer Notes on Summary */
-.engineer-notes-summary {
-    border-left: 3px solid var(--color-primary);
-}
-
-.engineer-notes-summary .markdown-content {
-    max-height: 200px;
-    overflow-y: auto;
 }
 
 /* Column drag-drop visual feedback */
@@ -1637,37 +1631,6 @@ th[draggable="true"] {
 
 th[draggable="true"]:active {
     cursor: grabbing;
-}
-
-/* Copy button success state */
-.copy-success {
-    background: var(--color-success) !important;
-    color: white !important;
-    border-color: var(--color-success) !important;
-}
-
-/* Ramp-up info badge */
-.ramp-up-badge {
-    display: inline-block;
-    padding: 2px 6px;
-    border-radius: 3px;
-    font-size: 0.65rem;
-    background: var(--color-ramp-badge-bg);
-    color: var(--color-ramp-badge-text);
-    border: 1px solid var(--color-ramp-badge-border);
-    margin-left: 8px;
-}
-
-/* Component-specific dark mode overrides that need unique values */
-body.dark-mode .sampler-detail-panel { background: var(--color-bg-deep); }
-body.dark-mode .sampler-detail-chart { background: var(--color-bg-card); border-color: var(--color-border); }
-body.dark-mode .error-detail-content { background: var(--color-bg-deep); }
-body.dark-mode .error-detail-content pre { background: var(--color-bg-card); border-color: var(--color-border); color: var(--color-text); }
-body.dark-mode .engineer-notes-summary { border-left-color: var(--color-primary); }
-
-/* Chart wrapper for responsive fullscreen positioning */
-.chart-wrapper {
-    position: relative;
 }
 
 /* Responsive */
@@ -1703,9 +1666,6 @@ body.dark-mode .engineer-notes-summary { border-left-color: var(--color-primary)
         padding: 10px 16px;
         font-size: 0.8rem;
     }
-    .sampler-detail-charts {
-        grid-template-columns: 1fr;
-    }
 }
 
 /* ---- Virtual Total sampler ---- */
@@ -1736,11 +1696,6 @@ body.dark-mode .engineer-notes-summary { border-left-color: var(--color-primary)
 .what-changed-regression { color: var(--color-error, #ef4444); }
 .what-changed-improvement { color: var(--color-success, #22c55e); }
 .what-changed-new { color: var(--badge-info-text, #1e40af); }
-.what-changed-sampler-list {
-    margin-left: 1.2em;
-    font-size: 0.85rem;
-    color: var(--color-text-secondary, #64748b);
-}
 
 /* ---- Apdex Score Badges ---- */
 .apdex-badge {
@@ -1803,4 +1758,2492 @@ body.dark-mode .apdex-poor {
 body.dark-mode .apdex-unacceptable {
     background: #7f1d1d;
     color: #fca5a5;
+}
+
+/* ============================================================
+ *  Toast — transient feedback for actions with no button to
+ *  write into (copying a response body, unsupported export).
+ * ============================================================ */
+
+.wir-toast {
+    position: fixed;
+    left: 50%;
+    bottom: 32px;
+    transform: translateX(-50%) translateY(12px);
+    z-index: 10000;
+    max-width: min(90vw, 480px);
+    padding: 12px 20px;
+    border-radius: 6px;
+    background: #1e293b;
+    color: #f8fafc;
+    font-size: 0.875rem;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.wir-toast.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+body.dark-mode .wir-toast {
+    background: #f1f5f9;
+    color: #0f172a;
+}
+
+/* The Undo toast (U2): the plain toast is pointer-events:none, which a button cannot live with,
+   and it sits a row above the plain one so a "Rule updated" message never covers an Undo. */
+/* Hidden as well as transparent once it has faded (SF29): a Delete now puts focus on Undo, and
+   an Undo left in the tab order after its toast had gone was a key away from reverting a delete
+   nobody could see any more. The hide waits for the fade; the show does not. */
+.wir-undo-toast {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    bottom: 88px;
+    visibility: hidden;
+    transition: opacity 0.18s ease, transform 0.18s ease, visibility 0s linear 0.18s;
+}
+
+.wir-undo-toast.visible {
+    pointer-events: auto;
+    visibility: visible;
+    transition: opacity 0.18s ease, transform 0.18s ease, visibility 0s;
+}
+
+.wir-undo-btn {
+    font: inherit;
+    font-weight: 700;
+    background: none;
+    border: none;
+    color: #93c5fd;
+    padding: 6px 10px;
+    min-height: 32px;
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+.wir-undo-btn:hover {
+    text-decoration: underline;
+}
+
+body.dark-mode .wir-undo-btn {
+    color: #1d4ed8;
+}
+
+/* ============================================================
+ *  Accessibility & print
+ * ============================================================ */
+
+/* Every interactive control is a <button> or a <div onclick>, but focus styling was
+ * limited to two inputs — keyboard and screen-reader users had almost no affordance
+ * for where they were. One visible ring for everything that can take focus. */
+:where(button, a, select, input, textarea, [tabindex], [onclick]):focus-visible {
+    outline: 2px solid var(--color-accent, #2563eb);
+    outline-offset: 2px;
+    border-radius: 3px;
+}
+
+/* Respect the OS "reduce motion" setting. The report animates chart transitions,
+ * toast slides and tab switches; for users who ask not to see motion, don't. */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+/* Printing a report is a normal way to attach results to a ticket or a review.
+ * Without this the page prints the active tab only, clipped, with dark chrome. */
+/* ============================================================
+ * Asserts
+ *
+ * One fenced section. Every colour is a custom property, with no literal hex
+ * anywhere: dark mode and colourblind mode re-assign those variables on
+ * body.dark-mode / body.cb-mode, so referencing them is what makes both modes —
+ * and their combination — work with no extra rules. A hardcoded colour here is a
+ * bug that only shows up for the reader who needs it most.
+ * ============================================================ */
+
+/* --- status chips -------------------------------------------------------- */
+
+.wir-chip {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+/* The tab's and the gate strip's verdict. It echoes the header status badge, so it
+   must not be smaller than it: at 0.78rem the one word the strip exists to say was
+   losing to the numbers beside it. */
+.wir-chip-lg {
+    font-size: 0.9375rem;
+    padding: 5px 14px;
+    border-radius: 6px;
+}
+
+.wir-chip-pass { background: var(--badge-pass-bg); color: var(--badge-pass-text); }
+.wir-chip-warn { background: var(--badge-warn-bg); color: var(--badge-warn-text); }
+.wir-chip-fail { background: var(--badge-fail-bg); color: var(--badge-fail-text); }
+
+/* The not-judged reasons are not verdicts. They must not read as a quiet pass, so they take
+   the neutral ramp rather than the green one. `not_judged` is the per-MATCH form, which the
+   cell markers in the samplers table use. */
+.wir-chip-disabled,
+.wir-chip-unmatched,
+.wir-chip-no-value,
+.wir-chip-load-not-achieved,
+.wir-chip-not_judged {
+    background: var(--color-ramp-badge-bg);
+    color: var(--color-ramp-badge-text);
+}
+
+/* The config errors borrow the fail palette and add an outline. None counts as a failure —
+   nothing was measured, so there is no verdict to take — but each means a check the file
+   asked for never ran (NotJudged.isConfigError(): invalid, and for server KPIs a source that
+   never answered or data below the coverage floor), and the surface has to say that louder
+   than "parked" or "no data". */
+.wir-chip-invalid,
+.wir-chip-source-failed,
+.wir-chip-low-coverage {
+    background: var(--badge-fail-bg);
+    color: var(--badge-fail-text);
+    border: 1px solid var(--color-error);
+}
+
+.wir-chip-not_evaluated {
+    background: var(--color-ramp-badge-bg);
+    color: var(--color-ramp-badge-text);
+}
+
+/* The Server tab's two WITHHELD states: the query changed and nothing collected answers it
+   (D22), or the series reached the page capped and the KPI is not the one the build judged
+   (C-4). Neither is a verdict, so neither borrows a verdict's colour — but a verdict the tab is
+   deliberately not showing has to be seen, so the neutral chip gets a dashed outline. */
+.wir-chip-needs-re-collection,
+.wir-chip-not-re-judged {
+    background: var(--color-ramp-badge-bg);
+    color: var(--color-ramp-badge-text);
+    border: 1px dashed currentColor;
+}
+
+/* --- gate strip ---------------------------------------------------------- */
+
+.wir-gate-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 32px;
+    align-items: flex-start;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-left: 4px solid var(--color-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 24px;
+    margin-bottom: 24px;
+}
+
+.wir-gate-fail { border-left-color: var(--color-error); }
+/* A gate that decided nothing takes the neutral ramp, not the green one. It has not passed. */
+.wir-gate-not_evaluated { border-left-color: var(--color-ramp-badge-text); }
+.wir-gate-warn { border-left-color: var(--color-warning); }
+.wir-gate-pass { border-left-color: var(--color-success); }
+
+/* The external chart payload is missing or belongs to another run, so the rules and their
+   verdicts could not be loaded. Deliberately the default neutral border rather than red: the
+   gate is not failing, it is unreadable from here, and the header badge still carries the
+   verdict this run was actually judged by. */
+.wir-gate-unavailable { border-left-color: var(--color-border); }
+
+.wir-gate-note {
+    align-self: center;
+    color: var(--color-text-secondary);
+    line-height: 1.5;
+}
+
+/* Same shape as .card-label, which is what this is — including its lack of a
+   font-weight: uppercase plus letter-spacing already reads as a label. */
+.wir-gate-label {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-secondary);
+    margin-bottom: 6px;
+}
+
+.wir-gate-verdict { flex: 0 1 auto; }
+
+.wir-gate-sub {
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+    margin-top: 8px;
+}
+
+.wir-gate-counts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+/* The strip speaks for the gated run; a client draft is one line pointing at the tab that judges
+   it (L9). */
+.wir-gate-draft {
+    font-size: 0.8rem;
+    font-style: italic;
+    color: var(--color-text-secondary);
+    margin-top: 8px;
+}
+
+.wir-count {
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 2px 9px;
+    border-radius: 4px;
+}
+
+.wir-count-fail, .wir-count-invalid { background: var(--badge-fail-bg); color: var(--badge-fail-text); }
+.wir-count-warn { background: var(--badge-warn-bg); color: var(--badge-warn-text); }
+.wir-count-pass { background: var(--badge-pass-bg); color: var(--badge-pass-text); }
+.wir-count-disabled,
+.wir-count-unmatched,
+.wir-count-no-value { background: var(--color-ramp-badge-bg); color: var(--color-ramp-badge-text); }
+
+.wir-gate-breaches {
+    flex: 1 1 340px;
+    min-width: 0;
+}
+
+.wir-breach {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    font-size: 0.875rem;
+    padding: 3px 0;
+    min-width: 0;
+}
+
+.wir-breach-detail {
+    color: var(--color-text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wir-gate-action { margin-left: auto; }
+
+/* --- buttons ------------------------------------------------------------- */
+
+/* .column-toggle-btn's box, because that is what a secondary button is everywhere
+   else in this report. Weight 400 and the secondary text colour are the point: five
+   equally-bold buttons in a row read as five equally important actions, and only
+   "+ Add assert" is. */
+.wir-btn {
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 400;
+    padding: 6px 14px;
+    border-radius: var(--radius);
+    border: 1px solid var(--color-border);
+    background: var(--color-bg-input);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+}
+
+/* The design calls for "primary background, white text". White is right in light
+   mode and wrong in dark, where --color-primary becomes a much lighter blue and
+   white on it fails contrast. The repo already has the pair that solves this for
+   the filter toggles, so this reuses it rather than hardcoding a colour that only
+   works for half the readers. */
+.wir-btn-primary {
+    background: var(--color-toggle-active-bg);
+    border-color: var(--color-toggle-active-bg);
+    color: var(--color-toggle-active-text);
+    font-weight: 600;
+}
+
+.wir-btn:hover {
+    background: var(--color-bg-hover);
+    border-color: var(--color-primary);
+}
+
+/* The two filled states keep their own colour on hover — the secondary hover above
+   would repaint them as if they were unfilled. Same specificity, so this must stay
+   after it. */
+.wir-btn-primary:hover,
+.wir-place-active:hover {
+    filter: brightness(0.96);
+    background: var(--color-toggle-active-bg);
+    border-color: var(--color-toggle-active-bg);
+}
+
+.wir-link {
+    font-family: inherit;
+    font-size: 0.875rem;
+    font-weight: 600;
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--color-primary);
+    cursor: pointer;
+}
+
+/* The × that removes a band, in both editors, and a picked metric's chip (RB10): as a bare .wir-link
+   it was the glyph's own box, about 10×19 px, under WCAG 2.2 2.5.8's 24×24. The glyph keeps its size
+   and sits centred in the larger box, which is no taller than the band row's controls, so the row
+   does not grow; the chip gives up its own vertical padding to it (.wir-pick-chip). */
+.wir-link.wir-band-remove,
+.wir-link.wir-chip-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    min-height: 24px;
+}
+
+/* --- toolbar ------------------------------------------------------------- */
+
+.wir-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+/* Pushed right, so the counts never land in the middle of the button group when the
+   row wraps. */
+.wir-toolbar-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-left: auto;
+}
+
+/* flex-basis: 100% drops the counts onto their own line under the actions. */
+.wir-toolbar-counts {
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+    flex-basis: 100%;
+    margin-top: 12px;
+}
+
+/* --- findings ------------------------------------------------------------ */
+
+/* A section, on the report's own section geometry — "1 configuration problem" is a
+   headline, and at 0.72rem uppercase grey it was styled as a caption. */
+.wir-findings {
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-left: 4px solid var(--color-error);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 16px;
+}
+
+.wir-findings-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--color-text);
+    margin-bottom: 16px;
+}
+
+.wir-finding {
+    font-size: 0.875rem;
+    padding: 3px 0;
+    color: var(--color-text);
+}
+
+.wir-finding-warning { color: var(--color-text-secondary); }
+
+/* Which document the list describes (SF18, Q8): the file the report was generated with, or the
+   draft. Directly under the heading, so it is read before the first finding. */
+.wir-findings-scope {
+    font-size: 0.8125rem;
+    color: var(--color-text-secondary);
+    margin: -10px 0 12px;
+}
+
+/* A draft that fixed every finding the build had: said, not alarmed about. */
+.wir-findings-clear { border-left-color: var(--color-success); }
+
+/* The severity, where it used to be told by the warning's grey alone: an error read as body text. */
+.wir-finding-error .wir-rule-id { color: var(--badge-fail-text); font-weight: 600; }
+
+/* A build finding this draft has fixed, or whose rule is gone (the Asserts tab, which cannot
+   re-derive the validator's findings and so marks them per rule): struck through, kept until the
+   file is regenerated. */
+.wir-finding-settled .wir-finding-text { text-decoration: line-through; }
+
+.wir-finding-mark {
+    font-size: 0.75rem;
+    font-style: italic;
+    color: var(--color-text-secondary);
+}
+
+/* --- rules table --------------------------------------------------------- */
+
+.wir-table-wrap {
+    overflow-x: auto;
+}
+
+.wir-asserts-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+
+/* .stats-table thead th, at 0.8125rem rather than its 0.8rem: these headers are
+   single words and were reading light next to the multi-word ones elsewhere. */
+.wir-asserts-table th {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    background: var(--color-bg-thead);
+    border-bottom: 2px solid var(--color-border);
+    text-align: left;
+    padding: 8px;
+    white-space: nowrap;
+}
+
+/* The separator stays on the top edge, unlike .stats-table's bottom edge, because
+   the expanded match and follow-up rows attach to the rule above them by dropping
+   it — a bottom-edge rule would draw the line between a rule and its own detail and
+   omit it at the group boundary. Same hairline either way; only the head needs the
+   reset below, so the 2px header rule is not stacked on top of a 1px row rule. */
+.wir-asserts-table td {
+    padding: 6px 8px;
+    border-top: 1px solid var(--color-border);
+    vertical-align: top;
+}
+
+.wir-asserts-table tbody tr:first-child td { border-top: none; }
+
+.wir-rule-row:hover { background: var(--color-bg-row-hover); }
+
+/* A parked rule is still worth reading — dimmed, not hidden. */
+.wir-row-disabled { opacity: 0.55; }
+
+.wir-num { text-align: right; white-space: nowrap; }
+
+.wir-breached { font-weight: 700; color: var(--color-error); }
+
+.wir-rule-id {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.wir-rule-desc {
+    font-size: 0.8125rem;
+    color: var(--color-text-secondary);
+    margin-top: 2px;
+}
+
+.wir-target {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.875rem;
+    display: inline-block;
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+}
+
+/* Deliberately not monospace. "warn > 650 ms · fail > 800 ms" is a sentence about
+   numbers, not a code token; monospace is reserved for what the user typed or the
+   engine matched — the rule id, the target and the metric name. */
+.wir-criteria {
+    font-size: 0.875rem;
+    white-space: nowrap;
+}
+
+.wir-kind {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 1px 6px;
+    margin-right: 6px;
+    border-radius: 4px;
+    background: var(--color-ramp-badge-bg);
+    color: var(--color-ramp-badge-text);
+    border: 1px solid var(--color-ramp-badge-border);
+}
+
+/* A target the loader could not read. The kind chip is otherwise neutral — this one has to
+   read as the problem it is, because the cell beside it holds an error message rather than
+   a sampler name. */
+.wir-kind-invalid {
+    background: var(--badge-fail-bg);
+    color: var(--badge-fail-text);
+    border-color: var(--badge-fail-text);
+}
+
+/* No text-transform: the tag renders three different strings. NEW and EDITED are
+   already uppercase in the markup and stay that way; "legacy" is a noun, not an
+   acronym, and reads better as one. */
+.wir-tag {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 1px 6px;
+    margin-left: 6px;
+    border-radius: 4px;
+    background: var(--color-ramp-badge-bg);
+    color: var(--color-ramp-badge-text);
+}
+
+.wir-muted { color: var(--color-text-secondary); }
+
+/* Expanded matches, indented under their rule. */
+.wir-match-row td { border-top: none; padding-top: 3px; padding-bottom: 3px; }
+.wir-match-row td:nth-child(2) { border-left: 3px solid var(--color-border); padding-left: 12px; }
+
+/* A rule that matched nothing is a different problem from one that breached, and
+   gets a different treatment: the fix is usually a typo in the target, not a
+   slower system. */
+.wir-followup-row td {
+    border-top: none;
+    background: var(--badge-warn-bg);
+    color: var(--badge-warn-text);
+    font-size: 0.875rem;
+    border-left: 3px dashed var(--color-warning);
+}
+
+/* --- empty state --------------------------------------------------------- */
+
+.wir-empty {
+    border: 1px dashed var(--color-border);
+    border-radius: var(--radius);
+    padding: 32px 24px;
+    text-align: center;
+    color: var(--color-text-secondary);
+}
+
+.wir-empty-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--color-text);
+    margin-bottom: 8px;
+}
+
+/* The two ways in, side by side. Wraps rather than shrinking, because the primary button's
+   label is the instruction and truncating it would leave "+ Add your first…". */
+.wir-empty-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin: 18px 0 14px;
+}
+
+/* --- drafts -------------------------------------------------------------- */
+
+.wir-unsaved-pill {
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 6px;
+    background: var(--color-bg-accent);
+    color: var(--color-text);
+    border: 1px dashed var(--color-primary);
+}
+
+/* Says what is unsaved, what it would mean, and — the part that matters — that
+   the header badge has deliberately not moved. */
+.wir-draft-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 16px;
+    padding: 12px 16px;
+    font-size: 0.875rem;
+    background: var(--color-bg-accent);
+    border: 1px dashed var(--color-primary);
+    border-radius: var(--radius);
+}
+
+.wir-draft-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.wir-tag-draft {
+    background: var(--color-bg-accent);
+    color: var(--color-text);
+    border: 1px dashed var(--color-primary);
+}
+
+.wir-save-menu { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* Right-aligned rather than a flex row: a <td> made a flex container stops being a
+   table cell for width purposes, and every other cell here relies on vertical-align.
+   Same result, none of the risk. */
+.wir-actions { white-space: nowrap; text-align: right; }
+
+.wir-actions .wir-link { margin-left: 10px; font-size: 0.875rem; }
+
+.wir-del-btn:hover { color: var(--badge-fail-text); }
+
+/* --- editor slide-over --------------------------------------------------- */
+
+.wir-editor-host:empty { display: none; }
+
+.wir-scrim {
+    position: fixed;
+    inset: 0;
+    background: var(--color-bg-deep);
+    opacity: 0.32;
+    z-index: 50;
+}
+
+/* In dark mode --color-bg-deep (#0f172a) sits next to --color-bg (#111827), so at
+   0.32 the scrim is nearly invisible and the slide-over stops reading as modal. */
+body.dark-mode .wir-scrim { opacity: 0.6; }
+
+.wir-slideover {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 520px;
+    max-width: 92vw;
+    background: var(--color-surface);
+    border-left: 1px solid var(--color-border);
+    box-shadow: -12px 0 32px rgba(15, 23, 42, 0.18);
+    z-index: 51;
+    display: flex;
+    flex-direction: column;
+    animation: wirSlideIn 0.18s ease-out;
+}
+
+/* The light-mode shadow is a slate tint, which disappears against a dark page. */
+body.dark-mode .wir-slideover { box-shadow: -12px 0 32px rgba(0, 0, 0, 0.5); }
+
+@keyframes wirSlideIn {
+    from { transform: translateX(24px); opacity: 0; }
+    to   { transform: translateX(0);    opacity: 1; }
+}
+
+/* Respect a reader who asked the system not to animate. */
+@media (prefers-reduced-motion: reduce) {
+    .wir-slideover { animation: none; }
+}
+
+.wir-slideover-head,
+.wir-slideover-foot {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.wir-slideover-foot {
+    border-bottom: none;
+    border-top: 1px solid var(--color-border);
+    justify-content: flex-end;
+    flex-wrap: wrap;
+}
+
+.wir-slideover-head strong { flex: 1; font-size: 1.125rem; font-weight: 600; }
+
+/* The server editor's title: the assert's name, and its id under it for a catalogue one (Q11). */
+.wir-editor-title { flex: 1; min-width: 0; }
+.wir-editor-title strong { display: block; }
+
+.wir-slideover-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.wir-field-label {
+    font-size: 0.8rem;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-secondary);
+    margin-bottom: 6px;
+}
+
+.wir-input {
+    font-family: inherit;
+    font-size: 0.85rem;
+    width: 100%;
+    padding: 6px 12px;
+    margin-bottom: 8px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    background: var(--color-bg-input);
+    color: var(--color-text);
+}
+
+/* Wide enough for "outside" plus a four-digit value without wrapping. */
+.wir-input-sm { width: auto; min-width: 84px; margin-bottom: 0; }
+
+/* Only a hand-typed pattern needs monospace. A <select> of sampler names and the
+   metric picker are UI, and belong in the UI font. */
+#editorPattern,
+#editorExclude {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.wir-segmented { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+
+.wir-seg {
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 500;
+    padding: 6px 14px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    background: var(--color-surface);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+}
+
+.wir-seg-active {
+    background: var(--color-toggle-active-bg);
+    border-color: var(--color-toggle-active-bg);
+    color: var(--color-toggle-active-text);
+    font-weight: 600;
+}
+
+.wir-checklist {
+    max-height: 170px;
+    overflow-y: auto;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin-bottom: 6px;
+}
+
+.wir-checklist label { display: block; font-size: 0.875rem; padding: 3px 0; }
+
+/* The live match preview. Kills the typo'd-target failure class before it can
+   reach a file: you see what the pattern selects while you type it. */
+.wir-preview-ok,
+.wir-preview-bad {
+    font-size: 0.875rem;
+    padding: 8px 12px;
+    border-radius: var(--radius);
+    margin-top: 8px;
+}
+
+.wir-preview-ok { background: var(--badge-pass-bg); color: var(--badge-pass-text); }
+.wir-preview-bad { background: var(--badge-warn-bg); color: var(--badge-warn-text); }
+
+.wir-band-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: 0.875rem;
+    margin-bottom: 8px;
+}
+
+.wir-add-band {
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 6px 14px;
+    margin-bottom: 6px;
+    border: 1px dashed var(--color-border);
+    border-radius: var(--radius);
+    background: none;
+    color: var(--color-primary);
+    cursor: pointer;
+}
+
+.wir-hint {
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+    margin: 4px 0 0;
+}
+
+.wir-inline-check {
+    font-size: 0.875rem;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: normal;
+    color: var(--color-text-secondary);
+    margin-left: 8px;
+}
+
+/* The reason the editor exists: the verdict, recomputed against this run as you
+   type, and unmistakably not yet saved. */
+.wir-preview {
+    border: 1px dashed var(--color-primary);
+    background: var(--color-bg);
+    border-radius: var(--radius);
+    padding: 16px;
+}
+
+/* In dark mode --color-bg and --color-surface are both #111827, so the preview box
+   would be the same colour as the slide-over behind it and only the dashed border
+   would separate them. */
+body.dark-mode .wir-preview { background: var(--color-bg-deep); }
+
+.wir-preview-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-primary);
+    margin-bottom: 10px;
+}
+
+.wir-preview-head .wir-muted {
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+.wir-preview-row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    font-size: 0.875rem;
+    padding: 3px 0;
+}
+
+.wir-preview-row .wir-num { margin-left: auto; }
+
+.wir-meta-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+}
+
+/* "Rule id", "Description", "Tags" are field labels on a form, not section
+   headings. Uppercase 0.7rem 700 made a four-field form look like four sections. */
+.wir-meta-grid label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 400;
+    color: var(--color-text-secondary);
+}
+
+.wir-meta-grid label > input,
+.wir-meta-grid label > select {
+    margin-top: 4px;
+}
+
+.wir-invalid {
+    flex: 1;
+    font-size: 0.875rem;
+    color: var(--badge-fail-text);
+}
+
+.wir-btn[disabled] {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* --- seeding ------------------------------------------------------------- */
+
+/* Nearly invisible until wanted: a column of bright glyphs would compete with the
+   numbers, which are the point of the table. */
+.wir-seed-btn {
+    font-family: inherit;
+    font-size: 0.9rem;
+    line-height: 1;
+    padding: 0 0 0 5px;
+    border: none;
+    background: none;
+    color: var(--color-text-secondary);
+    opacity: 0.18;
+    cursor: pointer;
+}
+
+.wir-seed-btn:hover,
+.wir-seed-btn:focus {
+    opacity: 1;
+    color: var(--color-primary);
+}
+
+/* The verdict on a metric cell — see refreshCellVerdicts.
+   Colour comes from the .wir-chip-<status> class the marker also carries, so it follows the
+   palette, dark mode and the badge tokens for free. The glyph carries the same information as
+   the colour, because this report ships Okabe-Ito and high-contrast palettes precisely because
+   its audience cannot rely on hue. Sized so a marked cell is the same height as an unmarked
+   one — a table that reflows when a rule is drafted is worse than no marker. */
+.wir-cell-verdict {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 16px;
+    height: 16px;
+    margin-left: 6px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 0.65rem;
+    font-weight: 700;
+    line-height: 1;
+    vertical-align: middle;
+    cursor: pointer;
+}
+
+/* Two classes, so this survives regardless of where the chip rules sit in the file: INVALID
+   borrows the fail palette and is told apart by its outline, and a flat `border: none` above
+   would erase exactly that distinction. */
+.wir-cell-verdict.wir-chip-invalid {
+    border-color: var(--color-error);
+}
+
+.wir-cell-verdict:hover,
+.wir-cell-verdict:focus {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 1px;
+}
+
+.wir-judging-row td {
+    background: var(--color-bg-hover);
+    font-size: 0.875rem;
+    padding: 10px 14px;
+}
+
+.wir-judging {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 3px 0;
+    flex-wrap: wrap;
+}
+
+.wir-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 620px;
+    max-width: 92vw;
+    max-height: 86vh;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    z-index: 51;
+    display: flex;
+    flex-direction: column;
+}
+
+.wir-modal input[type="range"] { width: 100%; margin-bottom: 10px; }
+
+/* The wizard grew a sampler table and a grouped metric picker, which do not fit the
+   620px the editor's modals use. */
+.wir-modal-wide { width: 880px; max-width: 94vw; max-height: 90vh; }
+
+/* --- generate-from-run wizard -------------------------------------------- */
+
+.wir-wz-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+
+.wir-wz-acts { margin-left: auto; display: flex; gap: 2px; align-items: center; }
+
+.wir-wz-box {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.wir-wz-tools { padding: 8px 10px; border-bottom: 1px solid var(--color-border); }
+
+.wir-wz-search {
+    font: inherit;
+    font-size: 0.83rem;
+    padding: 5px 9px;
+    width: 100%;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background: var(--color-bg-input);
+    color: var(--color-text);
+}
+
+.wir-wz-scroll { max-height: 232px; overflow-y: auto; }
+
+.wir-wz-table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
+
+.wir-wz-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--color-bg-thead);
+    text-align: left;
+    padding: 7px 10px;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-secondary);
+    border-bottom: 1px solid var(--color-border);
+    white-space: nowrap;
+}
+
+.wir-wz-table td { padding: 5px 10px; border-bottom: 1px solid var(--color-border); }
+.wir-wz-table td:first-child { width: 30px; }
+.wir-wz-table tbody tr:nth-child(even) { background: var(--color-bg-row-even); }
+.wir-wz-table tbody tr:hover { background: var(--color-bg-row-hover); }
+.wir-wz-none { text-align: center; padding: 16px; }
+
+/* Unticked dims the NUMBERS, never the checkbox: excluded is a choice the reader made
+   and can unmake, and a dimmed control reads as one they cannot. */
+.wir-wz-off td:not(:first-child) { opacity: 0.5; }
+
+.wir-wz-name span[title] {
+    display: inline-block;
+    max-width: 320px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+}
+
+.wir-wz-helper {
+    display: inline-block;
+    margin-left: 6px;
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--color-ramp-badge-bg);
+    color: var(--color-ramp-badge-text);
+    border: 1px solid var(--color-ramp-badge-border);
+    vertical-align: middle;
+}
+
+.wir-wz-fam { display: flex; gap: 12px; padding: 9px 12px; border-bottom: 1px solid var(--color-border); }
+.wir-wz-fam:last-child { border-bottom: none; }
+
+.wir-wz-fam-label {
+    flex: 0 0 104px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-text-secondary);
+    padding-top: 3px;
+}
+
+.wir-wz-fam-metrics { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+
+.wir-wz-fam-metrics label {
+    font-size: 0.85rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+}
+
+.wir-wz-fam-metrics label.wir-wz-dim { opacity: 0.62; }
+.wir-wz-unit { color: var(--color-text-secondary); font-size: 0.78rem; }
+
+.wir-wz-tunes { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+
+@media (max-width: 720px) {
+    .wir-wz-tunes { grid-template-columns: 1fr; }
+    .wir-wz-fam { flex-direction: column; gap: 4px; }
+}
+
+.wir-wz-tune-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+
+.wir-wz-tune-input {
+    font: inherit;
+    font-size: 0.85rem;
+    width: 66px;
+    margin-left: auto;
+    padding: 4px 8px;
+    text-align: right;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background: var(--color-bg-input);
+    color: var(--color-text);
+}
+
+.wir-wz-tune-suffix { font-size: 0.8rem; color: var(--color-text-secondary); }
+
+/* A typed value past the slider's range is honoured, so it is also flagged — the caption
+   reads the number in use and says the slider stopped, rather than reporting the clamp. */
+.wir-wz-past { color: var(--color-warning); font-weight: 700; }
+
+.wir-wz-foot-note { margin-right: auto; font-size: 0.8rem; }
+
+/* --- chart integration --------------------------------------------------- */
+
+/* Size and padding come from .wir-btn — a chart header action is the same kind of
+   secondary button as the toolbar's. */
+.wir-place-btn {
+    float: right;
+    margin-left: 8px;
+}
+
+.wir-place-active {
+    background: var(--color-toggle-active-bg);
+    border-color: var(--color-toggle-active-bg);
+    color: var(--color-toggle-active-text);
+}
+
+/* --- rules table: filtering and sorting ---------------------------------- */
+
+.wir-rules-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: 0 0 14px;
+}
+
+/* The heading carries its own rhythm here; .report-section h2's 16px would double
+   up with the head row's own margin. */
+.wir-rules-head h2 { margin-bottom: 0; }
+
+.wir-rules-count {
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+}
+
+.wir-filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+.wir-rules-search {
+    font-family: inherit;
+    flex: 1 1 240px;
+    max-width: 330px;
+    padding: 6px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    font-size: 0.85rem;
+    background: var(--color-bg-input);
+    color: var(--color-text);
+    outline: none;
+}
+
+.wir-rules-search:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.wir-status-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* A pill, not a badge — it is a control, and the report has no other round thing.
+   The resting state overrides the .wir-chip-<status> colours it is emitted with;
+   .wir-status-chip-on below wins them back at (0,2,0). Source order matters: this
+   block must stay after the chip palette. */
+.wir-status-chip {
+    font-family: inherit;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    padding: 3px 10px;
+    border-radius: 20px;
+    cursor: pointer;
+    background: transparent;
+    color: var(--color-text-secondary);
+    border: 1px solid var(--color-border);
+}
+
+.wir-status-chip:hover { filter: brightness(0.97); }
+
+.wir-status-chip-on.wir-chip-fail,
+.wir-status-chip-on.wir-chip-invalid,
+.wir-status-chip-on.wir-chip-source-failed,
+.wir-status-chip-on.wir-chip-low-coverage {
+    background: var(--badge-fail-bg);
+    color: var(--badge-fail-text);
+    border-color: var(--badge-fail-text);
+}
+
+.wir-status-chip-on.wir-chip-warn {
+    background: var(--badge-warn-bg);
+    color: var(--badge-warn-text);
+    border-color: var(--badge-warn-text);
+}
+
+.wir-status-chip-on.wir-chip-pass {
+    background: var(--badge-pass-bg);
+    color: var(--badge-pass-text);
+    border-color: var(--badge-pass-text);
+}
+
+
+.wir-status-chip-on.wir-chip-unmatched,
+.wir-status-chip-on.wir-chip-no-value,
+.wir-status-chip-on.wir-chip-load-not-achieved,
+.wir-status-chip-on.wir-chip-disabled {
+    background: var(--color-ramp-badge-bg);
+    color: var(--color-ramp-badge-text);
+    border-color: var(--color-ramp-badge-text);
+}
+
+.wir-filter-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.wir-clear-filters {
+    font-family: inherit;
+    font-size: 0.85rem;
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--color-text-secondary);
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.wir-clear-filters:hover { color: var(--color-text); }
+
+/* Open, or holding a filter you cannot see because the row is closed — both are
+   states the button has to advertise. */
+.wir-more-filters-on {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+}
+
+.wir-adv-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+    padding: 10px 14px;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+}
+
+.wir-adv-field,
+.wir-adv-check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+}
+
+.wir-filter-select {
+    font-family: inherit;
+    font-size: 0.8rem;
+    padding: 4px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background: var(--color-bg-input);
+    color: var(--color-text);
+    cursor: pointer;
+}
+
+.wir-filter-select-wide { max-width: 230px; }
+
+.wir-th-sortable { cursor: pointer; user-select: none; }
+
+.wir-th-sortable:hover { background: var(--color-bg-thead-hover); }
+
+.wir-sort-glyph {
+    font-size: 0.7em;
+    margin-left: 4px;
+    color: var(--color-ramp-badge-text);
+}
+
+.wir-sort-on { color: var(--color-primary); }
+
+.wir-status-btn {
+    font-family: inherit;
+    font-size: 0.72rem;
+    margin-left: 8px;
+    padding: 3px 5px;
+    border-radius: 4px;
+    background: none;
+    border: 1px solid var(--color-border);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+}
+
+.wir-status-btn:hover { background: var(--color-bg-hover); }
+
+.wir-status-btn-on {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+}
+
+/* position: fixed, and rendered outside .wir-table-wrap. That wrapper is
+   overflow-x: auto, and CSS promotes overflow-y to auto as soon as one axis stops
+   being visible — a popover nested inside it is clipped at the header row and
+   drifts sideways as the table scrolls. Coordinates are set from the button's rect
+   in positionStatusMenu(). */
+.wir-status-menu {
+    position: fixed;
+    min-width: 190px;
+    padding: 8px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.18);
+    z-index: 40;
+}
+
+/* The light-mode shadow is a slate tint and vanishes on a dark page — same defect
+   .wir-slideover had. */
+body.dark-mode .wir-status-menu { box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5); }
+
+.wir-status-menu-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 6px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.wir-status-menu-row:hover { background: var(--color-bg-hover); }
+
+.wir-status-menu-row .wir-muted { margin-left: auto; }
+
+.wir-status-menu-foot {
+    display: flex;
+    gap: 12px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--color-border);
+}
+
+.wir-status-menu-foot .wir-link { font-size: 0.78rem; }
+
+/* Distinct from .wir-empty, which means "this run declared no rules at all" and
+   keeps precedence over this one. */
+.wir-filtered-empty {
+    border: 1px dashed var(--color-border);
+    border-radius: var(--radius);
+    padding: 28px 24px;
+    text-align: center;
+}
+
+.wir-filtered-empty p { margin: 8px 0 16px; font-size: 0.875rem; }
+
+@media print {
+    body {
+        background: #fff !important;
+        color: #000 !important;
+    }
+
+    /* Controls that do nothing on paper. */
+    .tab-nav,
+    .filter-bar,
+    .table-toolbar,
+    .timeline-toolbar,
+    .notes-toolbar,
+    .table-csv-btn,
+    .row-hide-btn,
+    .chart-hide-btn,
+    .chart-fullscreen-btn,
+    .chart-drag-handle,
+    .col-resize-handle,
+    #resetWidthsBtn,
+    #transactionChildrenBtn,
+    .wir-toast {
+        display: none !important;
+    }
+
+    /* Pinned pixel widths are sized for the screen the user dragged them on. On
+       paper they overflow the sheet and the right-hand columns are lost, so let
+       a resized table fall back to fitting the page. */
+    .stats-table.cols-frozen {
+        table-layout: auto !important;
+        width: 100% !important;
+    }
+
+    .stats-table.cols-frozen thead th {
+        width: auto !important;
+        min-width: 0 !important;
+        max-width: none !important;
+    }
+
+    /* Print every tab, not just the one that happens to be active. */
+    .tab-panel {
+        display: block !important;
+        page-break-before: always;
+    }
+    .tab-panel:first-of-type {
+        page-break-before: auto;
+    }
+
+    /* Keep a chart and its heading on the same sheet where possible. */
+    .timeline-chart-section,
+    .summary-card,
+    table {
+        page-break-inside: avoid;
+    }
+
+    /* Charts are canvas elements: let them size to the page rather than the viewport. */
+    canvas {
+        max-width: 100% !important;
+        height: auto !important;
+    }
+
+    a[href]::after {
+        content: "";
+    }
+}
+
+/* Where a failure was decided, beside the code it was inferred from — see ErrorClass.
+   Muted rather than badge-coloured: it is a qualifier on the code, not a verdict, and three
+   loud chips per row in a table of failures would compete with the numbers. */
+.error-class {
+    display: inline-block;
+    margin-left: 8px;
+    font-size: 0.7rem;
+    color: var(--color-text-secondary);
+    white-space: nowrap;
+}
+
+/* The one class the reader has to look twice at: a 2xx counted as a failure. */
+.error-class-nonProtocol {
+    color: var(--badge-warn-text);
+}
+
+/* A message the report knows is meaningless. Rendered as an em-dash, and dimmed so it reads as
+   "nothing to say" rather than as data. */
+.error-message-none {
+    color: var(--color-text-secondary);
+    opacity: 0.6;
+}
+
+/* ---------------------------------------------------------------- broken-rule banner
+
+   Rules that could not run, at the top of the Asserts tab. Since the status collapse an
+   INVALID_RULE decides nothing, so this is the surface that has to be loud instead. It takes
+   the error palette and a solid left rule; there is no dismiss control, deliberately. */
+.wir-broken-banner {
+    border: 1px solid var(--color-error);
+    border-left-width: 4px;
+    border-radius: var(--radius);
+    background: var(--badge-fail-bg);
+    padding: 14px 18px;
+    margin-bottom: 16px;
+}
+
+.wir-broken-title {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--badge-fail-text);
+}
+
+.wir-broken-sub {
+    margin: 4px 0 10px;
+    font-size: 13px;
+    color: var(--badge-fail-text);
+    opacity: 0.85;
+}
+
+.wir-broken-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    /* rgba on the error hue rather than color-mix(). This was the stylesheet's only use of
+       color-mix, which is unsupported before Chrome 111 / Safari 16.2 — so a lone dependency on
+       a support floor nothing else in the file takes, for a 1px divider, in a report that gets
+       emailed and opened wherever the recipient happens to be. */
+    border-top: 1px solid rgba(220, 38, 38, 0.25);
+}
+
+/* Wraps rather than truncating: the sentence carries the mistyped name and the suggestion,
+   which is the entire value of the row. */
+.wir-broken-why {
+    flex: 1;
+    font-size: 13px;
+    color: var(--text-primary);
+    word-break: break-word;
+}
+
+.wir-btn-sm {
+    padding: 3px 10px;
+    font-size: 12px;
+}
+
+/* The document editor's textarea. Monospace and tall: this is JSON, and the whole point is
+   seeing enough of it at once to find the block you came for. */
+.wir-doc-textarea {
+    width: 100%;
+    min-height: 55vh;
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    font-size: 12.5px;
+    line-height: 1.5;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    resize: vertical;
+    white-space: pre;
+    overflow-wrap: normal;
+    overflow-x: auto;
+}
+
+.wir-doc-textarea:focus {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -1px;
+}
+
+/* The file-conflict strip. Same shape as the draft banner it sits beside, warning palette
+   rather than neutral: this one is asking a question with a destructive answer in it. */
+.wir-draft-conflict {
+    border-color: var(--color-warning);
+    background: var(--badge-warn-bg);
+    color: var(--badge-warn-text);
+}
+
+/* Provenance. Quiet on purpose — it states a fact about what is on screen, and a loud strip
+   would compete with the verdict it is explicitly telling you NOT to re-read. */
+.wir-source-strip {
+    margin: 8px 0 0;
+    padding: 7px 12px;
+    border-left: 3px solid var(--color-primary);
+    border-radius: var(--radius);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 12.5px;
+}
+
+/* ---------------------------------------------------------------- budget column
+
+   "actual vs expected", as one number. The Actual and Criteria columns beside it carry the
+   raw pair; this says what the pair MEANS — 24% of the budget, or 212% of it — which is the
+   question a tester actually has when deciding whether to move a threshold. */
+.wir-budget {
+    white-space: nowrap;
+    min-width: 92px;
+}
+
+.wir-budget-pct {
+    display: inline-block;
+    min-width: 40px;
+    font-variant-numeric: tabular-nums;
+}
+
+.wir-budget-bar {
+    display: inline-block;
+    width: 42px;
+    height: 6px;
+    margin-left: 6px;
+    vertical-align: middle;
+    border-radius: 3px;
+    background: var(--color-ramp-badge-bg);
+    overflow: hidden;
+}
+
+.wir-budget-fill {
+    display: block;
+    height: 100%;
+    border-radius: 3px;
+}
+
+/* Semantic, and separate from the status chip on purpose: a rule can sit at 96% of its budget
+   and still be PASS, which is the single most useful thing this column says. */
+.wir-budget-ok   { background: var(--color-success); }
+.wir-budget-warn { background: var(--color-warning); }
+.wir-budget-over { background: var(--color-error); }
+
+/* ---------------------------------------------------------------- comparison verdicts
+
+   Deliberately NOT badge-fail / badge-pass, which they used to borrow.
+
+   A comparison verdict is a computed observation — "slower than the baseline" — and an assert
+   verdict is a declared judgement: you set a limit and it was crossed. Sharing the classes meant
+   a change to one silently restyled the other, and left a reader unable to tell which kind of
+   red they were looking at now that a red assert badge means something precise.
+
+   Same semantic colours, because a regression really is bad news, but OUTLINED rather than
+   filled — the device .wir-chip-invalid already uses to say "related, not the same thing". */
+.cmp-regression,
+.cmp-removed,
+.cmp-new,
+.cmp-ok {
+    background: transparent;
+    border: 1px solid currentColor;
+}
+
+.cmp-regression { color: var(--badge-fail-text); }
+.cmp-removed    { color: var(--badge-fail-text); opacity: 0.75; }
+.cmp-new        { color: var(--color-primary); }
+.cmp-ok         { color: var(--badge-pass-text); }
+
+/* ============================================================
+   Server tab (M5)
+
+   Deliberately thin. The chips, the empty state, the finding rows and the data
+   table are the ones the Asserts tab already defines — a server KPI that reads
+   FAIL must look exactly like a client rule that reads FAIL, because they are the
+   same word from the same vocabulary and a reader should not have to learn two.
+   Only what is genuinely new to this tab is below.
+
+   Colours come from the --color-* custom properties, which is the family the rest
+   of this file uses. (--bg-secondary / --text-primary and friends appear in a
+   couple of older wir- rules and are defined nowhere, so those declarations are
+   silently inert; do not copy them.) Dark mode overrides go on body.dark-mode,
+   matching the convention at line 1446 onward.
+   ============================================================ */
+
+/* The header chip, beside the client badge. It borrows .status-badge for shape and
+   one of the badge-* classes for colour, so this only has to space it — and, being a
+   button that opens the Server tab (L3-6), undo the button chrome without touching the
+   badge's own font size and weight. */
+.wir-server-chip {
+    margin-left: 8px;
+    border: 0;
+    font-family: inherit;
+    line-height: inherit;
+    cursor: pointer;
+}
+
+.wir-server-chip:hover {
+    filter: brightness(0.95);
+    text-decoration: underline;
+}
+
+/* The client verdict is a button too (U9a): the same pill, the same affordance. */
+.wir-asserts-chip {
+    border: 0;
+    font-family: inherit;
+    line-height: inherit;
+    cursor: pointer;
+}
+
+.wir-asserts-chip:hover {
+    filter: brightness(0.95);
+    text-decoration: underline;
+}
+
+.wir-server-toolbar {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+/* A gate badge is a chip you can click to filter by. It keeps the chip's colour and
+   adds the affordance. */
+.wir-gate-badge {
+    border: 1px solid var(--color-border);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 700;
+    padding: 5px 12px;
+}
+
+.wir-gate-badge:hover {
+    filter: brightness(0.95);
+}
+
+/* What the gate would read if the edits on this tab were saved and the run judged again
+   (R3-5). Inside the badge, so the as-gated word and the would-be one are read together;
+   lighter than the badge's own word, which stays the verdict the build actually took. */
+.wir-would-be {
+    font-weight: 400;
+    font-size: 0.75rem;
+    margin-left: 2px;
+}
+
+.wir-gate-note {
+    margin: 0;
+}
+
+.wir-server-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+/* The chips' own span (SF40), so typing can redraw them without the box: no box of its own, so
+   the chips stay flex items of the row and wrap as they did. */
+.wir-server-chips {
+    display: contents;
+}
+
+/* First in its span, not in the row: the search box is still to its left. */
+.wir-server-chips > .wir-filter-label:first-child {
+    margin-left: 10px;
+}
+
+.wir-filter-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--color-text-secondary);
+    margin-left: 10px;
+}
+
+.wir-filter-label:first-child {
+    margin-left: 0;
+}
+
+.wir-filter-chip {
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text);
+    border-radius: 4px;
+    padding: 3px 9px;
+    font: inherit;
+    font-size: 0.72rem;
+    cursor: pointer;
+}
+
+.wir-filter-chip:hover {
+    background: var(--color-bg-hover);
+}
+
+/* The selected filter. An outline rather than a fill, so a chip that already carries a
+   status colour keeps it — the selection has to be legible on top of ten different
+   backgrounds, and re-colouring would hide the very thing being filtered for. */
+.wir-filter-chip.wir-on {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 1px;
+}
+
+.wir-server-findings {
+    margin: 10px 0 14px;
+}
+
+.wir-window-note {
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+    margin: 0 0 10px;
+}
+
+.wir-kpi-name {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    font-weight: 600;
+    color: var(--color-primary);
+    cursor: pointer;
+    text-align: left;
+}
+
+.wir-kpi-name:hover {
+    text-decoration: underline;
+}
+
+.wir-kpi-desc {
+    font-size: 0.75rem;
+    color: var(--color-text-secondary);
+    margin-top: 2px;
+}
+
+.wir-dim {
+    font-size: 0.75rem;
+    color: var(--color-text-secondary);
+}
+
+/* The sentence the evaluator wrote for a KPI it could not judge. Full width under its
+   row, because it is prose and a table cell would wrap it into a column. */
+.wir-reason-row td {
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+    padding-top: 0;
+    border-top: none;
+}
+
+.wir-chart-row td {
+    padding-top: 0;
+    border-top: none;
+}
+
+.wir-server-chart {
+    width: 100%;
+    height: 260px;
+}
+
+/* The collection, one line that opens (design §3). */
+.wir-collection {
+    margin: 4px 0 10px;
+}
+
+.wir-collection-line {
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+}
+
+/* The client filter bar does nothing to a server series (D4). */
+body.wir-on-server-tab #filterBar,
+body.wir-on-server-tab .filter-bar-toggle-wrapper {
+    display: none;
+}
+
+/* One card per component (design §3). */
+.wir-component-card {
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-surface);
+    margin: 12px 0;
+    overflow: hidden;
+}
+
+.wir-component-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.wir-component-id {
+    font-size: 0.95rem;
+}
+
+.wir-component-count {
+    margin-left: auto;
+}
+
+.wir-component-empty {
+    padding: 10px 12px;
+    margin: 0;
+}
+
+/* A size container, so an open row's panels can be as wide as the card shows rather than as wide
+   as the table is (SF34, below). Scoped to the cards: a bare .table-wrapper rule would reach the
+   Samplers, Errors and Compare tables. */
+.wir-component-card .table-wrapper {
+    margin: 0;
+    container-type: inline-size;
+}
+
+.wir-status-cell {
+    white-space: nowrap;
+}
+
+/* The same widths in every card, so a column lines up from one component to the next.
+
+   The "Server assert" column is the one <col> with no width, so a fixed table gives it whatever
+   the six others leave — and they took 900px against a table minimum of 860: 40px at a 1024px
+   window, nothing at 900, every id and label wrapping a letter per line (SF32). The minimum now
+   leaves it about 200px, and from 1240px down the other columns slim to make that room without
+   pushing the row actions past the card's edge at 1024 (plan §2 #4, "hiding the actions"):
+   738px of fixed columns, the four actions on two lines. Below that the table scrolls inside its
+   wrapper, which keeps the page itself from scrolling sideways (F9). */
+.wir-component-table {
+    table-layout: fixed;
+    min-width: 940px;
+}
+
+.wir-component-table .wir-col-status { width: 170px; }
+.wir-component-table .wir-col-actual { width: 110px; }
+.wir-component-table .wir-col-criteria { width: 210px; }
+.wir-component-table .wir-col-cov { width: 90px; }
+.wir-component-table .wir-col-inst { width: 90px; }
+.wir-component-table .wir-col-actions { width: 230px; }
+
+@media (max-width: 1240px) {
+    .wir-component-table .wir-col-actual { width: 100px; }
+    .wir-component-table .wir-col-criteria { width: 180px; }
+    .wir-component-table .wir-col-cov,
+    .wir-component-table .wir-col-inst { width: 84px; }
+    .wir-component-table .wir-col-actions { width: 120px; }
+    .wir-component-table .wir-row-actions { white-space: normal; }
+}
+
+.wir-component-table td {
+    overflow-wrap: anywhere;
+}
+
+/* An open row's panels span the card the reader can see, not the table: the chart row is one cell
+   across a table that is wider than the card below about 1180px, so its charts were 880px in a
+   684px card at 768 and their handles, the way to retune, sat past the edge (SF34). Sticky, so
+   they stay in view while the row is scrolled sideways to reach the actions. */
+.wir-component-table .wir-chart-row > td > * {
+    position: sticky;
+    left: 10px;
+    width: calc(100cqw - 20px);
+    box-sizing: border-box;
+}
+
+/* The row's ▸/▾, as the Samplers tab's detail toggle reads. */
+.wir-row-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0 6px 0 0;
+    font-size: 0.8rem;
+    color: inherit;
+}
+
+/* A catalogue assert's id under its label (Q11): what JUnit names the testcase and a CI log is
+   searched for. Breakable anywhere, as a derived id is one long hyphenated token. */
+.wir-kpi-id {
+    overflow-wrap: anywhere;
+}
+
+.wir-server-search {
+    min-width: 200px;
+    padding: 4px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background: var(--color-surface);
+    color: inherit;
+    margin-right: 8px;
+}
+
+/* An open row's two panels: over time, and per instance. */
+.wir-server-panels {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    gap: 12px;
+}
+
+@media (max-width: 900px) {
+    .wir-server-panels {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+.wir-panel-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+/* Value over time's title and its granularity select on one line (SF42), the select in the
+   Samplers tab's detail-chart-select style. */
+.wir-panel-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 10px;
+    margin-bottom: 4px;
+}
+
+.wir-panel-head .wir-panel-title {
+    margin-bottom: 0;
+}
+
+.wir-instance-chart {
+    width: 100%;
+    height: 260px;
+}
+
+/* The Server tab's two tables, the board and Collection. Both were class="data-table" and no
+   stylesheet had a rule for it: every cell unpadded, so adjacent values ran together
+   ("kafkarec" across Gate and Source), headers browser-centred over left-aligned values, and an
+   edited row's 3px marker painted over the first letters of its cell (M5 exploratory F7). The
+   Samplers table's measures, without its sort affordances — neither of these sorts. */
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+.data-table th,
+.data-table td {
+    padding: 6px 10px;
+    text-align: left;
+    vertical-align: top;
+}
+
+.data-table thead th {
+    background: var(--color-bg-thead);
+    border-bottom: 2px solid var(--color-border);
+    font-weight: 600;
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
+.data-table th.num,
+.data-table td.num {
+    text-align: right;
+}
+
+/* The rule sits ABOVE each row, so a reason or chart row stays with the row it belongs to. */
+.data-table tbody td {
+    border-top: 1px solid var(--color-border);
+}
+
+.data-table tbody tr.wir-reason-row > td,
+.data-table tbody tr.wir-chart-row > td {
+    border-top: none;
+    padding-top: 0;
+}
+
+body.dark-mode .wir-filter-chip {
+    background: var(--color-surface);
+    color: var(--color-text);
+    border-color: var(--color-border);
+}
+
+body.dark-mode .wir-gate-badge {
+    border-color: var(--color-border);
+}
+
+/* ---- Server KPI editor (M7) -------------------------------------------------
+   The slide-over shell, the scrim and .wir-input are the Asserts editor's and are
+   reused as-is: two editors that look different would read as two different kinds
+   of thing, and they are not. Only the field layout is new.
+
+   Scoped to #serverEditor (U5). The Asserts editor wraps each of its SECTIONS in .wir-field
+   too, so an unscoped rule turned every client section into one flex row: the Criteria hint was
+   squeezed into a 63 px column that ran past the panel's edge and the body scrolled sideways. */
+
+#serverEditor .wir-field,
+#serverDialog .wir-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+#serverEditor .wir-field > span:first-child,
+#serverDialog .wir-field > span:first-child {
+    flex: 0 0 130px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+}
+
+#serverEditor .wir-field .wir-input,
+#serverDialog .wir-field input {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+/* A custom query's box wraps a long query instead of scrolling one line a third of it wide
+   (SF26) — anywhere, since a PromQL selector is one unbreakable token. Typed, so monospace. */
+#serverEditor .wir-query-input {
+    resize: vertical;
+    overflow-wrap: anywhere;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* A seed's custom query in Generate's review, and a finding that quotes one: breakable anywhere.
+   A ~140-character `{...}` selector is one token, and as one it pushed the review's Fail column
+   out of the slide-over at 1024 px (SF26). */
+.wir-seed-review code,
+.wir-server-findings {
+    overflow-wrap: anywhere;
+}
+
+/* A line under a field, aligned with its control: the metric id the file will carry (SF26). */
+.wir-field-note {
+    font-size: 0.75rem;
+    margin: -4px 0 12px 138px;
+    overflow-wrap: anywhere;
+}
+
+/* The unit a band box is compared in (SF16): beside the box, never wrapped, and no gap left
+   behind when the assert has none. */
+.wir-band-unit {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+.wir-band-unit:empty {
+    display: none;
+}
+
+/* The Validate-query answer (D22). Two states and no third: a query the payload holds, and
+   one it does not. There is deliberately no "probably fine" — an editor that estimates is
+   teaching the author to trust a number the product invented. */
+.wir-validate {
+    font-size: 0.75rem;
+    margin: -4px 0 12px 138px;
+}
+
+.wir-validate-ok {
+    color: var(--badge-pass-text);
+}
+
+.wir-validate-none {
+    color: var(--color-text-secondary);
+}
+
+/* A series the collector holds that did NOT collect — FAILED, EMPTY, INSUFFICIENT. It used to
+   read "Collected" in the pass colour beside a row the run reports as SOURCE FAILED (R1-10). */
+.wir-validate-warn {
+    color: var(--badge-warn-text);
+}
+
+/* What a Save is still told (C-11): KpiUsability's WARNINGs and a tolerance longer than the
+   window. Above the buttons and full width — a warning decides nothing, so it never sits where
+   the refusal does. */
+.wir-editor-warnings {
+    flex: 1 1 100%;
+    order: -1;
+}
+
+.wir-editor-warning {
+    margin: 0 0 4px;
+    font-size: 0.78rem;
+    color: var(--badge-warn-text);
+}
+
+.wir-problem {
+    flex: 1 1 auto;
+    font-size: 0.78rem;
+    color: var(--badge-fail-text);
+}
+
+/* Wraps: at 390px the buttons squeezed into three-line labels and "Download
+   report-annotations.json" ran 44px past the window (SF35). */
+.wir-server-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+/* The unsaved pill's own slot, so a note typed on the Notes tab redraws the pill alone (SF45).
+   No box of its own: the pill stays a flex item of the actions row. */
+.wir-pill-slot {
+    display: contents;
+}
+
+/* The restored and the dropped draft notices sit in the toolbar's column, which has its own gap. */
+.wir-server-toolbar .wir-draft-banner {
+    margin-top: 0;
+}
+
+/* The card's ⋯ (SF44): beside "+ metric", and its two actions on a row of their own under the
+   header — in the card's flow rather than a popover, because the card clips (overflow: hidden)
+   and an empty card is shorter than a popover would be. */
+.wir-component-more {
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0 4px;
+}
+
+.wir-component-menu {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-bg-accent);
+}
+
+/* The editor's "If saved" line (SF43): the chip the board would show, and why when nothing was
+   decided — aligned with the controls, like the validate line above it. */
+#serverEditor .wir-editor-verdict {
+    align-items: flex-start;
+}
+
+.wir-editor-verdict-body {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 0.8rem;
+}
+
+.wir-editor-verdict-reason {
+    margin: 4px 0 0;
+    font-size: 0.75rem;
+    overflow-wrap: anywhere;
+}
+
+.wir-row-actions {
+    white-space: nowrap;
+}
+
+.wir-row-actions .wir-link {
+    margin-right: 8px;
+    font-size: 0.75rem;
+}
+
+/* A row the session has changed. Marked rather than recoloured: the status chip is still the
+   verdict, and tinting the whole row would compete with it. */
+.wir-edited > td:first-child {
+    box-shadow: inset 3px 0 0 var(--color-primary);
+}
+
+/* ---- Server tab: Add component and the metric picker (design §3, "Add flow") ---- */
+
+.wir-type-cards {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 6px 0 14px;
+}
+
+.wir-type-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    min-width: 140px;
+    max-width: 220px;
+    padding: 10px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-surface);
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.wir-type-card.wir-on {
+    border-color: var(--color-primary, #2563eb);
+    box-shadow: 0 0 0 1px var(--color-primary, #2563eb);
+}
+
+.wir-first-component {
+    margin: 12px 0;
+}
+
+/* The picker is wide: filters, the list, and a detail pane. */
+.wir-slideover.wir-picker {
+    width: 1100px;
+}
+
+.wir-pick-grid {
+    display: grid;
+    grid-template-columns: 200px minmax(0, 1fr) 300px;
+    gap: 14px;
+    min-height: 100%;
+}
+
+@media (max-width: 1000px) {
+    .wir-pick-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+.wir-pick-filters {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.wir-pick-filters input[type="search"] {
+    padding: 4px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background: var(--color-surface);
+    color: inherit;
+}
+
+.wir-pick-cat {
+    background: none;
+    border: none;
+    text-align: left;
+    padding: 2px 4px;
+    border-radius: 4px;
+    color: inherit;
+    cursor: pointer;
+}
+
+/* The selected category and the metric the detail pane describes (SF31) are marked as the
+   dialog's other selections are (.wir-type-card.wir-on): a --color-primary edge, 3.7:1 on the
+   light panel and 7.0:1 on the dark one. The --color-bg fill they had was 1.04:1 in light mode
+   and the panel's own colour in dark. A box-shadow, not an outline, so the keyboard's focus ring
+   still shows on top of it. The category keeps an accent fill — its text is full-strength — and
+   the metric row does not (below). */
+.wir-pick-cat.wir-on {
+    background: var(--color-bg-accent);
+    box-shadow: inset 3px 0 0 var(--color-primary);
+    font-weight: 600;
+}
+
+/* A floor (SF33). A scroll container's grid row has a minimum of zero, so the list was the one row
+   that absorbed every pixel the dialog lacked: under 1000px wide, where the three columns stack,
+   it was 8px tall with no metric showing at 900x900 and none at 390. With a floor the body scrolls
+   instead, and the list still scrolls inside itself — five or so metrics in view, with their
+   category headings. Stacked, half the window at least: at a phone width each name wraps to two
+   or three lines beside its sparkline and peak. */
+.wir-pick-list {
+    overflow-y: auto;
+    min-height: 16rem;
+}
+
+@media (max-width: 1000px) {
+    .wir-pick-list {
+        min-height: max(16rem, 50vh);
+    }
+}
+
+.wir-pick-group {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--color-text-secondary);
+    margin: 10px 0 4px;
+}
+
+.wir-pick-row {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr) 92px 90px;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 6px;
+    border-radius: 6px;
+}
+
+/* The ring alone, on no fill of its own: it carries the state at 3.7:1 light and 7.0:1 dark, and
+   the --color-bg-accent fill under it took the row's secondary text — "no data", "already asserted",
+   the peak — to 4.26:1 light and 4.04:1 dark, under 1.4.3's 4.5:1 for 12px text (4.76 and 6.92:1
+   on the panel). */
+.wir-pick-row.wir-focus {
+    box-shadow: inset 0 0 0 2px var(--color-primary);
+}
+
+.wir-pick-name {
+    background: none;
+    border: none;
+    padding: 0;
+    text-align: left;
+    color: inherit;
+    cursor: pointer;
+}
+
+.wir-pick-peak {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.wir-star {
+    color: #d4a017;
+}
+
+.wir-spark {
+    color: var(--color-primary, #2563eb);
+    vertical-align: middle;
+}
+
+.wir-pick-detail h4 {
+    margin: 0 0 6px;
+}
+
+.wir-pick-facts {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 2px 10px;
+    font-size: 0.85rem;
+}
+
+.wir-pick-facts dt {
+    color: var(--color-text-secondary);
+}
+
+.wir-pick-chart {
+    width: 100%;
+    height: 160px;
+    margin-top: 10px;
+}
+
+.wir-pick-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    flex: 1;
+}
+
+/* No vertical padding and little on the right: the × is a 24 px box (.wir-chip-remove), which pads
+   the chip as 2px did, so the chip is no taller than it was. */
+.wir-pick-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 2px 0 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    font-size: 0.8rem;
+}
+
+.wir-thresholds-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 10px;
+}
+
+.wir-band-cell {
+    white-space: nowrap;
+}
+
+.wir-band-cell select,
+.wir-band-cell input {
+    padding: 2px 4px;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    background: var(--color-surface);
+    color: inherit;
+}
+
+.wir-nodata {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+}
+
+/* Set thresholds' and the review's verdict: the chip, then what the editor would warn about the
+   same assert (SF13), wrapped under it rather than widening the table. */
+.wir-verdict-cell .wir-editor-warning {
+    max-width: 34ch;
+    margin: 4px 0 0;
+}
+
+#serverDialog .wir-field input {
+    padding: 6px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background: var(--color-surface);
+    color: inherit;
+}
+
+#serverDialog .wir-field .wir-dim {
+    flex-basis: 100%;
+    font-size: 0.75rem;
+}
+
+#serverDialog .wir-field {
+    flex-wrap: wrap;
+}
+
+/* The Summary tab's server card sits under the client's, the same shape (design §3). */
+.wir-server-strip {
+    margin-top: 12px;
+}
+
+.wir-gate-breach {
+    margin: 4px 0;
 }

@@ -42,4 +42,38 @@ class SamplerFilterTest {
         assertTrue(filter.accept("HTTP Request"));
         assertFalse(filter.accept("Debug Sampler"));
     }
+
+    // --- Glob translation must survive real JMeter labels (SEC-9) ---
+
+    @Test
+    void globToRegex_quotesRegexMetacharacters() {
+        // Only '.' used to be escaped, so braces, parens and '+' were live regex syntax:
+        // these patterns either threw PatternSyntaxException or matched the wrong thing.
+        SamplerFilterConfig config = new SamplerFilterConfig();
+        config.setIncludePatterns(Arrays.asList("GET /api/users/{id}"));
+        SamplerFilter filter = new SamplerFilter(config);
+
+        assertTrue(filter.accept("GET /api/users/{id}"));
+        assertFalse(filter.accept("GET /api/users/42"));
+    }
+
+    @Test
+    void globToRegex_handlesPatternsThatUsedToThrow() {
+        SamplerFilterConfig config = new SamplerFilterConfig();
+        config.setIncludePatterns(Arrays.asList("POST /search?q=a+b(c)[d]"));
+        SamplerFilter filter = new SamplerFilter(config);
+
+        assertDoesNotThrow(() -> filter.accept("POST /search?q=a+b(c)[d]"));
+        assertTrue(filter.accept("POST /search?q=a+b(c)[d]"));
+    }
+
+    @Test
+    void globToRegex_wildcardsStillWork() {
+        assertTrue("GET /api/users".matches(SamplerFilter.globToRegex("GET /api/*")));
+        assertTrue("Debug Sampler".matches(SamplerFilter.globToRegex("Debug*")));
+        assertTrue("a1c".matches(SamplerFilter.globToRegex("a?c")));
+        assertFalse("abc".matches(SamplerFilter.globToRegex("GET /api/*")));
+        // A wildcard between two metacharacter-bearing literals.
+        assertTrue("{a}-x-{b}".matches(SamplerFilter.globToRegex("{a}-*-{b}")));
+    }
 }

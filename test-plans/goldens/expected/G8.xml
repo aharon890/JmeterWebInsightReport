@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="JMeter Web Insight Report" tests="3" failures="0">
+  <testsuite name="JMeter Web Insight Report" tests="3" failures="0">
+    <properties>
+      <property name="webinsight.runId" value="967a1b397b7fb1d2"/>
+    </properties>
+    <testcase name="GET /api/products" classname="performance">
+    </testcase>
+    <testcase name="GET /api/search" classname="performance">
+    </testcase>
+    <testcase name="POST /api/checkout" classname="performance">
+    </testcase>
+  </testsuite>
+  <testsuite name="JMeter Web Insight Report - serverMetrics" tests="1" failures="1" skipped="0">
+    <properties>
+      <property name="webinsight.runId" value="967a1b397b7fb1d2"/>
+    </properties>
+    <testcase name="serverMetrics.payload" classname="server-metrics">
+      <failure message="the server-metrics payload does not exist: &apos;server-metrics-that-does-not-exist.json&apos; — no server assert was judged. The server asserts this run declares depend on it, so this is a configuration error">
+payload:   refused (MISSING)
+asserts:   3 declared, none judged
+      </failure>
+    </testcase>
+  </testsuite>
+</testsuites>

@@ -1,0 +1,6819 @@
+{
+ "_comment": [
+  "The contract between the Java server-KPI evaluator and the report's client-side mirror (M6).",
+  "",
+  "ServerParityTest runs it in Java; server-parity.test.js and server-parity.spec.ts are to run",
+  "the same cases in node and in a real report. Neither side owns the definition of a reducer,",
+  "a tolerance, the window, requiresLoad or divideBy: this file does. A case only one side passes",
+  "is the bug the file exists to catch. Add a case whenever either side gains behaviour.",
+  "",
+  "`payload` is a literal server-metrics.json (read through the same bean the generator reads).",
+  "`samplers` and `clientRules` build the client gate requiresLoad/divideBy resolve against,",
+  "through the client evaluator. `config` per case overrides the block's run-level settings.",
+  "Expected `actual` values are compared to 1e-6; `reason` is a substring of the detail.",
+  "`kpi` is the RAW file entry - one server assert, an element of serverMetrics.asserts (the key",
+  "keeps its internal name; D25 renamed only what a user writes): every runner puts it in a block's",
+  "`asserts` and through its production parser (Java: ServerMetricsMapper), so a shape one parser",
+  "refuses and the other reads is a failing case.",
+  "`expect.id` is the id the assert is judged under - the derived one when the file names none.",
+  "`expect.warnings`, when present, is the exact list of WARNING sentences KpiUsability raises for",
+  "the assert (Java: its WARNING findings; the browser: what the editor and a drag show) - they",
+  "decide nothing, so only the sentence can drift, and it is the sentence a reader acts on.",
+  "`documentCases` judge several asserts in one block (`asserts`, the file's own key), for what",
+  "only a set can show (shared ids). Their `warnings`, when present, is the exact, ordered list of",
+  "WARNING findings the document raises, as {id, message} (Java: every WARNING in findings(); the",
+  "browser: the live duplicate-id findings, then each assert's own warnings). Their `findings`, when",
+  "present, is the exact, ordered list of EVERY finding the document raises, ERRORs and WARNINGs, as",
+  "{severity, id, message} (Java: ServerGateEvaluation.findings(), in its phases - the mapper's, then",
+  "KpiUsability's per assert, then the payload's, then the evaluator's run-time refusals, each said",
+  "once per assert; the browser: the live findings list, SF18). A document case's `block`, when present,",
+  "adds or replaces block keys beside its components and asserts (environments, defaultEnv, collection).",
+  "`blockCases` are what a BLOCK says beside its asserts: each key of `block` replaces the block's",
+  "own (a `components` there replaces every declared component), `expect.problems` is the exact, ordered",
+  "list of config-level ERROR sentences the mapper records under serverMetrics (Java:",
+  "ServerMetricsConfig.problems() filed under serverMetrics; the browser: blockProblems),",
+  "`expect.componentProblems` (absent means none) the same for the components, as {id, message} with the",
+  "finding's id - serverMetrics.components.<id> (the browser: componentProblems) - and `expect.ids` the",
+  "asserts that still map beside them.",
+  "`components` is the block's declared components, as a user writes them, for every case: `c` is",
+  "custom (every assert writes its own query) and `db` is postgres (asserts name a catalogue metric,",
+  "which brings its query, unit and reducer). A case (or a document case) may carry its own",
+  "`components`, merged over those by id. Every assert names a component; there are no sources in",
+  "the file any more (C8): the payload's one source is the collection's, id `metrics`, and every",
+  "series is keyed by it and by the query the assert resolved to. A gate case cannot name a case",
+  "that carries its own `components` or `config`.",
+  "`expect.detail`, when present, is the WHOLE detail sentence, compared for equality - for the",
+  "sentences whose every character is part of the contract (numbers above all: a value is written",
+  "as Java writes it on both sides - a quoted value or a reducer key in Double.toString's E notation",
+  "below 1e-3 and from 1e7, a band in plain digits - every digit of an integral one below 2^63, and",
+  "Double.toString's shortest digits written out for any other (L12) - and a value read from the file",
+  "by its value, never its literal).",
+  "`invisibleEnds.ranges` is the class of characters the INVISIBLE_PADDING WARNING names at a query's",
+  "end (F8): each side holds its own copy as a range table, and ServerParityTest and server-parity.test.js",
+  "check that copy against this one for every code point (server-parity.spec.ts: each range's edges",
+  "and one either side), so neither side's Unicode tables decide what the WARNING says."
+ ],
+ "samplers": [
+  {
+   "name": "GET /api/products",
+   "sampleCount": 1500,
+   "errorCount": 0,
+   "errorRate": 0,
+   "mean": 120,
+   "median": 110,
+   "p90": 180,
+   "p95": 240,
+   "p99": 380,
+   "min": 40,
+   "max": 620,
+   "stdDev": 55,
+   "throughput": 12.5,
+   "apdex": 0.98,
+   "meanLatency": 100,
+   "meanConnectTime": 15,
+   "receivedBytesPerSec": 45056,
+   "sentBytesPerSec": 8192
+  },
+  {
+   "name": "GET /idle",
+   "sampleCount": 10,
+   "errorCount": 0,
+   "errorRate": 0,
+   "mean": 50,
+   "median": 50,
+   "p90": 60,
+   "p95": 70,
+   "p99": 80,
+   "min": 40,
+   "max": 90,
+   "stdDev": 5,
+   "throughput": 0,
+   "apdex": 1,
+   "meanLatency": 40,
+   "meanConnectTime": 5,
+   "receivedBytesPerSec": 100,
+   "sentBytesPerSec": 100
+  },
+  {
+   "_comment": "R2-1: a throughput just under a load rule's limit. round2 would put it ON the limit (12.5), which is where the page used to judge it.",
+   "name": "GET /edge",
+   "sampleCount": 1500,
+   "errorCount": 0,
+   "errorRate": 0,
+   "mean": 120,
+   "median": 110,
+   "p90": 180,
+   "p95": 240,
+   "p99": 380,
+   "min": 40,
+   "max": 620,
+   "stdDev": 55,
+   "throughput": 12.496,
+   "apdex": 0.98,
+   "meanLatency": 100,
+   "meanConnectTime": 15,
+   "receivedBytesPerSec": 45056,
+   "sentBytesPerSec": 8192
+  }
+ ],
+ "metadata": {
+  "durationMillis": 600000,
+  "totalThreads": 10
+ },
+ "clientRules": [
+  {
+   "id": "load:throughput",
+   "target": {
+    "sampler": "GET /api/products"
+   },
+   "metric": "throughput",
+   "fail": {
+    "lt": 10
+   }
+  },
+  {
+   "id": "load:too-low",
+   "target": {
+    "sampler": "GET /api/products"
+   },
+   "metric": "throughput",
+   "fail": {
+    "lt": 50
+   }
+  },
+  {
+   "id": "load:warns",
+   "target": {
+    "sampler": "GET /api/products"
+   },
+   "metric": "throughput",
+   "warn": {
+    "lt": 50
+   },
+   "fail": {
+    "lt": 1
+   }
+  },
+  {
+   "id": "load:unmatched",
+   "target": {
+    "sampler": "GET /nope"
+   },
+   "metric": "throughput",
+   "fail": {
+    "lt": 1
+   }
+  },
+  {
+   "id": "load:zero",
+   "target": {
+    "sampler": "GET /idle"
+   },
+   "metric": "throughput",
+   "fail": {
+    "gt": 1000
+   }
+  },
+  {
+   "id": "load:unparseable",
+   "target": {
+    "scope": "overall"
+   },
+   "metric": "thruughput",
+   "fail": {
+    "lt": 1
+   }
+  },
+  {
+   "id": "load:everything",
+   "target": {
+    "samplers": [
+     "GET /api/products",
+     "GET /idle"
+    ]
+   },
+   "metric": "throughput",
+   "fail": {
+    "lt": 0.0001
+   }
+  },
+  {
+   "id": "not-a-load-rule",
+   "target": {
+    "sampler": "GET /api/products"
+   },
+   "metric": "p95",
+   "fail": {
+    "gt": 100000
+   }
+  },
+  {
+   "id": "load:parked",
+   "enabled": false,
+   "target": {
+    "sampler": "GET /api/products"
+   },
+   "metric": "throughput",
+   "fail": {
+    "lt": 1
+   }
+  },
+  {
+   "_comment": "R1-3: no id. Java derives target.slug()-metric = run-throughput; the mirror must too.",
+   "target": {
+    "scope": "overall"
+   },
+   "metric": "throughput",
+   "fail": {
+    "lt": 1
+   }
+  },
+  {
+   "_comment": "R2-3: an explicit null, as the page's annotationsDocument serialises an id-less rule. Derived: get-api-products-throughput.",
+   "id": null,
+   "target": {
+    "sampler": "GET /api/products"
+   },
+   "metric": "throughput",
+   "fail": {
+    "lt": 1
+   }
+  },
+  {
+   "_comment": "C-3: Java canonicalises the metric before asking whether it is throughput.",
+   "id": "load:cased",
+   "target": {
+    "sampler": "GET /api/products"
+   },
+   "metric": "Throughput",
+   "fail": {
+    "lt": 1
+   }
+  },
+  {
+   "id": "load:edge",
+   "target": {
+    "sampler": "GET /edge"
+   },
+   "metric": "throughput",
+   "fail": {
+    "lt": 12.5
+   }
+  },
+  {
+   "id": "load:edge-measure",
+   "target": {
+    "sampler": "GET /edge"
+   },
+   "metric": "throughput",
+   "fail": {
+    "lt": 0.001
+   }
+  },
+  {
+   "_comment": "C38: a load target with six digits. Its FAILED sentence quotes the band, and the page wrote it with the reader's grouping separator (100,000) where Java writes 100000.",
+   "id": "load:far",
+   "target": {
+    "sampler": "GET /api/products"
+   },
+   "metric": "throughput",
+   "fail": {
+    "lt": 100000
+   }
+  },
+  {
+   "_comment": "M7d X: a load target Java wrote in E notation (Double.toString from 1e7), where the page wrote 12345678.5. L12: a band is written in plain digits, so both write 12345678.5.",
+   "id": "load:huge",
+   "target": {
+    "sampler": "GET /api/products"
+   },
+   "metric": "throughput",
+   "fail": {
+    "lt": 12345678.5
+   }
+  },
+  {
+   "_comment": "M7d X: a load target Java wrote in E notation (Double.toString below 1e-3), FAILed by GET /idle's 0 req/s, where the page wrote 0.0005. L12: a band is written in plain digits, so both write 0.0005.",
+   "id": "load:tiny",
+   "target": {
+    "sampler": "GET /idle"
+   },
+   "metric": "throughput",
+   "fail": {
+    "lt": 0.0005
+   }
+  },
+  {
+   "_comment": "Q19 (item 3): a load rule whose fail band covers its warn band (a WARNING, still judged), so GET /edge's 12.496 FAILs lt 13 beside warn lt 12.5. The quoted measurement counts the warn band too: the fail band alone would write 12.50, on the warn band it crossed.",
+   "id": "load:edge-warned",
+   "target": {
+    "sampler": "GET /edge"
+   },
+   "metric": "throughput",
+   "warn": {
+    "lt": 12.5
+   },
+   "fail": {
+    "lt": 13
+   }
+  },
+  {
+   "_comment": "L13: one 'worst'. Two FAILs of one load rule: GET /api/products' 12.5 first, then GET /idle's 0, further past the downward band. RuleResult.worstJudged() and the mirror's worstJudged both name the furthest past it, not the first.",
+   "id": "load:two-fail",
+   "target": {
+    "samplers": [
+     "GET /api/products",
+     "GET /idle"
+    ]
+   },
+   "metric": "throughput",
+   "fail": {
+    "lt": 100000
+   }
+  }
+ ],
+ "reasonPhrases": {
+  "_comment": "NotJudged.phrase() and WIR.status.REASON_PHRASE, word for word: the load-rule sentences are built from them on both sides.",
+  "DISABLED": "was parked with enabled: false",
+  "NO_MATCH": "matched nothing in this run",
+  "NO_VALUE": "could not be measured in this run",
+  "INVALID_RULE": "could not run",
+  "SOURCE_FAILED": "could not be collected",
+  "LOW_COVERAGE": "was collected below the coverage floor",
+  "LOAD_NOT_ACHIEVED": "was not judged because the load it depends on was not established"
+ },
+ "reasonCountKeys": {
+  "_comment": "A1-9: NotJudged.countKey() and WIR.status.REASON_KEY - the key a reason is counted under in gate.notJudged on both sides.",
+  "DISABLED": "disabled",
+  "NO_MATCH": "noMatch",
+  "NO_VALUE": "noValue",
+  "INVALID_RULE": "invalidRule",
+  "SOURCE_FAILED": "sourceFailed",
+  "LOW_COVERAGE": "lowCoverage",
+  "LOAD_NOT_ACHIEVED": "loadNotAchieved"
+ },
+ "configErrorReasons": [
+  "INVALID_RULE",
+  "SOURCE_FAILED",
+  "LOW_COVERAGE"
+ ],
+ "invisibleEnds": {
+  "_comment": [
+   "F8 (Q2): the characters a query may not start or end with without a WARNING - KpiUsability.isInvisible",
+   "and the page's isInvisibleCodePoint, which each hold this table as their own copy. It is Unicode's",
+   "White_Space, plus every Default_Ignorable_Code_Point, plus DEL and the C1 controls, minus everything",
+   "at or below U+0020, which String.trim (and the page's javaTrim) has already taken off both ends.",
+   "Written out rather than derived on either side: the JVM's and the browser's Unicode tables move",
+   "between versions (U+180E was a space separator until Unicode 6.3, a format character since), and a",
+   "class each side computes from its own tables is two classes. Maximal ranges, ascending, inclusive,",
+   "as hex code points: 007F-00A0 is DEL, the C1 controls and the no-break space together.",
+   "A visible character can end in one of them - an emoji in its emoji presentation ends in U+FE0F, a",
+   "subdivision flag in U+E007F - and the WARNING names that one too: the file alone cannot tell padding",
+   "from presentation, and a WARNING decides nothing (Q6). Validate query and wir-collect, which hold",
+   "what came back, say nothing of it for a series that returned points.",
+   "`loneSurrogates` reads an end as Java's codePointAt and codePointBefore do: a high half followed by",
+   "a low half is one code point, and any other half is itself, which no range lists. Each case is its",
+   "UTF-16 units in hex, so no half has to be written as an escape here, and `warning` is the whole",
+   "sentence, or null for none."
+  ],
+  "loneSurrogates": [
+   {
+    "name": "a high half at the start that no low half follows is not joined to what follows it (joined to U+E000 it would read U+E0400, inside the tag block)",
+    "units": ["DB40", "E000", "0078"],
+    "warning": null
+   },
+   {
+    "name": "a no-break space after a high half is not joined to it, so the end is the no-break space",
+    "units": ["0078", "DB40", "00A0"],
+    "warning": "the query has an invisible character at its end (U+00A0) that is not trimmed like a plain space, so no series will match it — delete it"
+   },
+   {
+    "name": "a low half at the start, with no high half before it, is itself",
+    "units": ["DC20", "0078"],
+    "warning": null
+   },
+   {
+    "name": "a high half at the end, with no low half after it, is itself",
+    "units": ["0078", "DB40"],
+    "warning": null
+   },
+   {
+    "name": "a pair at the start is one code point, the tag space",
+    "units": ["DB40", "DC20", "0078"],
+    "warning": "the query has an invisible character at its start (U+E0020) that is not trimmed like a plain space, so no series will match it — delete it"
+   }
+  ],
+  "ranges": [
+   "007F-00A0",
+   "00AD",
+   "034F",
+   "061C",
+   "115F-1160",
+   "1680",
+   "17B4-17B5",
+   "180B-180F",
+   "2000-200F",
+   "2028-202F",
+   "205F-206F",
+   "3000",
+   "3164",
+   "FE00-FE0F",
+   "FEFF",
+   "FFA0",
+   "FFF0-FFF8",
+   "1BCA0-1BCA3",
+   "1D173-1D17A",
+   "E0000-E0FFF"
+  ]
+ },
+ "block": {
+  "coverageFloor": 0.9,
+  "excludeRampUp": true
+ },
+ "components": {
+  "c": {
+   "type": "custom"
+  },
+  "db": {
+   "type": "postgres"
+  }
+ },
+ "payload": {
+  "schema": "wir-server-metrics/1",
+  "runId": "parity0000000000",
+  "collectionId": "c011ec7ed0000000",
+  "collectedAt": "2026-08-22T12:00:00Z",
+  "window": {
+   "start": 0,
+   "end": 600000,
+   "rampUpEnd": 60000
+  },
+  "sources": [
+   {
+    "id": "metrics",
+    "type": "prometheus",
+    "status": "OK",
+    "stepMillis": 15000,
+    "clockOffsetMs": 0,
+    "resolvedUrl": "https://prom.corp/api/v1"
+   }
+  ],
+  "series": [
+   {
+    "source": "metrics",
+    "query": "cpu",
+    "resolvedQuery": "cpu",
+    "status": "OK",
+    "coverage": 1,
+    "instances": [
+     {
+      "labels": {
+       "pod": "a"
+      },
+      "points": [
+       [0, 99],
+       [15000, 99],
+       [30000, 99],
+       [45000, 99],
+       [60000, 20],
+       [75000, 20],
+       [90000, 20],
+       [105000, 20],
+       [120000, 20],
+       [135000, 20],
+       [150000, 20],
+       [165000, 20],
+       [180000, 20],
+       [195000, 20],
+       [210000, 20],
+       [225000, 20],
+       [240000, 20],
+       [255000, 20],
+       [270000, 20],
+       [285000, 20],
+       [300000, 95],
+       [315000, 20],
+       [330000, 20],
+       [345000, 20],
+       [360000, 20],
+       [375000, 20],
+       [390000, 20],
+       [405000, 20],
+       [420000, 20],
+       [435000, 20],
+       [450000, 20],
+       [465000, 20],
+       [480000, 20],
+       [495000, 20],
+       [510000, 20],
+       [525000, 20],
+       [540000, 20],
+       [555000, 20],
+       [570000, 20],
+       [585000, 20],
+       [600000, 30]
+      ]
+     }
+    ]
+   },
+   {
+    "source": "metrics",
+    "query": "heap",
+    "resolvedQuery": "heap",
+    "status": "OK",
+    "coverage": 1,
+    "instances": [
+     {
+      "labels": {
+       "pod": "a"
+      },
+      "points": [
+       [0, 100],
+       [60000, 105],
+       [120000, 110],
+       [180000, 115],
+       [240000, 120],
+       [300000, 125],
+       [360000, 130],
+       [420000, 135],
+       [480000, 140],
+       [540000, 145],
+       [600000, 150]
+      ]
+     }
+    ]
+   },
+   {
+    "source": "metrics",
+    "query": "lag",
+    "resolvedQuery": "lag",
+    "status": "OK",
+    "coverage": 1,
+    "instances": [
+     {
+      "labels": {
+       "pod": "a"
+      },
+      "points": [
+       [0, 100],
+       [15000, 100],
+       [30000, 100],
+       [45000, 100],
+       [60000, 100],
+       [75000, 100],
+       [90000, 100],
+       [105000, 100],
+       [120000, 100],
+       [135000, 100],
+       [150000, 100],
+       [165000, 100],
+       [180000, 100],
+       [195000, 100],
+       [210000, 100],
+       [225000, 100],
+       [240000, 100],
+       [255000, 100],
+       [270000, 100],
+       [285000, 100],
+       [300000, 100],
+       [315000, 100],
+       [330000, 100],
+       [345000, 100],
+       [360000, 100],
+       [375000, 100],
+       [390000, 100],
+       [405000, 100],
+       [420000, 100],
+       [435000, 100],
+       [450000, 100],
+       [465000, 100],
+       [480000, 100],
+       [495000, 100],
+       [510000, 100],
+       [525000, 100],
+       [540000, 100],
+       [555000, 100],
+       [570000, 100],
+       [585000, 100],
+       [600000, 100]
+      ]
+     },
+     {
+      "labels": {
+       "pod": "b"
+      },
+      "points": [
+       [0, 700],
+       [15000, 700],
+       [30000, 700],
+       [45000, 700],
+       [60000, 700],
+       [75000, 700],
+       [90000, 700],
+       [105000, 700],
+       [120000, 700],
+       [135000, 700],
+       [150000, 700],
+       [165000, 700],
+       [180000, 700],
+       [195000, 700],
+       [210000, 700],
+       [225000, 700],
+       [240000, 700],
+       [255000, 700],
+       [270000, 700],
+       [285000, 700],
+       [300000, 700],
+       [315000, 700],
+       [330000, 700],
+       [345000, 700],
+       [360000, 700],
+       [375000, 700],
+       [390000, 700],
+       [405000, 700],
+       [420000, 700],
+       [435000, 700],
+       [450000, 700],
+       [465000, 700],
+       [480000, 700],
+       [495000, 700],
+       [510000, 700],
+       [525000, 700],
+       [540000, 700],
+       [555000, 700],
+       [570000, 700],
+       [585000, 700],
+       [600000, 700]
+      ]
+     }
+    ]
+   },
+   {
+    "source": "metrics",
+    "query": "sustained",
+    "resolvedQuery": "sustained",
+    "status": "OK",
+    "coverage": 1,
+    "instances": [
+     {
+      "labels": {
+       "pod": "a"
+      },
+      "points": [
+       [0, 10],
+       [15000, 10],
+       [30000, 10],
+       [45000, 10],
+       [60000, 10],
+       [75000, 10],
+       [90000, 10],
+       [105000, 10],
+       [120000, 10],
+       [135000, 10],
+       [150000, 200],
+       [165000, 10],
+       [180000, 10],
+       [195000, 10],
+       [210000, 10],
+       [225000, 10],
+       [240000, 10],
+       [255000, 10],
+       [270000, 10],
+       [285000, 10],
+       [300000, 150],
+       [315000, 150],
+       [330000, 150],
+       [345000, 150],
+       [360000, 150],
+       [375000, 10],
+       [390000, 10],
+       [405000, 10],
+       [420000, 10],
+       [435000, 10],
+       [450000, 10],
+       [465000, 10],
+       [480000, 10],
+       [495000, 10],
+       [510000, 10],
+       [525000, 10],
+       [540000, 10],
+       [555000, 10],
+       [570000, 10],
+       [585000, 10],
+       [600000, 10]
+      ]
+     }
+    ]
+   },
+   {
+    "source": "metrics",
+    "query": "ramp-only",
+    "resolvedQuery": "ramp-only",
+    "status": "PARTIAL",
+    "coverage": 0.95,
+    "instances": [
+     {
+      "labels": {
+       "pod": "a"
+      },
+      "points": [
+       [0, 5],
+       [15000, 5],
+       [30000, 5],
+       [45000, 5]
+      ]
+     }
+    ]
+   },
+   {
+    "source": "metrics",
+    "query": "single",
+    "resolvedQuery": "single",
+    "status": "PARTIAL",
+    "coverage": 0.9,
+    "instances": [
+     {
+      "labels": {
+       "pod": "a"
+      },
+      "points": [
+       [120000, 7]
+      ]
+     }
+    ]
+   },
+   {
+    "source": "metrics",
+    "query": "gappy",
+    "resolvedQuery": "gappy",
+    "status": "OK",
+    "coverage": 1,
+    "instances": [
+     {
+      "labels": {
+       "pod": "a"
+      },
+      "points": [
+       [60000, 10],
+       [75000, 500],
+       [105000, 500],
+       [120000, 10],
+       [135000, 10]
+      ]
+     }
+    ]
+   },
+   {
+    "source": "metrics",
+    "query": "wavy",
+    "resolvedQuery": "wavy",
+    "status": "OK",
+    "coverage": 1,
+    "instances": [
+     {
+      "labels": {
+       "pod": "a"
+      },
+      "points": [
+       [45000, 999],
+       [60000, 50],
+       [75000, 300],
+       [90000, 280],
+       [105000, 260],
+       [135000, 240],
+       [150000, 400],
+       [165000, 30],
+       [195000, 220],
+       [210000, 210],
+       [225000, 205],
+       [240000, 500],
+       [255000, 190],
+       [270000, 185],
+       [300000, 170],
+       [315000, 600],
+       [330000, 20],
+       [345000, 160],
+       [360000, 155],
+       [375000, 150],
+       [390000, 145],
+       [420000, 140],
+       [435000, 700],
+       [450000, 10]
+      ]
+     },
+     {
+      "labels": {
+       "pod": "b"
+      },
+      "points": [
+       [60000, 90],
+       [90000, 95],
+       [120000, 100],
+       [150000, 105],
+       [180000, 110],
+       [210000, 115],
+       [240000, 120],
+       [270000, 125],
+       [300000, 130],
+       [330000, 135],
+       [360000, 140]
+      ]
+     }
+    ]
+   },
+   {
+    "source": "metrics",
+    "query": "empty",
+    "resolvedQuery": "empty",
+    "status": "EMPTY",
+    "coverage": 0,
+    "instances": []
+   },
+   {
+    "source": "metrics",
+    "query": "failed",
+    "resolvedQuery": "failed",
+    "status": "FAILED",
+    "error": "HTTP 503 from https://prom.corp/api/v1/query_range?query=failed",
+    "instances": []
+   },
+   {
+    "source": "metrics",
+    "query": "failed-silent",
+    "resolvedQuery": "failed-silent",
+    "status": "FAILED",
+    "instances": []
+   },
+   {
+    "source": "metrics",
+    "query": "sparse",
+    "resolvedQuery": "sparse",
+    "status": "INSUFFICIENT",
+    "coverage": 0.4,
+    "instances": [
+     {
+      "labels": {
+       "pod": "a"
+      },
+      "points": [
+       [60000, 1],
+       [75000, 2]
+      ]
+     }
+    ]
+   },
+   {
+    "source": "metrics",
+    "query": "tail-spike",
+    "resolvedQuery": "tail-spike",
+    "status": "OK",
+    "coverage": 1,
+    "instances": [
+     {
+      "labels": {
+       "pod": "a"
+      },
+      "points": [
+       [0, 10],
+       [15000, 10],
+       [30000, 10],
+       [45000, 10],
+       [60000, 10],
+       [75000, 10],
+       [90000, 10],
+       [105000, 10],
+       [120000, 10],
+       [135000, 10],
+       [150000, 10],
+       [165000, 10],
+       [180000, 10],
+       [195000, 10],
+       [210000, 10],
+       [225000, 10],
+       [240000, 10],
+       [255000, 10],
+       [270000, 10],
+       [285000, 10],
+       [300000, 10],
+       [315000, 10],
+       [330000, 10],
+       [345000, 10],
+       [360000, 10],
+       [375000, 10],
+       [390000, 10],
+       [405000, 10],
+       [420000, 10],
+       [435000, 10],
+       [450000, 10],
+       [465000, 10],
+       [480000, 10],
+       [495000, 10],
+       [510000, 10],
+       [525000, 10],
+       [540000, 10],
+       [555000, 10],
+       [570000, 10],
+       [585000, 200],
+       [600000, 200]
+      ]
+     }
+    ]
+   },
+   {
+    "source": "metrics",
+    "query": "ragged",
+    "resolvedQuery": "ragged",
+    "status": "OK",
+    "coverage": 1,
+    "instances": [
+     {
+      "labels": {
+       "pod": "a"
+      },
+      "points": [
+       [0, 20],
+       [15000, 20],
+       [30000, 20],
+       [45000, 20],
+       [60000, 20],
+       [75000, 20],
+       [90000, 20],
+       [105000, 20],
+       [120000, 20],
+       [135000, 20],
+       [150000, 20],
+       [165000, 20],
+       [180000, 20],
+       [195000, 20],
+       [210000, 20],
+       [225000, 20],
+       [240000, 20],
+       [255000, 20],
+       [270000, 20],
+       [285000, 20],
+       [300000, 20],
+       [315000, 20],
+       [330000, 20],
+       [345000, 20],
+       [360000, 20],
+       [375000, 20],
+       [390000, 20],
+       [405000, 20],
+       [420000, 20],
+       [435000, 20],
+       [450000, 20],
+       [465000, 20],
+       [480000, 20],
+       [495000, 20],
+       [510000, 20],
+       [525000, 20],
+       [540000, 20],
+       [555000, 20],
+       [570000, 20],
+       [585000, 20],
+       [600000, 20]
+      ]
+     },
+     {
+      "labels": {
+       "pod": "b"
+      },
+      "points": [
+       [0, 40],
+       [60000, 40],
+       [120000, 40],
+       [180000, 40],
+       [240000, 40],
+       [300000, 40]
+      ]
+     }
+    ]
+   },
+   {
+    "source": "metrics",
+    "query": "no-status",
+    "resolvedQuery": "no-status",
+    "coverage": 1,
+    "instances": [
+     {
+      "labels": {
+       "pod": "a"
+      },
+      "points": [
+       [60000, 5],
+       [75000, 5],
+       [90000, 5]
+      ]
+     }
+    ]
+   },
+   {
+    "source": "metrics",
+    "query": "odd-status",
+    "resolvedQuery": "odd-status",
+    "status": "BOGUS",
+    "coverage": 1,
+    "instances": [
+     {
+      "labels": {
+       "pod": "a"
+      },
+      "points": [
+       [60000, 5],
+       [75000, 5],
+       [90000, 5]
+      ]
+     }
+    ]
+   },
+   {
+    "source": "metrics",
+    "query": "min by (instance) (pg_up)",
+    "resolvedQuery": "min by (instance) (pg_up)",
+    "status": "OK",
+    "coverage": 1,
+    "instances": [
+     {
+      "labels": {
+       "instance": "db-1"
+      },
+      "points": [
+       [0, 1],
+       [15000, 1],
+       [30000, 1],
+       [45000, 1],
+       [60000, 1],
+       [75000, 1],
+       [90000, 1],
+       [105000, 1],
+       [120000, 1],
+       [135000, 1],
+       [150000, 1],
+       [165000, 1],
+       [180000, 1],
+       [195000, 1],
+       [210000, 1],
+       [225000, 1],
+       [240000, 1],
+       [255000, 1],
+       [270000, 1],
+       [285000, 1],
+       [300000, 0],
+       [315000, 1],
+       [330000, 1],
+       [345000, 1],
+       [360000, 1],
+       [375000, 1],
+       [390000, 1],
+       [405000, 1],
+       [420000, 1],
+       [435000, 1],
+       [450000, 1],
+       [465000, 1],
+       [480000, 1],
+       [495000, 1],
+       [510000, 1],
+       [525000, 1],
+       [540000, 1],
+       [555000, 1],
+       [570000, 1],
+       [585000, 1],
+       [600000, 1]
+      ]
+     }
+    ]
+   },
+   {
+    "source": "metrics",
+    "query": "100 * sum by (instance) (pg_stat_activity_count) / max by (instance) (pg_settings_max_connections)",
+    "resolvedQuery": "100 * sum by (instance) (pg_stat_activity_count) / max by (instance) (pg_settings_max_connections)",
+    "status": "OK",
+    "coverage": 1,
+    "instances": [
+     {
+      "labels": {
+       "instance": "db-1"
+      },
+      "points": [
+       [0, 40],
+       [15000, 41],
+       [30000, 42],
+       [45000, 43],
+       [60000, 44],
+       [75000, 45],
+       [90000, 46],
+       [105000, 47],
+       [120000, 48],
+       [135000, 49],
+       [150000, 50],
+       [165000, 51],
+       [180000, 52],
+       [195000, 53],
+       [210000, 54],
+       [225000, 55],
+       [240000, 56],
+       [255000, 57],
+       [270000, 58],
+       [285000, 59],
+       [300000, 60],
+       [315000, 61],
+       [330000, 62],
+       [345000, 63],
+       [360000, 64],
+       [375000, 65],
+       [390000, 66],
+       [405000, 67],
+       [420000, 88],
+       [435000, 69],
+       [450000, 70],
+       [465000, 71],
+       [480000, 72],
+       [495000, 73],
+       [510000, 74],
+       [525000, 75],
+       [540000, 76],
+       [555000, 77],
+       [570000, 78],
+       [585000, 79],
+       [600000, 80]
+      ]
+     }
+    ]
+   },
+  {
+   "source": "metrics",
+   "component": "c",
+   "query": "split",
+   "resolvedQuery": "split",
+   "status": "OK",
+   "coverage": 1,
+   "instances": [
+    {
+     "labels": {},
+     "points": [
+       [0, 10],
+       [15000, 10],
+       [30000, 10],
+       [45000, 10],
+       [60000, 10],
+       [75000, 10],
+       [90000, 10],
+       [105000, 10],
+       [120000, 10],
+       [135000, 10],
+       [150000, 10],
+       [165000, 10],
+       [180000, 10],
+       [195000, 10],
+       [210000, 10],
+       [225000, 10],
+       [240000, 10],
+       [255000, 10],
+       [270000, 10],
+       [285000, 10],
+       [300000, 10],
+       [315000, 10],
+       [330000, 10],
+       [345000, 10],
+       [360000, 10],
+       [375000, 10],
+       [390000, 10],
+       [405000, 10],
+       [420000, 10],
+       [435000, 10],
+       [450000, 10],
+       [465000, 10],
+       [480000, 10],
+       [495000, 10],
+       [510000, 10],
+       [525000, 10],
+       [540000, 10],
+       [555000, 10],
+       [570000, 10],
+       [585000, 10],
+       [600000, 10]
+     ]
+    }
+   ]
+  },
+  {
+   "source": "metrics",
+   "component": "db",
+   "query": "split",
+   "resolvedQuery": "split",
+   "status": "OK",
+   "coverage": 1,
+   "instances": [
+    {
+     "labels": {},
+     "points": [
+       [0, 70],
+       [15000, 70],
+       [30000, 70],
+       [45000, 70],
+       [60000, 70],
+       [75000, 70],
+       [90000, 70],
+       [105000, 70],
+       [120000, 70],
+       [135000, 70],
+       [150000, 70],
+       [165000, 70],
+       [180000, 70],
+       [195000, 70],
+       [210000, 70],
+       [225000, 70],
+       [240000, 70],
+       [255000, 70],
+       [270000, 70],
+       [285000, 70],
+       [300000, 70],
+       [315000, 70],
+       [330000, 70],
+       [345000, 70],
+       [360000, 70],
+       [375000, 70],
+       [390000, 70],
+       [405000, 70],
+       [420000, 70],
+       [435000, 70],
+       [450000, 70],
+       [465000, 70],
+       [480000, 70],
+       [495000, 70],
+       [510000, 70],
+       [525000, 70],
+       [540000, 70],
+       [555000, 70],
+       [570000, 70],
+       [585000, 70],
+       [600000, 70]
+     ]
+    }
+   ]
+  },
+  {
+   "source": "metrics",
+   "component": "pair",
+   "query": "min by (instance) (pg_up{job=\"pair\"})",
+   "resolvedQuery": "min by (instance) (pg_up{job=\"pair\"})",
+   "status": "OK",
+   "coverage": 1,
+   "instances": [
+    {
+     "labels": {
+      "instance": "db-1"
+     },
+     "points": [
+       [0, 1],
+       [15000, 1],
+       [30000, 1],
+       [45000, 1],
+       [60000, 1],
+       [75000, 1],
+       [90000, 1],
+       [105000, 1],
+       [120000, 1],
+       [135000, 1],
+       [150000, 1],
+       [165000, 1],
+       [180000, 1],
+       [195000, 1],
+       [210000, 1],
+       [225000, 1],
+       [240000, 1],
+       [255000, 1],
+       [270000, 1],
+       [285000, 1],
+       [300000, 0],
+       [315000, 1],
+       [330000, 1],
+       [345000, 1],
+       [360000, 1],
+       [375000, 1],
+       [390000, 1],
+       [405000, 1],
+       [420000, 1],
+       [435000, 1],
+       [450000, 1],
+       [465000, 1],
+       [480000, 1],
+       [495000, 1],
+       [510000, 1],
+       [525000, 1],
+       [540000, 1],
+       [555000, 1],
+       [570000, 1],
+       [585000, 1],
+       [600000, 1]
+     ]
+    },
+    {
+     "labels": {
+      "instance": "db-2"
+     },
+     "points": [
+       [0, 1],
+       [15000, 1],
+       [30000, 1],
+       [45000, 1],
+       [60000, 1],
+       [75000, 1],
+       [90000, 1],
+       [105000, 1],
+       [120000, 1],
+       [135000, 1],
+       [150000, 1],
+       [165000, 1],
+       [180000, 1],
+       [195000, 1],
+       [210000, 1],
+       [225000, 1],
+       [240000, 1],
+       [255000, 1],
+       [270000, 1],
+       [285000, 1],
+       [300000, 1],
+       [315000, 1],
+       [330000, 1],
+       [345000, 1],
+       [360000, 1],
+       [375000, 1],
+       [390000, 1],
+       [405000, 1],
+       [420000, 1],
+       [435000, 1],
+       [450000, 1],
+       [465000, 1],
+       [480000, 1],
+       [495000, 1],
+       [510000, 1],
+       [525000, 1],
+       [540000, 1],
+       [555000, 1],
+       [570000, 1],
+       [585000, 1],
+       [600000, 1]
+     ]
+    }
+   ]
+  },
+  {
+   "source": "metrics",
+   "component": "pair",
+   "query": "100 * sum by (instance) (rate(pg_stat_database_blks_hit{job=\"pair\"}[1m])) / (sum by (instance) (rate(pg_stat_database_blks_hit{job=\"pair\"}[1m])) + sum by (instance) (rate(pg_stat_database_blks_read{job=\"pair\"}[1m])))",
+   "resolvedQuery": "100 * sum by (instance) (rate(pg_stat_database_blks_hit{job=\"pair\"}[1m])) / (sum by (instance) (rate(pg_stat_database_blks_hit{job=\"pair\"}[1m])) + sum by (instance) (rate(pg_stat_database_blks_read{job=\"pair\"}[1m])))",
+   "status": "OK",
+   "coverage": 1,
+   "instances": [
+    {
+     "labels": {
+      "instance": "db-1"
+     },
+     "points": [
+       [0, 99],
+       [15000, 99],
+       [30000, 99],
+       [45000, 99],
+       [60000, 99],
+       [75000, 99],
+       [90000, 99],
+       [105000, 99],
+       [120000, 99],
+       [135000, 99],
+       [150000, 99],
+       [165000, 99],
+       [180000, 99],
+       [195000, 99],
+       [210000, 99],
+       [225000, 99],
+       [240000, 99],
+       [255000, 99],
+       [270000, 99],
+       [285000, 99],
+       [300000, 50],
+       [315000, 99],
+       [330000, 99],
+       [345000, 99],
+       [360000, 99],
+       [375000, 99],
+       [390000, 99],
+       [405000, 99],
+       [420000, 99],
+       [435000, 99],
+       [450000, 99],
+       [465000, 99],
+       [480000, 99],
+       [495000, 99],
+       [510000, 99],
+       [525000, 99],
+       [540000, 99],
+       [555000, 99],
+       [570000, 99],
+       [585000, 99],
+       [600000, 99]
+     ]
+    },
+    {
+     "labels": {
+      "instance": "db-2"
+     },
+     "points": [
+       [0, 99.5],
+       [15000, 99.5],
+       [30000, 99.5],
+       [45000, 99.5],
+       [60000, 99.5],
+       [75000, 99.5],
+       [90000, 99.5],
+       [105000, 99.5],
+       [120000, 99.5],
+       [135000, 99.5],
+       [150000, 99.5],
+       [165000, 99.5],
+       [180000, 99.5],
+       [195000, 99.5],
+       [210000, 99.5],
+       [225000, 99.5],
+       [240000, 99.5],
+       [255000, 99.5],
+       [270000, 99.5],
+       [285000, 99.5],
+       [300000, 99.5],
+       [315000, 99.5],
+       [330000, 99.5],
+       [345000, 99.5],
+       [360000, 99.5],
+       [375000, 99.5],
+       [390000, 99.5],
+       [405000, 99.5],
+       [420000, 99.5],
+       [435000, 99.5],
+       [450000, 99.5],
+       [465000, 99.5],
+       [480000, 99.5],
+       [495000, 99.5],
+       [510000, 99.5],
+       [525000, 99.5],
+       [540000, 99.5],
+       [555000, 99.5],
+       [570000, 99.5],
+       [585000, 99.5],
+       [600000, 99.5]
+     ]
+    }
+   ]
+  }
+  ]
+ },
+ "cases": [
+  {
+   "name": "one query on two components: each assert reads its own component's series (backends §8b)",
+   "kpi": {
+    "id": "split-c",
+    "component": "c",
+    "query": "split",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 1000
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 10,
+    "instances": 1,
+    "coverage": 1
+   }
+  },
+  {
+   "name": "...and the other component reads the other series, never the first one listed",
+   "kpi": {
+    "id": "split-db",
+    "component": "db",
+    "query": "split",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 1000
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 70,
+    "instances": 1,
+    "coverage": 1
+   }
+  },
+  {
+   "name": "max excludes the ramp-up by default",
+   "kpi": {
+    "id": "cpu-max",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 95,
+    "instances": 1,
+    "coverage": 1
+   }
+  },
+  {
+   "name": "max over the whole window when the block keeps the ramp-up",
+   "config": {
+    "excludeRampUp": false
+   },
+   "kpi": {
+    "id": "cpu-max-ramp",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "FAIL",
+    "actual": 99,
+    "breached": {
+     "gt": 96
+    }
+   }
+  },
+  {
+   "name": "min",
+   "kpi": {
+    "id": "cpu-min",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "min"
+    },
+    "fail": {
+     "lt": 10
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 20
+   }
+  },
+  {
+   "name": "avg",
+   "kpi": {
+    "id": "cpu-avg",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "avg"
+    },
+    "fail": {
+     "gt": 22
+    },
+    "warn": {
+     "gt": 20
+    }
+   },
+   "expect": {
+    "status": "FAIL",
+    "actual": 22.2972972973,
+    "breached": {
+     "gt": 22
+    }
+   }
+  },
+  {
+   "name": "last",
+   "kpi": {
+    "id": "cpu-last",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "last"
+    },
+    "fail": {
+     "gt": 50
+    },
+    "warn": {
+     "gt": 25
+    }
+   },
+   "expect": {
+    "status": "WARN",
+    "actual": 30,
+    "breached": {
+     "gt": 25
+    }
+   }
+  },
+  {
+   "name": "p95 by nearest rank",
+   "kpi": {
+    "id": "cpu-p95",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "p95"
+    },
+    "fail": {
+     "gt": 50
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 30
+   }
+  },
+  {
+   "name": "p50 by nearest rank",
+   "kpi": {
+    "id": "cpu-p50",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "p50"
+    },
+    "fail": {
+     "gt": 50
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 20
+   }
+  },
+  {
+   "name": "p99.9 lands on the spike",
+   "kpi": {
+    "id": "cpu-p999",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "p99.9"
+    },
+    "fail": {
+     "gt": 50
+    }
+   },
+   "expect": {
+    "status": "FAIL",
+    "actual": 95,
+    "breached": {
+     "gt": 50
+    }
+   }
+  },
+  {
+   "name": "slope in units per minute",
+   "kpi": {
+    "id": "heap-slope",
+    "component": "c",
+    "query": "heap",
+    "reduce": {
+     "kind": "slope"
+    },
+    "fail": {
+     "gt": 4.5
+    }
+   },
+   "expect": {
+    "status": "FAIL",
+    "actual": 5,
+    "breached": {
+     "gt": 4.5
+    }
+   }
+  },
+  {
+   "name": "a negative slope band is legitimate",
+   "kpi": {
+    "id": "heap-not-shrinking",
+    "component": "c",
+    "query": "heap",
+    "reduce": {
+     "kind": "slope"
+    },
+    "fail": {
+     "lt": 0
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 5,
+    "warnings": []
+   }
+  },
+  {
+   "name": "slope needs two points",
+   "kpi": {
+    "id": "single-slope",
+    "component": "c",
+    "query": "single",
+    "reduce": {
+     "kind": "slope"
+    },
+    "fail": {
+     "gt": 1
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "NO_VALUE",
+    "reason": "nothing to reduce"
+   }
+  },
+  {
+   "name": "a value exactly on the threshold passes",
+   "kpi": {
+    "id": "cpu-boundary",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 95
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 95
+   }
+  },
+  {
+   "name": "fail is tested before warn",
+   "kpi": {
+    "id": "cpu-both",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 90
+    },
+    "warn": {
+     "gt": 50
+    }
+   },
+   "expect": {
+    "status": "FAIL",
+    "actual": 95,
+    "breached": {
+     "gt": 90
+    }
+   }
+  },
+  {
+   "name": "across max takes the worst instance",
+   "kpi": {
+    "id": "lag-max",
+    "component": "c",
+    "query": "lag",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 500
+    }
+   },
+   "expect": {
+    "status": "FAIL",
+    "actual": 700,
+    "instances": 2,
+    "breached": {
+     "gt": 500
+    }
+   }
+  },
+  {
+   "name": "across avg averages the instances",
+   "kpi": {
+    "id": "lag-avg",
+    "component": "c",
+    "query": "lag",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 500
+    },
+    "across": "avg"
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 400,
+    "instances": 2
+   }
+  },
+  {
+   "name": "sustainedFor 30s: the plateau, not the spike",
+   "kpi": {
+    "id": "sust-30",
+    "component": "c",
+    "query": "sustained",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "sustainedFor": "30s"
+     }
+    },
+    "fail": {
+     "gt": 100
+    }
+   },
+   "expect": {
+    "status": "FAIL",
+    "actual": 150,
+    "breached": {
+     "gt": 100
+    }
+   }
+  },
+  {
+   "name": "sustainedFor 60s: the plateau still holds",
+   "kpi": {
+    "id": "sust-60",
+    "component": "c",
+    "query": "sustained",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "sustainedFor": "1m"
+     }
+    },
+    "fail": {
+     "gt": 100
+    }
+   },
+   "expect": {
+    "status": "FAIL",
+    "actual": 150,
+    "breached": {
+     "gt": 100
+    }
+   }
+  },
+  {
+   "name": "sustainedFor 75s: nothing held that long",
+   "kpi": {
+    "id": "sust-75",
+    "component": "c",
+    "query": "sustained",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "sustainedFor": "75s"
+     }
+    },
+    "fail": {
+     "gt": 100
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 10
+   }
+  },
+  {
+   "name": "sustainedFor no longer than a step is the plain reducer",
+   "kpi": {
+    "id": "sust-15",
+    "component": "c",
+    "query": "sustained",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "sustainedFor": "15s"
+     }
+    },
+    "fail": {
+     "gt": 100
+    }
+   },
+   "expect": {
+    "status": "FAIL",
+    "actual": 200,
+    "breached": {
+     "gt": 100
+    }
+   }
+  },
+  {
+   "name": "sustainedFor on min is the mirror",
+   "kpi": {
+    "id": "sust-min",
+    "component": "c",
+    "query": "sustained",
+    "reduce": {
+     "kind": "min",
+     "over": {
+      "sustainedFor": "30s"
+     }
+    },
+    "fail": {
+     "lt": 5
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 10
+   }
+  },
+  {
+   "name": "breachBudget 5%: the level exceeded at most 5% of the time",
+   "kpi": {
+    "id": "budget-5",
+    "component": "c",
+    "query": "sustained",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "breachBudget": 0.05
+     }
+    },
+    "fail": {
+     "gt": 100
+    }
+   },
+   "expect": {
+    "status": "FAIL",
+    "actual": 150,
+    "breached": {
+     "gt": 100
+    }
+   }
+  },
+  {
+   "name": "breachBudget 20%",
+   "kpi": {
+    "id": "budget-20",
+    "component": "c",
+    "query": "sustained",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "breachBudget": 0.2
+     }
+    },
+    "fail": {
+     "gt": 100
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 10
+   }
+  },
+  {
+   "name": "C-13: a breach budget of 0.07 reads as 7%, not as the noise of 0.07 * 100",
+   "kpi": {
+    "id": "budget-7",
+    "component": "c",
+    "query": "ramp-only",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "breachBudget": 0.07
+     }
+    },
+    "fail": {
+     "gt": 100
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "NO_VALUE",
+    "reason": "no value: max breach budget 7% over the judged window"
+   }
+  },
+  {
+   "name": "C-11: a warn band the fail band already covers is a WARNING, and the KPI still judges",
+   "kpi": {
+    "id": "warn-covered",
+    "component": "c",
+    "query": "lag",
+    "unit": "msgs",
+    "reduce": {
+     "kind": "max"
+    },
+    "warn": {
+     "gt": 500
+    },
+    "fail": {
+     "gt": 200
+    }
+   },
+   "expect": {
+    "status": "FAIL",
+    "actual": 700,
+    "breached": {
+     "gt": 200
+    },
+    "warnings": [
+     "warn can never fire: fail > 200 msgs is tested first and already covers warn > 500 msgs. Swapped values?"
+    ]
+   }
+  },
+  {
+   "name": "C-11: a downward band at or below zero on max is a WARNING, never a refusal on the server side",
+   "kpi": {
+    "id": "negative-only",
+    "component": "c",
+    "query": "lag",
+    "reduce": {
+     "kind": "max"
+    },
+    "warn": {
+     "lte": -0.5
+    },
+    "fail": {
+     "lt": -1
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 700,
+    "warnings": [
+     "warn ≤ -0.5 can only fire on a negative value. If this metric is never negative the band never fires and the server assert reports PASS on every run; a band is written in the unit the values are judged in",
+     "fail < -1 can only fire on a negative value. If this metric is never negative the band never fires and the server assert reports PASS on every run; a band is written in the unit the values are judged in"
+    ]
+   }
+  },
+  {
+   "_comment": "SF16 (B9): a warning quotes a band in the unit the verdict is in (ServerKpi.verdictUnit), not the series' unit. A slope is per minute: the declared unit is the series', 'B', and the bands compare a slope in B/min.",
+   "name": "SF16: a slope's warning quotes its bands per minute",
+   "kpi": {
+    "id": "heap-slope-swapped",
+    "component": "c",
+    "query": "heap",
+    "unit": "B",
+    "reduce": {
+     "kind": "slope"
+    },
+    "warn": {
+     "gt": 500
+    },
+    "fail": {
+     "gt": 200
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 5,
+    "warnings": [
+     "warn can never fire: fail > 200 B/min is tested first and already covers warn > 500 B/min. Swapped values?"
+    ]
+   }
+  },
+  {
+   "_comment": "SF16: with no unit a slope is still per minute, spelled '/min' as the catalogue spells a bare count per minute (postgres deadlocks).",
+   "name": "SF16: a slope with no unit is quoted per minute all the same",
+   "kpi": {
+    "id": "heap-slope-swapped-unitless",
+    "component": "c",
+    "query": "heap",
+    "reduce": {
+     "kind": "slope"
+    },
+    "warn": {
+     "gt": 50
+    },
+    "fail": {
+     "gt": 20
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 5,
+    "warnings": [
+     "warn can never fire: fail > 20 /min is tested first and already covers warn > 50 /min. Swapped values?"
+    ]
+   }
+  },
+  {
+   "_comment": "SF16 (F5 leftovers): a divideBy ratio's bands are per unit of the load rule, written as the board writes the ratio: '<unit> ÷ <divideBy>'.",
+   "name": "SF16: a ratio's warning quotes its bands in the ratio's unit",
+   "kpi": {
+    "id": "lag-per-rps-swapped",
+    "component": "c",
+    "query": "lag",
+    "unit": "msgs",
+    "reduce": {
+     "kind": "max"
+    },
+    "warn": {
+     "gt": 100
+    },
+    "fail": {
+     "gt": 60
+    },
+    "divideBy": "load:throughput"
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 56,
+    "warnings": [
+     "warn can never fire: fail > 60 msgs ÷ load:throughput is tested first and already covers warn > 100 msgs ÷ load:throughput. Swapped values?"
+    ]
+   }
+  },
+  {
+   "_comment": "SF16: slope + divideBy is per minute, then per unit of the load rule: 5 B/min over 12.5 is 0.4 'B/min ÷ load:throughput'.",
+   "name": "SF16: a slope ratio's warning quotes its bands per minute and per unit of load",
+   "kpi": {
+    "id": "heap-slope-per-rps-swapped",
+    "component": "c",
+    "query": "heap",
+    "unit": "B",
+    "reduce": {
+     "kind": "slope"
+    },
+    "warn": {
+     "gt": 2
+    },
+    "fail": {
+     "gt": 1
+    },
+    "divideBy": "load:throughput"
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 0.4,
+    "warnings": [
+     "warn can never fire: fail > 1 B/min ÷ load:throughput is tested first and already covers warn > 2 B/min ÷ load:throughput. Swapped values?"
+    ]
+   }
+  },
+  {
+   "_comment": "SF16: the negative-only warning quotes the ratio too. With no declared unit the ratio is '÷ <divideBy>' alone, as the board writes it.",
+   "name": "SF16: a negative-only band on a ratio with no unit is quoted per unit of load",
+   "kpi": {
+    "id": "lag-per-rps-negative-only",
+    "component": "c",
+    "query": "lag",
+    "reduce": {
+     "kind": "max"
+    },
+    "warn": {
+     "lt": 0
+    },
+    "fail": {
+     "gt": 60
+    },
+    "divideBy": "load:throughput"
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 56,
+    "warnings": [
+     "warn < 0 ÷ load:throughput can only fire on a negative value. If this metric is never negative the band never fires and the server assert reports PASS on every run; a band is written in the unit the values are judged in"
+    ]
+   }
+  },
+  {
+   "name": "breachBudget on min takes the low quantile",
+   "kpi": {
+    "id": "budget-min",
+    "component": "c",
+    "query": "sustained",
+    "reduce": {
+     "kind": "min",
+     "over": {
+      "breachBudget": 0.05
+     }
+    },
+    "fail": {
+     "lt": 5
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 10
+   }
+  },
+  {
+   "name": "a tolerance on avg is refused",
+   "kpi": {
+    "id": "avg-over",
+    "component": "c",
+    "query": "sustained",
+    "reduce": {
+     "kind": "avg",
+     "over": {
+      "sustainedFor": "30s"
+     }
+    },
+    "fail": {
+     "gt": 100
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "only defined on max and min"
+   }
+  },
+  {
+   "name": "a source that never answered",
+   "kpi": {
+    "id": "failed",
+    "component": "c",
+    "query": "failed",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 1
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "SOURCE_FAILED",
+    "reason": "HTTP 503",
+    "instances": 0
+   }
+  },
+  {
+   "name": "a query that matched nothing",
+   "kpi": {
+    "id": "empty",
+    "component": "c",
+    "query": "empty",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 1
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "NO_MATCH",
+    "reason": "matched no series"
+   }
+  },
+  {
+   "name": "coverage below the floor",
+   "kpi": {
+    "id": "sparse",
+    "component": "c",
+    "query": "sparse",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 1
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "LOW_COVERAGE",
+    "reason": "coverage 40% of the collected window is below the floor 90%",
+    "coverage": 0.4,
+    "instances": 1
+   }
+  },
+  {
+   "name": "a partial series above the floor is judged",
+   "kpi": {
+    "id": "single-last",
+    "component": "c",
+    "query": "single",
+    "reduce": {
+     "kind": "last"
+    },
+    "fail": {
+     "gt": 10
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 7,
+    "coverage": 0.9
+   }
+  },
+  {
+   "name": "a series the payload never collected",
+   "kpi": {
+    "id": "not-collected",
+    "component": "c",
+    "query": "nobody-asked",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 1
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "re-run wir-collect"
+   }
+  },
+  {
+   "name": "points only inside the excluded ramp-up",
+   "kpi": {
+    "id": "ramp-only",
+    "component": "c",
+    "query": "ramp-only",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 1
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "NO_VALUE",
+    "reason": "nothing to reduce"
+   }
+  },
+  {
+   "name": "the same points judged when the ramp-up is kept",
+   "config": {
+    "excludeRampUp": false
+   },
+   "kpi": {
+    "id": "ramp-only-kept",
+    "component": "c",
+    "query": "ramp-only",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 1
+    }
+   },
+   "expect": {
+    "status": "FAIL",
+    "actual": 5,
+    "breached": {
+     "gt": 1
+    }
+   }
+  },
+  {
+   "name": "parked",
+   "kpi": {
+    "id": "parked",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 1
+    },
+    "enabled": false
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "DISABLED"
+   }
+  },
+  {
+   "name": "an undeclared component",
+   "kpi": {
+    "id": "ghost",
+    "component": "ghost",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 1
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "component 'ghost' is not declared under serverMetrics.components (declared: c, db)"
+   }
+  },
+  {
+   "name": "no bands",
+   "kpi": {
+    "id": "no-bands",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "no warn or fail band"
+   }
+  },
+  {
+   "name": "a component the file never declared",
+   "kpi": {
+    "id": "wrong-gate",
+    "component": "kafka",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 1
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "component 'kafka' is not declared under serverMetrics.components (declared: c, db)"
+   }
+  },
+  {
+   "name": "requiresLoad on a PASSing load rule judges",
+   "kpi": {
+    "id": "cpu-under-load",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "requiresLoad": "load:throughput"
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 95
+   }
+  },
+  {
+   "name": "requiresLoad on a WARNing load rule still judges",
+   "kpi": {
+    "id": "cpu-under-warn",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "requiresLoad": "load:warns"
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 95
+   }
+  },
+  {
+   "name": "requiresLoad on a FAILed load rule withholds the verdict",
+   "kpi": {
+    "id": "cpu-no-load",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "requiresLoad": "load:too-low"
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "LOAD_NOT_ACHIEVED",
+    "_comment": "The whole sentence, word for word (C38): Java quotes the measurement as String.format(\"%.2f\") — 12.50, not 12.5 — and the band as Predicate.describe writes it.",
+    "reason": "load rule 'load:too-low' FAILED: throughput 12.50/s breached < 50 /s"
+   }
+  },
+  {
+   "name": "a FAILed load rule's band is quoted as Java writes it, never in the reader's locale",
+   "kpi": {
+    "id": "cpu-far-load",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "requiresLoad": "load:far"
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "LOAD_NOT_ACHIEVED",
+    "reason": "load rule 'load:far' FAILED: throughput 12.50/s breached < 100000 /s"
+   }
+  },
+  {
+   "name": "requiresLoad on a load rule that decided nothing",
+   "kpi": {
+    "id": "cpu-load-unjudged",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "requiresLoad": "load:unmatched"
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "LOAD_NOT_ACHIEVED",
+    "reason": "load rule 'load:unmatched' was not judged - it matched nothing in this run"
+   }
+  },
+  {
+   "name": "requiresLoad naming no rule",
+   "kpi": {
+    "id": "cpu-load-typo",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "requiresLoad": "load:thruput"
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "not a declared client rule"
+   }
+  },
+  {
+   "name": "requiresLoad naming a rule that is not about throughput",
+   "kpi": {
+    "id": "cpu-load-p95",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "requiresLoad": "not-a-load-rule"
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "must name a throughput rule"
+   }
+  },
+  {
+   "name": "the run-level requiresLoad default applies",
+   "config": {
+    "requiresLoad": "load:too-low"
+   },
+   "kpi": {
+    "id": "cpu-default-load",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "LOAD_NOT_ACHIEVED"
+   }
+  },
+  {
+   "name": "a KPI's own requiresLoad overrides the default",
+   "config": {
+    "requiresLoad": "load:too-low"
+   },
+   "kpi": {
+    "id": "cpu-own-load",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "requiresLoad": "load:throughput"
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 95
+   }
+  },
+  {
+   "name": "divideBy divides by the load rule's measured value",
+   "kpi": {
+    "id": "lag-per-rps",
+    "component": "c",
+    "query": "lag",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 60
+    },
+    "divideBy": "load:throughput"
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 56
+   }
+  },
+  {
+   "name": "divideBy by a FAILed load rule still has a number",
+   "kpi": {
+    "id": "lag-per-low-rps",
+    "component": "c",
+    "query": "lag",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 60
+    },
+    "divideBy": "load:too-low"
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 56
+   }
+  },
+  {
+   "name": "divideBy by a rule that decided nothing",
+   "kpi": {
+    "id": "lag-per-nothing",
+    "component": "c",
+    "query": "lag",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 60
+    },
+    "divideBy": "load:unmatched"
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "LOAD_NOT_ACHIEVED",
+    "reason": "load:unmatched"
+   }
+  },
+  {
+   "name": "divideBy naming no rule",
+   "kpi": {
+    "id": "lag-per-typo",
+    "component": "c",
+    "query": "lag",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 60
+    },
+    "divideBy": "nope"
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "divideBy names 'nope'"
+   }
+  },
+  {
+   "name": "divideBy a measured zero",
+   "kpi": {
+    "id": "lag-per-zero",
+    "component": "c",
+    "query": "lag",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 60
+    },
+    "divideBy": "load:zero"
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "NO_VALUE",
+    "reason": "measured 0"
+   }
+  },
+  {
+   "name": "sustainedFor: a plateau at the very end of the window still needs the whole duration",
+   "kpi": {
+    "id": "sust-tail",
+    "component": "c",
+    "query": "tail-spike",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "sustainedFor": "30s"
+     }
+    },
+    "fail": {
+     "gt": 100
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 10
+   }
+  },
+  {
+   "name": "sustainedFor that is not a whole number of steps can never be spanned",
+   "kpi": {
+    "id": "sust-20",
+    "component": "c",
+    "query": "sustained",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "sustainedFor": "20s"
+     }
+    },
+    "fail": {
+     "gt": 100
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "whole number",
+    "detail": "reduce.over sustainedFor 20s is not a whole number of the collection's 15s steps, so no window can ever span it - use a multiple of 15s, or collect with a finer wir-collect --step"
+   }
+  },
+  {
+   "name": "sustainedFor longer than the window has no complete window",
+   "kpi": {
+    "id": "sust-long",
+    "component": "c",
+    "query": "sustained",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "sustainedFor": "15m"
+     }
+    },
+    "fail": {
+     "gt": 100
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "NO_VALUE"
+   }
+  },
+  {
+   "name": "across avg over instances of different length and gap pattern",
+   "kpi": {
+    "id": "ragged-avg",
+    "component": "c",
+    "query": "ragged",
+    "reduce": {
+     "kind": "max"
+    },
+    "across": "avg",
+    "fail": {
+     "gt": 100
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 30
+   }
+  },
+  {
+   "name": "across max over the same ragged instances",
+   "kpi": {
+    "id": "ragged-max",
+    "component": "c",
+    "query": "ragged",
+    "reduce": {
+     "kind": "max"
+    },
+    "across": "max",
+    "fail": {
+     "gt": 100
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 40
+   }
+  },
+  {
+   "name": "gte breaches exactly at the threshold",
+   "kpi": {
+    "id": "op-gte",
+    "component": "c",
+    "query": "ragged",
+    "reduce": {
+     "kind": "max"
+    },
+    "across": "max",
+    "fail": {
+     "gte": 40
+    }
+   },
+   "expect": {
+    "status": "FAIL",
+    "actual": 40,
+    "breached": {
+     "gte": 40
+    }
+   }
+  },
+  {
+   "name": "lte breaches exactly at the threshold",
+   "kpi": {
+    "id": "op-lte",
+    "component": "c",
+    "query": "ragged",
+    "reduce": {
+     "kind": "max"
+    },
+    "across": "max",
+    "fail": {
+     "lte": 40
+    }
+   },
+   "expect": {
+    "status": "FAIL",
+    "actual": 40,
+    "breached": {
+     "lte": 40
+    }
+   }
+  },
+  {
+   "name": "divideBy naming no client rule is a file defect whatever the run carried",
+   "kpi": {
+    "id": "div-typo",
+    "component": "c",
+    "query": "ramp-only",
+    "reduce": {
+     "kind": "max"
+    },
+    "divideBy": "load:thruput",
+    "fail": {
+     "gt": 1
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "not a declared client rule"
+   }
+  },
+  {
+   "name": "divideBy naming a rule that matched many samplers is refused, not silently one of them",
+   "kpi": {
+    "id": "div-many",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "divideBy": "load:everything",
+    "fail": {
+     "gt": 1
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "matched 2 samplers"
+   }
+  },
+  {
+   "name": "requiresLoad naming a rule whose metric text does not parse is LOAD_NOT_ACHIEVED, not INVALID_RULE",
+   "kpi": {
+    "id": "needs-unparseable-load",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "requiresLoad": "load:unparseable",
+    "fail": {
+     "gt": 1
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "LOAD_NOT_ACHIEVED",
+    "reason": "load rule 'load:unparseable'"
+   }
+  },
+  {
+   "name": "a series recorded below the floor in force THEN, at or above the one declared NOW",
+   "config": {
+    "coverageFloor": 0.01
+   },
+   "kpi": {
+    "id": "sparse-floor-lowered",
+    "component": "c",
+    "query": "sparse",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 1
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "LOW_COVERAGE",
+    "reason": "coverage 40% of the collected window was below the floor in force when this series was collected"
+   }
+  },
+  {
+   "name": "the whole-step refusal reports no instance count, though one was computable",
+   "kpi": {
+    "id": "sust-20-drops-counts",
+    "component": "c",
+    "query": "sustained",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "sustainedFor": "20s"
+     }
+    },
+    "fail": {
+     "gt": 1
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "is not a whole number of the collection's 15s steps",
+    "instances": 0
+   }
+  },
+  {
+   "name": "requiresLoad on a DISABLED load rule says it was not judged, never that a target was missed",
+   "kpi": {
+    "id": "cpu-load-parked",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "requiresLoad": "load:parked"
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "LOAD_NOT_ACHIEVED",
+    "reason": "load rule 'load:parked' was not judged - it was parked with enabled: false - so the load this server assert depends on was never measured"
+   }
+  },
+  {
+   "name": "sustainedFor counts samples: a missing scrape inside a span is bridged, not a break",
+   "kpi": {
+    "id": "sust-gap",
+    "component": "c",
+    "query": "gappy",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "sustainedFor": "30s"
+     }
+    },
+    "fail": {
+     "gt": 100
+    }
+   },
+   "expect": {
+    "status": "FAIL",
+    "actual": 500,
+    "breached": {
+     "gt": 100
+    }
+   }
+  },
+  {
+   "name": "sustainedFor over irregular spacing (series wavy: missing scrapes, a point inside the ramp-up, two cadences): only windows with a point at exactly start + d count - the browser's sliding-window rewrite must give the brute-force answer (R3-13)",
+   "kpi": {
+    "id": "sust-wavy-30",
+    "component": "c",
+    "query": "wavy",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "sustainedFor": "30s"
+     }
+    },
+    "fail": {
+     "gt": 250
+    }
+   },
+   "expect": {
+    "status": "FAIL",
+    "actual": 260,
+    "instances": 2,
+    "breached": {
+     "gt": 250
+    }
+   }
+  },
+  {
+   "name": "sustainedFor 1m over irregular spacing: the held level, not the spikes (R3-13)",
+   "kpi": {
+    "id": "sust-wavy-60",
+    "component": "c",
+    "query": "wavy",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "sustainedFor": "1m"
+     }
+    },
+    "warn": {
+     "gt": 150
+    },
+    "fail": {
+     "gt": 400
+    }
+   },
+   "expect": {
+    "status": "WARN",
+    "actual": 240,
+    "breached": {
+     "gt": 150
+    }
+   }
+  },
+  {
+   "name": "sustainedFor on min over irregular spacing, across avg (R3-13)",
+   "kpi": {
+    "id": "sust-wavy-min",
+    "component": "c",
+    "query": "wavy",
+    "reduce": {
+     "kind": "min",
+     "over": {
+      "sustainedFor": "45s"
+     }
+    },
+    "across": "avg",
+    "fail": {
+     "lt": 100
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 150
+   }
+  },
+  {
+   "name": "breachBudget's denominator is the samples present (2 of 5 = 40% > 35%), not the window's slots (2 of 6)",
+   "kpi": {
+    "id": "budget-gap",
+    "component": "c",
+    "query": "gappy",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "breachBudget": 0.35
+     }
+    },
+    "fail": {
+     "gt": 100
+    }
+   },
+   "expect": {
+    "status": "FAIL",
+    "actual": 500,
+    "breached": {
+     "gt": 100
+    }
+   }
+  },
+  {
+   "name": "enabled 0 parks the KPI: Jackson reads an integer flag as false at 0",
+   "kpi": {
+    "id": "parked-zero",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 1
+    },
+    "enabled": 0
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "DISABLED"
+   }
+  },
+  {
+   "name": "enabled \"False\" parks the KPI: Jackson reads three casings of the word",
+   "kpi": {
+    "id": "parked-text",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 1
+    },
+    "enabled": " False "
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "DISABLED"
+   }
+  },
+  {
+   "name": "enabled \"\" is absent to Jackson, so the KPI is judged",
+   "kpi": {
+    "id": "enabled-blank",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "enabled": ""
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 95,
+    "instances": 1,
+    "coverage": 1
+   }
+  },
+  {
+   "name": "enabled 2 judges the KPI: any integer but 0 is true",
+   "kpi": {
+    "id": "enabled-two",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "enabled": 2
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 95,
+    "instances": 1,
+    "coverage": 1
+   }
+  },
+  {
+   "name": "excludeRampUp 0 keeps the ramp-up, as Jackson reads it",
+   "config": {
+    "excludeRampUp": 0
+   },
+   "kpi": {
+    "id": "cpu-max-ramp-zero",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "FAIL",
+    "actual": 99,
+    "breached": {
+     "gt": 96
+    }
+   }
+  },
+  {
+   "name": "excludeRampUp \"FALSE\" keeps the ramp-up, as Jackson reads it",
+   "config": {
+    "excludeRampUp": "FALSE"
+   },
+   "kpi": {
+    "id": "cpu-max-ramp-text",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "FAIL",
+    "actual": 99,
+    "breached": {
+     "gt": 96
+    }
+   }
+  },
+  {
+   "name": "an id-less KPI is judged under the id Java derives, slug(source)-slug(query)",
+   "kpi": {
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "id": "c-cpu",
+    "status": "PASS",
+    "actual": 95
+   }
+  },
+  {
+   "name": "a blank id is derived too",
+   "kpi": {
+    "id": "   ",
+    "component": "c",
+    "query": "lag",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 1000
+    }
+   },
+   "expect": {
+    "id": "c-lag",
+    "status": "PASS",
+    "actual": 700
+   }
+  },
+  {
+   "name": "a padded id is trimmed",
+   "kpi": {
+    "id": "  padded-id  ",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "id": "padded-id",
+    "status": "PASS",
+    "actual": 95
+   }
+  },
+  {
+   "name": "a derived id keeps the first 40 characters of the query slug, and no trailing dash",
+   "kpi": {
+    "component": "c",
+    "query": "max(Kafka_ConsumerGroup_Lag{group=\"order\", topic=\"payments\"})",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 1
+    }
+   },
+   "expect": {
+    "id": "c-max-kafka-consumergroup-lag-group-order",
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "re-run wir-collect"
+   }
+  },
+  {
+   "name": "requiresLoad names the id Java derives for an id-less overall rule",
+   "kpi": {
+    "id": "cpu-derived-load",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "requiresLoad": "run-throughput"
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 95
+   }
+  },
+  {
+   "name": "requiresLoad names the id Java derives for a rule written with \"id\": null",
+   "kpi": {
+    "id": "cpu-null-id-load",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "requiresLoad": "get-api-products-throughput"
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 95
+   }
+  },
+  {
+   "name": "requiresLoad on a rule whose metric is written \"Throughput\"",
+   "kpi": {
+    "id": "cpu-cased-load",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "requiresLoad": "load:cased"
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 95
+   }
+  },
+  {
+   "name": "a load rule at the edge FAILS on 12.496 req/s, which round2 would have passed",
+   "kpi": {
+    "id": "cpu-edge-load",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "requiresLoad": "load:edge"
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "LOAD_NOT_ACHIEVED",
+    "reason": "load rule 'load:edge' FAILED"
+   }
+  },
+  {
+   "_comment": "Q19 (item 3): the sentence quotes a client actual beside the band it breached, so it writes it as the CI/CD JSON and JUnit do - two decimals unless they put it on or across a band the load rule declares, then the digits that keep it on its side, and never zero (Digits.beside). String.format(\"%.2f\") quoted this 12.496 as 12.50, on the very band it had FAILed, and the case above checks only the start of the sentence.",
+   "name": "a FAILed load rule's measurement is quoted beside its band, never on it: 12.496/s under < 12.5 /s",
+   "kpi": {
+    "id": "cpu-edge-quoted",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "requiresLoad": "load:edge"
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "LOAD_NOT_ACHIEVED",
+    "detail": "load rule 'load:edge' FAILED: throughput 12.496/s breached < 12.5 /s"
+   }
+  },
+  {
+   "_comment": "Q19 and Q1 (item 3): every band the load rule declares counts, warn and fail, as for the CI/CD JSON's and JUnit's client actual. load:edge-warned FAILs lt 13 at 12.496, beside warn lt 12.5: the fail band alone would quote 12.50, on the warn band.",
+   "name": "a FAILed load rule's measurement is quoted off its warn band too: 12.496/s beside warn < 12.5, breached < 13 /s",
+   "kpi": {
+    "id": "cpu-edge-warned",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "requiresLoad": "load:edge-warned"
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "LOAD_NOT_ACHIEVED",
+    "detail": "load rule 'load:edge-warned' FAILED: throughput 12.496/s breached < 13 /s"
+   }
+  },
+  {
+   "_comment": "L13: the sentence quotes the load rule's worst judged match, the one definition the JUnit message and the CI/CD JSON's attainment read - the furthest past the band among its FAILs. It quoted the first FAIL, GET /api/products' 12.50.",
+   "name": "a FAILed load rule with two FAILs quotes the worst of them, not the first: 0/s",
+   "kpi": {
+    "id": "cpu-two-fail",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "requiresLoad": "load:two-fail"
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "LOAD_NOT_ACHIEVED",
+    "detail": "load rule 'load:two-fail' FAILED: throughput 0/s breached < 100000 /s"
+   }
+  },
+  {
+   "name": "a ratio divides by the full-precision throughput",
+   "kpi": {
+    "id": "lag-per-edge",
+    "component": "c",
+    "query": "lag",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 56.01
+    },
+    "divideBy": "load:edge-measure"
+   },
+   "expect": {
+    "status": "FAIL",
+    "actual": 56.01792573623559,
+    "breached": {
+     "gt": 56.01
+    }
+   }
+  },
+  {
+   "name": "a KPI-level sustainedFor is a retired key, not a tolerance",
+   "kpi": {
+    "id": "retired-sustained",
+    "component": "c",
+    "query": "sustained",
+    "reduce": {
+     "kind": "max"
+    },
+    "sustainedFor": "30s",
+    "fail": {
+     "gt": 100
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "\"sustainedFor\" at the top level of a server assert is ignored and belongs under reduce.over"
+   }
+  },
+  {
+   "name": "warnAt is a retired key",
+   "kpi": {
+    "id": "retired-warnat",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "warnAt": 0.8
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "\"warnAt\" is not a key of a server assert"
+   }
+  },
+  {
+   "name": "a retired key written as null is still a retired key",
+   "kpi": {
+    "id": "retired-scope-null",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "scope": null
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "\"scope\" is not a key of a server assert"
+   }
+  },
+  {
+   "name": "an unknown key is ignored in silence",
+   "kpi": {
+    "id": "unknown-key",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "team": "payments",
+    "pack": "kafka@1"
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 95
+   }
+  },
+  {
+   "name": "over: {} is a plain reducer",
+   "kpi": {
+    "id": "over-empty",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max",
+     "over": {}
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 95
+   }
+  },
+  {
+   "name": "over as text is refused",
+   "kpi": {
+    "id": "over-text",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max",
+     "over": "30s"
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "reduce.over must be an object with sustainedFor or breachBudget, not the text \"30s\""
+   }
+  },
+  {
+   "name": "over as a list is refused",
+   "kpi": {
+    "id": "over-list",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max",
+     "over": []
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "reduce.over must be an object with sustainedFor or breachBudget, not a list"
+   }
+  },
+  {
+   "name": "over with neither tolerance is refused",
+   "kpi": {
+    "id": "over-unknown",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "window": "30s"
+     }
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "reduce.over has neither sustainedFor nor breachBudget (found: window)"
+   }
+  },
+  {
+   "name": "over with both tolerances is refused",
+   "kpi": {
+    "id": "over-both",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "sustainedFor": "30s",
+      "breachBudget": 0.1
+     }
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "reduce.over declares both sustainedFor and breachBudget"
+   }
+  },
+  {
+   "name": "sustainedFor: null is a tolerance that cannot be read",
+   "kpi": {
+    "id": "sust-null",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "sustainedFor": null
+     }
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "reduce.over sustainedFor must be a duration such as \"30s\", \"2m\", \"500ms\" or \"1h\", not null"
+   }
+  },
+  {
+   "name": "a duration is case-sensitive: \"30S\" is refused",
+   "kpi": {
+    "id": "sust-upper",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "sustainedFor": "30S"
+     }
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "not the text \"30S\""
+   }
+  },
+  {
+   "name": "a duration is text: a bare 30 is refused",
+   "kpi": {
+    "id": "sust-number",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "sustainedFor": 30
+     }
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "not the number 30"
+   }
+  },
+  {
+   "name": "breachBudget 0 is a fraction, and on max it is the maximum",
+   "kpi": {
+    "id": "budget-zero",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "breachBudget": 0
+     }
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 95
+   }
+  },
+  {
+   "name": "breachBudget as numeric text is read as Java reads it",
+   "kpi": {
+    "id": "budget-text",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "breachBudget": " 0 "
+     }
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 95
+   }
+  },
+  {
+   "name": "breachBudget \"\" is not a number",
+   "kpi": {
+    "id": "budget-blank",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "breachBudget": ""
+     }
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "breachBudget must be a fraction 0..1 of the window, not the text \"\""
+   }
+  },
+  {
+   "name": "breachBudget above 1 is refused",
+   "kpi": {
+    "id": "budget-high",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "breachBudget": 1.5
+     }
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "not the number 1.5"
+   }
+  },
+  {
+   "name": "warn: {} declares no band",
+   "kpi": {
+    "id": "warn-empty",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "warn": {}
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 95
+   }
+  },
+  {
+   "name": "a band value with a unit is refused",
+   "kpi": {
+    "id": "band-unit",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": "50ms"
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "fail gt must be a number, not the text \"50ms\""
+   }
+  },
+  {
+   "name": "a band value written as numeric text is a number",
+   "kpi": {
+    "id": "band-text",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": " 96 "
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 95
+   }
+  },
+  {
+   "name": "a band value is parsed as Java parses a double",
+   "kpi": {
+    "id": "band-java-double",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": "9.6e1d"
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 95
+   }
+  },
+  {
+   "name": "a band value of null is refused",
+   "kpi": {
+    "id": "band-null",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": null
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "fail gt must be a number, not null"
+   }
+  },
+  {
+   "name": "a band operator is trimmed and case-insensitive",
+   "kpi": {
+    "id": "band-op-case",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     " GT ": 96
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 95
+   }
+  },
+  {
+   "name": "a band with two operators is refused",
+   "kpi": {
+    "id": "band-two-ops",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 1,
+     "lt": 2
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "fail has 2 operators (gt, lt) — exactly one is allowed"
+   }
+  },
+  {
+   "name": "outside is not an operator",
+   "kpi": {
+    "id": "band-outside",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "outside": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "fail operator 'outside' is not one of gt, gte, lt, lte. A corridor is two bands"
+   }
+  },
+  {
+   "name": "a padded component is trimmed",
+   "kpi": {
+    "id": "gate-padded",
+    "component": " c ",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 95
+   }
+  },
+  {
+   "name": "a blank component names none - there is no implicit component",
+   "kpi": {
+    "id": "gate-blank",
+    "component": "",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "names no component (declared: c, db)"
+   }
+  },
+  {
+   "name": "a reducer is case-insensitive",
+   "kpi": {
+    "id": "kind-upper",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "MAX"
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 95
+   }
+  },
+  {
+   "name": "across is case-insensitive",
+   "kpi": {
+    "id": "across-upper",
+    "component": "c",
+    "query": "lag",
+    "reduce": {
+     "kind": "max"
+    },
+    "across": "AVG",
+    "fail": {
+     "gt": 500
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 400,
+    "instances": 2
+   }
+  },
+  {
+   "name": "a reducer kind written as a number is not a reducer",
+   "kpi": {
+    "id": "kind-number",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": 95
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "reduce.kind '95' is not a reducer"
+   }
+  },
+  {
+   "_comment": [
+    "M7d X review follow-up: a reduce.kind that is not text is quoted by its VALUE, as every other",
+    "number a refusal prints. Java wrote String.valueOf(kind) - '2.0', '1.0E-7', '[1, 2]', '{}' -",
+    "and the mirror String(kind) - '2', '1e-7', '1,2', '[object Object]'. A number reads as the",
+    "reducer it is not; a list, an object or a boolean is named by what it is, as describe() names it."
+   ],
+   "name": "a reducer kind of 2.0 is quoted as 2",
+   "kpi": {
+    "id": "kind-point-zero",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": 2
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "reduce.kind '2' is not a reducer — valid here: max, min, avg, last, slope, pN (e.g. p95)"
+   }
+  },
+  {
+   "name": "a reducer kind below 1e-3 is quoted in E notation",
+   "kpi": {
+    "id": "kind-tiny",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": 1e-7
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "reduce.kind '1.0E-7' is not a reducer — valid here: max, min, avg, last, slope, pN (e.g. p95)"
+   }
+  },
+  {
+   "name": "a reducer kind from 1e7 is quoted in E notation",
+   "kpi": {
+    "id": "kind-huge",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": 12345678.5
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "reduce.kind '1.23456785E7' is not a reducer — valid here: max, min, avg, last, slope, pN (e.g. p95)"
+   }
+  },
+  {
+   "name": "a reducer kind written as a list is named as a list",
+   "kpi": {
+    "id": "kind-list",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": [1, 2]
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "reduce.kind must be the name of a reducer, not a list — valid here: max, min, avg, last, slope, pN (e.g. p95)"
+   }
+  },
+  {
+   "name": "a reducer kind written as an object is named as an object",
+   "kpi": {
+    "id": "kind-object",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": {}
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "reduce.kind must be the name of a reducer, not an object — valid here: max, min, avg, last, slope, pN (e.g. p95)"
+   }
+  },
+  {
+   "name": "a reducer kind written as a boolean is named as a boolean",
+   "kpi": {
+    "id": "kind-boolean",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": true
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "reduce.kind must be the name of a reducer, not a boolean — valid here: max, min, avg, last, slope, pN (e.g. p95)"
+   }
+  },
+  {
+   "name": "a component written as the number 2.0 is the component called 2",
+   "kpi": {
+    "id": "gate-number",
+    "component": 2,
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "component '2' is not declared under serverMetrics.components (declared: c, db)",
+    "reason": "component '2' is not declared under serverMetrics.components (declared: c, db)"
+   }
+  },
+  {
+   "name": "a component written as a number below 1e-3 is quoted in E notation",
+   "kpi": {
+    "id": "gate-tiny",
+    "component": 1e-7,
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "component '1.0E-7' is not declared under serverMetrics.components (declared: c, db)",
+    "reason": "component '1.0E-7' is not declared under serverMetrics.components (declared: c, db)"
+   }
+  },
+  {
+   "name": "the smallest double is quoted as Java writes it, with two digits",
+   "kpi": {
+    "id": "num-min-value",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "breachBudget": -5e-324
+     }
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "reduce.over breachBudget must be a fraction 0..1 of the window, not the number -4.9E-324 — 2% is written 0.02"
+   }
+  },
+  {
+   "name": "a series with no status was never requested: INVALID_RULE, as Java reads a missing status (the loader accepts such a payload, so a hand-written one reaches the page like this)",
+   "kpi": {
+    "id": "status-less",
+    "component": "c",
+    "query": "no-status",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 1
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "no series was collected for this server assert - re-run wir-collect"
+   }
+  },
+  {
+   "name": "a series status this version does not know is SOURCE_FAILED (the loader refuses such a payload before a page sees it; the evaluators still agree)",
+   "kpi": {
+    "id": "status-unknown",
+    "component": "c",
+    "query": "odd-status",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 1
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "SOURCE_FAILED",
+    "reason": "series status 'BOGUS' this version does not know"
+   }
+  },
+  {
+   "name": "a coverage floor outside 0..1 is ignored and the default applies",
+   "config": {
+    "coverageFloor": 2
+   },
+   "kpi": {
+    "id": "floor-out-of-range",
+    "component": "c",
+    "query": "sparse",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 1
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "LOW_COVERAGE",
+    "reason": "coverage 40% of the collected window is below the floor 90%"
+   }
+  },
+  {
+   "name": "a coverage floor written as numeric text is read",
+   "config": {
+    "coverageFloor": "0.3"
+   },
+   "kpi": {
+    "id": "floor-text",
+    "component": "c",
+    "query": "sparse",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 1
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "LOW_COVERAGE",
+    "reason": "the file now asks for 30%"
+   }
+  },
+  {
+   "_comment": [
+    "M7d X (review:C, review:F): every number a refusal or a warning prints is written as Java",
+    "writes it. ServerMetricsMapper.describe quotes a value by its VALUE (an integral one below",
+    "1e15 as a long, anything else as Double.toString); Reducer.key writes Durations.trim - a",
+    "long's digits for an integral value (saturating, as (long) does), else Double.toString,",
+    "whose E notation starts below 1e-3 and at 1e7. The mirror printed String(d): 1e-7 where Java",
+    "wrote 1.0E-7, 12345678.5 where it wrote 1.23456785E7.",
+    "L12: Predicate.describe writes a band in plain digits - every digit of an integral band below",
+    "2^63, and Double.toString's shortest digits for any other (an integral one from 2^63 included,",
+    "so 1e23 is 100000000000000000000000), never saturated and never in E notation. It wrote",
+    "Durations.trim too, so a band of 0.0005 read 5.0E-4 and one of 1e21 read 9223372036854775807."
+   ],
+   "name": "a breach budget below 1e-3 is quoted in E notation",
+   "kpi": {
+    "id": "num-budget-tiny",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "breachBudget": -1e-7
+     }
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "reduce.over breachBudget must be a fraction 0..1 of the window, not the number -1.0E-7 — 2% is written 0.02"
+   }
+  },
+  {
+   "name": "a breach budget from 1e7 is quoted in E notation",
+   "kpi": {
+    "id": "num-budget-huge",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "breachBudget": 12345678.5
+     }
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "reduce.over breachBudget must be a fraction 0..1 of the window, not the number 1.23456785E7 — 2% is written 0.02"
+   }
+  },
+  {
+   "name": "a breach budget of 2.0 is the number 2",
+   "kpi": {
+    "id": "num-budget-point-zero",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "breachBudget": 2
+     }
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "reduce.over breachBudget must be a fraction 0..1 of the window, not the number 2 — 2% is written 0.02"
+   }
+  },
+  {
+   "name": "an integral number from 1e15 is quoted in E notation",
+   "kpi": {
+    "id": "num-budget-integral-huge",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "breachBudget": 1000000000000000
+     }
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "reduce.over breachBudget must be a fraction 0..1 of the window, not the number 1.0E15 — 2% is written 0.02"
+   }
+  },
+  {
+   "name": "a band below 1e-3 is described in plain digits",
+   "kpi": {
+    "id": "num-band-tiny",
+    "component": "c",
+    "query": "lag",
+    "reduce": {
+     "kind": "max"
+    },
+    "warn": {
+     "lt": -0.0005
+    },
+    "fail": {
+     "gt": 800
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 700,
+    "warnings": [
+     "warn < -0.0005 can only fire on a negative value. If this metric is never negative the band never fires and the server assert reports PASS on every run; a band is written in the unit the values are judged in"
+    ]
+   }
+  },
+  {
+   "name": "a band from 1e7 is described in plain digits, and an integral one whole",
+   "kpi": {
+    "id": "num-band-huge",
+    "component": "c",
+    "query": "lag",
+    "unit": "msgs",
+    "reduce": {
+     "kind": "max"
+    },
+    "warn": {
+     "gt": 12345678.5
+    },
+    "fail": {
+     "gt": 10000000
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 700,
+    "warnings": [
+     "warn can never fire: fail > 10000000 msgs is tested first and already covers warn > 12345678.5 msgs. Swapped values?"
+    ]
+   }
+  },
+  {
+   "name": "an integral band past a long's range is written whole, not what (long) makes of it",
+   "kpi": {
+    "id": "num-band-beyond-long",
+    "component": "c",
+    "query": "lag",
+    "reduce": {
+     "kind": "max"
+    },
+    "warn": {
+     "gt": 1e+22
+    },
+    "fail": {
+     "gt": 1e+21
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 700,
+    "warnings": [
+     "warn can never fire: fail > 1000000000000000000000 is tested first and already covers warn > 10000000000000000000000. Swapped values?"
+    ]
+   }
+  },
+  {
+   "name": "an integral band past 2^63 is Double.toString's shortest digits written out, not the double's exact value",
+   "kpi": {
+    "id": "num-band-past-two-to-the-63",
+    "component": "c",
+    "query": "lag",
+    "reduce": {
+     "kind": "max"
+    },
+    "warn": {
+     "gt": 1e+23
+    },
+    "fail": {
+     "gt": 1e+22
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 700,
+    "warnings": [
+     "warn can never fire: fail > 10000000000000000000000 is tested first and already covers warn > 100000000000000000000000. Swapped values?"
+    ]
+   }
+  },
+  {
+   "name": "a band of negative zero is described as 0",
+   "kpi": {
+    "id": "num-band-negative-zero",
+    "component": "c",
+    "query": "lag",
+    "reduce": {
+     "kind": "max"
+    },
+    "warn": {
+     "lt": 0
+    },
+    "fail": {
+     "gt": 800
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 700,
+    "warnings": [
+     "warn < 0 can only fire on a negative value. If this metric is never negative the band never fires and the server assert reports PASS on every run; a band is written in the unit the values are judged in"
+    ]
+   }
+  },
+  {
+   "name": "a percentile below 1e-3 is keyed in E notation",
+   "kpi": {
+    "id": "num-percentile-tiny",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "p0.0005",
+     "over": {
+      "sustainedFor": "30s"
+     }
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "reduce.over (sustained for 30s) is only defined on max and min, not on p5.0E-4 - there is no level for it to hold"
+   }
+  },
+  {
+   "name": "a FAILed load rule's band from 1e7 is quoted in plain digits",
+   "kpi": {
+    "id": "num-load-huge",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "requiresLoad": "load:huge"
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "LOAD_NOT_ACHIEVED",
+    "detail": "load rule 'load:huge' FAILED: throughput 12.50/s breached < 12345678.5 /s"
+   }
+  },
+  {
+   "name": "a FAILed load rule's band below 1e-3 is quoted in plain digits",
+   "kpi": {
+    "id": "num-load-tiny",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "requiresLoad": "load:tiny"
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "LOAD_NOT_ACHIEVED",
+    "detail": "load rule 'load:tiny' FAILED: throughput 0/s breached < 0.0005 /s"
+   }
+  },
+  {
+   "_comment": "M7d X (review:R): every sentence the D25 rename touched, and every retired per-assert key, is compared whole on all three runners - the board, JUnit and the findings print them.",
+   "name": "a server assert with no query has nothing to collect",
+   "kpi": {
+    "id": "no-query",
+    "component": "c",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "names no \"query\" — every server assert on a custom component writes its own"
+   }
+  },
+  {
+   "name": "a blank query is no query",
+   "kpi": {
+    "id": "blank-query",
+    "component": "c",
+    "query": "  ",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "names no \"query\" — every server assert on a custom component writes its own"
+   }
+  },
+  {
+   "name": "no warn or fail band can never decide anything",
+   "kpi": {
+    "id": "no-bands-detail",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "no warn or fail band — the server assert can never decide anything"
+   }
+  },
+  {
+   "name": "an operator that is not one declares a limit it cannot apply",
+   "kpi": {
+    "id": "op-typo",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gtt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "fail operator 'gtt' is not one of gt, gte, lt, lte — so this server assert declares a limit it cannot apply, and would report PASS without ever testing fail"
+   }
+  },
+  {
+   "name": "outside is refused with the corridor hint, in full",
+   "kpi": {
+    "id": "op-outside-detail",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "outside": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "fail operator 'outside' is not one of gt, gte, lt, lte. A corridor is two bands in opposite directions, or two server asserts — so this server assert declares a limit it cannot apply, and would report PASS without ever testing fail"
+   }
+  },
+  {
+   "name": "a series the payload never collected names the file that did not declare it",
+   "kpi": {
+    "id": "never-collected-detail",
+    "component": "c",
+    "query": "nobody-asked",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "no series was collected for query nobody-asked - the payload was collected against a file that did not declare this server assert; re-run wir-collect"
+   }
+  },
+  {
+   "name": "the retired key \"assert\" is refused in its own words",
+   "kpi": {
+    "id": "retired-assert",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "assert": "x"
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "\"assert\" is not a key of a server assert. A server assert is a reducer and a band: write \"reduce\": {\"kind\": \"max\"} (or min, avg, last, slope, pN; with an optional \"over\": {\"sustainedFor\": \"30s\"} or {\"breachBudget\": 0.02}) and \"warn\"/\"fail\" bands with gt, gte, lt or lte, exactly like a client rule."
+   }
+  },
+  {
+   "name": "the retired key \"range\" is refused in its own words",
+   "kpi": {
+    "id": "retired-range",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "range": "x"
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "\"range\" is not a key of a server assert. A corridor is two bands in opposite directions (\"fail\": {\"gt\": 800} on one assert, \"fail\": {\"lt\": 0} on another), each saying which end was missed."
+   }
+  },
+  {
+   "name": "the retired key \"onMissing\" is refused in its own words",
+   "kpi": {
+    "id": "retired-onmissing",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "onMissing": "x"
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "\"onMissing\" is not a key of a server assert. A series that is missing is NOT_JUDGED with a reason — SOURCE_FAILED, NO_MATCH or LOW_COVERAGE — and the reason, not a policy, decides what happens: a collection failure is a config error under failonerror, and a query matching nothing is counted and never fatal on its own."
+   }
+  },
+  {
+   "name": "the retired key \"onLoadShortfall\" is refused in its own words",
+   "kpi": {
+    "id": "retired-onloadshortfall",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "onLoadShortfall": "x"
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "\"onLoadShortfall\" is not a key of a server assert. Name the client load rule instead — \"requiresLoad\": \"load:throughput\" — and a run that missed its load leaves this server assert NOT_JUDGED / LOAD_NOT_ACHIEVED. A band is never rescaled."
+   }
+  },
+  {
+   "name": "the retired key \"loadValidity\" is refused in its own words",
+   "kpi": {
+    "id": "retired-loadvalidity",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "loadValidity": "x"
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "\"loadValidity\" is not a key of a server assert. Load is declared once, as the client rule the file already carries; reference it with \"requiresLoad\": \"<rule id>\"."
+   }
+  },
+  {
+   "name": "the retired key \"required\" is refused in its own words",
+   "kpi": {
+    "id": "retired-required",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "required": "x"
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "\"required\" is not a key of a server assert. Every server assert can fail the build; one that should only be watched gets a warn band and no fail band."
+   }
+  },
+  {
+   "name": "the retired key \"overlayOn\" is refused in its own words",
+   "kpi": {
+    "id": "retired-overlayon",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "overlayOn": "x"
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "\"overlayOn\" is not a key of a server assert; which client chart a series overlays is chosen in the report, not declared in the file."
+   }
+  },
+  {
+   "name": "the retired key \"breachBudget\" is refused in its own words",
+   "kpi": {
+    "id": "retired-breachbudget",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "breachBudget": 0.02
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "\"breachBudget\" at the top level of a server assert is ignored and belongs under reduce.over: \"reduce\": {\"kind\": \"max\", \"over\": {\"sustainedFor\": \"30s\"}} (or {\"breachBudget\": 0.02})."
+   }
+  },
+  {
+   "name": "the retired key \"over\" is refused in its own words",
+   "kpi": {
+    "id": "retired-over",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    },
+    "over": {
+     "sustainedFor": "30s"
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "\"over\" at the top level of a server assert is ignored and belongs under reduce.over: \"reduce\": {\"kind\": \"max\", \"over\": {\"sustainedFor\": \"30s\"}} (or {\"breachBudget\": 0.02})."
+   }
+  },
+  {
+   "name": "a catalogue metric brings its query, unit and reducer",
+   "kpi": {
+    "id": "db-up",
+    "component": "db",
+    "metric": "up",
+    "fail": {
+     "lt": 1
+    }
+   },
+   "expect": {
+    "status": "FAIL",
+    "actual": 0,
+    "instances": 1,
+    "coverage": 1
+   }
+  },
+  {
+   "name": "a reducer written on the assert overrides the catalogue's",
+   "kpi": {
+    "id": "db-up-last",
+    "component": "db",
+    "metric": "up",
+    "reduce": {
+     "kind": "last"
+    },
+    "fail": {
+     "lt": 1
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 1,
+    "instances": 1,
+    "coverage": 1
+   }
+  },
+  {
+   "name": "a catalogue assert with no id is named after its component and metric",
+   "kpi": {
+    "component": "db",
+    "metric": "connections.used.pct",
+    "warn": {
+     "gt": 75
+    },
+    "fail": {
+     "gt": 85
+    }
+   },
+   "expect": {
+    "id": "db-connections-used-pct",
+    "status": "FAIL",
+    "actual": 88,
+    "instances": 1,
+    "coverage": 1
+   }
+  },
+  {
+   "_comment": "F2b: an upward band past a catalogue metric's declared ceiling (CatalogueMetric.ceiling, 100 on connections.used.pct) is a WARNING, never a refusal: the band is still judged as written, and some ceilings are nominal, so the sentence is conditional.",
+   "name": "F2b: an upward fail band past the catalogue ceiling is a WARNING, and the warn band still decides",
+   "kpi": {
+    "id": "db-conn-past-ceiling",
+    "component": "db",
+    "metric": "connections.used.pct",
+    "warn": {
+     "gt": 75
+    },
+    "fail": {
+     "gt": 150
+    }
+   },
+   "expect": {
+    "status": "WARN",
+    "actual": 88,
+    "breached": {
+     "gt": 75
+    },
+    "warnings": [
+     "fail > 150 % can only fire above the ceiling of 100 % the catalogue declares for connections.used.pct. If it never reads above its ceiling the band never fires and the server assert reports PASS on every run"
+    ]
+   }
+  },
+  {
+   "_comment": "F2b: gt AT the ceiling fires only above it; gte at the ceiling can still fire on the ceiling itself, so it is not warned about.",
+   "name": "F2b: gt at the ceiling is warned about, gte at it is not",
+   "kpi": {
+    "id": "db-conn-at-ceiling",
+    "component": "db",
+    "metric": "connections.used.pct",
+    "warn": {
+     "gte": 100
+    },
+    "fail": {
+     "gt": 100
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 88,
+    "warnings": [
+     "fail > 100 % can only fire above the ceiling of 100 % the catalogue declares for connections.used.pct. If it never reads above its ceiling the band never fires and the server assert reports PASS on every run",
+     "warn can never fire: fail > 100 % is tested first and already covers warn ≥ 100 %. Swapped values?"
+    ]
+   }
+  },
+  {
+   "_comment": "F2b: the ceiling warnings come after the negative-only ones and before warn-covered-by-fail, warn before fail, in KpiUsability.check's order.",
+   "name": "F2b: a warn band past the ceiling, and a fail band that covers it",
+   "kpi": {
+    "id": "db-conn-warn-past-ceiling",
+    "component": "db",
+    "metric": "connections.used.pct",
+    "warn": {
+     "gte": 101
+    },
+    "fail": {
+     "gt": 85
+    }
+   },
+   "expect": {
+    "status": "FAIL",
+    "actual": 88,
+    "breached": {
+     "gt": 85
+    },
+    "warnings": [
+     "warn ≥ 101 % can only fire above the ceiling of 100 % the catalogue declares for connections.used.pct. If it never reads above its ceiling the band never fires and the server assert reports PASS on every run",
+     "warn can never fire: fail > 85 % is tested first and already covers warn ≥ 101 %. Swapped values?"
+    ]
+   }
+  },
+  {
+   "_comment": "F2b: a unitless metric's ceiling (up's 1) is quoted without a unit.",
+   "name": "F2b: a band past up's ceiling of 1",
+   "kpi": {
+    "id": "db-up-past-ceiling",
+    "component": "db",
+    "metric": "up",
+    "fail": {
+     "gt": 1
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 0,
+    "warnings": [
+     "fail > 1 can only fire above the ceiling of 1 the catalogue declares for up. If it never reads above its ceiling the band never fires and the server assert reports PASS on every run"
+    ]
+   }
+  },
+  {
+   "_comment": "F2b: a slope is judged per minute, not in the metric's unit, so no ceiling bounds it - a slope written over a catalogue metric with a ceiling is not warned about.",
+   "name": "F2b: a slope over a metric with a ceiling is exempt",
+   "kpi": {
+    "id": "db-conn-slope",
+    "component": "db",
+    "metric": "connections.used.pct",
+    "reduce": {
+     "kind": "slope"
+    },
+    "fail": {
+     "gt": 150
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "warnings": []
+   }
+  },
+  {
+   "_comment": "F2b: a divideBy ratio is per unit of the load rule, not in the metric's unit, so no ceiling bounds it either.",
+   "name": "F2b: a ratio over a metric with a ceiling is exempt",
+   "kpi": {
+    "id": "db-conn-per-rps",
+    "component": "db",
+    "metric": "connections.used.pct",
+    "fail": {
+     "gt": 150
+    },
+    "divideBy": "load:throughput"
+   },
+   "expect": {
+    "status": "PASS",
+    "warnings": []
+   }
+  },
+  {
+   "_comment": "F2b: a custom query has no catalogue metric, so no ceiling - the same band says nothing.",
+   "name": "F2b: a custom query is never warned about a ceiling",
+   "kpi": {
+    "id": "custom-past-100",
+    "component": "c",
+    "query": "lag",
+    "unit": "%",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 1500
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "warnings": []
+   }
+  },
+  {
+   "name": "a metric the type does not offer, naming the ones it does",
+   "kpi": {
+    "id": "db-nope",
+    "component": "db",
+    "metric": "nope",
+    "fail": {
+     "gt": 1
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "metric 'nope' is not in postgres@1 — it offers: up, connections.used.pct"
+   }
+  },
+  {
+   "name": "metric and query both",
+   "kpi": {
+    "id": "db-both",
+    "component": "db",
+    "metric": "up",
+    "query": "cpu",
+    "fail": {
+     "lt": 1
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "declares both \"metric\" and \"query\""
+   }
+  },
+  {
+   "name": "neither metric nor query on a catalogue component",
+   "kpi": {
+    "id": "db-neither",
+    "component": "db",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 1
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "names neither a \"metric\" from postgres@1 nor a \"query\""
+   }
+  },
+  {
+   "name": "a metric on a custom component",
+   "kpi": {
+    "id": "c-metric",
+    "component": "c",
+    "metric": "up",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 1
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "component 'c' is custom, which has no catalogue"
+   }
+  },
+  {
+   "name": "a custom component's assert with no query",
+   "kpi": {
+    "id": "c-noquery",
+    "component": "c",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 1
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "every server assert on a custom component writes its own"
+   }
+  },
+  {
+   "name": "a component of a type this version does not know",
+   "components": {
+    "ora": {
+     "type": "nosuchdb"
+    }
+   },
+   "kpi": {
+    "id": "ora-q",
+    "component": "ora",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 1
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "component 'ora' has type 'nosuchdb', which is not one of postgres, kafka, redis, host-linux, aws-ec2, oracle, influxdb2, influxdb3, jvm, http-service, kubernetes-pod, mysql, custom"
+   }
+  },
+  {
+   "name": "a source on an assert is a retired key",
+   "kpi": {
+    "id": "old-source",
+    "component": "c",
+    "source": "prom",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "\"source\" is not a key of a server assert"
+   }
+  },
+  {
+   "name": "a gate on an assert is a retired key",
+   "kpi": {
+    "id": "old-gate",
+    "component": "c",
+    "gate": "kafka",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "reason": "\"gate\" is not a key of a server assert"
+   }
+  },
+  {
+   "name": "U7: a query is read trimmed, so surrounding spaces are not part of the series' identity",
+   "kpi": {
+    "id": "cpu-padded",
+    "component": "c",
+    "query": "  cpu  ",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 95,
+    "instances": 1,
+    "coverage": 1,
+    "warnings": []
+   }
+  },
+  {
+   "name": "U7: tab and newline padding is trimmed as String.trim trims it, and the derived id is the trimmed query's",
+   "kpi": {
+    "component": "c",
+    "query": "\tcpu\n",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "id": "c-cpu",
+    "status": "PASS",
+    "actual": 95,
+    "instances": 1,
+    "coverage": 1,
+    "warnings": []
+   }
+  },
+  {
+   "name": "U7: a no-break space is not trimmed (javaTrim, never String.prototype.trim), and a WARNING names it",
+   "kpi": {
+    "id": "cpu-nbsp",
+    "component": "c",
+    "query": "\u00a0cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "no series was collected for query \u00a0cpu - the payload was collected against a file that did not declare this server assert; re-run wir-collect",
+    "warnings": [
+     "the query has an invisible character at its start (U+00A0) that is not trimmed like a plain space, so no series will match it — delete it"
+    ]
+   }
+  },
+  {
+   "name": "U7: plain spaces around a zero-width space are trimmed, and the invisible character is not",
+   "kpi": {
+    "id": "cpu-zwsp",
+    "component": "c",
+    "query": " cpu\u200b ",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "no series was collected for query cpu\u200b - the payload was collected against a file that did not declare this server assert; re-run wir-collect",
+    "warnings": [
+     "the query has an invisible character at its end (U+200B) that is not trimmed like a plain space, so no series will match it — delete it"
+    ]
+   }
+  },
+  {
+   "name": "U7: the invisible-character WARNING is about the query alone, so a server assert refused for having no band still carries it",
+   "kpi": {
+    "id": "cpu-nbsp-no-bands",
+    "component": "c",
+    "query": "\u00a0cpu",
+    "reduce": {
+     "kind": "max"
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "no warn or fail band — the server assert can never decide anything",
+    "warnings": [
+     "the query has an invisible character at its start (U+00A0) that is not trimmed like a plain space, so no series will match it — delete it"
+    ]
+   }
+  },
+  {
+   "_comment": "F8: a word joiner (U+2060) is the zero-width no-break space that took over U+FEFF's job, and U+FEFF was already in the class. A format character, not a space separator, so a class read off Character.getType missed it.",
+   "name": "U7 (F8): a word joiner at the end is invisible padding",
+   "kpi": {
+    "id": "cpu-word-joiner",
+    "component": "c",
+    "query": "cpu\u2060",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "no series was collected for query cpu\u2060 - the payload was collected against a file that did not declare this server assert; re-run wir-collect",
+    "warnings": [
+     "the query has an invisible character at its end (U+2060) that is not trimmed like a plain space, so no series will match it — delete it"
+    ]
+   }
+  },
+  {
+   "_comment": "F8: a soft hyphen (U+00AD) and a right-to-left mark (U+200F), both default-ignorable, one at each end: one sentence names both.",
+   "name": "U7 (F8): a soft hyphen at the start and a right-to-left mark at the end, in one sentence",
+   "kpi": {
+    "id": "cpu-shy-rlm",
+    "component": "c",
+    "query": "\u00adcpu\u200f",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "no series was collected for query \u00adcpu\u200f - the payload was collected against a file that did not declare this server assert; re-run wir-collect",
+    "warnings": [
+     "the query has an invisible character at its start (U+00AD) and at its end (U+200F) that is not trimmed like a plain space, so no series will match it — delete it"
+    ]
+   }
+  },
+  {
+   "_comment": "F8: NEXT LINE (U+0085) is Unicode White_Space, but a C1 control to Character.getType and above what String.trim trims.",
+   "name": "U7 (F8): a next-line control at the start is invisible padding",
+   "kpi": {
+    "id": "cpu-next-line",
+    "component": "c",
+    "query": "\u0085cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "no series was collected for query \u0085cpu - the payload was collected against a file that did not declare this server assert; re-run wir-collect",
+    "warnings": [
+     "the query has an invisible character at its start (U+0085) that is not trimmed like a plain space, so no series will match it — delete it"
+    ]
+   }
+  },
+  {
+   "_comment": "F8: the Mongolian vowel separator (U+180E) was a space separator until Unicode 6.3 and a format character since, so whether a class read off the runtime's tables warned depended on the JVM. The class is the table in invisibleEnds now.",
+   "name": "U7 (F8): a Mongolian vowel separator at the end is invisible padding, whatever the runtime's Unicode tables say",
+   "kpi": {
+    "id": "cpu-mvs",
+    "component": "c",
+    "query": "cpu\u180e",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "no series was collected for query cpu\u180e - the payload was collected against a file that did not declare this server assert; re-run wir-collect",
+    "warnings": [
+     "the query has an invisible character at its end (U+180E) that is not trimmed like a plain space, so no series will match it — delete it"
+    ]
+   }
+  },
+  {
+   "_comment": "F8: a tag space (U+E0020) is outside the BMP - two UTF-16 units. A page that reads the last unit with charAt sees U+DC20, a lone surrogate, and names nothing; it must read whole code points, as Java's codePointBefore does.",
+   "name": "U7 (F8): a tag character at the end is named by its code point, not by its last UTF-16 unit",
+   "kpi": {
+    "id": "cpu-tag-space",
+    "component": "c",
+    "query": "cpu\udb40\udc20",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "no series was collected for query cpu\udb40\udc20 - the payload was collected against a file that did not declare this server assert; re-run wir-collect",
+    "warnings": [
+     "the query has an invisible character at its end (U+E0020) that is not trimmed like a plain space, so no series will match it — delete it"
+    ]
+   }
+  },
+  {
+   "name": "SF2: a lower-is-worse catalogue metric folds its instances to the worst one (postgres up declares across min)",
+   "components": {
+    "pair": {
+     "type": "postgres",
+     "match": "job=\"pair\""
+    }
+   },
+   "kpi": {
+    "id": "pair-up",
+    "component": "pair",
+    "metric": "up",
+    "fail": {
+     "lt": 1
+    }
+   },
+   "expect": {
+    "status": "FAIL",
+    "actual": 0,
+    "breached": {
+     "lt": 1
+    },
+    "instances": 2,
+    "coverage": 1
+   }
+  },
+  {
+   "name": "SF2: cache.hit.pct declares across min too, so the instance whose hit ratio fell decides",
+   "components": {
+    "pair": {
+     "type": "postgres",
+     "match": "job=\"pair\""
+    }
+   },
+   "kpi": {
+    "id": "pair-cache",
+    "component": "pair",
+    "metric": "cache.hit.pct",
+    "fail": {
+     "lt": 90
+    }
+   },
+   "expect": {
+    "status": "FAIL",
+    "actual": 50,
+    "breached": {
+     "lt": 90
+    },
+    "instances": 2,
+    "coverage": 1
+   }
+  },
+  {
+   "name": "SF2: an across the assert writes overrides the catalogue's",
+   "components": {
+    "pair": {
+     "type": "postgres",
+     "match": "job=\"pair\""
+    }
+   },
+   "kpi": {
+    "id": "pair-up-max",
+    "component": "pair",
+    "metric": "up",
+    "across": "max",
+    "fail": {
+     "lt": 1
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 1,
+    "instances": 2,
+    "coverage": 1
+   }
+  },
+  {
+   "name": "SF2: a custom assert may write across min",
+   "kpi": {
+    "id": "lag-min",
+    "component": "c",
+    "query": "lag",
+    "reduce": {
+     "kind": "max"
+    },
+    "across": "min",
+    "fail": {
+     "gt": 500
+    }
+   },
+   "expect": {
+    "status": "PASS",
+    "actual": 100,
+    "instances": 2
+   }
+  },
+  {
+   "name": "SF2: an across that is not a fold names the three there are",
+   "kpi": {
+    "id": "across-worst",
+    "component": "c",
+    "query": "lag",
+    "reduce": {
+     "kind": "max"
+    },
+    "across": "worst",
+    "fail": {
+     "gt": 500
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "across 'worst' is not one of max, min, avg"
+   }
+  },
+  {
+   "name": "U8c: sustainedFor \"0s\" is a duration of no time at all, refused as that and never as unreadable",
+   "kpi": {
+    "id": "sust-0s",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "sustainedFor": "0s"
+     }
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "reduce.over sustainedFor \"0s\" holds a level for no time at all, which is the reducer without a tolerance — remove reduce.over, or give sustainedFor a duration of at least 1ms"
+   }
+  },
+  {
+   "_comment": "Durations rounds to whole milliseconds, so this is the same zero.",
+   "name": "U8c: a sustainedFor that rounds to 0ms takes the same sentence, quoting what was written",
+   "kpi": {
+    "id": "sust-sub-ms",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "sustainedFor": "0.0004s"
+     }
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "reduce.over sustainedFor \"0.0004s\" holds a level for no time at all, which is the reducer without a tolerance — remove reduce.over, or give sustainedFor a duration of at least 1ms"
+   }
+  },
+  {
+   "name": "U8c: a sustainedFor that is not a duration keeps the grammar sentence",
+   "kpi": {
+    "id": "sust-spaced",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "sustainedFor": "30 s"
+     }
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "reduce.over sustainedFor must be a duration such as \"30s\", \"2m\", \"500ms\" or \"1h\", not the text \"30 s\""
+   }
+  },
+  {
+   "_comment": "SF19: the server editor writes a chosen tolerance whatever its box holds, so an empty one reaches this refusal and Save is disabled; before, it saved as no tolerance at all.",
+   "name": "SF19: an empty sustainedFor is refused as not a duration, never read as no tolerance",
+   "kpi": {
+    "id": "sust-empty",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max",
+     "over": {
+      "sustainedFor": ""
+     }
+    },
+    "fail": {
+     "gt": 96
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "reduce.over sustainedFor must be a duration such as \"30s\", \"2m\", \"500ms\" or \"1h\", not the text \"\""
+   }
+  },
+  {
+   "name": "SF23: a FAILED series with no error says the payload records none, never that the source never answered",
+   "kpi": {
+    "id": "failed-silent",
+    "component": "c",
+    "query": "failed-silent",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 1
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "SOURCE_FAILED",
+    "detail": "the payload marks it FAILED and records no reason",
+    "instances": 0
+   }
+  },
+  {
+   "name": "SF21: a catalogue assert on an undeclared component is refused for the component alone",
+   "kpi": {
+    "component": "nosuch",
+    "metric": "connections.used.pct",
+    "fail": {
+     "gt": 90
+    }
+   },
+   "expect": {
+    "id": "nosuch-connections-used-pct",
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "component 'nosuch' is not declared under serverMetrics.components (declared: c, db)"
+   }
+  }
+ ],
+ "gateCases": [
+  {
+   "name": "a mixed gate",
+   "kpiIds": [
+    "cpu-max",
+    "cpu-avg",
+    "cpu-last",
+    "failed",
+    "empty",
+    "sparse",
+    "parked",
+    "ghost",
+    "cpu-no-load",
+    "single-slope"
+   ],
+   "expect": {
+    "status": "FAIL",
+    "declared": 10,
+    "evaluated": 9,
+    "passed": 1,
+    "warned": 1,
+    "failed": 1,
+    "notJudged": {
+     "total": 7,
+     "disabled": 1,
+     "noMatch": 1,
+     "noValue": 1,
+     "invalidRule": 1,
+     "sourceFailed": 1,
+     "lowCoverage": 1,
+     "loadNotAchieved": 1
+    },
+    "configErrors": 3
+   }
+  },
+  {
+   "name": "nothing judged is not PASS",
+   "kpiIds": [
+    "failed",
+    "empty"
+   ],
+   "expect": {
+    "status": null,
+    "declared": 2,
+    "evaluated": 2,
+    "passed": 0,
+    "warned": 0,
+    "failed": 0,
+    "notJudged": {
+     "total": 2,
+     "disabled": 0,
+     "noMatch": 1,
+     "noValue": 0,
+     "invalidRule": 0,
+     "sourceFailed": 1,
+     "lowCoverage": 0,
+     "loadNotAchieved": 0
+    },
+    "configErrors": 1
+   }
+  },
+  {
+   "name": "all green",
+   "kpiIds": [
+    "cpu-max",
+    "cpu-min",
+    "lag-avg"
+   ],
+   "expect": {
+    "status": "PASS",
+    "declared": 3,
+    "evaluated": 3,
+    "passed": 3,
+    "warned": 0,
+    "failed": 0,
+    "notJudged": {
+     "total": 0,
+     "disabled": 0,
+     "noMatch": 0,
+     "noValue": 0,
+     "invalidRule": 0,
+     "sourceFailed": 0,
+     "lowCoverage": 0,
+     "loadNotAchieved": 0
+    },
+    "configErrors": 0
+   }
+  }
+ ],
+ "documentCases": [
+  {
+   "name": "two id-less KPIs on one query derive one id, and each is judged on its own",
+   "asserts": [
+    {
+     "component": "c",
+     "query": "lag",
+     "reduce": {
+      "kind": "max"
+     },
+     "fail": {
+      "gt": 600
+     }
+    },
+    {
+     "component": "c",
+     "query": "lag",
+     "reduce": {
+      "kind": "max"
+     },
+     "across": "avg",
+     "fail": {
+      "gt": 600
+     }
+    }
+   ],
+   "expect": [
+    {
+     "id": "c-lag",
+     "status": "FAIL",
+     "actual": 700
+    },
+    {
+     "id": "c-lag",
+     "status": "PASS",
+     "actual": 400
+    }
+   ],
+   "warnings": [
+    {
+     "id": "c-lag",
+     "message": "2 server asserts are judged under the id 'c-lag', so the CI/CD JSON, the JUnit report and every finding name them alike and cannot tell them apart. Give each its own \"id\" (an assert written without one is named after its component and its metric or query)"
+    }
+   ]
+  },
+  {
+   "name": "two KPIs sharing an explicit id are both judged, in declaration order",
+   "asserts": [
+    {
+     "id": "dup",
+     "component": "c",
+     "query": "cpu",
+     "reduce": {
+      "kind": "max"
+     },
+     "fail": {
+      "gt": 96
+     }
+    },
+    {
+     "id": "dup",
+     "component": "c",
+     "query": "lag",
+     "reduce": {
+      "kind": "max"
+     },
+     "fail": {
+      "gt": 500
+     }
+    }
+   ],
+   "expect": [
+    {
+     "id": "dup",
+     "status": "PASS",
+     "actual": 95
+    },
+    {
+     "id": "dup",
+     "status": "FAIL",
+     "actual": 700
+    }
+   ],
+   "warnings": [
+    {
+     "id": "dup",
+     "message": "2 server asserts are judged under the id 'dup', so the CI/CD JSON, the JUnit report and every finding name them alike and cannot tell them apart. Give each its own \"id\" (an assert written without one is named after its component and its metric or query)"
+    }
+   ]
+  },
+  {
+   "_comment": "M7d X (R2-2/R3-8): a shared id is a WARNING, never a refusal - each assert is still judged on its own. One finding per id, in the order each id first appears, counting the ids as they are judged (trimmed).",
+   "name": "every shared id is one warning, in first-appearance order, ids compared trimmed",
+   "asserts": [
+    {
+     "id": "a",
+     "component": "c",
+     "query": "cpu",
+     "reduce": {
+      "kind": "max"
+     },
+     "fail": {
+      "gt": 96
+     }
+    },
+    {
+     "id": " b ",
+     "component": "c",
+     "query": "lag",
+     "reduce": {
+      "kind": "max"
+     },
+     "fail": {
+      "gt": 500
+     }
+    },
+    {
+     "id": "solo",
+     "component": "c",
+     "query": "cpu",
+     "reduce": {
+      "kind": "min"
+     },
+     "fail": {
+      "lt": 10
+     }
+    },
+    {
+     "id": "a ",
+     "component": "c",
+     "query": "cpu",
+     "reduce": {
+      "kind": "min"
+     },
+     "fail": {
+      "lt": 10
+     }
+    },
+    {
+     "id": "b",
+     "component": "c",
+     "query": "lag",
+     "reduce": {
+      "kind": "max"
+     },
+     "across": "avg",
+     "fail": {
+      "gt": 500
+     }
+    },
+    {
+     "id": "a",
+     "component": "c",
+     "query": "cpu",
+     "reduce": {
+      "kind": "max"
+     },
+     "fail": {
+      "gt": 99
+     }
+    }
+   ],
+   "expect": [
+    {
+     "id": "a",
+     "status": "PASS",
+     "actual": 95
+    },
+    {
+     "id": "b",
+     "status": "FAIL",
+     "actual": 700
+    },
+    {
+     "id": "solo",
+     "status": "PASS",
+     "actual": 20
+    },
+    {
+     "id": "a",
+     "status": "PASS",
+     "actual": 20
+    },
+    {
+     "id": "b",
+     "status": "PASS",
+     "actual": 400
+    },
+    {
+     "id": "a",
+     "status": "PASS",
+     "actual": 95
+    }
+   ],
+   "warnings": [
+    {
+     "id": "a",
+     "message": "3 server asserts are judged under the id 'a', so the CI/CD JSON, the JUnit report and every finding name them alike and cannot tell them apart. Give each its own \"id\" (an assert written without one is named after its component and its metric or query)"
+    },
+    {
+     "id": "b",
+     "message": "2 server asserts are judged under the id 'b', so the CI/CD JSON, the JUnit report and every finding name them alike and cannot tell them apart. Give each its own \"id\" (an assert written without one is named after its component and its metric or query)"
+    }
+   ]
+  },
+  {
+   "name": "distinct ids raise no warning",
+   "asserts": [
+    {
+     "id": "cpu-max",
+     "component": "c",
+     "query": "cpu",
+     "reduce": {
+      "kind": "max"
+     },
+     "fail": {
+      "gt": 96
+     }
+    },
+    {
+     "component": "c",
+     "query": "cpu",
+     "reduce": {
+      "kind": "min"
+     },
+     "fail": {
+      "lt": 10
+     }
+    }
+   ],
+   "expect": [
+    {
+     "id": "cpu-max",
+     "status": "PASS",
+     "actual": 95
+    },
+    {
+     "id": "c-cpu",
+     "status": "PASS",
+     "actual": 20
+    }
+   ],
+   "warnings": []
+  },
+  {
+   "_comment": "SF21. The mapper files an id-less assert's problem under its position, the evaluator its refusal under the derived id: one mistake was two findings, and the catalogue metric that could not resolve without a component added a third, a \"no query\" the author never wrote.",
+   "name": "SF21: an assert naming an undeclared component is one finding, under the label the mapper gives it",
+   "asserts": [
+    {
+     "component": "nosuch",
+     "metric": "connections.used.pct",
+     "fail": {
+      "gt": 90
+     }
+    },
+    {
+     "id": "named",
+     "component": "nosuch",
+     "metric": "up",
+     "fail": {
+      "lt": 1
+     }
+    }
+   ],
+   "expect": [
+    {
+     "id": "nosuch-connections-used-pct",
+     "status": "NOT_JUDGED",
+     "notJudged": "INVALID_RULE",
+     "detail": "component 'nosuch' is not declared under serverMetrics.components (declared: c, db)"
+    },
+    {
+     "id": "named",
+     "status": "NOT_JUDGED",
+     "notJudged": "INVALID_RULE",
+     "detail": "component 'nosuch' is not declared under serverMetrics.components (declared: c, db)"
+    }
+   ],
+   "warnings": [],
+   "findings": [
+    {
+     "severity": "ERROR",
+     "id": "serverMetrics.asserts[0]",
+     "message": "component 'nosuch' is not declared under serverMetrics.components (declared: c, db)"
+    },
+    {
+     "severity": "ERROR",
+     "id": "named",
+     "message": "component 'nosuch' is not declared under serverMetrics.components (declared: c, db)"
+    }
+   ]
+  },
+  {
+   "_comment": "SF18 (B6 verify): Java emits findings in phases, never interleaved per assert - the mapper's in declaration order, then KpiUsability's per assert under kpi.id() (the derived id for an id-less one), then the run-time refusals the evaluator decides, each said once per assert. A live findings list on the page must reproduce exactly this for the file the run was built from.",
+   "name": "SF18: findings come in Java's phases, each mistake once",
+   "asserts": [
+    {
+     "id": "typo-reducer",
+     "component": "c",
+     "query": "lag",
+     "reduce": {
+      "kind": "maxx"
+     },
+     "fail": {
+      "gt": 1
+     }
+    },
+    {
+     "id": "neg-only",
+     "component": "c",
+     "query": "lag",
+     "reduce": {
+      "kind": "max"
+     },
+     "fail": {
+      "lt": 0
+     }
+    },
+    {
+     "id": "covered",
+     "component": "c",
+     "query": "cpu",
+     "reduce": {
+      "kind": "max"
+     },
+     "warn": {
+      "gt": 99
+     },
+     "fail": {
+      "gt": 95
+     }
+    },
+    {
+     "id": "off-step",
+     "component": "c",
+     "query": "sustained",
+     "reduce": {
+      "kind": "max",
+      "over": {
+       "sustainedFor": "20s"
+      }
+     },
+     "fail": {
+      "gt": 100
+     }
+    },
+    {
+     "id": "never-collected",
+     "component": "c",
+     "query": "not-in-payload",
+     "reduce": {
+      "kind": "max"
+     },
+     "fail": {
+      "gt": 1
+     }
+    },
+    {
+     "component": "c",
+     "query": "lag",
+     "reduce": {
+      "kind": "max"
+     },
+     "fail": {
+      "gtt": 1
+     }
+    }
+   ],
+   "expect": [
+    {
+     "id": "typo-reducer",
+     "status": "NOT_JUDGED",
+     "notJudged": "INVALID_RULE",
+     "detail": "reduce.kind 'maxx' is not a reducer — valid here: max, min, avg, last, slope, pN (e.g. p95)"
+    },
+    {
+     "id": "neg-only",
+     "status": "PASS",
+     "actual": 700
+    },
+    {
+     "id": "covered",
+     "status": "PASS",
+     "actual": 95
+    },
+    {
+     "id": "off-step",
+     "status": "NOT_JUDGED",
+     "notJudged": "INVALID_RULE",
+     "detail": "reduce.over sustainedFor 20s is not a whole number of the collection's 15s steps, so no window can ever span it - use a multiple of 15s, or collect with a finer wir-collect --step"
+    },
+    {
+     "id": "never-collected",
+     "status": "NOT_JUDGED",
+     "notJudged": "INVALID_RULE",
+     "detail": "no series was collected for query not-in-payload - the payload was collected against a file that did not declare this server assert; re-run wir-collect"
+    },
+    {
+     "id": "c-lag",
+     "status": "NOT_JUDGED",
+     "notJudged": "INVALID_RULE",
+     "detail": "fail operator 'gtt' is not one of gt, gte, lt, lte — so this server assert declares a limit it cannot apply, and would report PASS without ever testing fail"
+    }
+   ],
+   "warnings": [
+    {
+     "id": "neg-only",
+     "message": "fail < 0 can only fire on a negative value. If this metric is never negative the band never fires and the server assert reports PASS on every run; a band is written in the unit the values are judged in"
+    },
+    {
+     "id": "covered",
+     "message": "warn can never fire: fail > 95 is tested first and already covers warn > 99. Swapped values?"
+    }
+   ],
+   "findings": [
+    {
+     "severity": "ERROR",
+     "id": "typo-reducer",
+     "message": "reduce.kind 'maxx' is not a reducer — valid here: max, min, avg, last, slope, pN (e.g. p95)"
+    },
+    {
+     "severity": "ERROR",
+     "id": "serverMetrics.asserts[5]",
+     "message": "fail operator 'gtt' is not one of gt, gte, lt, lte — so this server assert declares a limit it cannot apply, and would report PASS without ever testing fail"
+    },
+    {
+     "severity": "WARNING",
+     "id": "neg-only",
+     "message": "fail < 0 can only fire on a negative value. If this metric is never negative the band never fires and the server assert reports PASS on every run; a band is written in the unit the values are judged in"
+    },
+    {
+     "severity": "WARNING",
+     "id": "covered",
+     "message": "warn can never fire: fail > 95 is tested first and already covers warn > 99. Swapped values?"
+    },
+    {
+     "severity": "ERROR",
+     "id": "off-step",
+     "message": "reduce.over sustainedFor 20s is not a whole number of the collection's 15s steps, so no window can ever span it - use a multiple of 15s, or collect with a finer wir-collect --step"
+    },
+    {
+     "severity": "ERROR",
+     "id": "never-collected",
+     "message": "no series was collected for query not-in-payload - the payload was collected against a file that did not declare this server assert; re-run wir-collect"
+    }
+   ]
+  },
+  {
+   "_comment": "SF18 (C1b): an id-less assert's KpiUsability findings and its run-time refusals are filed under the id it is judged under - the derived one - never under serverMetrics.asserts[i], which is the label only the MAPPER's problems use. Every other findings case gives its usability and run-time findings an explicit id, where the two names are one string, so a filer keyed on the label passed them all. c-lag's no-band refusal is said once: the usability check says it, and the evaluator's repeat under the same id is dropped.",
+   "name": "SF18: an id-less assert's usability and run-time findings carry its derived id",
+   "asserts": [
+    {
+     "component": "c",
+     "query": "cpu",
+     "reduce": {
+      "kind": "max"
+     },
+     "warn": {
+      "gt": 99
+     },
+     "fail": {
+      "gt": 95
+     }
+    },
+    {
+     "component": "c",
+     "query": "lag",
+     "reduce": {
+      "kind": "max"
+     }
+    },
+    {
+     "component": "c",
+     "query": "not-in-payload",
+     "reduce": {
+      "kind": "max"
+     },
+     "fail": {
+      "gt": 1
+     }
+    }
+   ],
+   "expect": [
+    {
+     "id": "c-cpu",
+     "status": "PASS",
+     "actual": 95
+    },
+    {
+     "id": "c-lag",
+     "status": "NOT_JUDGED",
+     "notJudged": "INVALID_RULE",
+     "detail": "no warn or fail band — the server assert can never decide anything"
+    },
+    {
+     "id": "c-not-in-payload",
+     "status": "NOT_JUDGED",
+     "notJudged": "INVALID_RULE",
+     "detail": "no series was collected for query not-in-payload - the payload was collected against a file that did not declare this server assert; re-run wir-collect"
+    }
+   ],
+   "warnings": [
+    {
+     "id": "c-cpu",
+     "message": "warn can never fire: fail > 95 is tested first and already covers warn > 99. Swapped values?"
+    }
+   ],
+   "findings": [
+    {
+     "severity": "WARNING",
+     "id": "c-cpu",
+     "message": "warn can never fire: fail > 95 is tested first and already covers warn > 99. Swapped values?"
+    },
+    {
+     "severity": "ERROR",
+     "id": "c-lag",
+     "message": "no warn or fail band — the server assert can never decide anything"
+    },
+    {
+     "severity": "ERROR",
+     "id": "c-not-in-payload",
+     "message": "no series was collected for query not-in-payload - the payload was collected against a file that did not declare this server assert; re-run wir-collect"
+    }
+   ]
+  },
+  {
+   "_comment": "SF18 (review). The mapper's environments and collection checks, which the page makes for the document it holds rather than keeping the build's sentences about a block the draft may have changed. In ServerMetricsMapper.map's order: each environment as declared - an empty name (trimmed), a null var, a var carrying a credential (a password in a URL's userinfo, or a credential query parameter; an address is not one, a number is text, a ${secret.*} reference is not a literal) - then defaultEnv (trimmed) against the names that were declared, then the coverage floor. Config problems, and the assert beside them is still judged.",
+   "name": "SF18: a document's environments, defaultEnv and coverage floor are checked as the mapper reads them",
+   "block": {
+    "environments": {
+     " ": {},
+     "prod": {
+      "vars": {
+       "ns": null,
+       "owner": "ops@corp.com",
+       "replicas": 3
+      }
+     },
+     "stage": {
+      "vars": {
+       "prom": "https://bob:pw@prom.corp/api/v1",
+       "push": "https://push.corp/api?env=stage&token=abc",
+       "ref": "https://push.corp/api?token=${secret.PUSH}"
+      }
+     }
+    },
+    "defaultEnv": " staging ",
+    "collection": {
+     "coverageFloor": 2,
+     "excludeRampUp": true
+    }
+   },
+   "asserts": [
+    {
+     "id": "fine",
+     "component": "c",
+     "query": "cpu",
+     "reduce": {
+      "kind": "max"
+     },
+     "fail": {
+      "gt": 1000
+     }
+    }
+   ],
+   "expect": [
+    {
+     "id": "fine",
+     "status": "PASS",
+     "actual": 95
+    }
+   ],
+   "findings": [
+    {
+     "severity": "ERROR",
+     "id": "serverMetrics.environments",
+     "message": "an environment with an empty name was ignored"
+    },
+    {
+     "severity": "WARNING",
+     "id": "serverMetrics.environments.prod",
+     "message": "vars.ns is null and was ignored"
+    },
+    {
+     "severity": "ERROR",
+     "id": "serverMetrics.environments.stage",
+     "message": "vars.prom carries credentials in a URL (user:password@…) — environments are written into every report and sidecar, so a literal here would be published. Put the credential in auth.<name>Env, or in the source url as ${secret.NAME}"
+    },
+    {
+     "severity": "ERROR",
+     "id": "serverMetrics.environments.stage",
+     "message": "vars.push carries a credential in the URL parameter 'token' — environments are written into every report and sidecar, so a literal here would be published. Put the credential in auth.<name>Env, or in the source url as ${secret.NAME}"
+    },
+    {
+     "severity": "ERROR",
+     "id": "serverMetrics.defaultEnv",
+     "message": "'staging' is not one of the declared environments: prod, stage"
+    },
+    {
+     "severity": "WARNING",
+     "id": "serverMetrics.collection",
+     "message": "coverageFloor must be a fraction 0..1, not the number 2 — using the default 0.9"
+    }
+   ]
+  },
+  {
+   "name": "SF18: a defaultEnv with no environments, and a coverage floor written as text, are the mapper's findings too",
+   "block": {
+    "defaultEnv": "prod",
+    "collection": {
+     "coverageFloor": "1.5",
+     "excludeRampUp": true
+    }
+   },
+   "asserts": [
+    {
+     "id": "fine",
+     "component": "c",
+     "query": "cpu",
+     "reduce": {
+      "kind": "max"
+     },
+     "fail": {
+      "gt": 1000
+     }
+    }
+   ],
+   "expect": [
+    {
+     "id": "fine",
+     "status": "PASS",
+     "actual": 95
+    }
+   ],
+   "findings": [
+    {
+     "severity": "ERROR",
+     "id": "serverMetrics.defaultEnv",
+     "message": "'prod' is not one of the declared environments — none are declared"
+    },
+    {
+     "severity": "WARNING",
+     "id": "serverMetrics.collection",
+     "message": "coverageFloor must be a fraction 0..1, not the text \"1.5\" — using the default 0.9"
+    }
+   ]
+  },
+  {
+   "_comment": "F8-residual: a component's match goes into every catalogue query of the component as it is written. One that, trimmed as String.trim trims, still starts or ends with a character of invisibleEnds.ranges is a WARNING filed under the component, beside its own problems and before any assert's findings: never a refusal and never a config problem, as the query's INVISIBLE_PADDING is not. Plain spaces around it are trimmed first, so the WARNING names the invisible character; one inside the match is not padding and says nothing, and nor does a custom component's, whose asserts write their own query and never expand the match.",
+   "name": "F8-residual: a match padded with an invisible character is a WARNING under its component",
+   "components": {
+    "db2": {
+     "type": "postgres",
+     "match": "instance='orders-db:5432'\u00a0 "
+    },
+    "k2": {
+     "type": "kafka",
+     "match": "\u200bjob='kafka'\u2060"
+    },
+    "db3": {
+     "type": "postgres",
+     "match": "instance='a\u00a0b'"
+    },
+    "c3": {
+     "type": "custom",
+     "match": "instance='c3'\u00a0"
+    }
+   },
+   "asserts": [
+    {
+     "id": "cpu-max",
+     "component": "c",
+     "query": "cpu",
+     "reduce": {
+      "kind": "max"
+     },
+     "fail": {
+      "gt": 96
+     }
+    }
+   ],
+   "expect": [
+    {
+     "id": "cpu-max",
+     "status": "PASS",
+     "actual": 95
+    }
+   ],
+   "findings": [
+    {
+     "severity": "WARNING",
+     "id": "serverMetrics.components.db2",
+     "message": "the match has an invisible character at its end (U+00A0) that is not trimmed like a plain space, and it goes into every catalogue query of this component as it is, which Prometheus and a recording will not answer — delete it"
+    },
+    {
+     "severity": "WARNING",
+     "id": "serverMetrics.components.k2",
+     "message": "the match has an invisible character at its start (U+200B) and at its end (U+2060) that is not trimmed like a plain space, and it goes into every catalogue query of this component as it is, which Prometheus and a recording will not answer — delete it"
+    }
+   ]
+  }
+ ],
+ "blockCases": [
+  {
+   "name": "asserts under asserts: no block-level problem",
+   "block": {
+    "asserts": [
+     {
+      "id": "cpu-max",
+      "component": "c",
+      "query": "cpu",
+      "reduce": {
+       "kind": "max"
+      },
+      "fail": {
+       "gt": 96
+      }
+     }
+    ]
+   },
+   "expect": {
+    "problems": [],
+    "ids": [
+     "cpu-max"
+    ]
+   }
+  },
+  {
+   "name": "D25: a leftover kpis key is refused at block level, naming asserts - and the asserts beside it still map",
+   "block": {
+    "kpis": [
+     {
+      "id": "old-cpu",
+      "component": "c",
+      "query": "cpu",
+      "reduce": {
+       "kind": "max"
+      },
+      "fail": {
+       "gt": 96
+      }
+     }
+    ],
+    "asserts": [
+     {
+      "id": "cpu-max",
+      "component": "c",
+      "query": "cpu",
+      "reduce": {
+       "kind": "max"
+      },
+      "fail": {
+       "gt": 96
+      }
+     }
+    ]
+   },
+   "expect": {
+    "problems": [
+     "\"kpis\" is not a serverMetrics key — server asserts are declared under serverMetrics.asserts. Rename \"kpis\" to \"asserts\": nothing under \"kpis\" is read, so none of the asserts written there is judged."
+    ],
+    "ids": [
+     "cpu-max"
+    ]
+   }
+  },
+  {
+   "name": "D25: a file that still says kpis declares no asserts at all, and is refused rather than read as empty",
+   "block": {
+    "kpis": [
+     {
+      "id": "old-cpu",
+      "component": "c",
+      "query": "cpu",
+      "reduce": {
+       "kind": "max"
+      },
+      "fail": {
+       "gt": 96
+      }
+     }
+    ]
+   },
+   "expect": {
+    "problems": [
+     "\"kpis\" is not a serverMetrics key — server asserts are declared under serverMetrics.asserts. Rename \"kpis\" to \"asserts\": nothing under \"kpis\" is read, so none of the asserts written there is judged."
+    ],
+    "ids": []
+   }
+  },
+  {
+   "name": "D25: kpis in any shape is the same refusal - it is a retired key, not a whole-file shape error",
+   "block": {
+    "kpis": {}
+   },
+   "expect": {
+    "problems": [
+     "\"kpis\" is not a serverMetrics key — server asserts are declared under serverMetrics.asserts. Rename \"kpis\" to \"asserts\": nothing under \"kpis\" is read, so none of the asserts written there is judged."
+    ],
+    "ids": []
+   }
+  },
+  {
+   "name": "D26: packs is refused, says it is not in this version and where server asserts go instead",
+   "block": {
+    "packs": [
+     "kafka"
+    ],
+    "asserts": [
+     {
+      "id": "cpu-max",
+      "component": "c",
+      "query": "cpu",
+      "reduce": {
+       "kind": "max"
+      },
+      "fail": {
+       "gt": 96
+      }
+     }
+    ]
+   },
+   "expect": {
+    "problems": [
+     "\"packs\" is not available in this version — declare each server assert under serverMetrics.asserts directly. Nothing under \"packs\" is read, so a pack named here judges nothing."
+    ],
+    "ids": [
+     "cpu-max"
+    ]
+   }
+  },
+  {
+   "name": "both retired block keys, in the mapper's order whatever the file's",
+   "block": {
+    "packs": [
+     "kafka"
+    ],
+    "kpis": []
+   },
+   "expect": {
+    "problems": [
+     "\"kpis\" is not a serverMetrics key — server asserts are declared under serverMetrics.asserts. Rename \"kpis\" to \"asserts\": nothing under \"kpis\" is read, so none of the asserts written there is judged.",
+     "\"packs\" is not available in this version — declare each server assert under serverMetrics.asserts directly. Nothing under \"packs\" is read, so a pack named here judges nothing."
+    ],
+    "ids": []
+   }
+  },
+  {
+   "_comment": "C8: where the metrics come from is a wir-collect flag. A sources block is refused whatever it holds, and never read.",
+   "name": "a sources block is retired: refused at block level, and the asserts beside it map",
+   "block": {
+    "sources": {
+     "prom": {
+      "type": "prometheus",
+      "url": "https://prom.corp/api/v1"
+     }
+    },
+    "asserts": [
+     {
+      "id": "cpu-max",
+      "component": "c",
+      "query": "cpu",
+      "reduce": {
+       "kind": "max"
+      },
+      "fail": {
+       "gt": 96
+      }
+     }
+    ]
+   },
+   "expect": {
+    "problems": [
+     "\"sources\" is not a serverMetrics key — where the metrics are fetched from is given to wir-collect, never written here: --prometheus-url URL (with --prometheus-token-env NAME), --recording DIR, or --csv FILE. Nothing under \"sources\" is read"
+    ],
+    "ids": [
+     "cpu-max"
+    ]
+   }
+  },
+  {
+   "name": "a gates block is retired, pointing at components",
+   "block": {
+    "gates": {
+     "kafka": {
+      "failsBuild": false
+     }
+    },
+    "asserts": [
+     {
+      "id": "cpu-max",
+      "component": "c",
+      "query": "cpu",
+      "reduce": {
+       "kind": "max"
+      },
+      "fail": {
+       "gt": 96
+      }
+     }
+    ]
+   },
+   "expect": {
+    "problems": [
+     "\"gates\" is not a serverMetrics key — what a gate grouped is now a component: \"components\": {\"orders-db\": {\"type\": \"postgres\"}}, and each server assert names its \"component\". Nothing under \"gates\" is read."
+    ],
+    "ids": [
+     "cpu-max"
+    ]
+   }
+  },
+  {
+   "_comment": "C1/C6: an unknown type and a failsBuild key are problems of the component, filed under its own id, in the file's order.",
+   "name": "a component of unknown type and a failsBuild key are component problems, and the asserts beside them map",
+   "block": {
+    "components": {
+     "c": {
+      "type": "custom"
+     },
+     "ora": {
+      "type": "nosuchdb"
+     },
+     "k": {
+      "type": "kafka",
+      "failsBuild": false
+     },
+     "none": {}
+    },
+    "asserts": [
+     {
+      "id": "cpu-max",
+      "component": "c",
+      "query": "cpu",
+      "reduce": {
+       "kind": "max"
+      },
+      "fail": {
+       "gt": 96
+      }
+     }
+    ]
+   },
+   "expect": {
+    "problems": [],
+    "componentProblems": [
+     {
+      "id": "serverMetrics.components.ora",
+      "message": "type 'nosuchdb' is not one of postgres, kafka, redis, host-linux, aws-ec2, oracle, influxdb2, influxdb3, jvm, http-service, kubernetes-pod, mysql, custom"
+     },
+     {
+      "id": "serverMetrics.components.k",
+      "message": "\"failsBuild\" is not a component key — every component can fail the build. To watch a metric without failing the build, give it only a warn band"
+     },
+     {
+      "id": "serverMetrics.components.none",
+      "message": "no type — one of postgres, kafka, redis, host-linux, aws-ec2, oracle, influxdb2, influxdb3, jvm, http-service, kubernetes-pod, mysql, custom"
+     }
+    ],
+    "ids": [
+     "cpu-max"
+    ]
+   }
+  },
+  {
+   "_comment": "F8-residual: the padded-match WARNING is not one of the components' config-level problems, which are ERRORs and fatal under failonerror: beside a refused type it adds nothing here.",
+   "name": "F8-residual: a padded match is never a component problem",
+   "block": {
+    "components": {
+     "c": {
+      "type": "custom"
+     },
+     "ora": {
+      "type": "nosuchdb",
+      "match": "instance='ora-1'\u00a0"
+     },
+     "db2": {
+      "type": "postgres",
+      "match": "\ufeffinstance='orders-db:5432'"
+     }
+    },
+    "asserts": [
+     {
+      "id": "cpu-max",
+      "component": "c",
+      "query": "cpu",
+      "reduce": {
+       "kind": "max"
+      },
+      "fail": {
+       "gt": 96
+      }
+     }
+    ]
+   },
+   "expect": {
+    "problems": [],
+    "componentProblems": [
+     {
+      "id": "serverMetrics.components.ora",
+      "message": "type 'nosuchdb' is not one of postgres, kafka, redis, host-linux, aws-ec2, oracle, influxdb2, influxdb3, jvm, http-service, kubernetes-pod, mysql, custom"
+     }
+    ],
+    "ids": [
+     "cpu-max"
+    ]
+   }
+  }
+ ]
+}

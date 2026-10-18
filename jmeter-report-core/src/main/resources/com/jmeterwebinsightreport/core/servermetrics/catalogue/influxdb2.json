@@ -1,0 +1,244 @@
+{
+  "type": "influxdb2",
+  "version": 1,
+  "label": "InfluxDB 2",
+  "summary": "Write and query latency and errors, rejected points, series cardinality, compactions",
+  "exporter": "InfluxDB's own /metrics (v2)",
+  "source": "InfluxDB 2 OSS's own /metrics: names read on 2026-10-09 in influxdata/influxdb main-2.x (http/handler.go, kit/transport/http/middleware.go and status_response_writer.go, v1/coordinator/points_writer.go) and the v2 metrics reference in docs-v2; the queries were not run against a live server. The HTTP metrics count only answers in 2XX and 5XX (middleware.go): status is the class, 5XX, and path the request's own path with IDs replaced, so /api/v2/write and the 1.x /write are both counted. The duration histograms take Prometheus' default buckets, which stop at 10 s, so a p95 reads at most 10. up is Prometheus' own series for every target, and go_memstats_heap_inuse_bytes every Go program's: give the component a match, or up's safe default fails on any other target that is down. Telegraf's inputs.influxdb reads InfluxDB 1.x only; 2.x goes through inputs.prometheus, whose names depend on its metric_version, so no metric names a Telegraf one. Datadog has no InfluxDB check of its own. OpenTelemetry reaches /metrics only through its Prometheus receiver, whose names were not verified. Amazon Timestream for InfluxDB publishes 2.x engine metrics to CloudWatch, SeriesCardinality and HeapMemoryUsage among them, but the namespace's API name is unverified (the console shows Timestream/InfluxDB), so none is named; it has no latency, rejected-point, compaction or query-queue metric.",
+  "metrics": [
+    {
+      "name": "up",
+      "label": "Prometheus can scrape InfluxDB",
+      "category": "Availability",
+      "description": "1 while Prometheus could scrape InfluxDB's /metrics, 0 when it could not: the server was down or restarting, and every other metric is blind for that span. up is Prometheus' own series for every target, so give the component a match that picks InfluxDB's.",
+      "unit": "",
+      "reduce": "min",
+      "across": "min",
+      "direction": "lower",
+      "ceiling": 1,
+      "dimension": "per InfluxDB server",
+      "recommended": true,
+      "safeDefault": { "fail": { "lt": 1 } },
+      "queries": { "prometheus": "min by (instance) (up${match})" },
+      "names": {
+        "telegraf": null,
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "write.requests.rate",
+      "label": "Write requests per second (avg)",
+      "category": "Writes",
+      "description": "Write requests InfluxDB answered per second (/api/v2/write and the 1.x /write), averaged over the run: it shows the write load reached the server. Compare it with JMeter's own rate. Requests answered 4xx are not counted.",
+      "unit": "/s",
+      "reduce": "avg",
+      "across": "min",
+      "direction": "lower",
+      "dimension": "per InfluxDB server",
+      "recommended": false,
+      "queries": { "prometheus": "sum by (instance) (rate(http_api_requests_total{path=~\"/api/v2/write|/write\"${andMatch}}[1m]))" },
+      "names": {
+        "telegraf": null
+      }
+    },
+    {
+      "name": "write.points.rate",
+      "label": "Points written per second (avg)",
+      "category": "Writes",
+      "description": "Points the storage layer wrote per second, averaged over the run: the real ingest rate, which can fall while requests per second look fine if the batches shrink.",
+      "unit": "/s",
+      "reduce": "avg",
+      "across": "min",
+      "direction": "lower",
+      "dimension": "per InfluxDB server",
+      "recommended": false,
+      "queries": { "prometheus": "sum by (instance) (rate(storage_writer_ok_points_sum${match}[1m]))" },
+      "names": {
+        "telegraf": null,
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "write.latency.p95",
+      "label": "Write latency p95 (s)",
+      "category": "Writes",
+      "description": "95th percentile of write request time in each minute, from InfluxDB's own histogram. Its top bucket is 10 s, so it never reads past 10.",
+      "unit": "s",
+      "reduce": "max",
+      "direction": "higher",
+      "ceiling": 10,
+      "dimension": "per InfluxDB server",
+      "recommended": true,
+      "queries": { "prometheus": "histogram_quantile(0.95, sum by (instance, le) (rate(http_api_request_duration_seconds_bucket{path=~\"/api/v2/write|/write\"${andMatch}}[1m])))" },
+      "names": {
+        "telegraf": null,
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "write.errors.pct",
+      "label": "Writes failing server-side (%)",
+      "category": "Writes",
+      "description": "Write requests answered 5xx, as a percentage of those answered 2xx or 5xx (the metric counts no others). A write that failed lost its data unless the client retried it.",
+      "unit": "%",
+      "reduce": "max",
+      "direction": "higher",
+      "ceiling": 100,
+      "dimension": "per InfluxDB server",
+      "recommended": true,
+      "safeDefault": { "warn": { "gt": 0 }, "fail": { "gt": 1 } },
+      "queries": { "prometheus": "100 * sum by (instance) (rate(http_api_requests_total{path=~\"/api/v2/write|/write\",status=\"5XX\"${andMatch}}[1m])) / sum by (instance) (rate(http_api_requests_total{path=~\"/api/v2/write|/write\"${andMatch}}[1m]))" },
+      "names": {
+        "telegraf": null,
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "write.rejected",
+      "label": "Rejected points per minute (peak)",
+      "category": "Writes",
+      "description": "Points InfluxDB dropped from writes because they fell outside the bucket's retention or write window, in any minute of the run: data that was sent and not stored.",
+      "unit": "/min",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per InfluxDB server",
+      "recommended": true,
+      "safeDefault": { "warn": { "gt": 0 } },
+      "queries": { "prometheus": "sum by (instance) (increase(storage_writer_dropped_points_sum${match}[1m]))" },
+      "names": {
+        "telegraf": null,
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "query.requests.rate",
+      "label": "Query requests per second (avg)",
+      "category": "Queries",
+      "description": "Query requests InfluxDB answered per second (/api/v2/query and the 1.x /query), averaged over the run: it shows the read load reached the server. Requests answered 4xx are not counted.",
+      "unit": "/s",
+      "reduce": "avg",
+      "across": "min",
+      "direction": "lower",
+      "dimension": "per InfluxDB server",
+      "recommended": false,
+      "queries": { "prometheus": "sum by (instance) (rate(http_api_requests_total{path=~\"/api/v2/query|/query\"${andMatch}}[1m]))" },
+      "names": {
+        "telegraf": null
+      }
+    },
+    {
+      "name": "query.latency.p95",
+      "label": "Query latency p95 (s)",
+      "category": "Queries",
+      "description": "95th percentile of query request time in each minute, from InfluxDB's own HTTP histogram. Its top bucket is 10 s, so it never reads past 10.",
+      "unit": "s",
+      "reduce": "max",
+      "direction": "higher",
+      "ceiling": 10,
+      "dimension": "per InfluxDB server",
+      "recommended": true,
+      "queries": { "prometheus": "histogram_quantile(0.95, sum by (instance, le) (rate(http_api_request_duration_seconds_bucket{path=~\"/api/v2/query|/query\"${andMatch}}[1m])))" },
+      "names": {
+        "telegraf": null,
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "query.errors.pct",
+      "label": "Queries failing (%)",
+      "category": "Queries",
+      "description": "Query requests answered 5xx, as a percentage of those answered 2xx or 5xx (the metric counts no others): queries the server failed while the load ran.",
+      "unit": "%",
+      "reduce": "max",
+      "direction": "higher",
+      "ceiling": 100,
+      "dimension": "per InfluxDB server",
+      "recommended": true,
+      "safeDefault": { "warn": { "gt": 0 }, "fail": { "gt": 1 } },
+      "queries": { "prometheus": "100 * sum by (instance) (rate(http_api_requests_total{path=~\"/api/v2/query|/query\",status=\"5XX\"${andMatch}}[1m])) / sum by (instance) (rate(http_api_requests_total{path=~\"/api/v2/query|/query\"${andMatch}}[1m]))" },
+      "names": {
+        "telegraf": null,
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "memory.used.bytes",
+      "label": "Memory in use (bytes)",
+      "category": "Memory",
+      "description": "Go heap memory in use. A steady climb at constant load is a leak, which slope on the same query measures. Every Go program exports this metric, so give the component a match that picks InfluxDB's.",
+      "unit": "B",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per InfluxDB server",
+      "recommended": true,
+      "queries": { "prometheus": "max by (instance) (go_memstats_heap_inuse_bytes${match})" },
+      "names": {
+        "telegraf": null
+      }
+    },
+    {
+      "name": "series.count",
+      "label": "Series cardinality",
+      "category": "Storage",
+      "description": "Series across every bucket. A test that writes unbounded tag values (ids, timestamps) grows it without bound, and every query that reads those series slows down.",
+      "unit": "series",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per InfluxDB server",
+      "recommended": true,
+      "queries": { "prometheus": "sum by (instance) (storage_bucket_series_num${match})" },
+      "names": {
+        "telegraf": null
+      }
+    },
+    {
+      "name": "compactions.failed",
+      "label": "Failed compactions per minute (peak)",
+      "category": "Storage",
+      "description": "TSM compactions that failed, in any minute of the run. Small files pile up, so queries slow down and disk grows.",
+      "unit": "/min",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per InfluxDB server",
+      "recommended": true,
+      "safeDefault": { "fail": { "gt": 0 } },
+      "queries": { "prometheus": "sum by (instance) (increase(storage_compactions_failed${match}[1m]))" },
+      "names": {
+        "telegraf": null,
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "query.queued",
+      "label": "Flux queries waiting for a slot (peak)",
+      "category": "Queries",
+      "description": "Flux queries waiting for a free query slot (query-concurrency). Above 0, latency becomes queue time. InfluxQL queries do not pass through this queue.",
+      "unit": "queries",
+      "reduce": "max",
+      "direction": "higher",
+      "dimension": "per InfluxDB server",
+      "recommended": false,
+      "queries": { "prometheus": "sum by (instance) (qc_queueing_active${match})" },
+      "names": {
+        "telegraf": null,
+        "cloudwatch": null
+      }
+    },
+    {
+      "name": "disk.growth",
+      "label": "Shard disk growth (bytes/min)",
+      "category": "Storage",
+      "description": "How fast the shards grow on disk during the run, as a slope: storage per minute at this ingest rate.",
+      "unit": "B",
+      "reduce": "slope",
+      "direction": "higher",
+      "dimension": "per InfluxDB server",
+      "recommended": false,
+      "queries": { "prometheus": "sum by (instance) (storage_shard_disk_size${match})" },
+      "names": {
+        "telegraf": null,
+        "cloudwatch": null
+      }
+    }
+  ]
+}

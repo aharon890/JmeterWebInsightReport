@@ -6,7 +6,7 @@ import com.tdunning.math.stats.TDigest;
 /**
  * Percentile calculator backed by T-Digest for memory-efficient streaming percentile estimation.
  */
-public class TDigestPercentileCalculator {
+public class TDigestPercentileCalculator implements com.jmeterwebinsightreport.core.model.PercentileSource {
 
     private final TDigest digest;
 
@@ -23,6 +23,17 @@ public class TDigestPercentileCalculator {
      */
     public void addValue(double value) {
         digest.add(value);
+    }
+
+    /**
+     * Merge another calculator's distribution into this one — used to compute a true overall
+     * percentile across samplers (the percentile of the merged distribution, not an average of
+     * per-sampler percentiles).
+     */
+    public void merge(TDigestPercentileCalculator other) {
+        if (other != null && other.digest.size() > 0) {
+            this.digest.add(java.util.Collections.singletonList(other.digest));
+        }
     }
 
     /**
@@ -51,6 +62,18 @@ public class TDigestPercentileCalculator {
      */
     public long getCount() {
         return digest.size();
+    }
+
+    // --- PercentileSource: the same two numbers under the names assertion rules ask for. ---
+
+    @Override
+    public double percentile(double percentile) {
+        return getPercentile(percentile);
+    }
+
+    @Override
+    public long sampleCount() {
+        return getCount();
     }
 
     /**

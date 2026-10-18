@@ -4,6 +4,7 @@ import com.jmeterwebinsightreport.core.model.ReportData;
 import com.jmeterwebinsightreport.core.model.SamplerStatistics;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -232,5 +233,61 @@ class ComparisonResultTest {
         ComparisonResult result2 = new ComparisonResult(baseline2, current2, thresholds);
         assertTrue(result2.hasRegressions(),
                 "6% error increase should trigger regression at 5% threshold");
+    }
+
+    // --- Samplers that disappeared from the current run (CORE-15) ---
+
+    @Test
+    void baselineOnlySamplerIsReportedAsRemoved() {
+        // Diffs were built only over `current`, so a sampler whose requests all failed to
+        // dispatch simply vanished: no diff, no flag, and hasRegressions() none the wiser.
+        ReportData baseline = reportWith(sampler("GET /api/users", 100, 200),
+                                         sampler("POST /api/checkout", 300, 500));
+        ReportData current = reportWith(sampler("GET /api/users", 110, 210));
+
+        ComparisonResult result = new ComparisonResult(baseline, current, new ComparisonThresholds());
+
+        ComparisonResult.SamplerDiff gone = result.getSamplerDiffs().stream()
+                .filter(d -> "POST /api/checkout".equals(d.getSamplerName()))
+                .findFirst().orElse(null);
+
+        assertNotNull(gone, "a baseline-only sampler must still produce a diff");
+        assertTrue(gone.isRemoved());
+        assertFalse(gone.isNew());
+        assertNull(gone.getCurrent());
+        assertNotNull(gone.getBaseline());
+        assertTrue(result.hasRegressions(), "an endpoint that stopped running is a regression");
+    }
+
+    @Test
+    void currentOnlySamplerIsStillReportedAsNew() {
+        ReportData baseline = reportWith(sampler("GET /api/users", 100, 200));
+        ReportData current = reportWith(sampler("GET /api/users", 110, 210),
+                                        sampler("GET /api/new", 50, 90));
+
+        ComparisonResult result = new ComparisonResult(baseline, current, new ComparisonThresholds());
+
+        ComparisonResult.SamplerDiff added = result.getSamplerDiffs().stream()
+                .filter(d -> "GET /api/new".equals(d.getSamplerName()))
+                .findFirst().orElseThrow(() -> new AssertionError("new sampler missing"));
+        assertTrue(added.isNew());
+        assertFalse(added.isRemoved());
+    }
+
+    private static SamplerStatistics sampler(String name, double mean, double p95) {
+        SamplerStatistics s = new SamplerStatistics();
+        s.setSamplerName(name);
+        s.setMeanResponseTime(mean);
+        s.setPercentile95(p95);
+        s.setPercentile99(p95 * 1.2);
+        s.setThroughput(10);
+        s.setSampleCount(100);
+        return s;
+    }
+
+    private static ReportData reportWith(SamplerStatistics... stats) {
+        ReportData d = new ReportData();
+        d.setSamplerStatistics(new ArrayList<>(Arrays.asList(stats)));
+        return d;
     }
 }

@@ -1,0 +1,23 @@
+{
+  "version": "1.0",
+  "timelineMarkers": [
+    {
+      "timestamp": 1700000003000,
+      "label": "Deployment Start",
+      "type": "info",
+      "description": "Rolling deployment initiated"
+    },
+    {
+      "timestamp": 1700000010000,
+      "label": "Deployment Complete",
+      "type": "info",
+      "description": "All pods updated to v2.5.1"
+    },
+    {
+      "timestamp": 1700000020000,
+      "label": "Memory Alert",
+      "type": "warning",
+      "description": "Heap usage exceeded 80% threshold"
+    }
+  ]
+}

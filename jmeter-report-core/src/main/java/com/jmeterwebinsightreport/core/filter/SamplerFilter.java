@@ -45,12 +45,39 @@ public class SamplerFilter {
         return true;
     }
 
+    /**
+     * Match a sampler name against a glob pattern ({@code *} = any run, {@code ?} = one char).
+     *
+     * <p>Everything except the two wildcards is quoted. Escaping only {@code .} — as the
+     * previous implementation did — left every other regex metacharacter live, so a pattern
+     * containing {@code ( ) [ ] { } + ^ $ |} either threw {@link
+     * java.util.regex.PatternSyntaxException} or matched something entirely different. That
+     * is not exotic for JMeter labels: {@code GET /api/users/{id}} contains braces, and
+     * query strings contain {@code +} and {@code $}. The naive {@code *} -> {@code .*}
+     * expansion also opened the door to catastrophic backtracking on adversarial input.
+     */
     private boolean matchesPattern(String name, String pattern) {
-        // Support simple wildcard patterns (glob-style) by converting to regex
-        String regex = pattern
-                .replace(".", "\\.")
-                .replace("*", ".*")
-                .replace("?", ".");
-        return Pattern.matches(regex, name);
+        return Pattern.matches(globToRegex(pattern), name);
+    }
+
+    static String globToRegex(String glob) {
+        StringBuilder regex = new StringBuilder(glob.length() + 16);
+        StringBuilder literal = new StringBuilder();
+        for (int i = 0; i < glob.length(); i++) {
+            char c = glob.charAt(i);
+            if (c == '*' || c == '?') {
+                if (literal.length() > 0) {
+                    regex.append(Pattern.quote(literal.toString()));
+                    literal.setLength(0);
+                }
+                regex.append(c == '*' ? ".*" : ".");
+            } else {
+                literal.append(c);
+            }
+        }
+        if (literal.length() > 0) {
+            regex.append(Pattern.quote(literal.toString()));
+        }
+        return regex.toString();
     }
 }

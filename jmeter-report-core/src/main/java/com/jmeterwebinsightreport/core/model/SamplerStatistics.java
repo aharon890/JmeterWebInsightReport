@@ -20,8 +20,25 @@ public class SamplerStatistics {
     private double throughput;
     private double receivedBytesPerSec;
     private double sentBytesPerSec;
-    private double meanConnectTime;
-    private double meanLatency;
+    /**
+     * NaN until a sample actually carried a Connect time — <em>not</em> zero.
+     *
+     * <p>JMeter's Connect and Latency columns are optional, and a JTL saved without them left
+     * these primitives at their default 0.0. That is a legitimate-looking measurement, so
+     * {@code MetricRef.valueFor} handed 0.0 to the predicate and every "connect time under X"
+     * rule reported PASS — on every run, forever, with no finding, no INVALID and no unmatched.
+     * A gate silently switched off by a saveservice setting is exactly the failure the assert
+     * engine exists to prevent, and {@code MetricRef}'s own comment ("NaN rather than 0: zero is
+     * a legitimate measurement and a predicate would happily judge it") already stated the rule
+     * one layer above the layer that was breaking it.
+     *
+     * <p>NaN propagates to {@code MetricRef.valueFor}, which the evaluator turns into INVALID —
+     * "the metric is real but this run cannot produce it" — and INVALID counts as a failure.
+     * {@link com.jmeterwebinsightreport.core.stats.SamplerAggregator} only assigns these when
+     * its guarded count is above zero, so the default is what carries the absence.
+     */
+    private double meanConnectTime = Double.NaN;
+    private double meanLatency = Double.NaN;
     private double totalReceivedBytes;
     private double totalSentBytes;
     private boolean transactionController;

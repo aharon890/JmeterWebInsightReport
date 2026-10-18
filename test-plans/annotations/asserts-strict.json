@@ -1,0 +1,64 @@
+{
+  "version": "1.0",
+  "testNotes": "## Asserts Strict Test\nVery tight thresholds \u2014 most samplers should fail.",
+  "assertions": [
+    {
+      "id": "default:p95",
+      "description": "p95 must stay under 50",
+      "target": {
+        "match": "*"
+      },
+      "metric": "p95",
+      "warn": {
+        "gt": 40.0
+      },
+      "fail": {
+        "gt": 50.0
+      }
+    },
+    {
+      "id": "default:p99",
+      "description": "p99 must stay under 100",
+      "target": {
+        "match": "*"
+      },
+      "metric": "p99",
+      "warn": {
+        "gt": 80.0
+      },
+      "fail": {
+        "gt": 100.0
+      }
+    },
+    {
+      "id": "default:errorRate",
+      "description": "errorRate must stay under 0.1",
+      "target": {
+        "match": "*"
+      },
+      "metric": "errorRate",
+      "warn": {
+        "gt": 0.08
+      },
+      "fail": {
+        "gt": 0.1
+      }
+    },
+    {
+      "id": "default:mean",
+      "description": "mean must stay under 30",
+      "target": {
+        "match": "*"
+      },
+      "metric": "mean",
+      "warn": {
+        "gt": 24.0
+      },
+      "fail": {
+        "gt": 30.0
+      }
+    }
+  ],
+  "samplerNotes": {},
+  "timelineMarkers": []
+}

@@ -13,7 +13,9 @@
             <div>
                 <h1 th:text="${metadata != null and metadata.testName != null} ? ${metadata.testName} : 'JMeter Web Insight Report'">JMeter Web Insight Report</h1>
                 <p class="report-subtitle">
-                    <span th:text="'Generated: ' + (${metadata != null and metadata.reportGeneratedAt != null} ? ${metadata.reportGeneratedAt} : 'N/A')">Generated: N/A</span>
+                    <span id="reportGeneratedAt"
+                          th:data-generated-at="${metadata != null ? metadata.reportGeneratedAtIso : null}"
+                          th:text="'Generated: ' + (${metadata != null and metadata.reportGeneratedAt != null} ? ${metadata.reportGeneratedAt} : 'N/A')">Generated: N/A</span>
                     <span th:if="${metadata != null and metadata.jmeterVersion != null}" th:text="' | JMeter ' + ${metadata.jmeterVersion}"></span>
                     <span th:if="${metadata != null and metadata.durationMillis > 0}"
                           th:text="' | Duration: ' + ${fmt.duration(metadata.durationMillis)}"></span>
@@ -27,14 +29,81 @@
                 <span id="darkModeIcon">&#9790;</span>
             </button>
             <div class="header-badge" th:if="${metadata != null}">
-                <!-- SLA-aware status badge -->
-                <span class="status-badge" th:if="${overallSlaStatus != null}"
-                      th:classappend="${overallSlaStatus.name() == 'FAIL'} ? 'badge-fail' : (${overallSlaStatus.name() == 'WARN'} ? 'badge-warn' : 'badge-pass')"
-                      th:text="${overallSlaStatus.name() == 'FAIL'} ? 'SLA FAIL' : (${overallSlaStatus.name() == 'WARN'} ? 'SLA WARNING' : 'SLA PASS')">STATUS</span>
-                <!-- Fallback when no SLA configured -->
-                <span class="status-badge" th:if="${overallSlaStatus == null}"
-                      th:classappend="${metadata.totalErrors > 0} ? 'badge-warn' : 'badge-pass'"
-                      th:text="${metadata.totalErrors > 0} ? 'ERRORS DETECTED' : 'ALL PASSED'">STATUS</span>
+                <!--/* The gated verdict. There is one mechanism and one word for it: a run
+                     declares assertions or it declares nothing. */-->
+                <!--/* A button to the Asserts tab, as the server chip beside it is to the Server tab
+                     (U9a): two verdict pills side by side, one clickable and one inert, read as two
+                     different kinds of thing. Same data-wir-tab binding, no inline handler. */-->
+                <button type="button" class="status-badge wir-asserts-chip" th:if="${overallAssertStatus != null}"
+                      data-wir-tab="asserts" title="The client asserts' verdict - open the Asserts tab"
+                      th:classappend="${overallAssertStatus.name() == 'FAIL'} ? 'badge-fail' : (${overallAssertStatus.name() == 'WARN'} ? 'badge-warn' : 'badge-pass')"
+                      th:text="${overallAssertStatus.name() == 'FAIL'} ? 'ASSERTS FAIL' : (${overallAssertStatus.name() == 'WARN'} ? 'ASSERTS WARNING' : 'ASSERTS PASS')">STATUS</button>
+                <!--/* Fallback when nothing was declared. NOT a verdict.
+
+                     This said "ALL PASSED", in green, whenever the run happened to record no
+                     errors — and overallAssertStatus is null in exactly the cases that matter
+                     most: a typo'd -Jwebinsight.report.annotations path, a malformed file
+                     (AnnotationLoader catches everything and returns EMPTY with a log.warn), and a
+                     file whose every rule was parked with enabled:false. All three are a gate that
+                     silently stopped gating, and all three claimed a pass on the one surface a
+                     reader who did not run the test looks at. Declared is not judged is not passed.
+
+                     ERRORS DETECTED used to be the third branch here, shown in the warn colour
+                     when a gateless run happened to record errors. It is gone, and this is the
+                     slot it was removed FROM: an error count is not an assert verdict. The
+                     badge answers exactly one question - what did the declared asserts decide -
+                     and a run that declared none has one honest answer whatever else it
+                     measured. Errors were never absent from the report; they have their own
+                     header card, their own tab and their own tables, none of which pretend to
+                     be a judgement.
+
+                     This is a Thymeleaf PARSER-LEVEL comment, not an ordinary HTML one, because
+                     Thymeleaf keeps ordinary comments in the output: the prose above would ship
+                     inside every generated report, and — since it quotes the badge wording it is
+                     explaining — it would satisfy any test searching the HTML for that wording.
+                     It did: ThymeleafReportRendererTest asserts the no-gate badge does not stand
+                     in for a gate that ran, and the comment alone made that assertion fail.
+
+                     Do NOT write the closing delimiter inside one of these. An earlier version of
+                     this comment spelled out the delimiter pair to explain itself, which CLOSED
+                     the comment on the spot: every line after it became document content and
+                     rendered as loose text beside the verdict badge. It also pushed the dark-mode
+                     and colorblind buttons out of position, because that text is a flex item in
+                     the same row. All 543 browser specs passed — none of them assert that the
+                     header contains no junk. */-->
+                <!--/* Three states, because "declared" and "evaluated" are two questions and the
+                     server side can answer them differently from the client side. A run that
+                     declares only server KPIs HAS been evaluated - saying ASSERTS NOT EVALUATED
+                     over it contradicts the same run's own .json. The badge withholds the verdict
+                     rather than claiming one; M5's server chip is what carries it (D17). */-->
+                <span class="status-badge badge-none" th:if="${overallAssertStatus == null}"
+                      th:text="${!assertsDeclared} ? 'NO ASSERTS DECLARED'
+                               : (${serverEvaluated} ? 'SERVER ASSERTS ONLY' : 'ASSERTS NOT EVALUATED')">STATUS</span>
+                <!--/* The server chip (D17): the client badge above is unchanged and keeps
+                     answering only for the client rules, and this stands BESIDE it. There is
+                     deliberately no combined word anywhere - two sides, two statements, and a
+                     pipeline that wants one answer writes the `and` itself.
+
+                     Every component builds (C6), so any of them can be the one named; the rest
+                     are "N more", a pointer to the tab rather than a verdict. Declared and judged
+                     against nothing, it says which state that is - REFUSED or NOT COLLECTED, the
+                     Summary card's words (SF47) - and absent only when no server assert was
+                     declared. Which gate wins is
+                     decided in ServerGateEvaluation.headerChip(), not here: a th: expression that
+                     picked one would be a second place a verdict is chosen. The same fold writes
+                     the CI/CD JSON's serverStatus (D24), so the two cannot disagree.
+
+                     A button, because it IS the pointer (L3-6): data-wir-tab is bound by
+                     report.js initTabs() to the same switchTab() the tab bar uses - a listener,
+                     not an inline handler, so there is no second way to open a tab.
+
+                     data-wir-chip-state is the chip's status word as Java chose it (Chip.status):
+                     a page whose sidecar did not arrive reads it to tell a verdict from REFUSED or
+                     NOT_COLLECTED, which are not verdicts (report.js unavailableCardHtml). */-->
+                <button type="button" class="status-badge wir-server-chip" th:if="${serverChip != null}"
+                        th:classappend="${serverChip.badgeClass}" data-wir-tab="server"
+                        th:attr="data-wir-chip-state=${serverChip.status}"
+                        th:title="${serverChip.title}" th:text="${serverChip.text}">Server</button>
             </div>
             </div>
         </div>
@@ -47,6 +116,16 @@
         <button class="tab-btn" data-tab="samplers">Samplers</button>
         <button class="tab-btn" data-tab="errors">Errors</button>
         <button class="tab-btn" data-tab="compare" id="compareTabBtn" style="display:none;">Compare</button>
+        <!-- After Compare, before Notes: the first four positions are muscle memory for anyone
+             who has used the report, and the gate is still the headline — the Summary tab opens
+             with the gate strip, which links straight here. Hidden when nothing was declared. -->
+        <button class="tab-btn" data-tab="asserts" id="assertsTabBtn" style="display:none;">Asserts</button>
+        <!--/* The 8th tab, after Asserts (D20). Shipped VISIBLE, unlike the two above it.
+               Asserts is hidden-then-revealed and paid for it: when the payload failed to load
+               the reveal never ran, so a reader saw a FAIL badge and no way to find out why.
+               A tab whose pane can always say something honest — including "no server metrics
+               were declared" — has no reason to hide, and one fewer way to disappear. */-->
+        <button class="tab-btn" data-tab="server" id="serverTabBtn">Server</button>
         <button class="tab-btn" data-tab="notes">Notes</button>
         <div class="filter-bar-toggle-wrapper">
             <button class="filter-bar-toggle" id="filterBarToggle" onclick="toggleFilterMenu()" title="Show/hide filter rows">Filters &#9662;</button>
@@ -129,17 +208,26 @@
     <main class="report-content">
         <!-- ===== TAB: Summary ===== -->
         <div id="tab-summary" class="tab-panel active">
+            <!-- Quality gate strip. Built by report.js from the payload, because it has to show
+                 the same numbers the asserts tab does and there is no sense deriving them twice.
+                 Stays empty when nothing was declared: a run with no gate has not passed one,
+                 and a green strip saying so would be the lie this feature exists to prevent. -->
+            <div id="gateStrip"></div>
+            <!-- The server side's card, beside the client's (design §3, "One product, two tabs").
+                 Built by report.js from the verdict the run was gated on; empty when the run
+                 declared no server asserts, for the same reason the strip above is. -->
+            <div id="serverStrip"></div>
             <section class="report-section">
                 <h2>Test Summary</h2>
                 <div class="summary-cards">
                     <div class="summary-card">
-                        <div class="card-value" th:text="${metadata != null} ? ${fmt.number(metadata.totalSamples)} : '0'">0</div>
+                        <div class="card-value" th:text="${topLevelTotalSamples != null} ? ${fmt.number(topLevelTotalSamples)} : (${metadata != null} ? ${fmt.number(metadata.totalSamples)} : '0')">0</div>
                         <div class="card-label">Total Samples</div>
                     </div>
-                    <div class="summary-card" th:classappend="${metadata != null and metadata.totalErrors > 0} ? 'card-error' : ''">
-                        <div class="card-value" th:if="${metadata != null and metadata.totalSamples > 0}"
-                             th:text="${fmt.percentage(metadata.totalErrors * 100.0 / metadata.totalSamples)}">0%</div>
-                        <div class="card-value" th:unless="${metadata != null and metadata.totalSamples > 0}">0%</div>
+                    <div class="summary-card" th:classappend="${(topLevelTotalErrors != null ? topLevelTotalErrors : (metadata != null ? metadata.totalErrors : 0)) > 0} ? 'card-error' : ''">
+                        <div class="card-value" th:if="${topLevelTotalSamples != null and topLevelTotalSamples > 0}"
+                             th:text="${fmt.percentage(topLevelTotalErrors * 100.0 / topLevelTotalSamples)}">0%</div>
+                        <div class="card-value" th:unless="${topLevelTotalSamples != null and topLevelTotalSamples > 0}">0%</div>
                         <div class="card-label">Error Rate</div>
                     </div>
                     <div class="summary-card">
@@ -154,23 +242,31 @@
                 <!-- Extra metric cards row -->
                 <div class="summary-cards" style="margin-top: 16px;" th:if="${avgP95 != null}">
                     <div class="summary-card">
-                        <div class="card-value" th:text="${fmt.number(avgP95)} + ' ms'">0 ms</div>
-                        <div class="card-label">Avg P95
-                            <span class="sla-badge-mini sla-badge-inline"
-                                  th:if="${slaThresholds != null and slaThresholds.containsKey('default') and slaThresholds.get('default').p95 != null}"
-                                  th:classappend="${avgP95 > slaThresholds.get('default').p95} ? 'sla-badge-fail' : (${avgP95 > slaThresholds.get('default').p95 * 0.8} ? 'sla-badge-warn' : 'sla-badge-pass')"
-                                  th:text="${avgP95 > slaThresholds.get('default').p95} ? 'FAIL' : (${avgP95 > slaThresholds.get('default').p95 * 0.8} ? 'WARN' : 'PASS')"
-                                  th:title="'SLA: ' + ${fmt.number(slaThresholds.get('default').p95)} + ' ms'">PASS</span>
+                        <div class="card-value" th:text="${fmt.millis(avgP95)} + ' ms'">0 ms</div>
+                        <!-- "P95, whole run", not "Avg P95": the value is the percentile of every sample
+                             together (overall.getP95()), never an average of per-sampler P95s (B10). -->
+                        <div class="card-label" title="The 95th percentile of every sample in the run, all samplers together">P95, whole run
+                            <!-- The gate's verdict for this metric, not a comparison re-derived here.
+                                 Absent when no rule mentions p95: nothing judged it, so nothing is claimed.
+                                 The title says what it is about: the rules may judge single samplers,
+                                 so the badge is not a verdict on the number beside it. -->
+                            <span class="assert-badge-mini assert-badge-inline"
+                                  th:if="${metricVerdicts != null and metricVerdicts.containsKey('p95')}"
+                                  th:classappend="'assert-badge-' + ${metricVerdicts.get('p95').name().toLowerCase()}"
+                                  th:text="${metricVerdicts.get('p95').name()}"
+                                  th:title="'Worst verdict of the rules that judge p95, on any sampler - not a verdict on this whole-run figure'">PASS</span>
                         </div>
                     </div>
                     <div class="summary-card">
-                        <div class="card-value" th:text="${fmt.number(avgP99)} + ' ms'">0 ms</div>
-                        <div class="card-label">Avg P99
-                            <span class="sla-badge-mini sla-badge-inline"
-                                  th:if="${slaThresholds != null and slaThresholds.containsKey('default') and slaThresholds.get('default').p99 != null}"
-                                  th:classappend="${avgP99 > slaThresholds.get('default').p99} ? 'sla-badge-fail' : (${avgP99 > slaThresholds.get('default').p99 * 0.8} ? 'sla-badge-warn' : 'sla-badge-pass')"
-                                  th:text="${avgP99 > slaThresholds.get('default').p99} ? 'FAIL' : (${avgP99 > slaThresholds.get('default').p99 * 0.8} ? 'WARN' : 'PASS')"
-                                  th:title="'SLA: ' + ${fmt.number(slaThresholds.get('default').p99)} + ' ms'">PASS</span>
+                        <div class="card-value" th:text="${fmt.millis(avgP99)} + ' ms'">0 ms</div>
+                        <div class="card-label" title="The 99th percentile of every sample in the run, all samplers together">P99, whole run
+                            <!-- The gate's verdict for this metric, not a comparison re-derived here.
+                                 Absent when no rule mentions p99: nothing judged it, so nothing is claimed. -->
+                            <span class="assert-badge-mini assert-badge-inline"
+                                  th:if="${metricVerdicts != null and metricVerdicts.containsKey('p99')}"
+                                  th:classappend="'assert-badge-' + ${metricVerdicts.get('p99').name().toLowerCase()}"
+                                  th:text="${metricVerdicts.get('p99').name()}"
+                                  th:title="'Worst verdict of the rules that judge p99, on any sampler - not a verdict on this whole-run figure'">PASS</span>
                         </div>
                     </div>
                     <div class="summary-card">
@@ -211,8 +307,8 @@
                     <div class="top-sampler-row" th:each="stat, iter : ${top5Slowest}">
                         <span class="top-sampler-rank" th:text="${iter.index + 1}">1</span>
                         <span class="top-sampler-name" th:text="${stat.samplerName}" th:title="${stat.samplerName}">Sampler</span>
-                        <span class="top-sampler-value" th:text="'p95: ' + ${fmt.number(stat.percentile95)} + ' ms'">p95: 0 ms</span>
-                        <span class="top-sampler-subvalue" th:text="'mean: ' + ${fmt.number(stat.meanResponseTime)} + ' ms'">mean: 0 ms</span>
+                        <span class="top-sampler-value" th:text="'p95: ' + ${fmt.millis(stat.percentile95)} + ' ms'">p95: 0 ms</span>
+                        <span class="top-sampler-subvalue" th:text="'mean: ' + ${fmt.millis(stat.meanResponseTime)} + ' ms'">mean: 0 ms</span>
                         <span class="top-sampler-error"
                               th:if="${stat.errorRate > 0}"
                               th:text="${fmt.percentage(stat.errorRate)} + ' errors'"
@@ -222,8 +318,10 @@
             </section>
 
 
-            <!-- Copy Summary button -->
+            <!--/* Copy buttons. Copy Verdict writes the verdict as a few plain lines for a chat or an
+                 email (AF5), from what the page shows; Copy Summary the cards as an HTML table. */-->
             <div style="text-align:right;margin-top:8px;">
+                <button class="filter-toggle-btn" id="copyVerdictBtn" onclick="copyVerdictBlock()" title="Copy the verdict as plain text, for a chat or an email">Copy Verdict</button>
                 <button class="filter-toggle-btn" onclick="copySummaryAsHtml()" title="Copy summary as HTML for Confluence/SharePoint">Copy Summary</button>
             </div>
         </div>
@@ -364,6 +462,7 @@
                             <!-- Populated by JS -->
                         </div>
                     </div>
+                    <button class="column-toggle-btn" id="resetWidthsBtn" onclick="resetColumnWidths('samplerTable')" style="display:none;" title="Return every column to its automatic width">Reset Widths</button>
                     <button class="column-toggle-btn" id="transactionChildrenBtn" onclick="toggleTransactionChildrenVisibility()" style="display:none;" title="Show/hide Transaction Controller child samplers">Transaction Details</button>
                     <button class="column-toggle-btn" id="addDetailChartBtn" onclick="addDetailSlotGlobal('throughput')" style="display:none;">+ Add Chart</button>
                     <button class="column-toggle-btn" id="removeDetailChartBtn" onclick="removeLastDetailSlotGlobal()" style="display:none;">&times; Remove Chart</button>
@@ -392,13 +491,13 @@
                             <tr th:each="stat : ${samplerStats}" th:data-sampler="${stat.samplerName}"
                                 th:classappend="${stat.transactionController} ? 'transaction-parent' : (${stat.parentSamplerName != null} ? 'transaction-child' : '')"
                                 style="cursor:pointer;" onclick="toggleSamplerDetail(this)">
-                                <td th:title="${stat.samplerName}">
+                                <td class="sampler-name-td" th:title="${stat.samplerName}">
                                     <div class="sampler-name-cell">
                                         <span class="sampler-expand-icon" title="Click to expand charts">&#9660;</span>
-                                        <span class="sla-badge-mini"
-                                              th:if="${slaResults != null and slaResults.containsKey(stat.samplerName)}"
-                                              th:classappend="'sla-badge-' + ${slaResults.get(stat.samplerName).overallStatus.name().toLowerCase()}"
-                                              th:text="${slaResults.get(stat.samplerName).overallStatus.name()}">PASS</span>
+                                        <span class="assert-badge-mini"
+                                              th:if="${assertResults != null and assertResults.containsKey(stat.samplerName)}"
+                                              th:classappend="'assert-badge-' + ${assertResults.get(stat.samplerName).overallStatus.name().toLowerCase()}"
+                                              th:text="${assertResults.get(stat.samplerName).overallStatus.name()}">PASS</span>
                                         <span th:if="${stat.transactionController}" class="tc-icon" title="Transaction Controller">&#9654;</span>
                                         <span class="sampler-name-text" th:text="${stat.samplerName}" th:title="${stat.samplerName}">Sampler</span>
                                         <span class="sampler-note-icon"
@@ -412,13 +511,13 @@
                                 <td th:text="${fmt.number(stat.errorCount)}">0</td>
                                 <td th:text="${fmt.percentage(stat.errorRate)}"
                                     th:classappend="${stat.errorRate > 0} ? 'cell-error' : ''">0%</td>
-                                <td th:text="${fmt.number(stat.meanResponseTime)}">0</td>
-                                <td th:text="${fmt.number(stat.medianResponseTime)}">0</td>
-                                <td th:text="${fmt.number(stat.percentile90)}">0</td>
-                                <td th:text="${fmt.number(stat.percentile95)}">0</td>
-                                <td th:text="${fmt.number(stat.percentile99)}">0</td>
-                                <td th:text="${fmt.number(stat.minResponseTime)}">0</td>
-                                <td th:text="${fmt.number(stat.maxResponseTime)}">0</td>
+                                <td th:text="${fmt.millis(stat.meanResponseTime)}">0</td>
+                                <td th:text="${fmt.millis(stat.medianResponseTime)}">0</td>
+                                <td th:text="${fmt.millis(stat.percentile90)}">0</td>
+                                <td th:text="${fmt.millis(stat.percentile95)}">0</td>
+                                <td th:text="${fmt.millis(stat.percentile99)}">0</td>
+                                <td th:text="${fmt.millis(stat.minResponseTime)}">0</td>
+                                <td th:text="${fmt.millis(stat.maxResponseTime)}">0</td>
                                 <td th:text="${fmt.number(stat.throughput)} + '/s'">0/s</td>
                                 <td th:text="${fmt.number(stat.receivedBytesPerSec / 1024.0)}">0</td>
                                 <td><span class="apdex-badge"
@@ -496,16 +595,21 @@
                             <tr>
                                 <th onclick="sortGenericTable('errorSummaryTable', 0, 'text')">Sampler</th>
                                 <th onclick="sortGenericTable('errorSummaryTable', 1, 'text')">Response Code</th>
-                                <th onclick="sortGenericTable('errorSummaryTable', 2, 'num')">Count</th>
-                                <th onclick="sortGenericTable('errorSummaryTable', 3, 'num')">% of Errors</th>
-                                <th onclick="sortGenericTable('errorSummaryTable', 4, 'num')">% of All Samples</th>
+                                <th onclick="sortGenericTable('errorSummaryTable', 2, 'text')">Class</th>
+                                <th onclick="sortGenericTable('errorSummaryTable', 3, 'num')">Count</th>
+                                <th onclick="sortGenericTable('errorSummaryTable', 4, 'num')">% of Errors</th>
+                                <th onclick="sortGenericTable('errorSummaryTable', 5, 'num')">% of All Samples</th>
                                 <th></th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr th:each="err : ${errorSummaries}">
+                            <tr th:each="err : ${errorSummaries}"
+                                th:data-sampler="${err.samplerName}" th:data-error-class="${err.errorClass}">
                                 <td th:text="${err.samplerName}" th:title="${err.samplerName}">Sampler</td>
-                                <td><span class="error-code" th:text="${err.responseCode}">500</span></td>
+                                <td th:text="${err.responseCode}" th:title="${err.responseCode}">500</td>
+                                <td><span class="error-class" th:classappend="'error-class-' + ${err.errorClass}"
+                                       th:text="${err.errorClassLabel}"
+                                       th:title="'Inferred from the response code — the report cannot see which assertion fired'">HTTP failure</span></td>
                                 <td th:text="${fmt.number(err.occurrenceCount)}">0</td>
                                 <td th:text="${fmt.percentage(err.percentageOfErrors)}">0%</td>
                                 <td th:text="${fmt.percentage(err.percentageOfAllSamples)}">0%</td>
@@ -519,45 +623,85 @@
             <!-- Error detail records (expandable) -->
             <section class="report-section" th:if="${errorRecords != null and !errorRecords.isEmpty()}">
                 <div class="table-section-header">
-                    <h2>Error Details</h2>
+                    <div style="display:flex;align-items:center;gap:14px;">
+                        <h2 style="margin-bottom:0;">Error Details</h2>
+                        <div class="filter-btn-group" id="errorViewToggle">
+                            <button class="filter-toggle-btn active" id="errViewTimeBtn" onclick="setErrorDetailsView('time')" title="Chronological list &mdash; trace failures over time">By time</button>
+                            <button class="filter-toggle-btn" id="errViewGroupBtn" onclick="setErrorDetailsView('group')" title="Aggregated by sampler + response code">Grouped</button>
+                        </div>
+                    </div>
                     <button class="table-csv-btn" onclick="exportErrorDetailsCsv()" title="Download as CSV">
                         <svg viewBox="0 0 24 24"><path d="M5 20h14v-2H5v2zm7-18v12.17l3.59-3.58L17 12l-5 5-5-5 1.41-1.41L12 14.17V2z"/></svg>
                     </button>
                 </div>
-                <div class="table-toolbar">
-                    <input type="text" class="table-search" placeholder="Filter errors..." oninput="filterGenericTable('errorDetailsTable', this.value)"/>
-                    <button class="column-toggle-btn" id="showHiddenBtn-errorDetailsTable" onclick="showAllTableRows('errorDetailsTable')" style="display:none;">Show Hidden</button>
-                    <button class="column-toggle-btn" id="showAllColsBtn-errorDetailsTable" onclick="showAllGenericColumns('errorDetailsTable')" style="display:none;">Show All Columns</button>
-                    <div class="column-toggle-wrapper">
-                        <button class="column-toggle-btn" onclick="toggleGenericColumnMenu(this)">Columns</button>
-                        <div class="column-menu"></div>
+                <div id="errViewTime">
+                    <div class="table-toolbar">
+                        <input type="text" class="table-search" placeholder="Filter errors..." oninput="filterGenericTable('errorDetailsTable', this.value)"/>
+                        <button class="column-toggle-btn" id="showHiddenBtn-errorDetailsTable" onclick="showAllTableRows('errorDetailsTable')" style="display:none;">Show Hidden</button>
+                        <button class="column-toggle-btn" id="showAllColsBtn-errorDetailsTable" onclick="showAllGenericColumns('errorDetailsTable')" style="display:none;">Show All Columns</button>
+                        <div class="column-toggle-wrapper">
+                            <button class="column-toggle-btn" onclick="toggleGenericColumnMenu(this)">Columns</button>
+                            <div class="column-menu"></div>
+                        </div>
+                    </div>
+                    <div class="table-wrapper">
+                        <table class="stats-table" id="errorDetailsTable">
+                            <thead>
+                                <tr>
+                                    <th onclick="sortGenericTable('errorDetailsTable', 0, 'text')">Time</th>
+                                    <th onclick="sortGenericTable('errorDetailsTable', 1, 'text')">Sampler</th>
+                                    <th onclick="sortGenericTable('errorDetailsTable', 2, 'text')">Code</th>
+                                    <th onclick="sortGenericTable('errorDetailsTable', 3, 'text')">Class</th>
+                                    <th onclick="sortGenericTable('errorDetailsTable', 4, 'text')">Message</th>
+                                    <th onclick="sortGenericTable('errorDetailsTable', 5, 'text')">Thread</th>
+                                    <th></th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr th:each="er, iter : ${errorRecords}" th:data-error-idx="${iter.index}" class="error-row-main" onclick="toggleErrorDetail(this)">
+                                    <td th:text="${#dates.format(new java.util.Date(er.timestamp), 'HH:mm:ss.SSS')}">00:00:00</td>
+                                    <td th:text="${er.samplerName}" th:title="${er.samplerName}">Sampler</td>
+                                    <td th:text="${er.responseCode}" th:title="${er.responseCode}">500</td>
+                                    <td><span class="error-class" th:classappend="'error-class-' + ${er.errorClass}"
+                                           th:text="${er.errorClassLabel}"
+                                           th:title="'Inferred from the response code — the report cannot see which assertion fired'">HTTP failure</span></td>
+                                    <td th:if="${er.messageMeaningless}" class="error-message-none"
+                                        th:title="'The sampler failed a 2xx response. The reason lives in failureMessage, which is not captured on either ingestion path.'">&mdash;</td>
+                                    <td th:unless="${er.messageMeaningless}"
+                                        th:text="${er.responseMessage}" th:title="${er.responseMessage}">Error</td>
+                                    <td th:text="${er.threadName}" th:title="${er.threadName}">Thread</td>
+                                    <td style="text-align:center;cursor:pointer;color:var(--color-text-secondary);">&#9660;</td>
+                                    <td><button class="row-hide-btn" onclick="hideTableRow(this, 'errorDetailsTable'); event.stopPropagation();" title="Hide row">&times;</button></td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
-                <div class="table-wrapper">
-                    <table class="stats-table" id="errorDetailsTable">
-                        <thead>
-                            <tr>
-                                <th onclick="sortGenericTable('errorDetailsTable', 0, 'text')">Time</th>
-                                <th onclick="sortGenericTable('errorDetailsTable', 1, 'text')">Sampler</th>
-                                <th onclick="sortGenericTable('errorDetailsTable', 2, 'text')">Code</th>
-                                <th onclick="sortGenericTable('errorDetailsTable', 3, 'text')">Message</th>
-                                <th onclick="sortGenericTable('errorDetailsTable', 4, 'text')">Thread</th>
-                                <th></th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr th:each="er, iter : ${errorRecords}" th:data-error-idx="${iter.index}" class="error-row-main" onclick="toggleErrorDetail(this)">
-                                <td th:text="${#dates.format(new java.util.Date(er.timestamp), 'HH:mm:ss.SSS')}">00:00:00</td>
-                                <td th:text="${er.samplerName}" th:title="${er.samplerName}">Sampler</td>
-                                <td><span class="error-code" th:text="${er.responseCode}">500</span></td>
-                                <td th:text="${er.responseMessage}" th:title="${er.responseMessage}">Error</td>
-                                <td th:text="${er.threadName}" th:title="${er.threadName}">Thread</td>
-                                <td style="text-align:center;cursor:pointer;color:var(--color-text-secondary);">&#9660;</td>
-                                <td><button class="row-hide-btn" onclick="hideTableRow(this, 'errorDetailsTable'); event.stopPropagation();" title="Hide row">&times;</button></td>
-                            </tr>
-                        </tbody>
-                    </table>
+
+                <!-- Grouped view: one row per sampler+code signature; tbody built by buildErrorGroups(). -->
+                <div id="errViewGroup" style="display:none;">
+                    <div class="table-toolbar">
+                        <input type="text" class="table-search" placeholder="Filter errors..." oninput="filterErrorGroups(this.value)"/>
+                        <button class="column-toggle-btn" onclick="expandAllErrorGroups()">Expand All</button>
+                        <button class="column-toggle-btn" onclick="collapseAllErrorGroups()">Collapse All</button>
+                    </div>
+                    <div class="table-wrapper">
+                        <table class="stats-table" id="errorGroupsTable">
+                            <thead>
+                                <tr>
+                                    <th style="width:28px;"></th>
+                                    <th>Count</th>
+                                    <th>Code</th>
+                                    <th>Sampler</th>
+                                    <th>Message</th>
+                                    <th>First seen</th>
+                                    <th>Last seen</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
                 </div>
             </section>
 
@@ -656,6 +800,55 @@
             </section>
         </div>
 
+        <!-- ===== TAB: Asserts ===== -->
+        <!--
+            Everything in here is rendered by report.js from the payload rather than by Thymeleaf.
+            Not a style preference: from M8 the same rows have to re-render as the user edits a
+            threshold and the verdict recomputes, and a server-rendered table cannot do that. One
+            renderer, used for both the loaded state and every draft after it.
+        -->
+        <div id="tab-asserts" class="tab-panel">
+            <!--/* Broken rules first, then findings. A rule that could not run is the only one
+                   of the four not-judged reasons that means the FILE is wrong, and since A3 it
+                   no longer moves the verdict - so this banner is what stops the tab reading as
+                   healthy while a rule is broken. Above the toolbar, and not dismissible. */-->
+            <div id="assertsBroken"></div>
+            <div id="assertsFindings"></div>
+            <section class="report-section">
+                <div id="assertsToolbar"></div>
+            </section>
+            <section class="report-section">
+                <div id="assertsTableWrap"></div>
+            </section>
+            <!-- The editor slide-over. Outside the sections so its scrim covers the tab. -->
+            <!--/* The document editor, a second slide-over. Deliberately NOT the rule editor with a
+       kind discriminator: that editor is keyed on a rule id and its five sections all assume
+       one, and teaching it a second subject would put every future block through code that
+       exists to edit an assert. */-->
+            <div id="documentEditor" class="wir-editor-host"></div>
+            <div id="assertEditor" class="wir-editor-host"></div>
+            <div id="assertWizard" class="wir-editor-host"></div>
+        </div>
+
+        <!-- ===== TAB: Server ===== -->
+        <!--/* An empty shell, like the asserts pane: report.js owns everything inside it. The
+               placeholder is what a reader sees if report.js never runs at all — it must be
+               honest rather than blank, because a blank pane reads as "nothing was wrong". */-->
+        <div id="tab-server" class="tab-panel">
+            <section class="report-section">
+                <h2>Server Metrics</h2>
+                <div id="serverBoard">
+                    <p class="wir-empty">Server metrics could not be rendered — the report's
+                        scripts did not run.</p>
+                </div>
+            </section>
+            <!--/* This tab's own editor host. The whole-document editor ships in the Asserts pane
+                 and is shared: report.js moves its host into whichever pane opens it, so the
+                 Server toolbar's Edit document... never opens it into a hidden pane (SF44). A KPI
+                 form is this tab's, and hosting it here is what keeps it out of one too. */-->
+            <div id="serverEditor" class="wir-editor-host"></div>
+        </div>
+
         <!-- ===== TAB: Notes ===== -->
         <div id="tab-notes" class="tab-panel">
             <!-- Test Notes (always editable) -->
@@ -668,7 +861,10 @@
                     <div id="notesPreview" class="markdown-content" style="display:none;"></div>
                     <div class="notes-toolbar">
                         <button class="filter-toggle-btn" onclick="toggleNotesPreview()">Preview</button>
-                        <button class="filter-toggle-btn" onclick="downloadAnnotations()">Save Annotations</button>
+                        <!--/* The DOCUMENT's download, not the Asserts tab's. One file, one
+                             builder, two buttons in two tabs — and the file is only half about
+                             asserts now that a serverMetrics block travels in it. */-->
+                        <button class="filter-toggle-btn" id="saveAnnotationsBtn" onclick="WIR.document.download()">Save Annotations</button>
                     </div>
                 </div>
             </section>
@@ -706,25 +902,163 @@
     <!-- ECharts library: inlined for self-contained report -->
     <script th:if="${inlineEchartsJs != null and !inlineEchartsJs.isEmpty()}" th:utext="${inlineEchartsJs}"></script>
     <script th:unless="${inlineEchartsJs != null and !inlineEchartsJs.isEmpty()}" src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <!-- External data (large reports): loaded via <script src> so it works from file:// too -->
+    <script th:if="${externalDataMode}" th:src="${externalDataFilename}"></script>
     <script th:utext="${inlineJs}">
     </script>
     <script th:inline="javascript">
         /*<![CDATA[*/
         var chartData = /*[[${chartData}]]*/ '{}';
         if (typeof chartData === 'string') {
-            chartData = JSON.parse(chartData);
+            try { chartData = JSON.parse(chartData); } catch (e) { chartData = {}; }
+        }
+
+        /**
+         * One block at the top of the page, one <div> per line of text.
+         *
+         * The `kind` becomes a data attribute so a test can distinguish "the payload is
+         * missing" from "the payload belongs to someone else" without matching on prose.
+         * Those two cases mean very different things and their wording will drift.
+         *
+         * Defined for every report, not only external-data ones: the server-metrics tab (M5)
+         * raises the same banner over a refused payload in an inline report.
+         */
+        function wirBanner(kind, background, color, lines) {
+            var box = document.createElement('div');
+            box.setAttribute('data-wir-payload-error', kind);
+            box.style.padding = '12px';
+            box.style.background = background;
+            box.style.color = color;
+            box.style.textAlign = 'center';
+            box.style.fontFamily = 'sans-serif';
+            for (var i = 0; i < lines.length; i++) {
+                var line = document.createElement('div');
+                line.textContent = lines[i];
+                if (i === 0) {
+                    line.style.fontWeight = '600';
+                }
+                box.appendChild(line);
+            }
+            document.body.insertBefore(box, document.body.firstChild);
         }
         /*[# th:if="${externalDataMode}"]*/
-        fetch('web-insight-data.json').then(function(r){return r.json();}).then(function(data){
-            chartData = data;
-            if (typeof initCharts === 'function') initCharts(chartData);
-        });
-        /*[/]*/
-        /*[# th:unless="${externalDataMode}"]*/
-        if (typeof initCharts === 'function') {
-            initCharts(chartData);
+        // Own statement, on its own line. A Thymeleaf inline expression must not sit in the
+        // middle of a concatenation: written as `'x ' + /*[[${v}]]*/ 'default' + ' y'` the
+        // inlining consumes the trailing `+` along with the placeholder literal and emits
+        // `'x ' + "value" ' y'`, which is a SyntaxError that blanks the whole report.
+        var dataFileName = /*[[${externalDataFilename}]]*/ 'web-insight-data.js';
+        var pageRunId = /*[[${runId}]]*/ '';
+        var pageRunName = /*[[${runTestName}]]*/ '';
+        if (window.__WIR_DATA__) {
+            chartData = window.__WIR_DATA__;
+            // Presence was the only thing ever checked, so a payload belonging to a DIFFERENT run
+            // was loaded and rendered without complaint — this page's header cards and sampler
+            // table describing one run while every chart described another.
+            //
+            // This used to warn and render anyway, on the reasoning that stale charts with a
+            // banner beat no charts. That was the wrong trade and it is reversed deliberately:
+            // a chart from another run is WRONG OUTPUT, and a banner above a plausible-looking
+            // chart is read by nobody once the numbers below it look reasonable. Wrong numbers
+            // that are trusted are worse than absent numbers that are explained.
+            //
+            // A payload with NO id is refused too, and that is the whole point rather than a
+            // stricter reading of it. The check used to require `chartData.runId` to be present
+            // before comparing, which meant the one payload that cannot prove it belongs here —
+            // an UNIDENTIFIED one — was the one payload that walked through. That is reachable
+            // without contriving anything: this run's payload rename can fail while the HTML's
+            // succeeds (ArtifactPublication.publish treats only the HTML as critical), leaving
+            // a NEW page beside an OLD web-insight-data.js; and a payload written by a plugin
+            // from before run identity existed has no id at all. Both drew twelve charts from
+            // another run under this run's headings, silently. Every payload this plugin writes
+            // carries an id — ReportDataSerializer puts it first in the map — so demanding one
+            // costs nothing a correct set can pay.
+            if (pageRunId && chartData.runId !== pageRunId) {
+                wirIdentityMismatch(chartData);
+                chartData = null;
+                wirAssertsUnavailable(dataFileName + ' belongs to a different test run');
+            }
+        } else {
+            // A missing payload is a different failure: nothing is WRONG here, it is only
+            // absent, so it keeps its own message and the page still renders what it has.
+            //
+            // The gate is named explicitly. This said only "charts unavailable", which is the
+            // smaller half of what is missing: the rules, the verdicts, the findings and the
+            // whole Asserts tab travel in the same file, and a reader told only about charts
+            // has no reason to suspect the gate is gone too.
+            wirBanner('missing', '#fef2f2', '#991b1b', [
+                'Could not load ' + dataFileName + ' — charts and the Asserts tab are ' +
+                'unavailable. Keep it next to this HTML file.'
+            ]);
+            wirAssertsUnavailable('Could not load ' + dataFileName);
+        }
+
+        /**
+         * Tell the Asserts and Server tabs they have nothing to show, rather than letting them
+         * disappear. `cause` is what went wrong with the sidecar; each tab finishes the sentence
+         * with what that cost IT — the Server tab used to be handed the Asserts tab's sentence
+         * verbatim, and said "the assert rules could not be loaded" beside a server chip.
+         *
+         * Guarded because the inlined report.js is a separate <script> and an error in it would
+         * otherwise take this block down with it — and this block is the one that explains why
+         * the page is degraded.
+         */
+        function wirAssertsUnavailable(cause) {
+            try {
+                if (window.WIR && WIR.asserts && WIR.asserts.unavailable) {
+                    WIR.asserts.unavailable(cause + ', so the assert rules and their verdicts could not be loaded.');
+                }
+                /* The Server tab travels in the same payload and dies the same death. Told
+                   together because they fail together. When the sidecar is FOREIGN, chartData is
+                   nulled and initCharts is never called, so neither module's init() runs and both
+                   panes would otherwise keep the template's "the scripts did not run" text —
+                   which is false, and points a reader at the wrong problem. When it is MISSING,
+                   initCharts still runs on the inline '{}' placeholder so the other tabs render
+                   what they have; that is why WIR.serverKpis.init() keeps a reason set here when
+                   the data it is handed carries no runId, rather than reading "{}" as a run that
+                   declared no server metrics. */
+                if (window.WIR && WIR.serverKpis && WIR.serverKpis.unavailable) {
+                    WIR.serverKpis.unavailable(cause + ', so the server metrics and their verdicts could not be loaded.', cause);
+                }
+            } catch (e) { /* the banner above is the load-bearing message */ }
+        }
+
+        /**
+         * Refuse the payload: say why, name both runs, and leave no chart behind.
+         *
+         * Built with createElement and textContent rather than innerHTML. Every value here
+         * comes from a file on disk that this page did not write — that is the entire premise
+         * of the check — so the one place that reports a foreign payload must not be the place
+         * that executes it.
+         */
+        function wirIdentityMismatch(foreign) {
+            wirBanner('mismatch', '#fef2f2', '#991b1b', [
+                'This report cannot show its charts.',
+                'It expected chart data from "' + (pageRunName || 'this run')
+                    + '" (run ' + pageRunId + '), but ' + dataFileName + ' contains data from "'
+                    + (foreign.runTestName || 'another run') + '" (run '
+                    + (foreign.runId || 'unknown') + ').',
+                'The summary, sampler and error tables below are this run’s and are correct. '
+                    + 'The charts have been withheld rather than drawn from the wrong run. '
+                    + 'Regenerate this report, or give each run its own output directory.'
+            ]);
+            // The panes themselves, so nothing downstream can quietly fill them in later.
+            var panes = document.querySelectorAll('.chart-container');
+            for (var i = 0; i < panes.length; i++) {
+                panes[i].textContent = 'Chart withheld — ' + dataFileName
+                    + ' belongs to a different test run.';
+                panes[i].style.display = 'flex';
+                panes[i].style.alignItems = 'center';
+                panes[i].style.justifyContent = 'center';
+                panes[i].style.color = '#991b1b';
+                panes[i].style.background = '#fef2f2';
+                panes[i].style.textAlign = 'center';
+                panes[i].style.padding = '12px';
+            }
         }
         /*[/]*/
+        if (chartData && typeof initCharts === 'function') {
+            initCharts(chartData);
+        }
         /*]]>*/
     </script>
 </body>

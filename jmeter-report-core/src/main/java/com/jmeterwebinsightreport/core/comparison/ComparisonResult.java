@@ -45,10 +45,22 @@ public class ComparisonResult {
         }
 
         List<SamplerDiff> diffs = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
         if (current.getSamplerStatistics() != null) {
             for (SamplerStatistics curr : current.getSamplerStatistics()) {
                 SamplerStatistics base = baseMap.get(curr.getSamplerName());
                 diffs.add(new SamplerDiff(curr.getSamplerName(), base, curr, thresholds));
+                seen.add(curr.getSamplerName());
+            }
+        }
+
+        // Samplers present in the baseline but absent from the current run. Iterating only
+        // over `current` dropped them entirely: a sampler whose requests all failed to
+        // dispatch simply disappeared, with no diff, no flag, and no way for
+        // hasRegressions() to notice that a whole endpoint stopped being exercised.
+        for (Map.Entry<String, SamplerStatistics> entry : baseMap.entrySet()) {
+            if (!seen.contains(entry.getKey())) {
+                diffs.add(new SamplerDiff(entry.getKey(), entry.getValue(), null, thresholds));
             }
         }
         return diffs;
@@ -70,6 +82,8 @@ public class ComparisonResult {
         private final Double deltaThroughput;
         private final boolean regression;
         private final boolean isNew;
+        /** Present in the baseline but gone from the current run. */
+        private final boolean removed;
 
         public SamplerDiff(String samplerName, SamplerStatistics baseline, SamplerStatistics current,
                            ComparisonThresholds thresholds) {
@@ -77,8 +91,9 @@ public class ComparisonResult {
             this.baseline = baseline;
             this.current = current;
             this.isNew = (baseline == null);
+            this.removed = (current == null);
 
-            if (baseline != null) {
+            if (baseline != null && current != null) {
                 this.deltaMean = current.getMeanResponseTime() - baseline.getMeanResponseTime();
                 this.deltaP95 = current.getPercentile95() - baseline.getPercentile95();
                 this.deltaP99 = current.getPercentile99() - baseline.getPercentile99();
@@ -118,12 +133,15 @@ public class ComparisonResult {
                 }
                 this.regression = regressed;
             } else {
+                // New (no baseline) or removed (no current): no deltas to compute. A removed
+                // sampler counts as a regression — an endpoint that stopped being exercised
+                // at all is precisely the kind of change a pipeline gate should catch.
                 this.deltaMean = null;
                 this.deltaP95 = null;
                 this.deltaP99 = null;
                 this.deltaErrorRate = null;
                 this.deltaThroughput = null;
-                this.regression = false;
+                this.regression = (current == null);
             }
         }
 
@@ -137,17 +155,21 @@ public class ComparisonResult {
         public Double getDeltaThroughput() { return deltaThroughput; }
         public boolean isRegression() { return regression; }
         public boolean isNew() { return isNew; }
+        public boolean isRemoved() { return removed; }
 
         /**
          * Get percentage change for a delta. Positive = worse (for response times).
          */
+        // The deltas are null for BOTH a new sampler (no baseline) and a removed one (no
+        // current), so these must guard on the delta itself — checking only `baseline` let a
+        // removed sampler through and unboxed a null Double.
         public double getP95PctChange() {
-            if (baseline == null || baseline.getPercentile95() == 0) return 0;
+            if (deltaP95 == null || baseline == null || baseline.getPercentile95() == 0) return 0;
             return (deltaP95 / baseline.getPercentile95()) * 100.0;
         }
 
         public double getMeanPctChange() {
-            if (baseline == null || baseline.getMeanResponseTime() == 0) return 0;
+            if (deltaMean == null || baseline == null || baseline.getMeanResponseTime() == 0) return 0;
             return (deltaMean / baseline.getMeanResponseTime()) * 100.0;
         }
     }
