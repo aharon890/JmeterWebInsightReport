@@ -1,0 +1,27 @@
+JMeter Web Insight Report
+Copyright 2026 aharon890 (https://github.com/aharon890/JmeterWebInsightReport)
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The plugin JAR (jmeter-web-insight-report-*.jar) bundles the following third-party
+software, relocated under com.jmeterwebinsightreport.shaded, and the HTML reports it
+writes inline Apache ECharts:
+
+  Apache ECharts 5.5.0                    Apache License 2.0
+  Thymeleaf 3.1.5                         Apache License 2.0
+  AttoParser 2.0.7                        Apache License 2.0
+  Unbescape 1.1.6                         Apache License 2.0
+  OGNL 3.3.4                              Apache License 2.0
+  Javassist 3.29.0-GA                     Apache License 2.0 (one of its MPL 1.1 /
+                                          LGPL 2.1 / Apache 2.0 tri-licence options)
+  t-digest 3.3                            Apache License 2.0
+
+Jackson, SLF4J and Apache Commons Math are used at runtime from JMeter's own lib/
+directory and are not bundled.
+
+-------------------------------------------------------------------------------
+Apache ECharts
+Copyright 2017-2024 The Apache Software Foundation
+
+This product includes software developed at
+The Apache Software Foundation (https://www.apache.org/).
