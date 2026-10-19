@@ -105,7 +105,6 @@ Low:
   breaks it (the raw `NOT_JUDGED` bug above).
 - Stale comments:
   - AssertionValidator.java:22-24
-  - report.js:22923 (4.0.4): the wizard's sections "wait for Aaron"
   - the header comments of `run-all-tests.sh`, `run-regression.sh` and `run-title-junit-tests.sh`
   - `run-sanity.sh:16` (the pre-push hook consumes no exit code; it runs no tests) and `:56-57`
     ("the only place they still run": `ci.yml` runs them too)

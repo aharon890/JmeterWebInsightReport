@@ -19472,7 +19472,7 @@ WIR.serverKpis = (function () {
        in full — that is the moment a reader needs the per-series error, and otherwise the table is
        plumbing. */
     /* What it does NOT show by default (SF46): the backend's type and its URL, recording directory
-       or CSV path. "No provenance in the GUI" (Aaron, 2026-10-03) — how the metrics were fetched
+       or CSV path. "No provenance in the GUI" (decided 2026-10-03) — how the metrics were fetched
        is the collector's business, and both stay in server-metrics.json. They are the Source
        cell's tooltip, for whoever has to find the file. What a reader needs to judge the series
        stays: the status and its error, the step, and the clock offset he asked to see here. */
@@ -19787,7 +19787,7 @@ WIR.serverKpis = (function () {
 
     /* ---- Value over time's granularity (SF39, SF42, Q5 b) ---------------------
      *
-     * The panel's own selector, "like the Samplers tab's" (Aaron, 2026-10-03): the collection's
+     * The panel's own selector, "like the Samplers tab's" (decided 2026-10-03): the collection's
      * step by default — every point the collector fetched, no folding — or one rung of the
      * report's ladder coarser than the step and shorter than the judged window. A rung as long as
      * the window folds the whole run into one point, which is the full-window wash this replaced,
@@ -22920,7 +22920,7 @@ WIR.serverKpis = (function () {
            make, then how the series is reduced, and the details last. Id led, as a required field
            with a value-looking placeholder, and the Fail band sat below the fold at 1440×900; the id
            is derived when left empty (SF27), so it waits at the bottom with the description. Not the
-           design's TARGET / METRIC / CRITERIA / PREVIEW / DETAILS sections, which wait for Aaron. */
+           design's TARGET / METRIC / CRITERIA / PREVIEW / DETAILS sections, which are on hold. */
         return retiredKeysHtml() +
 
             '<label class="wir-field"><span>Component</span>' +
