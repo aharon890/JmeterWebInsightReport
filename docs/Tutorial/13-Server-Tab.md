@@ -189,7 +189,7 @@ Points that cost people a build:
 
 ![Server tab](images/61-server-overview.png)
 
-From the top: the judged window, the Collection line, the actions, one filter row, the findings,
+From the top: the judged window, the Collection line, the actions, one filter row, any findings,
 and then one card per component holding its server asserts. The client filter bar (samplers,
 metric, granularity, time range) is hidden on this tab, because none of it applies here. It comes
 back on the other tabs.

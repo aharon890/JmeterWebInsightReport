@@ -74,6 +74,25 @@ async function main() {
     }
   }
 
+  // The box around several elements, for a dropdown that is positioned outside its parent: an
+  // element shot of the parent alone cut the open menu off and showed only its button.
+  async function shotAround(page, selectors, name, pad = 8) {
+    const boxes = [];
+    for (const s of selectors) {
+      const b = await page.locator(s).first().boundingBox();
+      if (b) boxes.push(b);
+    }
+    if (!boxes.length) { skipped.push(name); console.log(`  SKIP ${name}`); return; }
+    const x = Math.max(0, Math.min(...boxes.map(b => b.x)) - pad);
+    const y = Math.max(0, Math.min(...boxes.map(b => b.y)) - pad);
+    const right = Math.max(...boxes.map(b => b.x + b.width)) + pad;
+    const bottom = Math.max(...boxes.map(b => b.y + b.height)) + pad;
+    await settle(page);
+    await page.screenshot({ path: `${IMG}/${name}.png`, clip: { x, y, width: right - x, height: bottom - y } });
+    taken++;
+    console.log(`  ${name}.png`);
+  }
+
   async function tab(page, name) {
     await page.click(`.tab-btn[data-tab="${name}"]`);
     await page.waitForTimeout(600);
@@ -130,7 +149,7 @@ async function main() {
   // Filter menu expanded
   await page.click('#filterBarToggle');
   await page.waitForTimeout(300);
-  await shotEl(page, '.filter-bar-toggle-wrapper', '06b-filter-menu-expanded');
+  await shotAround(page, ['.filter-bar-toggle-wrapper', '#filterBarMenu'], '06b-filter-menu-expanded');
   await page.click('#filterBarToggle'); // close
 
   // Palette buttons
@@ -381,22 +400,43 @@ async function main() {
   await shotEl(page, '.wir-server-chip', '60-server-chip');
   await shotEl(page, '#serverStrip .wir-server-strip', '59-summary-server-card');
   await tab(page, 'server');
-  await shot(page, '61-server-overview');
   await shotEl(page, '.wir-component-card .wir-component-head', '62-server-component-head');
-  await shotEl(page, '#serverKpiTable', '63-server-board');
 
   // An open row: the series over time, and per instance
   await page.click('tr.wir-kpi-row:has(.wir-kpi-name:text-is("lag-spike")) .wir-row-toggle');
   await page.waitForTimeout(800);
   await shotEl(page, '.wir-chart-row', '64-server-chart');
 
-  await shotEl(page, '.wir-collection', '65-server-collection');
-
   // + Add server assert opens the editor
   await page.click('.wir-server-actions .wir-btn-primary');
   await page.waitForTimeout(500);
   await shotEl(page, '#serverEditor .wir-slideover', '66-server-editor');
 
+  await c.close();
+
+  // ==========================================
+  // The published example: the Server tab's overview, board and Collection panel. E26 renders
+  // every state on purpose — a typo'd reducer, a source failed on a zone-less CSV row — which is
+  // what a test fixture is for and not what the first picture of the tab should show.
+  // ==========================================
+  console.log('=== reportExample: Server ===');
+  c = await ctx();
+  page = await c.newPage();
+  {
+    const url = `file://${PROJECT}/reportExample/web-insight-report.html`;
+    await page.goto(url, { waitUntil: 'networkidle' });
+    await page.evaluate(() => {
+      Object.keys(localStorage).filter(k => k.startsWith('wir_')).forEach(k => localStorage.removeItem(k));
+    });
+    await page.goto(url, { waitUntil: 'networkidle' });
+  }
+  await tab(page, 'server');
+  await shot(page, '61-server-overview');
+  await shotEl(page, '#serverKpiTable', '63-server-board');
+  // A source that answered starts the panel closed; the shot is of what it holds.
+  await page.evaluate(() => { const d = document.querySelector('details.wir-collection'); if (d) d.open = true; });
+  await page.waitForTimeout(200);
+  await shotEl(page, '.wir-collection', '65-server-collection');
   await c.close();
 
   // ==========================================
