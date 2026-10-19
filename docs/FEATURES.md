@@ -378,10 +378,12 @@ Full reference with the meaning and the fix for each:
   rule, a target that matched nothing, a metric this run cannot produce, a rule the file got
   wrong — is `NOT_JUDGED` with a `reason`: `DISABLED`, `NO_MATCH`, `NO_VALUE`, `INVALID_RULE`.
   Three more reasons belong to server asserts only and never appear on a client rule:
-  `SOURCE_FAILED` (the series could not be collected: the source refused or never answered it, or
-  a CSV row of it could not be read; the reason says which), `LOW_COVERAGE` (data arrived below the coverage
+  `SOURCE_FAILED` (the series could not be collected: the source refused or never answered it, a
+  placeholder could not be resolved, a catalogue metric has no Prometheus query, or a CSV row of it
+  could not be read; the reason says which), `LOW_COVERAGE` (data arrived below the coverage
   floor, measured over the collected window), `LOAD_NOT_ACHIEVED` (the load it depends on was not
-  established: the client load rule it names FAILED, or was not judged at all). One vocabulary
+  established: the client load rule it names in `requiresLoad` FAILED or was not judged at all, or
+  the one it names in `divideBy` was not judged; a `divideBy` rule that FAILED still divides). One vocabulary
   for both kinds of gate, so a server assert and a client rule that matched nothing say the same
   word.
 - **`NOT_JUDGED` never moves the verdict in either direction.** It cannot fail a run and cannot
@@ -408,9 +410,10 @@ Full reference with the meaning and the fix for each:
   worst judged rule — the same function both times, so a badge and the row it summarises
   cannot be computed by two different rules. A rule that measured eleven samplers and could not
   measure a twelfth reports the worst of the eleven, so a genuine `FAIL` among them stands.
-- **Nothing gated ≠ passed.** A gate of nothing but NOT_JUDGED rules, or no rules at all,
-  reports NOT EVALUATED, and a run with no rules at all reports `assertsEvaluated: false`. It was
-  reported, not judged.
+- **Nothing gated ≠ passed.** A gate of nothing but NOT_JUDGED rules reports NOT EVALUATED
+  (`gate.status` `NOT_EVALUATED`). A run with no rules at all has no gate: the header reads
+  NO ASSERTS DECLARED, and the JSON reports `assertsEvaluated: false` unless server asserts were
+  judged. Either way the top-level `status` is `UNKNOWN`. It was reported, not judged.
 - **There is deliberately no "inconclusive".** In CI a fifth status must resolve to pass or
   fail anyway — as a failure it is FAIL with extra words, as a pass it is the silent green this
   feature exists to prevent. Where the honest answer is "the question was wrong", the report

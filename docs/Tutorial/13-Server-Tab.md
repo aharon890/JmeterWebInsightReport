@@ -216,8 +216,10 @@ The Summary tab carries a **Server** card under the Asserts card, in the same sh
 
 Before anything is collected (step 1's report) the card reads `NOT COLLECTED`, and says how many
 server asserts were declared. Over a refused payload it reads `REFUSED`. The header chip says the
-same word. A run that declared no server asserts has no card at all: it has not passed anything,
-so nothing claims it did.
+same word. On a large report whose data file (`<name>-data.js`) did not load, the card reads
+`UNAVAILABLE` and says the server verdict in the header came from the run itself and is correct.
+A run that declared no server asserts has no card at all: it has not passed anything, so nothing
+claims it did.
 
 ### The header chip
 
@@ -241,10 +243,10 @@ same thing (see [Export & CI/CD](11-Export-Integration.md#when-server-asserts-ar
 component the build depended on that decided nothing is worse news than a warning. Clicking the chip
 opens this tab.
 
-The client badge does not change. On a run with server asserts and no client rules it reads
-`SERVER ASSERTS ONLY` once the server asserts are judged, and `ASSERTS NOT EVALUATED` before that
-(step 1's report, or over a refused payload). Either way it tells you to look at the chip rather
-than claiming a pass.
+The client badge does not change. When no client rule gave a verdict (the file declares none, or
+none of them decided anything), it reads `SERVER ASSERTS ONLY` once the server asserts are judged,
+and `ASSERTS NOT EVALUATED` before that (step 1's report, or over a refused payload). Either way it
+tells you to look at the chip rather than claiming a pass.
 
 The CI/CD JSON's top-level **`serverStatus`** is the same fold, so the chip and the JSON cannot
 disagree:
@@ -290,7 +292,7 @@ line reads that run as a pass.
 
 **Window judged** comes first: the run's first and last sample from the JTL, marked
 `ramp-up excluded` when a ramp-up was given and `collection.excludeRampUp` is on (the default).
-Before anything is collected it reads `nothing collected yet`.
+Before anything is collected, and over a refused payload, it reads `nothing collected yet`.
 
 Under it, the **Collection** is one line, such as
 `Collection: metrics PARTIAL · collected 2026-10-03 12:35:40 UTC+03:00`. It opens to the
@@ -366,7 +368,10 @@ The card's header reads, left to right:
 
 Once you edit server asserts on the page (or a client rule one of them names in `requiresLoad` or
 `divideBy`), a badge whose rows now fold to something else also shows `→ PASS if saved` (or
-whatever the rows now add up to), and a note in the header explains the arrow. The build's verdict
+whatever the rows now add up to), and a note in the header explains the arrow. It reads
+`→ ? if saved` when an assert on the component has no verdict on the page (it needs re-collection,
+or its series reached the page capped), so the fold cannot be known, and `→ not declared if saved`
+on a component the document no longer declares. The badge's tooltip says which. The build's verdict
 and the edited one stay visibly separate. A page nobody has edited never shows an arrow, and
 neither does a file that declares components and no server asserts yet: the next run would judge
 nothing there.
@@ -435,17 +440,24 @@ reason, and the board shows the reason with the sentence that explains it undern
 | `DISABLED` | `DISABLED` | `"enabled": false`. Not collected either | No |
 | `UNMATCHED` | `NO_MATCH` | The source answered and the query matched no series (for a CSV: no row names this component and metric) | No, it is counted and reported |
 | `NO VALUE` | `NO_VALUE` | No point fell inside the judged window, the reducer had nothing to say, or a `divideBy` divisor measured zero | No |
-| `INVALID` | `INVALID_RULE` | The file is wrong: an unknown component or catalogue metric, `metric` and `query` both or neither, a `custom` component with no `query`, an unreadable band, an unknown reducer, a retired key. The sentence names it | **Yes**, under `failonerror` |
+| `INVALID` | `INVALID_RULE` | The file is wrong, or the payload was collected for another version of it. In the file: an unknown component, component type or catalogue metric; `metric` and `query` both or neither; a `custom` component with no `query`; no band at all, or an unreadable one; an unknown reducer, or a tolerance it cannot take; a retired key. Against the run: a `requiresLoad` or `divideBy` that names no client rule, or a rule that is not a throughput rule; a `divideBy` rule that matched more than one sampler; a `sustainedFor` longer than one step that is not a whole number of the collection's steps. Against the payload: no series was collected for this assert's query (the file changed after `wir-collect` ran). The sentence names which | **Yes**, under `failonerror` |
 | `SOURCE FAILED` | `SOURCE_FAILED` | The series could not be fetched: authentication, DNS, timeout, a 5xx, a placeholder the collector could not resolve, a catalogue metric with no Prometheus query asked of Prometheus or a recording, or a CSV row of this series that could not be read | **Yes**, under `failonerror` |
 | `LOW COVERAGE` | `LOW_COVERAGE` | Data came back, but below the coverage floor | **Yes**, under `failonerror` |
-| `LOAD NOT ACHIEVED` | `LOAD_NOT_ACHIEVED` | The client load rule it `requiresLoad` FAILED or was not judged, or the rule it `divideBy` was not judged | No, the load rule already carries the FAIL |
+| `LOAD NOT ACHIEVED` | `LOAD_NOT_ACHIEVED` | The client load rule it `requiresLoad` FAILED or was not judged, or the rule it `divideBy` was not judged. A `divideBy` rule that FAILED still divides | Not by itself. A load rule that FAILED: that FAIL is the client verdict, and exits 1 only under `failonassert`. A load rule that was not judged: that rule's own reason decides, so an `INVALID` client rule exits 1 under `failonerror`, and a disabled, unmatched or unmeasurable one fails nothing |
+
+On a report with no collected metrics (step 1's report, or one whose payload was refused), a server
+assert has no verdict to show:
+
+| Board reads | Means |
+|---|---|
+| `NOT EVALUATED` | The report has no collected metrics to judge the assert against. On step 1's report the line under the row reads *Not collected yet — run wir-collect with this file against this run's results, then regenerate the report to judge this server assert.* Over a refused payload it reads *Not judged — the server-metrics payload given to this report was refused, so nothing collected answers for this server assert.*, and the tab's notice says why it was refused. What needs no metrics is still decided on such a report: a disabled assert reads `DISABLED`, a refused one `INVALID`, one stood down by its load rule `LOAD NOT ACHIEVED`. A `NOT EVALUATED` row sorts last in its card, and its chip is drawn in the same neutral style as `DISABLED` |
 
 Two more states exist only on the page, while you edit:
 
 | Board reads | Means |
 |---|---|
-| `NEEDS RE-COLLECTION` | Nothing collected answers for the assert: you changed what it fetches (its component, metric or query), or it is new on this page and this collection holds nothing for it. For a catalogue metric that means the collector asked for it and got no data, which usually means the exporter does not publish it. The verdict is withheld, and the reason row says which case it is. Save and re-run `wir-collect` |
-| `NOT RE-JUDGED` | The series reached the page capped, and the edited assert is not the one the build judged, so the page will not estimate. What needs no points is still decided live: a refused assert, its load rule, the series' collection status, a `sustainedFor` the step cannot hold. Save and run `jmeter -g` with the same payload |
+| `NEEDS RE-COLLECTION` | Nothing collected answers for the assert: you changed what it fetches (its component, metric or query, or its component's `match`), or it is new on this page and this collection holds nothing for it. For a catalogue metric that means the collector asked for it and got no data, which usually means the exporter does not publish it. The verdict is withheld, and the reason row says which case it is. Save and re-run `wir-collect` |
+| `NOT RE-JUDGED` | The series reached the page capped, and the build's verdict no longer answers for the assert: the assert is new or edited, a client rule it names in `requiresLoad` or `divideBy` was edited, or the block around it changed what it is judged under (the run-level `requiresLoad`, say). The page will not estimate from the thinned points. What needs no points is still decided live: a disabled or refused assert, its load rule, the series' collection status, a `sustainedFor` the step cannot hold. Save and run `jmeter -g` with the same payload |
 
 The report's own reasons and words are shared with the client side. See
 [Why a rule was not judged](10-Asserts-Apdex.md#why-a-rule-was-not-judged).
@@ -805,7 +817,7 @@ component's `match` expanded. It is an **exact lookup, never an estimate**:
 | `Collected with status EMPTY: … reads UNMATCHED until it is collected again.` | It was collected and will not be judged on its numbers, with the reason |
 | `Not collected. Download the file and re-run wir-collect to fetch it.` | Nothing collected answers for this text. The page will not guess |
 | `Collecting again will not help: the query has an invisible character at its start (U+00A0) …` | The query starts or ends with an invisible character that is not trimmed: a no-break or zero-width space, a bidi mark, a soft hyphen, a variation selector, a tag character or a C1 control. The warning names it by its code point. No source returns that series, so delete the character rather than re-collect. Said only when nothing came back for that text: a series that returned points (a source whose name carries the same character, or an emoji that ends in a variation selector) is answered with the `Collected` line instead |
-| `Nothing has been collected for this report yet.` | Step 1's report: no payload |
+| `Nothing has been collected for this report yet.` | The report has no collected metrics: step 1's report, or a payload that was refused |
 | `Write a query, or choose a catalogue metric.` | Custom query… with the Query box still empty: nothing to look up yet |
 
 Editing what an existing server assert fetches turns its row to `NEEDS RE-COLLECTION`. A verdict
@@ -2219,7 +2231,7 @@ You rarely need to open it, but it is plain JSON:
 | `sources[].from`, `layout`, `timeZone`, `columns`, `component` | How a CSV was read: `--from`, `--layout wide`, `--time-zone`, `--csv-columns` and `--component`, each only when given |
 | `series[]` | One per distinct component and query. `component` says which component it was collected for, and `metric` which catalogue metric it is, when it is one |
 | `series[].readAs` | Only on a series read under a tool's name (`--from`): the tool, its name for the metric, the kind of number and the scale applied |
-| `series[].status` | `OK`, `PARTIAL` (gaps, above the floor), `INSUFFICIENT` (below it → `LOW_COVERAGE`), `EMPTY` (→ `NO_MATCH`), `FAILED` (→ `SOURCE_FAILED`) |
+| `series[].status` | `OK`, `PARTIAL` (gaps, above the floor), `INSUFFICIENT` (below it → `LOW_COVERAGE`), `EMPTY` (→ `NO_MATCH`), `FAILED` (→ `SOURCE_FAILED`). A series with no status is read as `NOT_REQUESTED` (→ `INVALID_RULE`): nothing in the collected file asked for it. `wir-collect` always writes one |
 | `points` | `[timestamp, value]`, the timestamp a whole epoch millisecond on the JTL's clock |
 
 The report refuses a payload that is missing, unparseable, of another `schema`, of another `runId`,

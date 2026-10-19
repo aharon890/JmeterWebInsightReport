@@ -100,7 +100,12 @@ runners print the real numbers.
 | 4.21 | The ⊕ says "Add another" where a rule already exists | [x] | Playwright asserts-seeding |
 | 4.22 | A cell is marked as soon as a rule is drafted for it | [x] | Playwright asserts-seeding |
 | 4.23 | A capped (>200 match) result set still judges every matched sampler | [x] | Playwright asserts-seeding |
-| 4.24 | Header badge reads ASSERTS PASS / WARNING / FAIL | [x] | header-global, asserts-apdex, ThymeleafReportRendererTest |
+| 4.24 | Header badge reads ASSERTS PASS / WARNING / FAIL | [~] | PASS (E10) and FAIL (E11): header-global, asserts-apdex. ASSERTS WARNING: no fixture's client gate lands on WARN |
+| 4.25 | Header badge reads NO ASSERTS DECLARED on a run with no rules | [x] | header-global (E02) |
+| 4.26 | Header badge reads ASSERTS NOT EVALUATED when the declared asserts decided nothing | [ ] | computed only (verdict-block.test.js); no fixture renders it |
+| 4.27 | Header badge reads SERVER ASSERTS ONLY on a run whose server asserts alone were judged | [ ] | E27 renders it; no test reads it |
+| 4.28 | A rule that reads NO VALUE renders as such | [ ] | computed only (asserts-pure.test.js, the parity vectors); no fixture has one, client or server |
+| 4.29 | Server board on the interim report and over a refused payload (rows NOT EVALUATED with their reason line, chip `Server · NOT COLLECTED` / `REFUSED`) | [~] | server-tab, external-data — over a rewritten or spliced copy of E26/E19 only; no spec opens a report Java rendered in that state |
 
 ## 5. Annotations Configuration
 

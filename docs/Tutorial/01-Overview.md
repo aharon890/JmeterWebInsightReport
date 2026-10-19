@@ -109,8 +109,9 @@ The report has 3 main areas:
     it to open the Asserts tab
   - `NO ASSERTS DECLARED` (nothing was declared — reported, not judged)
   - `ASSERTS NOT EVALUATED` (asserts were declared and none of them judged anything — a renamed
-    sampler, a metric this run could not produce, everything parked, or only server asserts on a
-    report that has not judged them: the interim report, or one whose payload was refused)
+    sampler, a metric this run could not produce, a rule the file got wrong, everything parked, or
+    only server asserts on a report that has not judged them: the interim report, or one whose
+    payload was refused)
   - `SERVER ASSERTS ONLY` (no client rule gave a verdict and the server asserts were judged — the
     server chip beside it carries their verdict)
 
