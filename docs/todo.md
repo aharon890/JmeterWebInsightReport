@@ -18,8 +18,9 @@ Open work as of 4.0.1. Line numbers are at 4.0.1; `report.js` is
    refuses it while DEFAULT + failonerror passes. Two id-less rules deriving one id: rename, CONFIG
    ERROR, or warning?
 6. **Appended JTL** (`-l` reused): warning only, or CONFIG ERROR?
-7. **Jackson.** 11 jackson-databind alerts (#4–#14) and Dependabot PR #9 (2.16.1 → 2.18.11). Jackson
-   is JMeter's `provided` copy and is not shipped; PR #6 was closed for that reason.
+7. **Jackson alerts.** Jackson is pinned to 2.16.1, JMeter 5.6.3's own `provided` copy, and
+   Dependabot ignores it (`.github/dependabot.yml`). Its alerts are dismissed as "not shipped";
+   revisit only when the JMeter version moves.
 8. **spec-author agent:** narrow `Bash(node:*)` to the Playwright CLI?
 9. **Config tier:** parallelise it (medium work)?
 

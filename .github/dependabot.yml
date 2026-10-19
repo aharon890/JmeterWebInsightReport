@@ -1,0 +1,15 @@
+version: 2
+updates:
+  - package-ecosystem: "maven"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # No version-update PRs: this entry exists only to carry the ignore below. Without the
+    # limit, a maven entry would open update PRs for every dependency.
+    open-pull-requests-limit: 0
+    ignore:
+      # Jackson is provided by JMeter (lib/jackson-*-2.16.1.jar in 5.6.3) and never shipped in
+      # the plugin JAR. Bumping it here only makes the tests run on a Jackson users never get,
+      # and a newer databind beside JMeter's jackson-core breaks them (NoSuchMethodError).
+      # Move it only together with the JMeter version.
+      - dependency-name: "com.fasterxml.jackson.*"
