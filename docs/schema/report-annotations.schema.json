@@ -1,0 +1,504 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://aharon890.github.io/JmeterWebInsightReport/schema/report-annotations.schema.json",
+  "title": "JMeter Web Insight Report — annotations",
+  "description": "Companion file for a JMeter run: the quality gate that decides the verdict, the server asserts judged against collected server metrics, plus notes and markers the report renders. Point an editor at this schema with a \"$schema\" key to get completion and typo squiggles.",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string",
+      "default": "1.0"
+    },
+    "testNotes": {
+      "type": "string",
+      "description": "Markdown, rendered in the Notes tab and on the Summary tab."
+    },
+    "assertions": {
+      "type": "array",
+      "description": "The quality gate. Only what is declared here is ever judged; everything else the report shows is data.",
+      "items": {
+        "$ref": "#/definitions/assertion"
+      }
+    },
+    "serverMetrics": {
+      "$ref": "#/definitions/serverMetrics"
+    },
+    "samplerNotes": {
+      "type": "object",
+      "description": "Sampler name to a note, shown as an info icon beside it in the table.",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "timelineMarkers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/timelineMarker"
+      }
+    },
+    "comparisonThresholds": {
+      "$ref": "#/definitions/comparisonThresholds"
+    }
+  },
+  "definitions": {
+    "assertion": {
+      "type": "object",
+      "description": "Unknown keys are allowed on purpose. The plugin parses one specific shape and ignores anything outside it - silently, and preserving it when the report saves the file back. A schema that flagged them would put a red squiggle in your editor on the very keys the tool promises not to touch.",
+      "required": [
+        "target",
+        "metric"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique. Names the JUnit testcase and appears in every failure message. Derived from the target and metric when omitted - and a derived name is NOT written back if the report saves the file, because it is the plugin's name and not yours."
+        },
+        "description": {
+          "type": "string",
+          "description": "Carried into failure messages and the report — a good place for the contract clause this rule comes from."
+        },
+        "target": {
+          "$ref": "#/definitions/target"
+        },
+        "metric": {
+          "type": "string",
+          "description": "Case-insensitive. Any percentile strictly between p0 and p100, fractional allowed (p99.9); use min and max for the ends. median is p50, p95 is p95.0. errorRate and errorCount also take a selector: errorRate:class=protocol|nonProtocol|transport, or errorCount:code=<glob>, where * is the only special character (prefix regex: for a full expression). A metric name the engine does not know makes the rule NOT_JUDGED with reason INVALID_RULE - reported and counted, never a silent pass, and never a verdict either.",
+          "examples": [
+            "p95",
+            "p99.9",
+            "median",
+            "errorRate",
+            "mean",
+            "throughput",
+            "apdex",
+            "sampleCount",
+            "errorCount",
+            "min",
+            "max",
+            "stdDev",
+            "latency",
+            "connectTime",
+            "receivedKbPerSec",
+            "sentKbPerSec",
+            "totalSamples",
+            "duration",
+            "maxThreads",
+            "errorRate:class=nonProtocol",
+            "errorCount:code=5*"
+          ]
+        },
+        "warn": {
+          "$ref": "#/definitions/predicate"
+        },
+        "fail": {
+          "$ref": "#/definitions/predicate"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "false parks the rule without deleting it."
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "description": "What the rule judges: exactly one of sampler, samplers, match or scope. None, or more than one, makes the rule NOT_JUDGED / INVALID_RULE - picking one would judge something nobody asked for.",
+      "additionalProperties": true,
+      "properties": {
+        "sampler": {
+          "type": "string",
+          "description": "One sampler, by its exact name."
+        },
+        "samplers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Several exact names."
+        },
+        "match": {
+          "type": "string",
+          "description": "Glob, where * is the only special character and everything else is literal. Prefix with regex: for a full expression, which must match the whole sampler name.",
+          "examples": [
+            "POST /api/*",
+            "regex:GET /(search|browse).*"
+          ]
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Globs removed from what match selected. Read only beside match."
+        },
+        "scope": {
+          "enum": [
+            "overall"
+          ],
+          "description": "The run as a whole rather than any sampler."
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "sampler"
+          ]
+        },
+        {
+          "required": [
+            "samplers"
+          ]
+        },
+        {
+          "required": [
+            "match"
+          ]
+        },
+        {
+          "required": [
+            "scope"
+          ]
+        }
+      ]
+    },
+    "predicate": {
+      "type": "object",
+      "description": "Exactly one operator. The tester writes the direction, so latency, throughput and apdex share one rule shape.",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "maxProperties": 1,
+      "properties": {
+        "gt": {
+          "type": "number",
+          "description": "Breach when the value is greater than this."
+        },
+        "gte": {
+          "type": "number",
+          "description": "Breach at or above this."
+        },
+        "lt": {
+          "type": "number",
+          "description": "Breach when the value is less than this — throughput, apdex."
+        },
+        "lte": {
+          "type": "number",
+          "description": "Breach at or below this."
+        }
+      }
+    },
+    "serverMetrics": {
+      "type": "object",
+      "description": "Server asserts: what the servers should look like under this load, judged against the metrics wir-collect collected over the run's window. Where the metrics come from is a wir-collect flag, never a key here. Unknown keys are carried through a save; a retired one (sources, gates, kpis, packs) is refused by name.",
+      "additionalProperties": true,
+      "properties": {
+        "components": {
+          "type": "object",
+          "description": "What is measured, by id. Every server assert names one; there is no implicit component.",
+          "propertyNames": {
+            "not": {
+              "enum": [
+                "assertions",
+                "(no gate)"
+              ]
+            }
+          },
+          "additionalProperties": {
+            "$ref": "#/definitions/serverComponent"
+          }
+        },
+        "environments": {
+          "type": "object",
+          "description": "Named sets of vars for ${env.NAME} in queries. wir-collect --env picks one; defaultEnv otherwise.",
+          "additionalProperties": {
+            "$ref": "#/definitions/serverEnvironment"
+          }
+        },
+        "defaultEnv": {
+          "type": "string",
+          "description": "The environment used when wir-collect is given no --env. Must be one declared under environments."
+        },
+        "requiresLoad": {
+          "type": "string",
+          "description": "The default for every server assert: the id of a client throughput rule that must PASS or WARN for the assert to be judged.",
+          "examples": [
+            "load:throughput"
+          ]
+        },
+        "collection": {
+          "$ref": "#/definitions/serverCollection"
+        },
+        "asserts": {
+          "type": "array",
+          "description": "The server asserts. Only what is declared here is judged.",
+          "items": {
+            "$ref": "#/definitions/serverAssert"
+          }
+        }
+      }
+    },
+    "serverComponent": {
+      "type": "object",
+      "description": "One thing being measured. Unknown keys are carried through a save; failsBuild is retired and refused (every component can fail the build).",
+      "required": [
+        "type"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "type": {
+          "enum": [
+            "postgres",
+            "kafka",
+            "redis",
+            "host-linux",
+            "aws-ec2",
+            "oracle",
+            "influxdb2",
+            "influxdb3",
+            "jvm",
+            "http-service",
+            "kubernetes-pod",
+            "mysql",
+            "custom"
+          ],
+          "description": "A built-in catalogue type, whose metrics a server assert can name, or custom: every assert on it writes its own query."
+        },
+        "description": {
+          "type": "string",
+          "description": "The label on the badge, the header chip and the CI/CD JSON's serverComponents[].label. The id when omitted."
+        },
+        "match": {
+          "type": "string",
+          "description": "A PromQL label selector, expanded into the catalogue queries' ${match} and ${andMatch} slots to narrow them to this component's instances.",
+          "examples": [
+            "instance=\"orders-db:5432\""
+          ]
+        }
+      }
+    },
+    "serverEnvironment": {
+      "type": "object",
+      "description": "One environment. Its vars are written into every report, so they never hold a credential.",
+      "additionalProperties": true,
+      "properties": {
+        "vars": {
+          "type": "object",
+          "description": "Name to text, read in queries as ${env.NAME}.",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "serverCollection": {
+      "type": "object",
+      "description": "Run-level knobs for the collection and the judged window.",
+      "additionalProperties": true,
+      "properties": {
+        "coverageFloor": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.9,
+          "description": "Fraction 0..1 of the collected window a series must cover. Below it the assert is NOT_JUDGED / LOW_COVERAGE. A bad value warns and keeps the default."
+        },
+        "excludeRampUp": {
+          "type": "boolean",
+          "default": true,
+          "description": "Leave the ramp-up (wir-collect --rampup) out of the judged window."
+        }
+      }
+    },
+    "serverAssert": {
+      "type": "object",
+      "description": "One server assert: a component, a catalogue metric or a query of its own, a reducer and warn/fail bands. Unknown keys are carried through a save; a retired one (source, gate, assert, range, warnAt, onMissing, onLoadShortfall, loadValidity, required, scope, overlayOn, and sustainedFor, breachBudget or over outside reduce) makes it NOT_JUDGED / INVALID_RULE.",
+      "required": [
+        "component"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Names the JUnit testcase and every message. Derived from the component and the metric or query when omitted."
+        },
+        "description": {
+          "type": "string",
+          "description": "Free text, shown under the assert's name."
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "false parks the assert: DISABLED, never judged."
+        },
+        "component": {
+          "type": "string",
+          "description": "The id of a component declared under components."
+        },
+        "metric": {
+          "type": "string",
+          "description": "A catalogue metric of the component's type. It brings the query, unit, reduce and across. Write metric or query, never both.",
+          "examples": [
+            "connections.used.pct",
+            "consumer.lag.max",
+            "cpu.busy.pct"
+          ]
+        },
+        "query": {
+          "type": "string",
+          "description": "The series to judge, written out: PromQL, or the metric text of a --csv row. Required on a custom component. May use ${env.NAME} and ${run.*}. Write metric or query, never both."
+        },
+        "unit": {
+          "type": "string",
+          "description": "What the collected values are in, written beside the numbers. Converts nothing. The catalogue's for a metric."
+        },
+        "reduce": {
+          "$ref": "#/definitions/serverReduce"
+        },
+        "across": {
+          "enum": [
+            "max",
+            "min",
+            "avg"
+          ],
+          "description": "How instances fold into one number. The catalogue's for a metric, otherwise max."
+        },
+        "warn": {
+          "$ref": "#/definitions/predicate"
+        },
+        "fail": {
+          "$ref": "#/definitions/predicate"
+        },
+        "requiresLoad": {
+          "type": "string",
+          "description": "The id of a client throughput rule that must PASS or WARN for this assert to be judged; otherwise NOT_JUDGED / LOAD_NOT_ACHIEVED. Overrides the block's requiresLoad."
+        },
+        "divideBy": {
+          "type": "string",
+          "description": "The id of a client throughput rule over one target: the reduced number is divided by that rule's measured value, per unit of load."
+        },
+        "pack": {
+          "type": "string",
+          "description": "Which pack the assert came from, such as \"kafka@1\". Carried through a save; it changes nothing that is judged."
+        }
+      }
+    },
+    "serverReduce": {
+      "type": "object",
+      "description": "How a series becomes one number. Required on a query. A metric brings the catalogue's; a reduce written here replaces it whole, so it always names kind.",
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "max",
+                "min",
+                "avg",
+                "last",
+                "slope"
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^p(0*[1-9]\\d?(\\.\\d+)?|0+\\.\\d*[1-9]\\d*)$"
+            }
+          ],
+          "description": "max, min, avg, last, pN (0 < N < 100, nearest-rank, e.g. p95 or p99.9) or slope (least squares, per minute)."
+        },
+        "over": {
+          "$ref": "#/definitions/serverTolerance"
+        }
+      }
+    },
+    "serverTolerance": {
+      "type": "object",
+      "description": "On max and min only: one of sustainedFor or breachBudget, never both.",
+      "additionalProperties": false,
+      "not": {
+        "required": [
+          "sustainedFor",
+          "breachBudget"
+        ]
+      },
+      "properties": {
+        "sustainedFor": {
+          "type": "string",
+          "pattern": "^\\s*(0*[1-9]\\d*(\\.\\d+)?|0+\\.\\d*[1-9]\\d*)(ms|s|m|h)\\s*$",
+          "description": "The highest (lowest) level held for at least this long: 500ms, 30s, 2m, 1h. At least 1ms.",
+          "examples": [
+            "30s"
+          ]
+        },
+        "breachBudget": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "The level exceeded at most this fraction of the window: 2% is 0.02."
+        }
+      }
+    },
+    "timelineMarker": {
+      "type": "object",
+      "description": "Unknown keys are allowed: a marker round-trips verbatim through the report, so flagging them here would contradict what the tool does with them.",
+      "required": [
+        "timestamp",
+        "label"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "timestamp": {
+          "type": "integer",
+          "description": "Epoch milliseconds."
+        },
+        "label": {
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "info",
+            "warning",
+            "error",
+            "deployment",
+            "incident",
+            "custom"
+          ]
+        },
+        "description": {
+          "type": "string"
+        },
+        "color": {
+          "type": "string"
+        }
+      }
+    },
+    "comparisonThresholds": {
+      "type": "object",
+      "description": "What counts as a regression on the Compare tab. Percentages, except errorRateChange which is in points. Unknown keys are allowed and round-trip verbatim.",
+      "additionalProperties": true,
+      "properties": {
+        "p95PctChange": {
+          "type": "number"
+        },
+        "p99PctChange": {
+          "type": "number"
+        },
+        "meanPctChange": {
+          "type": "number"
+        },
+        "errorRateChange": {
+          "type": "number"
+        },
+        "throughputPctChange": {
+          "type": "number"
+        }
+      }
+    }
+  }
+}

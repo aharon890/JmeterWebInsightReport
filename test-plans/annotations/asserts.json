@@ -1,5 +1,5 @@
 {
-  "$schema": "https://aharon890.github.io/jmeter-web-insight-report/schema/report-annotations.schema.json",
+  "$schema": "https://aharon890.github.io/JmeterWebInsightReport/schema/report-annotations.schema.json",
   "version": "1.0",
   "testNotes": "## Assertion rules — E25\n\nEvery status the gate can produce, in one run, so the report's Asserts tab can be\nasserted against something that renders all of them.",
   "_comment": [

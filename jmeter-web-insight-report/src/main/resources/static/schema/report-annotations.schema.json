@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://aharon890.github.io/jmeter-web-insight-report/schema/report-annotations.schema.json",
+  "$id": "https://aharon890.github.io/JmeterWebInsightReport/schema/report-annotations.schema.json",
   "title": "JMeter Web Insight Report — annotations",
   "description": "Companion file for a JMeter run: the quality gate that decides the verdict, the server asserts judged against collected server metrics, plus notes and markers the report renders. Point an editor at this schema with a \"$schema\" key to get completion and typo squiggles.",
   "type": "object",
@@ -67,7 +67,7 @@
         },
         "metric": {
           "type": "string",
-          "description": "Case-insensitive. Any percentile from p50 to p99.99, fractional allowed (p99.9). median is p50, p95 is p95.0. errorRate and errorCount also take a selector: errorRate:class=protocol|nonProtocol|transport, or errorCount:code=<glob>, where * is the only special character (prefix regex: for a full expression). A metric name the engine does not know makes the rule NOT_JUDGED with reason INVALID_RULE - reported and counted, never a silent pass, and never a verdict either.",
+          "description": "Case-insensitive. Any percentile strictly between p0 and p100, fractional allowed (p99.9); use min and max for the ends. median is p50, p95 is p95.0. errorRate and errorCount also take a selector: errorRate:class=protocol|nonProtocol|transport, or errorCount:code=<glob>, where * is the only special character (prefix regex: for a full expression). A metric name the engine does not know makes the rule NOT_JUDGED with reason INVALID_RULE - reported and counted, never a silent pass, and never a verdict either.",
           "examples": [
             "p95",
             "p99.9",
@@ -123,10 +123,10 @@
         },
         "match": {
           "type": "string",
-          "description": "Glob, where * is the only special character and everything else is literal. Prefix with regex: for a full expression.",
+          "description": "Glob, where * is the only special character and everything else is literal. Prefix with regex: for a full expression, which must match the whole sampler name.",
           "examples": [
             "POST /api/*",
-            "regex:^GET /(search|browse)"
+            "regex:GET /(search|browse).*"
           ]
         },
         "exclude": {
@@ -466,6 +466,7 @@
             "warning",
             "error",
             "deployment",
+            "incident",
             "custom"
           ]
         },
