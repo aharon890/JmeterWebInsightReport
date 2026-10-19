@@ -60,7 +60,8 @@ The time-series charts support:
 - Error Timeline — scatter plot of individual errors over time
 
 **Compare tab:**
-- Baseline Comparison — current vs baseline overlay
+- Response Time Comparison — current vs baseline overlay
+- Throughput Comparison — current vs baseline overlay
 
 **Per-sampler detail view (inline in Samplers tab, configurable via dropdown):**
 - Response Time Histogram (distribution bins)
@@ -86,15 +87,17 @@ A persistent **filter bar** appears below the tabs on every tab but Server, whos
 
 When samplers are deselected:
 - Their lines disappear from all time-series charts
-- Their errors disappear from the error charts (see [Error Deep-Dive](#error-deep-dive)); the two error tables keep every row
+- Their errors disappear from the error charts (see [Error Deep-Dive](#error-deep-dive)) — unless
+  Σ Total is ticked, in which case the error charts count every sampler's errors; the two error
+  tables keep every row
 - The Summary tab's response time chart follows; the header and summary cards and the Samplers table always cover every sampler
 
 ### Filter Presets
 Save and load filter configurations:
-- **Save Preset** — saves current sampler visibility, metric, palette, line thickness, and hidden columns to localStorage
-- **Load Preset** — select from saved presets via dropdown
-- **Delete Preset** — remove saved presets
-- **Default preset** — resets all settings (visibility, metric, palette, line thickness, columns) to initial state
+- **Save** — saves current sampler visibility, metric, palette, line thickness, and hidden columns to localStorage
+- **Presets dropdown** — select a saved preset to load it
+- **Del** — removes the selected preset
+- **Default** — the dropdown's first entry; resets sampler visibility, metric, palette, line thickness and columns to their initial state
 
 ### Time Range Selector
 A read-only time range display in the filter bar shows the current zoomed range:
@@ -164,7 +167,7 @@ Changing granularity instantly re-renders the time-series charts; the heatmap, t
 ## Response Time Heatmap
 
 A heatmap visualization at the bottom of the Timeline tab showing response time distribution over time:
-- **X-axis:** time, one column per second — the Granularity selector does not apply to it
+- **X-axis:** time, one column per time bucket (a bucket in which nothing ran may have no column) — the Granularity selector does not apply to it
 - **Y-axis:** response time buckets — 0-50ms, 50-100ms, 100-200ms, 200-500ms, 500-1K, 1K-2K, 2K-5K, 5K+
 - **Color intensity:** number of samples in each bucket (light blue = few, red = many)
 
@@ -197,8 +200,9 @@ Full table with columns: Sampler, Samples, Errors, Error %, Mean, Median, P90, P
   number and the limit.
 - **Per-metric assert markers** — every metric cell a rule judges carries its own verdict
   (`✓` PASS, `!` WARN, `✕` FAIL, `?` not measurable), so the table shows *what is gated and how
-  it did*, not just a row-level answer. Clicking a marker edits the rule that decided it; the ⊕ beside it then reads "Add
-  another", because the likeliest mistake here is a second rule for something already covered.
+  it did*, not just a row-level answer. Clicking a marker edits the rule that decided it; the
+  tooltip of the ⊕ beside it then reads "Add another assert on …", because the likeliest mistake
+  here is a second rule for something already covered.
   Glyph as well as colour, so the distinction survives the colourblind palettes and print.
   Hovering names the rule, the value and the limit.
 - **⊕ seeding** — every assertable metric cell offers a ⊕ that opens the editor pre-filled from
@@ -206,10 +210,13 @@ Full table with columns: Sampler, Samples, Errors, Error %, Mean, Median, P90, P
 - **Sampler notes** — blue (i) icon with tooltip when notes are defined in annotations
 
 ### Virtual "Σ Total" Sampler
-A synthetic aggregate row always appears at the top of the statistics table:
-- Shows combined metrics across all visible samplers (weighted averages for response times, summed counts, overall error rate)
-- Can be toggled on/off via the filter bar like any sampler
-- Included in time-series charts when visible (dashed line)
+A synthetic aggregate row at the top of the statistics table, shown when **Σ Total** is ticked in
+the filter bar (it is unticked by default):
+- Covers every top-level sampler, whatever the filter bar shows: summed counts and throughput, the
+  overall error rate, the whole run's merged percentiles, and sample-weighted Mean and Apdex
+- Toggled on/off via the filter bar like any sampler
+- Included in the time-series charts when ticked, as a dashed line; on the Compare tab the current
+  run's Σ Total line is solid and the baseline's dashed, and both follow the Metric toggle
 
 ### Click-to-Expand Detail View
 - **Expand indicator** — chevron (▼) on each row hints at expandable detail; flips ▲ and turns blue when expanded
@@ -257,7 +264,7 @@ The Errors tab provides four views:
 3. **Error Summary Table** — grouped by sampler + response code, with the error class, count and
    percentages, counting every error
    - Search filter, column toggle, row hide
-   - Fixed-width columns with ellipsis truncation and native title tooltips
+   - A long sampler name ends in an ellipsis, with the full text in a native title tooltip
    - **⊕ on the Class cell** — opens the assert editor with an `errorRate:class=…` rule for that
      sampler and class, seeded from the observed rate
 4. **Error Details Table** — the first 500 error records, with time, sampler, code, class,
@@ -266,7 +273,7 @@ The Errors tab provides four views:
    response code, most frequent first, with first and last seen — click a group to list each
    occurrence's time and thread, or use Expand All / Collapse All
    - Search filter, column toggle, row hide
-   - Fixed-width columns with ellipsis truncation and native title tooltips
+   - A long sampler name or message ends in an ellipsis, with the full text in a native title tooltip
 
 ### Expandable Error Rows
 In the By time view, click any error detail row to expand and see:
@@ -281,8 +288,8 @@ Request headers are not captured in either mode.
 
 Note: URL and response body are captured in listener mode. When parsing JTL files, URL is captured if the `URL` column is present; response body is not available in JTL format.
 
-The error charts respect the sampler filter — deselecting a sampler hides its errors from all
-three, from the two breakdown charts only while the run kept every error's details: past 500
+The error charts respect the sampler filter while Σ Total is unticked (ticked, they count every
+sampler's errors) — deselecting a sampler hides its errors from all three, from the two breakdown charts only while the run kept every error's details: past 500
 errors they count every error, the filter not applied, and their caption says so. The two error
 tables do not: they list every error whatever the filter shows, and so does the Error Summary's
 Total row. A table's search narrows it.
@@ -397,8 +404,7 @@ Full reference with the meaning and the fix for each:
   was; both lines there read it as `(.gate.failed // 0)`.)
 - **Two arithmetics, both closed.** `passed + warned + failed + notJudged.total == declared`,
   and `disabled + noMatch + noValue + invalidRule + sourceFailed + lowCoverage + loadNotAchieved
-  == notJudged.total`. Both are counted from the enums rather than by hand, so a value added
-  later cannot fall between the buckets, and a pipeline can check the sums itself. The three
+  == notJudged.total`, so a pipeline can check the sums itself. The three
   server-only keys are always present — zero on a run with no server metrics — because a key
   that appears only when non-zero is a key a sum check cannot rely on.
 - **Every declared rule is counted**, including one whose target is missing, empty, written in
@@ -461,13 +467,14 @@ Full reference with the meaning and the fix for each:
 ### Authoring — six ways in
 - **Asserts tab** — `+ Add assert` opens the editor on a blank rule.
 - **⊕ on a metric cell** — seeds the editor from the number you are looking at, with bands
-  already placed around it. A cell that is already judged shows its verdict instead, and
-  clicking that edits the existing rule rather than starting a duplicate.
+  already placed around it. A cell that is already judged shows its verdict marker beside the ⊕,
+  and clicking the marker edits the existing rule rather than starting a duplicate.
 - **`Generate from run…`** — the wizard: pick samplers × metrics, set tolerance and where warn
   sits, and it writes a starter gate that passes as written. It states how many rules a
   selection makes, because samplers × metrics is a multiplication people do not do in their
   heads.
-- **`+ Assert from chart`** — on any timeline chart, click a level and the rule is seeded from
+- **`+ Assert from chart`** — on the Summary tab's response time chart or the Timeline tab's
+  Response Time, Throughput and Error Rate charts, click a level and the rule is seeded from
   it. Clicking a series line targets that sampler; clicking empty grid targets the whole run.
   The direction comes from the metric, not the gesture: throughput and apdex seed as *fail
   below*, everything else as *fail above*. Available whether or not any rule exists yet, so the
@@ -479,7 +486,8 @@ Full reference with the meaning and the fix for each:
 - **`Open file…`** — load a `report-annotations.json` from disk and evaluate it against the run
   already on screen, without running JMeter again. A strip names what you are
   looking at. With unsaved changes the file is held back rather than applied, naming what is at
-  stake: *would replace 3 unsaved changes you have not downloaded*, with Discard and Keep.
+  stake: *would replace 3 unsaved changes you have not downloaded*, with **Discard my drafts and
+  load the file** and **Keep my drafts**.
 
 Every one of these produces a **draft**. The header badge and gate strip keep showing the verdict
 the run was actually gated on; the tab shows what it *would* be if the drafts were saved and the
@@ -500,7 +508,7 @@ since it would take that change back too. The unsaved-changes pill counts both, 
 server asserts have unsaved changes the draft banner says so — `· server asserts: K changed — see
 the Server tab` — and its verdict reads *Client verdict if saved and re-run*: a server edit cannot
 move the client verdict, and the banner does not fold a server verdict into it. The Server tab's
-gate badges keep the verdict the run was gated on and add `→ … if saved` where an edit would
+component badges keep the verdict the run was gated on and add `→ … if saved` where an edit would
 change it.
 
 ### Apdex Score
@@ -558,13 +566,17 @@ that is a `wir-collect` flag.
 
 ```bash
 jmeter -n -t plan.jmx -l results.jtl                       # 1. the run (an interim report)
-./scripts/wir-collect.sh --jtl results.jtl \
+./wir-collect.sh --jtl results.jtl \
     --annotations report-annotations.json --out server-metrics.json \
     --prometheus-url https://prometheus.example/api/v1    # 2. fetch the actual values
 jmeter -g results.jtl -o report \
     -Jwebinsight.report.annotations=report-annotations.json \
     -Jwebinsight.report.servermetrics=server-metrics.json  # 3. the report that judges and gates
 ```
+
+`wir-collect.sh` and `wir-collect.bat` are attached to every release beside the plugin JAR (in a
+checkout they are under `scripts/`); they find JMeter through `JMETER_HOME` or `jmeter` on the
+`PATH`.
 
 Step 3 is the report that judges the server asserts and decides the exit code. `wir-collect` is
 a class inside the plugin JAR, run with `java -cp`, never `java -jar` — Jackson and slf4j come
@@ -600,8 +612,10 @@ when the two disagree.
   `--component` read a long export whose columns have other names and no component — InfluxDB 2's
   annotated CSV, blocks and all, InfluxDB 3 and Dynatrace — and `--time-zone` names the zone of a
   time written with none). `--step` sets the resolution and the coverage grid (default `15s`), and
-  `--clock-offset` shifts every timestamp for servers whose clocks are known to be off. Connection
-  details are never in the file.
+  `--clock-offset` shifts every timestamp for servers whose clocks are known to be off. `--env NAME`
+  picks the `serverMetrics.environments` entry `${env.*}` placeholders are resolved from (default:
+  the file's `defaultEnv`), `--max-wait` sets how long a source may take to settle (default `10m`),
+  and `--no-wait` takes what the sources hold now. Connection details are never in the file.
 - **Components.** `serverMetrics.components` names what is being measured: a `type` from the
   built-in catalogue (`postgres`, `kafka`, `redis`, `host-linux`, `aws-ec2`, `oracle`, `influxdb2`,
   `influxdb3`, `jvm`, `http-service`, `kubernetes-pod`, `mysql`) or `custom`, a
@@ -613,6 +627,19 @@ when the two disagree.
   `metric` — whose query, unit, reducer and `across` come from the catalogue, and a `unit`,
   `reduce` or `across` the assert writes overrides the catalogue's — or its own `query`, the
   escape hatch and the only way on a `custom` component. Both, or neither, is `INVALID_RULE`.
+- **Reducing a series to one number.** `reduce.kind` is `max`, `min`, `avg`, `last`, `pN`
+  (0 < N < 100, e.g. `p95`, `p99.9`) or `slope` (least squares, in units per minute); a `reduce`
+  written on an assert replaces the catalogue's whole, so it always names `kind`. On `max` and
+  `min`, `reduce.over` takes one of `sustainedFor` (the highest, or lowest, level held for at least
+  that long: `30s`) or `breachBudget` (the level exceeded at most that fraction of the window:
+  `0.02`). `across` (`max`, `min`, `avg`) folds the instances into one number.
+- **The rest of the block.** `environments` names sets of variables for `${env.NAME}` in queries,
+  and `defaultEnv` the one used when `wir-collect` is given no `--env`. `collection.coverageFloor`
+  (default `0.9`) is the share of the collected window a series must cover, below which its assert
+  is `LOW_COVERAGE`; `collection.excludeRampUp` (default `true`) leaves the ramp-up out of the
+  judged window. `requiresLoad` (on the block, as a default, or on an assert) names a client
+  throughput rule that must PASS or WARN for the assert to be judged, and `divideBy` names one whose
+  measured value the assert's number is divided by, per unit of load. Both are optional.
 - **The catalogue's types.** `postgres` (postgres_exporter), `kafka` (kafka_exporter and the JMX
   exporter with Strimzi's rules; its request latencies, request-handler idle and lag in seconds have
   no Prometheus query under those, so they are collected from a `--csv` export), `redis` (redis_exporter), `host-linux` (node_exporter: CPU busy
@@ -640,9 +667,9 @@ when the two disagree.
   zone. `metric` is a catalogue metric's name or a custom assert's `query` text; `instance` may be
   empty; an empty or `NaN` value is a gap, not zero. A bad row fails only the series it belongs
   to, naming the line, and the collection reads `PARTIAL`. Full rules: [Server tab](Tutorial/13-Server-Tab.md).
-- **Retired keys are refused, not ignored.** `sources`, `gates`, `kpis` and `packs` in the block,
-  `source`, `gate`, `onMissing`, `required` and the rest of the
-  [retired assert keys](Tutorial/13-Server-Tab.md#retired-and-refused-keys) on an assert (and
+- **Keys this format does not take are refused, not ignored.** `sources`, `gates`, `kpis` and
+  `packs` in the block, `source`, `gate`, `onMissing`, `required` and the rest of the
+  [refused assert keys](Tutorial/13-Server-Tab.md#retired-and-refused-keys) on an assert (and
   `sustainedFor`, `breachBudget` or `over` written at its top level instead of under
   `reduce.over`), and `failsBuild` on a component are each refused with a sentence naming what to
   write instead, so a file carrying one cannot quietly judge less than it says.
@@ -655,8 +682,8 @@ when the two disagree.
 - **Authored in the report.** *+ Add server assert*, *+ Add component*, and on a catalogue
   component *+ metric*, a picker that proposes thresholds from the catalogue's default or this run;
   an editor that shows the verdict a Save would make as you type (the board's own answer: never
-  an estimate on a capped series), *Validate query* (an exact lookup
-  against what was collected, never an estimate), *Generate from this run*, drag-to-retune on the
+  an estimate on a capped series), a *Validate query* status line under the query field (an exact
+  lookup against what was collected, never an estimate), *Generate from this run*, drag-to-retune on the
   charts, and a component's description and match edited, or the component deleted with its
   asserts, from its card's **⋯** — all drafts with an Undo where they remove something, saved with
   the client rules in the one file.
@@ -689,7 +716,7 @@ anywhere:
 
 ### Features
 - **Test Notes** — rendered as Markdown (headers, bold, italic, lists, code blocks)
-- **Timeline markers** — vertical dashed lines on all charts at annotated timestamps; color-coded by type (info=blue, warning=amber, error=red, deployment=blue, custom=purple)
+- **Timeline markers** — vertical dashed lines at annotated timestamps on the Summary tab's response time chart and the Timeline tab's Response Time, Throughput and Error Rate charts; color-coded by type (info=blue, warning=amber, error=red, deployment=blue, custom=purple)
 - **Sampler notes** — info icon next to sampler names in the table, tooltip on hover
 - **In-browser editor** — the Notes tab's notes are always editable, with a Preview toggle and a "Save Annotations" button that downloads the whole annotations file, rules and server asserts included, for future runs
 
@@ -926,8 +953,8 @@ depend on it:
 
 `failonerror` covers everything the plugin was told to do and could not:
 
-- an incomplete artifact set — the report written but its `.json` or `.xml` missing — and a total
-  failure to produce anything;
+- an incomplete artifact set — the report written but its `.json` or `.xml` missing — and, on a
+  listener run, a total failure to produce anything;
 - **a gate that could not be built from what the file declared** — a rule naming an unknown
   metric, an unreadable target, no bands at all, or an annotations file that would not load;
 - on the server side, **a server assert that could not run** (`INVALID_RULE` — a defect in the
@@ -935,7 +962,9 @@ depend on it:
   missing or refused (another run's, unreadable) while an enabled server assert is declared.
 
 **This is on by default**; `-Jwebinsight.report.failonerror=false` makes these exit 0. The
-opt-out buys back the exit code and nothing else — every marker still prints.
+opt-out buys back the exit code and nothing else — every marker still prints. One exception: on
+`jmeter -g … -o`, a report that could not be written at all exits 1 whatever `failonerror` says,
+because JMeter itself fails the report-generation step.
 
 It does **not** cover the verdict. A FAIL gate is a working gate returning an answer, and exits 0
 unless `failonassert` asks otherwise. The line is between "the plugin did not check what you
@@ -948,7 +977,8 @@ asked" and "the plugin checked, and here is the answer".
 | `INVALID_RULE` — a client rule or a server assert | 1 | `failonerror=false` → 0 |
 | `SOURCE_FAILED` / `LOW_COVERAGE`, or a missing or refused payload while a server assert is declared | 1 | `failonerror=false` → 0 |
 | A refused payload with no enabled server assert declared | 0 (a WARNING finding) | none |
-| An artifact not written | 1 | `failonerror=false` → 0 |
+| The report written but its `.json` or `.xml` not | 1 | `failonerror=false` → 0 |
+| No report written at all | 1 | listener run: `failonerror=false` → 0; `-g -o`: none |
 
 There is no observe-only component: a metric you only want to watch gets a warn band and no fail
 band, and WARN never moves the exit code.
@@ -968,8 +998,8 @@ Six greppable markers, one line each:
 | `WEB-INSIGHT-REPORT: INCOMPLETE — <reason>` | stderr | the report exists, a sibling does not; the reason names the artifact |
 | `WEB-INSIGHT-REPORT: FAILED <reason>` | stderr | nothing usable was produced; the exception class is named |
 | `WEB-INSIGHT-REPORT: CONFIG ERROR — <reason>` | stderr | every artifact is there, but a gate is not the one the file declared — client or server |
-| `WEB-INSIGHT-REPORT: ASSERT FAIL — <verdict line>` | stderr | `failonassert=true` and a gate said FAIL; `-g -o` only (the listener writes it to `jmeter.log`) |
-| `WEB-INSIGHT-REPORT: exiting 1 because <flag>=true` | stderr | printed as the process exits 1, naming `webinsight.report.failonerror` or `webinsight.report.failonassert` |
+| `WEB-INSIGHT-REPORT: ASSERT FAIL — <verdict line>` | stderr | `failonassert=true` and a gate said FAIL; `-g -o` only (a listener run logs `webinsight.report.failonassert=true and a gate said FAIL — this run will exit 1` to `jmeter.log` instead) |
+| `WEB-INSIGHT-REPORT: exiting 1 because <flag>=true` | stderr | printed as the process exits 1 over a flag, naming `webinsight.report.failonerror` or `webinsight.report.failonassert`. Not printed when a `-g -o` run exits 1 over an artifact that was not written: JMeter reports that step's failure itself |
 
 `CONFIG ERROR` deliberately arrives with a complete report rather than instead of one — the
 report is where you diagnose the config, and its Asserts tab opens on a banner naming each rule
@@ -1139,6 +1169,9 @@ Generate a Web Insight Report from an existing JTL file — no test plan changes
 jmeter -g results.jtl -o report-dir/
 ```
 
+The JTL must be in JMeter's CSV format (the default); an XML-format JTL is refused, and an XML
+`baseline.jtl` is skipped with a warning (no comparison).
+
 **Setup:** Add one line to `$JMETER_HOME/bin/reportgenerator.properties`:
 ```properties
 jmeter.reportgenerator.exporter.webinsight.classname=com.jmeterwebinsightreport.report.exporter.WebInsightDataExporter
@@ -1176,10 +1209,14 @@ Add **Web Insight Report** listener to your test plan (GUI or non-GUI mode). Aut
 
 | Value | Resolves to |
 |-------|-------------|
-| *(empty)* | The first writable of: the results file's directory → the working directory → the `.jmx`'s directory → `~/.jmeter-web-insight-report` → `web-insight-report` under the system temp directory. The chosen one is logged |
+| *(empty)* | The first of these it can actually write to (each is probed with a real write, and the log names the one chosen): the directory of the listener's own results file — the `filename` property in the `.jmx`, which this listener's GUI does not show and `-l` does not set, so it is normally empty — then the working directory, then the test plan's directory, then `~/.jmeter-web-insight-report`, then a `web-insight-report` folder in the system temp directory |
 | `/var/reports` or `D:\reports` | That path (absolute) |
 | `reports` | `{working dir}/reports` (relative) |
-| `../reports` | Parent of working directory |
+| `../reports` | `{working dir}/../reports` (relative) |
+
+A `jmeter -g … -o DIR` run writes to `DIR`. `report-annotations.json` and `baseline.jtl` are
+auto-detected in that output directory only; with `-g -o` (which needs an empty directory) pass
+them with `-Jwebinsight.report.annotations` / `-Jwebinsight.report.baseline`.
 
 The chain applies to the **default only**. An explicitly configured directory is never
 relocated — it hard-fails, because a report that is silently not where you put it is its own
@@ -1203,6 +1240,13 @@ statement of anything, and ranking it higher would move reports next to the test
 | *(empty)* | `web-insight-report.html` + `.json` |
 | `my-report.html` | `my-report.html` + `my-report.json` |
 | `report_${timestamp}.html` | `report_20260324_185043.html` + `.json` |
+| `my-report` | `my-report.html` + `my-report.json` (`.html` is appended when missing) |
+
+A name must be a plain file name: letters, digits, dot, underscore, hyphen and space only, no
+path separators, not ending in a dot or a space, and at most 180 characters (not counting
+`${timestamp}`). `index` and `statistics` (the names JMeter's own dashboard writes) and Windows
+device names (`CON`, `NUL`, `COM1` …) are refused too. A name that breaks a rule is ignored with
+a WARN in `jmeter.log`, and the default `web-insight-report.html` is used.
 
 **Report Title field:**
 
@@ -1219,7 +1263,7 @@ All settings can be overridden via JMeter `-J` properties. CLI properties take p
 
 | Property | Default |
 |----------|---------|
-| `webinsight.report.output` | Resolved through the chain above |
+| `webinsight.report.output` | Resolved through the chain above (listener runs only; `-g -o` writes to `-o`'s directory) |
 | `webinsight.report.filename` | `web-insight-report.html` |
 | `webinsight.report.title` | `JMeter Web Insight Report` |
 | `webinsight.report.baseline` | Auto-detect `baseline.jtl` |
@@ -1228,12 +1272,15 @@ All settings can be overridden via JMeter `-J` properties. CLI properties take p
 | `webinsight.report.junit` | `false` |
 | `webinsight.report.failonerror` | `true` — an incomplete artifact set, or a gate that could not be built from the file, exits non-zero |
 | `webinsight.report.failonassert` | `false` — `true` exits non-zero on a client FAIL or a FAIL on any server component |
-| `webinsight.report.servermetrics` | none, never auto-detected — the `server-metrics.json` payload `wir-collect` wrote for this run |
+| `webinsight.report.servermetrics` | none, never auto-detected — the `server-metrics.json` payload `wir-collect` wrote for this run. Pass it to the `-g -o` step only: a listener run is always a new run, so a payload named there is always another run's and is refused (a CONFIG ERROR when a server assert is declared) |
+| `webinsight.report.externaldata` | `false` — `true` always writes the chart data to a sibling `-data.js` (see [External Data Mode](#external-data-mode)) |
+| `webinsight.report.externaldata.threshold` | `10000000` (characters) — the size above which the chart data goes to the sibling file |
 
 `junit`, `externaldata`, `failonerror` and `failonassert` accept only `true` or `false`,
-case-insensitively. Anything else warns and is treated as **unset**: `junit` then falls back to the
-GUI checkbox, so `-Jwebinsight.report.junit=yes` warns rather than silently voiding a ticked box,
-and the others to their defaults — `failonerror=0` leaves the default `true` in force.
+case-insensitively. Anything else warns and is treated as **unset**: on a listener run `junit`
+then falls back to the GUI checkbox, so `-Jwebinsight.report.junit=yes` warns rather than
+silently voiding a ticked box, and on `-g -o`, which has no checkbox, it is off; the others fall
+back to their defaults — `failonerror=0` leaves the default `true` in force.
 
 **Metrics & thresholds:**
 
@@ -1266,10 +1313,9 @@ jmeter -n -t test.jmx \
 **Path resolution** follows JMeter conventions: relative paths resolve from the working directory (where `jmeter` was launched from), not from the JMX file location. Directories are auto-created if they don't exist.
 
 ### Data Captured in Listener Mode
-The listener captures additional data not available in JTL parsing:
-- **Connect time** — TCP connection establishment time
-- **Latency** — time to first byte
-- **Request URL** — for error records
+Connect time, latency and the request URL come from the sample in listener mode, and from the
+JTL's `Connect`, `Latency` and `URL` columns under `-g` when the file has them. One thing only
+the listener captures:
 - **Response body** — for error records (truncated to 16,384 characters by default, configurable via `webinsight.error.body.maxsize`)
 
 ### Distributed Testing
@@ -1297,7 +1343,8 @@ The summary tiles, the merged percentiles and the Apdex score are computed over 
 samplers**: transaction-controller children are excluded, because their time is already
 counted inside their parent.
 
-Auto-hidden utility samplers (`JSR223 *`, `Debug *`, `BeanShell *`, JMeter internals) are
+Auto-hidden utility samplers (names starting `JSR223`, `Debug` or `BeanShell`, case-insensitively,
+and JMeter internals starting `__`) are
 *not* excluded — they are unchecked in the filter bar but still counted in the tiles, so a
 slow setup sampler does move the headline P95. They are, however, excluded from any blanket
 pattern rule, so they cannot fail a build on their own; a rule that names them explicitly still
@@ -1314,7 +1361,7 @@ and every sibling follows it: `myreport.json`, `myreport.xml`, `myreport-data.js
 | `web-insight-report.json` | CI/CD machine-readable summary, including an `artifacts` manifest of every path written |
 | `web-insight-report.xml` | JUnit XML, when `-Jwebinsight.report.junit=true` |
 | `web-insight-data.js` | External chart data (only in external data mode) |
-| `.web-insight-publish.lock` | Empty dotfile, always present after a run. See below |
+| `.web-insight-publish.lock` | Empty dotfile, always present after a run; `rm -rf dir/*` does not remove it. See below |
 
 ### How the artifacts land
 
@@ -1338,6 +1385,10 @@ than no lock.
 lock on that inode lets a third process create a fresh file and lock *that* instead — two
 holders, the one outcome the lock exists to prevent. It is an empty dotfile in a directory that
 already contains the report.
+
+Because it is a dotfile, `rm -rf dir/*` leaves it behind, and `jmeter -g … -o dir` — which needs
+an empty directory — then refuses a directory that looks empty. Clear an output directory with
+`rm -rf dir` instead.
 
 Staging debris left by a killed writer is swept on the next run by **process liveness**, not by
 age: an age predicate would delete a live writer's staging file on a slow disk. A staging file

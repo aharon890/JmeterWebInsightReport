@@ -61,7 +61,8 @@ It carries:
   you to find out what.
 - **Open Asserts →**, which is where the rest of this page happens.
 
-On a large report whose data file (`<name>-data.js`) did not load, the strip reads `UNAVAILABLE`
+On a large report whose data file (`web-insight-data.js` beside the default
+`web-insight-report.html`, `<name>-data.js` beside any other report name) did not load, the strip reads `UNAVAILABLE`
 and says the rules and their verdicts could not be loaded; the badge in the header came from the
 run itself and is still correct.
 
@@ -310,8 +311,9 @@ Removing the warn band reads as a choice, because it is one:
 
 > No warn band — the rule goes straight from pass to fail. That is a choice, not an accident.
 
-**Preview — unsaved** is the reason this editor exists. Every matched sampler, its value, and
-the recomputed verdict, updating on every keystroke against this run's real numbers.
+**Preview — unsaved** is the reason this editor exists. The recomputed verdict, and the first
+eight matched samplers with their values and statuses (then *… and N more*), updating on every
+keystroke against this run's real numbers.
 
 ### Validation
 
@@ -385,7 +387,7 @@ Three ways, all in the toolbar:
 
 | | |
 |---|---|
-| **Download report-annotations.json** | The whole file. Drop it beside the JTL. |
+| **Download report-annotations.json** | The whole file. Put it in the report's output directory, or pass it with `-Jwebinsight.report.annotations=<path>` — the only way for a `jmeter -g … -o` run, whose output directory must be empty. |
 | **Copy file** | The same content, to the clipboard. |
 | **Copy assertions** | Just the `assertions` array — the download's own, drafts included — for pasting into a file you already have. |
 
@@ -520,7 +522,8 @@ A warn band with no room left between the run and the fail band is left out.
 
 ## Asserting from a chart
 
-On the Timeline tab, every rule judging the charted metric draws its bands as dashed lines, fail
+On the Timeline tab's charts and the Summary tab's response-time chart, every rule judging the
+charted metric draws its bands as dashed lines, fail
 and warn alike, each labelled with the rule id and the band and carrying a handle to drag. The
 strictest fail line is drawn bold and the other fail lines dimmed — five identical lines would
 suggest five independent limits when only one can ever be the binding one. A warn line is thin and

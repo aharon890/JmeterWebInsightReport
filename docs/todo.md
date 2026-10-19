@@ -1,6 +1,6 @@
 # To do
 
-Open work as of 4.0.1. Line numbers are at 4.0.1; `report.js` is
+Open work as of 4.0.4. Line numbers are at 4.0.1 unless marked otherwise; `report.js` is
 `jmeter-web-insight-report/src/main/resources/static/js/report.js`.
 
 ## Decide
@@ -23,6 +23,11 @@ Open work as of 4.0.1. Line numbers are at 4.0.1; `report.js` is
    revisit only when the JMeter version moves.
 8. **spec-author agent:** narrow `Bash(node:*)` to the Playwright CLI?
 9. **Config tier:** parallelise it (medium work)?
+10. **Kafka's CSV-only KPIs.** Star the three `recommended: false` ones (`kafka.json:36`, `:248`,
+    `:264`)?
+11. **A warn/fail pair that can never PASS** (`warn lt 100` with `fail gt 50`): WARNING or
+    INVALID_RULE?
+12. **AF1 vs AF3:** which goes first, if either is scheduled.
 
 ## Bugs
 
@@ -42,23 +47,23 @@ Medium:
 - The Asserts toolbar counts leave out NO VALUE, so the parts don't add up to "declared"
   (report.js:8946).
 - An INVALID client rule still draws the bold fail line on the Timeline (report.js:15404).
-- Compare: after Apply, a REMOVED sampler drops out of Regressions (report.js ~6554-6580).
 - The Summary chart loses "+ Assert from chart" after a palette/theme change: no `attachChart` in
   `initSummaryResponseTimeChart`. Found by reading, not seen in a browser.
 - With Σ Total checked, the error charts ignore the sampler filter.
+- The page does not type-check `loadValidity.target`/`tolerance` (a boolean, object or array)
+  the way Java does.
+- Wide-CSV headers (`WideCsv.java`) skip the invisible-padding check a long file's `metric`
+  cell gets.
+- The server mirror judges at load even when the Server tab is never opened. Measure a soak
+  report before changing it.
 
 Low:
-- Errors tab:
-  - Fullscreen on the Error Breakdown card does nothing.
-  - The By-time view's Time column uses the JVM time zone; the Grouped view uses the browser's.
+- Errors tab: the By-time view's Time column uses the JVM time zone; the Grouped view uses the
+  browser's.
 - Errors and Compare: a hidden chart is not remembered across a reload.
 - Wording:
   - report.html:746 says the error-rate threshold is "%"; it is percentage points.
   - ServerMetricsMapper.java:323-326 names the retired `auth.<name>Env` and `${secret.NAME}`.
-  - Generate wizard: "Every sampler in the run is listed" (~14995) is false: it lists only
-    top-level, non-hidden samplers with samples.
-  - Generate wizard: "throughput and apdex seed as fail below" (~14002) leaves out received KB/s,
-    which also seeds a floor.
   - A refused payload is called "nothing collected" in Validate query, the toolbar and the chart
     note.
   - `→ ? if saved` uses a bare `?` as a status word.
@@ -85,7 +90,8 @@ Low:
 - Dead code:
   - `visibleKpis`
   - "Server · nothing judged" and the chip's "NOT JUDGED" arm. Remove their docs lines with them.
-- `prune-actions.sh`: the caches listing ignores the exit code and is not paginated.
+- `prune-actions.sh`: the caches listing ignores the exit code and is not paginated (the runs
+  listing was fixed in 4.0.4).
 
 ## Docs
 
@@ -99,8 +105,13 @@ Low:
   breaks it (the raw `NOT_JUDGED` bug above).
 - Stale comments:
   - AssertionValidator.java:22-24
+  - report.js:22923 (4.0.4): the wizard's sections "wait for Aaron"
   - the header comments of `run-all-tests.sh`, `run-regression.sh` and `run-title-junit-tests.sh`
-  - `ci.yml` and the hook headers, which say there is no CI
+  - `run-sanity.sh:16` (the pre-push hook consumes no exit code; it runs no tests) and `:56-57`
+    ("the only place they still run": `ci.yml` runs them too)
+  - `ci.yml:4` ("three cheap consistency guards"; it runs many more) and `:16-18`, which quotes a
+    CLAUDE.md sentence that no longer exists
+  - the hook headers (`.githooks/pre-commit:14`, `.githooks/pre-push:7`), which say there is no CI
 - `list-scenarios.sh` misses the `run_test` scenarios.
 - `plans/asserts-future.md` and `plans/stabilization-2026-08-09.md` list finished work as open.
 
@@ -122,7 +133,8 @@ Low:
   - server-board:193-200 and verdict-block.spec:86-99 (compare the page with itself)
   - summary-tab.spec.ts:170-176 (asserts nothing)
 - **Goldens hold none of:** top-level WARN, NOT_EVALUATED, NO_VALUE, SOURCE_FAILED, a load rule that
-  was not judged, `(no gate)`, the interim suite. No runner checks `<skipped>`.
+  was not judged, `(no gate)`, the interim `serverMetrics` suite (its `<skipped>` testcase; G2 and
+  G4 do have `<skipped>` cases).
 - **js-unit:** nothing tests the sort/filter/count functions, or checks that every CSS class the
   code builds has a style.
 
@@ -136,9 +148,10 @@ Low:
 
 ## Housekeeping (needs your go)
 
-- Delete the remote branches `chore/release-4.0.0`, `chore/release-4.0.1` and Dependabot's
-  Thymeleaf 3.1.5 branch.
-- Prune the stale local ref `origin/gitImprovements`.
+- Delete the remote branches `chore/release-4.0.0`, `chore/release-4.0.1` and
+  `docs/status-vocabulary`.
+- `git fetch --prune` clears the four stale local remote refs: `origin/gitImprovements` and the
+  three Dependabot ones (Thymeleaf 3.1.5, jackson-databind 2.18.11 and 2.22.0).
 
 ## Parked ideas
 

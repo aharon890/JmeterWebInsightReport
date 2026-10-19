@@ -410,6 +410,17 @@ jmeter -n -t test-plans/quick-smoke-test.jmx \
   -Jwebinsight.report.filename=E01-report.html
 ```
 
+**Options of `run-all-tests.sh`:**
+
+| Option | Effect |
+|--------|--------|
+| `--suite fixtures` | Only the scenarios Playwright opens (`FIXTURE_IDS` minus CMP, which `generate-cmp-fixture.sh` owns) |
+| `--suite smoke` | One 5s scenario — proves the plugin loads in JMeter |
+| `--suite full` | Every scenario (the default) |
+| `--only E26,E27` | Only the ids listed. The other fixtures stay stale, so Playwright refuses to start until they are regenerated or `WIR_SKIP_FIXTURE_CHECK=1` is set. An id the suite never ran fails the run |
+| `WIR_JOBS=N` | Scenarios run concurrently, 4 at a time by default; `WIR_JOBS=1` runs them one by one |
+| `SKIP_BUILD=1` | Skips the build and deploy and uses the plugin JAR already in `lib/ext` (refused unless exactly one plugin JAR is there) |
+
 **Test scenarios:**
 
 | ID | Scenario | JMX | Duration |
@@ -555,7 +566,7 @@ Cross-validates plugin output against JMeter's native statistics:
 # Generate native report from JTL
 jmeter -g test-results/E01/results.jtl -o test-results/E01/native-report
 
-# Compare
+# Compare (python3; python or py on Windows)
 python3 test-plans/scripts/verify-data-integrity.py \
   test-results/E01/E01-report.json \
   test-results/E01/native-report/statistics.json
@@ -602,6 +613,16 @@ docker run --rm \
   -n -t /test/docker-test.jmx -l /results/results.jtl \
   -Jwebinsight.report.output=/results -Jthreads=10 -Jduration=30
 ```
+
+Two platform differences the runner handles and a hand run does not:
+
+- **Git Bash on Windows** rewrites every argument that looks like a POSIX path
+  (`/results`, `/test/docker-test.jmx`) into a Windows path before Docker sees it. Prefix
+  the command with `MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'` and give the host side of
+  each `-v` as `$(cygpath -m "$PWD")/…`, as `run-docker-tests.sh` does.
+- **Linux** keeps the host's ownership on a bind mount, so the container's user must match
+  yours or `/results` is not writable: add `--user "$(id -u):$(id -g)"`. Docker Desktop
+  (Windows, macOS) translates the mount and needs no `--user`.
 
 ## The golden harness (R06)
 

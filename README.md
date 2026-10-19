@@ -7,6 +7,8 @@
 
 A JMeter plugin that generates modern, interactive web reports from your load test results — a powerful alternative to JMeter's built-in dashboard.
 
+Full documentation, with a tutorial for every tab: **https://aharon890.github.io/JmeterWebInsightReport/**
+
 ## Modules
 
 | Module | Description |
@@ -117,12 +119,12 @@ Precedence: **`-J` property > GUI field > default.**
 | `webinsight.report.failonerror` | Exit non-zero when the plugin could not do what it was told: the artifact set is incomplete (the report itself, or its `.json`/`.xml` sibling, could not be written), **or** the gate could not be built from what the annotations file declared — a rule or server assert that cannot run; a series that could not be collected (SOURCE FAILED) or data below the coverage floor on any server component; a refused server-metrics payload when an enabled server assert is declared. **On by default**; `=false` makes these exit 0 and changes nothing else — every marker still prints | `true` |
 | `webinsight.report.failonassert` | Exit non-zero when the client gate's verdict is `FAIL`, or any server component FAILed. **Off by default and staying that way** — a verdict is yours to act on. Fires on `FAIL` only, never on `WARN` or a rule that did not judge | `false` |
 | `webinsight.apdex.threshold` | Apdex satisfied threshold in ms | `500` |
-| `webinsight.error.body.maxsize` | Response-body characters kept per error record. Negative values are rejected | `16384` |
+| `webinsight.error.body.maxsize` | Response-body characters kept per error record. Listener runs only: the `-g` path reads no response bodies from the JTL. Negative values are rejected | `16384` |
 | `webinsight.compare.p95.threshold` | Compare tab: % P95 change that counts as a regression | `10` |
-| `webinsight.compare.p99.threshold` | Compare tab: % P99 change | — |
-| `webinsight.compare.mean.threshold` | Compare tab: % mean change | — |
+| `webinsight.compare.p99.threshold` | Compare tab: % P99 change | off (`-1`) |
+| `webinsight.compare.mean.threshold` | Compare tab: % mean change | off (`-1`) |
 | `webinsight.compare.errorrate.threshold` | Compare tab: absolute error-rate change in points | `2` |
-| `webinsight.compare.throughput.threshold` | Compare tab: % throughput drop | — |
+| `webinsight.compare.throughput.threshold` | Compare tab: % throughput drop | off (`-1`) |
 
 ### Boolean properties accept only `true` or `false`
 
@@ -137,26 +139,28 @@ Anything else **warns and is treated as unset**, so the GUI/JMX field decides wh
 
 ### Where the report goes by default
 
-With no output directory configured, the plugin takes the first of these that passes a real
-probe write, and logs which one it chose:
+With no output directory configured, a listener run writes to the first of these it can actually
+write to (each is probed with a real write, and the log names the one chosen):
 
-1. the directory of the results file (the listener's own filename field, or the JTL being
-   exported under `-g`)
-2. the process working directory
-3. the directory of the `.jmx`
+1. the directory of the listener's own results file — the `filename` property in the `.jmx`,
+   which this listener's GUI does not show and `-l` does not set, so it is normally empty
+2. the working directory
+3. the test plan's directory
 4. `~/.jmeter-web-insight-report`
-5. `web-insight-report` under the system temp directory
+5. a `web-insight-report` folder in the system temp directory
 
-The results file outranks the working directory and the `.jmx` does not, which is less arbitrary
-than it looks: a results filename is you naming a place for this run's output, while the `.jmx`'s
-directory is only where a file happened to be opened from. Ranking the plan higher would put
-reports next to the plans instead of next to the run.
+So an ordinary `jmeter -n -t plan.jmx -l results.jtl` run writes the report to the working
+directory. In GUI mode that is normally `$JMETER_HOME/bin`, which is read-only on many managed
+installs; the chain then moves on, and the log says where the report went.
 
-The working directory alone would be a poor default: in GUI mode it is normally
-`$JMETER_HOME/bin`, read-only on most managed installs, and in a container it may not be writable
-by the run user. A default that commonly fails is not a default. When neither `-o` nor the
-exporter's own `output_dir` names a directory, the `-g` exporter uses the same chain, starting
-from the directory of the JTL being exported.
+A `jmeter -g … -o DIR` run writes to `DIR`. When neither `-o` nor the exporter's own
+`jmeter.reportgenerator.exporter.webinsight.property.output_dir` (in `reportgenerator.properties`)
+names a directory, the `-g` exporter tries the JTL's directory, then the working directory, then
+the last two entries above.
+
+`report-annotations.json` and `baseline.jtl` are auto-detected in that output directory only; with
+`-g -o` (which needs an empty directory) pass them with `-Jwebinsight.report.annotations` /
+`-Jwebinsight.report.baseline`.
 
 The probe is a real create-and-delete, not `File.canWrite()` — on Windows that method reflects
 only the DOS read-only attribute and returns true for an ACL-denied directory.
@@ -263,9 +267,7 @@ JMeter ever sees it, and the report lands as `report_.html`.
 
 Produces: `report_20260321_165234.html` and `report_20260321_165234.json`
 
-Seconds, not minutes: JMeter takes several seconds just to start, so two back-to-back short runs
-land in the same minute and the second silently overwrites the first — with `${timestamp}` being
-the documented answer to "how do I keep my reports".
+The stamp has second resolution, so back-to-back runs get distinct names.
 
 ### Docker / CI Example
 
@@ -281,9 +283,10 @@ JMeter ever sees it, and the report lands as `report_.html`.
 
 ## Annotations & Asserts
 
-Place a `report-annotations.json` file **in the report output directory** — that is the only
-place auto-detection looks. Or point at it from anywhere with
-`-Jwebinsight.report.annotations=/path/to/report-annotations.json`.
+On a listener run, place a `report-annotations.json` file **in the report output directory** —
+that is the only place auto-detection looks. Or point at it from anywhere with
+`-Jwebinsight.report.annotations=/path/to/report-annotations.json`, which is the only way under
+`-g -o`: that output directory must be empty, so there is nothing to auto-detect.
 
 An auto-detected file is announced at **WARN**, not INFO. It is an *input* being read out of an
 *output* directory, so in a shared directory someone else's thresholds silently decide your
@@ -317,7 +320,8 @@ run's gate verdict — and a wrong verdict looks exactly like a right one.
 }
 ```
 
-- **Asserts** — the quality gate. Any metric, any percentile between p0 and p100 (`p95`, `p99.9`), per sampler, per
+- **Asserts** — the quality gate. Any metric, any percentile strictly between p0 and p100 (`p95`, `p99.9`; for the extremes
+  use `min` and `max`), per sampler, per
   pattern, or for the whole run, each with its own warn/fail bands. Only what you declare ever
   decides the verdict. The report shows every rule with its verdict, lets you tune a limit
   against the observed number with the verdict recomputing as you type, and saves the updated
@@ -336,14 +340,24 @@ run's gate verdict — and a wrong verdict looks exactly like a right one.
 - **Timeline markers** — vertical dashed lines at annotated timestamps, on the Timeline tab's
   Response Time, Throughput and Error Rate charts and on the Summary tab's chart.
 
-A release attaches `report-annotations.schema.json`, this file's JSON Schema. Associate it with your
-annotations file in your editor for completion and typo squiggles on every key, `serverMetrics`
-included.
+The file has a JSON Schema, published at
+`https://aharon890.github.io/JmeterWebInsightReport/schema/report-annotations.schema.json` (and
+attached to every release as `report-annotations.schema.json`). Put that URL in the file's
+`"$schema"` key and an editor that reads JSON Schema gives you completion and typo squiggles on
+every key, `serverMetrics` included:
+
+```json
+{
+  "$schema": "https://aharon890.github.io/JmeterWebInsightReport/schema/report-annotations.schema.json",
+  "assertions": []
+}
+```
 
 ### Baseline Comparison
 
-Copy a previous run's JTL into the report output directory as `baseline.jtl`, or point at it from
-anywhere with `-Jwebinsight.report.baseline`. The plugin picks it up and adds a **Compare** tab with:
+On a listener run, copy a previous run's JTL into the report output directory as `baseline.jtl`,
+or point at it from anywhere with `-Jwebinsight.report.baseline` (the only way under `-g -o`,
+whose output directory must be empty). The plugin picks it up and adds a **Compare** tab with:
 - Current vs baseline response time and throughput comparison charts
 - Per-sampler diff table with regression detection — by default a p95 more than 10% higher, or an
   error rate more than 2 points higher; the thresholds are editable on the tab and settable with
@@ -358,19 +372,21 @@ CSV export), and the report compares the two. The result is its own tab, its own
 its own status — client and server are judged separately and never rolled into one word.
 
 ```json
-"serverMetrics": {
-  "components": {
-    "orders-db": { "type": "postgres", "description": "Orders DB",
-                   "match": "instance=\"orders-db:5432\"" },
-    "api":       { "type": "custom", "description": "API" }
-  },
-  "asserts": [
-    { "id": "db-connections", "component": "orders-db", "metric": "connections.used.pct",
-      "warn": { "gt": 70 }, "fail": { "gt": 90 } },
-    { "id": "api-cpu", "component": "api",
-      "query": "max(rate(process_cpu_seconds_total{job=\"api\"}[1m]))",
-      "reduce": { "kind": "p95" }, "warn": { "gt": 0.7 }, "fail": { "gt": 0.9 } }
-  ]
+{
+  "serverMetrics": {
+    "components": {
+      "orders-db": { "type": "postgres", "description": "Orders DB",
+                     "match": "instance=\"orders-db:5432\"" },
+      "api":       { "type": "custom", "description": "API" }
+    },
+    "asserts": [
+      { "id": "db-connections", "component": "orders-db", "metric": "connections.used.pct",
+        "warn": { "gt": 70 }, "fail": { "gt": 90 } },
+      { "id": "api-cpu", "component": "api",
+        "query": "max(rate(process_cpu_seconds_total{job=\"api\"}[1m]))",
+        "reduce": { "kind": "p95" }, "warn": { "gt": 0.7 }, "fail": { "gt": 0.9 } }
+    ]
+  }
 }
 ```
 
@@ -458,7 +474,8 @@ exit codes and these two lines with the actual JAR name filled in.
 
 ### CI/CD Integration
 
-Every report generation produces `web-insight-report.json`:
+Every report generation produces `web-insight-report.json` (abridged here — each `[...]` and
+`{...}` stands for content):
 
 ```json
 {
@@ -479,8 +496,11 @@ Every report generation produces `web-insight-report.json`:
 }
 ```
 
-`status` is the client verdict and `serverStatus` the server one — the worst status over all
-server components, `FAIL` > `NOT_EVALUATED` > `WARN` > `PASS`. They are never folded into
+`status` is the client verdict: `PASS`, `WARN` or `FAIL`; `NOT_JUDGED` when client rules were
+declared and none of them judged anything; and `UNKNOWN` when the file declares no client rule —
+including a file with only server asserts, so a pipeline that tests `.status == "PASS"` fails every
+server-only run. `serverStatus` is the server verdict — the worst status over all server
+components, `FAIL` > `NOT_EVALUATED` > `WARN` > `PASS`. They are never folded into
 one word; `serverStatus`, `serverComponents[]` and `serverAsserts[]` are present only on a report
 that judged server asserts against a payload.
 
@@ -517,7 +537,7 @@ Filenames bind the four artifacts together, and filenames are not unique per run
 
 | File | Description |
 |------|-------------|
-| `web-insight-report.html` | Self-contained interactive Web Insight Report |
+| `web-insight-report.html` | Self-contained interactive Web Insight Report (on a large run, keep its `-data.js` beside it) |
 | `web-insight-report.json` | Machine-readable CI/CD summary |
 | `web-insight-report.xml` | JUnit XML (when enabled via `-Jwebinsight.report.junit=true`) |
 | `web-insight-data.js` | External chart data, written when the payload passes `externaldata.threshold` (10,000,000 characters) or `externaldata=true` forces it; `<name>-data.js` for a report with another name |

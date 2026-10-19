@@ -37,8 +37,10 @@ section of this tab lists every marker with its time, type, label and descriptio
 | `info` | Blue |
 | `warning` | Amber |
 | `error` | Red |
+| `incident` | Red |
 | `deployment` | Blue |
 | `custom` | Purple |
+| none, or any other value | Grey |
 
 A marker's own `color` key overrides its type's colour.
 
@@ -67,7 +69,8 @@ With no annotations file, the same editor starts empty:
 - **Textarea** — type markdown text
 - **Preview** — swaps the box for the rendered Markdown; press it again to go back to editing
 - **"Save Annotations"** button — downloads `report-annotations.json`, a file that can be used in
-  future runs
+  future runs. The confirmation says where it goes: put it in the report's output directory, or
+  pass `-Jwebinsight.report.annotations=<path>`
 
 This allows engineers to write notes directly in the report and export them for the next run.
 
@@ -100,8 +103,15 @@ This allows engineers to write notes directly in the report and export them for 
 }
 ```
 
-**Auto-detection:** The plugin looks for `report-annotations.json` in the **report output
-directory**, and nowhere else — not next to the JTL, and not in JMeter's `bin/`.
+**Auto-detection:** With no output directory configured, a listener run writes to the first of
+these it can actually write to (each is probed with a real write, and the log names the one
+chosen): the directory of the listener's own results file — the `filename` property in the
+`.jmx`, which this listener's GUI does not show and `-l` does not set, so it is normally empty —
+then the working directory, then the test plan's directory, then `~/.jmeter-web-insight-report`,
+then a `web-insight-report` folder in the system temp directory. A `jmeter -g … -o DIR` run
+writes to `DIR`. `report-annotations.json` and `baseline.jtl` are auto-detected in that output
+directory only; with `-g -o` (which needs an empty directory) pass them with
+`-Jwebinsight.report.annotations` / `-Jwebinsight.report.baseline`.
 
 Or specify explicitly: `-Jwebinsight.report.annotations=/path/to/annotations.json`, or the
 listener's **Annotations File** field.

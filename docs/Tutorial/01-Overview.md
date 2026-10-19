@@ -16,11 +16,11 @@ Web Insight Report is an **Apache JMeter plugin** that generates modern, interac
 | Baseline comparison | Not supported | Side-by-side comparison with regression detection |
 | Dark mode | No | Full dark theme + colorblind mode |
 | Annotations | No | Markdown notes, timeline markers, sampler notes |
-| CI/CD integration | No | JSON summary + JUnit XML output |
+| CI/CD integration | `statistics.json` only | JSON summary with the assert verdicts + JUnit XML output |
 | Chart export | No | PNG, SVG, CSV per chart/table |
 | Customization | Limited | Palette, line thickness, metric toggle, granularity, presets |
 
-The report is a **single self-contained HTML file** — no server, no CDN, no internet required. Just open it in any browser.
+The report is a **single self-contained HTML file** — no server, no CDN, no internet required. Just open it in any browser. (On a large run the chart data goes into a sibling `-data.js` file; keep it beside the HTML.)
 
 ## Requirements
 
@@ -79,13 +79,22 @@ See [Export & CI/CD](11-Export-Integration.md) for setup details on the `-g -o` 
 | Property | Default |
 |----------|---------|
 | `webinsight.report.title` | `JMeter Web Insight Report` |
-| `webinsight.report.output` | The results file's directory, then the [fallbacks the README lists](https://github.com/aharon890/JmeterWebInsightReport#where-the-report-goes-by-default) |
+| `webinsight.report.output` | Listener run: normally the working directory (see below). `jmeter -g … -o DIR`: `DIR` |
 | `webinsight.report.filename` | `web-insight-report.html` |
 | `webinsight.apdex.threshold` | `500` (ms) |
 | `webinsight.report.junit` | `false` |
 | `webinsight.report.servermetrics` | none — the payload `wir-collect` wrote, for server asserts |
 
-Place `report-annotations.json` in the output directory for asserts, notes, and timeline markers. Place `baseline.jtl` for run comparison. Server asserts take two more steps after the run — fetch the metrics, then generate the report that judges them — see [Server tab](13-Server-Tab.md).
+With no output directory configured, a listener run writes to the first of these it can actually
+write to (each is probed with a real write, and the log names the one chosen): the directory of
+the listener's own results file — the `filename` property in the `.jmx`, which this listener's GUI
+does not show and `-l` does not set, so it is normally empty — then the working directory, then
+the test plan's directory, then `~/.jmeter-web-insight-report`, then a `web-insight-report` folder
+in the system temp directory. A `jmeter -g … -o DIR` run writes to `DIR`.
+
+`report-annotations.json` (asserts, notes, timeline markers) and `baseline.jtl` (run comparison)
+are auto-detected in that output directory only; with `-g -o` (which needs an empty directory)
+pass them with `-Jwebinsight.report.annotations` / `-Jwebinsight.report.baseline`. Server asserts take two more steps after the run — fetch the metrics, then generate the report that judges them — see [Server tab](13-Server-Tab.md).
 
 ---
 

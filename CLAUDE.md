@@ -83,7 +83,8 @@ Regression regenerates the report fixtures only when their provenance stamps no
 longer match the tree, so a change that touched no plugin source costs the same as
 sanity. Force it with `--force-fixtures`.
 
-The stamp hashes **every file under both modules' `src/main`**, not a hand-picked
+The stamp hashes **every file under both modules' `src/main`**, plus `test-plans/server-metrics`
+and `test-plans/server-catalogue` (E26's and E27's committed inputs), not a hand-picked
 list. It used to name five rendering files, which meant a change to `core/stats`
 left every stamp matching — regeneration was skipped and every browser test
 asserted against numbers from the previous build, green. Widening it also made the
@@ -131,13 +132,14 @@ referenced — so they are manual-tier.
 Run them before a release:
 
 ```bash
-./test-plans/scripts/run-all-tests.sh      # E01-E13, E15, E19, E20, E22, E24, E25, E26
+./test-plans/scripts/run-all-tests.sh      # E01-E13, E15, E19, E20, E22, E24, E25, E26, E27
 ./test-plans/scripts/run-config-tests.sh   # C01-C41 plus C17b, C19 records once
 ./test-plans/scripts/run-error-tests.sh    # N01-N09
 ./test-plans/scripts/run-docker-tests.sh   # E16, E17
 ```
 
-Those four are **not** the release tier. `test-plans/scripts/` ships **11** runners — the
+Those four are **not** the release tier. `test-plans/scripts/` ships **14** `run-*.sh`, and
+**11** of them are the release tier (the other three are sanity, regression and goldens) — the
 other seven are the six `run-family-*` scripts and `run-title-junit-tests.sh`, and they carry
 their own A/B, C/D, E, F/H, G, I/J and T ranges.
 
@@ -198,6 +200,10 @@ node node_modules/@playwright/test/cli.js test -g "a dragged width survives"
 `npx playwright test` does **not** work under Git Bash — npx fails to resolve the
 local install and `.bin/playwright` is a POSIX shim node tries to require as a
 module. Go through `node .../cli.js`, or use `run_playwright` from `common.sh`.
+
+Docs links: `test-plans/js-unit/docs-links.test.js` resolves every docs link the way Docsify does
+(CI runs it with the other js-unit tests); `node scripts/check-docs-site.js` crawls the site in a
+browser, served locally or, with `--live`, on GitHub Pages.
 
 See [docs/Instructions.md](docs/Instructions.md) for the full matrix.
 
@@ -346,7 +352,7 @@ known defect and demand a refusal.
 Don't trust a count written here; the S03/R03 blocks in the two runners are the list. The
 checks sit in **both** tiers rather than whichever tier a given change happens to get.
 
-`ci.yml` runs the same block plus `verify_shaded_jar`, calling the helpers in `common.sh`
+`ci.yml` runs the same block except `verify_release_tier`, plus `verify_shaded_jar`, calling the helpers in `common.sh`
 rather than reimplementing them. That shared definition is the point, not the redundancy:
 `verify_shaded_jar` opens with `command -v jar || return 0`, so it passes without checking
 anything on a machine with no JDK tools on `PATH`, and CI is the one place `jar` is
@@ -1336,6 +1342,8 @@ scratch folder is not worth a gate.)
 
 ```
 docs/                        Docsify documentation site
+docs/README.md               Its homepage; index.html sets relativePath: true, and _sidebar.md links are root-absolute (it renders on every page)
+docs/schema/                 Published copy of the annotations schema; js-unit/schema-published.test.js holds it identical to the JAR's
 docs/Instructions.md         Full test execution guide
 docs/FEATURES.md             Feature list (E-numbered, referenced by tests)
 docs/TEST-COVERAGE-GAPS.md   Coverage tracker

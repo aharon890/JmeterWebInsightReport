@@ -34,12 +34,27 @@ pull request.
 
 ## Running the tests
 
+Once, after cloning, install the browser suite's dependencies:
+
+```bash
+cd test-plans/playwright && npm ci
+```
+
+Then:
+
 ```bash
 mvn test                                 # Java, both modules
 ./test-plans/scripts/run-sanity.sh       # build, Java + report.js unit tests, static checks,
                                          # a JMeter smoke run, the browser suite on existing fixtures
 ./test-plans/scripts/run-regression.sh   # the same over freshly generated fixtures; run before a push
 ```
+
+On a fresh clone there are no report fixtures yet, so the sanity suite's browser step fails with
+"fixtures are stale" until a regression has run once and generated them.
+
+Both suites build the plugin and deploy it into the detected `$JMETER_HOME/lib/ext`, removing any
+other `jmeter-web-insight-report-*.jar` there. Point `JMETER_HOME` at a JMeter install you use for
+development, not one whose plugin JAR you want to keep.
 
 CI runs the fast tier on every push and pull request: `mvn verify`, the `report.js` unit tests and
 the static checks. It never starts JMeter or a browser, so run the regression locally before you

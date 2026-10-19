@@ -79,11 +79,21 @@ Dropdown controlling time-series aggregation level:
 Each bucket holds a sample-weighted average for response times, percentiles and error rates, the
 bucket's rate for throughput and bytes, and the maximum for Max.
 
-**Default:** Auto-detected based on test duration (1s for tests under 5 minutes).
+**Default:** Auto-detected from the test duration:
+
+| Test duration | Default granularity |
+|---------------|---------------------|
+| Up to 5 minutes | 1s |
+| Over 5 minutes | 10s |
+| Over 15 minutes | 30s |
+| Over 30 minutes | 1min |
+| Over 1 hour | 5min |
+| Over 2 hours | 10min |
 
 ![Granularity](images/06e-granularity.png)
 
-**Behavior:** Changing granularity instantly re-renders the time-series charts. Underlying data stays at 1-second resolution — only the display aggregation changes. Does NOT affect the Samplers table values, the heatmap or the percentile bars.
+**Behavior:** Changing granularity instantly re-renders the time-series charts. Underlying data stays at 1-second resolution — only the display aggregation changes. Does NOT affect the Samplers table values, the heatmap, the percentile bars or the Compare tab's
+charts, which always draw 1-second data.
 
 ## Row 2: Time Range / Presets
 
@@ -111,7 +121,7 @@ Save and restore complete filter configurations:
 | **Save** | Asks for a name, then saves: sampler visibility, metric, palette, line thickness, the Samplers table's hidden columns |
 | **Load** | Select from dropdown → all saved settings restored |
 | **Delete** | Select preset → click Del → removed |
-| **Default** | Always-present option that resets everything to factory defaults |
+| **Default** | Always-present option that restores what a preset saves to its defaults: every regular sampler checked (Σ Total, utility samplers and samplers with no samples unchecked), Mean, the Default palette (custom sampler colours cleared), Medium lines, and every Samplers table column shown. Granularity, chart zoom, the Timer/Clock mode and which filter rows are shown are left as they are |
 
 Presets are stored in localStorage under the key `wir_filterPresets`.
 
@@ -140,7 +150,9 @@ Presets are stored in localStorage under the key `wir_filterPresets`.
 
 - The first, bold entry in the list
 - **Default:** Unchecked (Total not shown)
-- **Check:** Adds a virtual aggregate row to the Samplers table and a dashed line to charts
+- **Check:** Adds a virtual aggregate row to the Samplers table and a thicker, dashed total
+  line to charts; on the Compare tab that line is solid for the current run and dashed for the baseline,
+  and follows the Metric toggle like the per-sampler lines
 - Values: see *Σ Total Row* on the [Samplers tab](04-Samplers-Tab.md)
 
 ### Per-Sampler Color Override

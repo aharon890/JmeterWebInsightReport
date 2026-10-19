@@ -216,8 +216,11 @@ The Summary tab carries a **Server** card under the Asserts card, in the same sh
 
 Before anything is collected (step 1's report) the card reads `NOT COLLECTED`, and says how many
 server asserts were declared. Over a refused payload it reads `REFUSED`. The header chip says the
-same word. On a large report whose data file (`<name>-data.js`) did not load, the card reads
-`UNAVAILABLE` and says the server verdict in the header came from the run itself and is correct.
+same word. On a large report whose data file (`web-insight-data.js` beside the default report,
+`<name>-data.js` beside a report you named) did not load, the card reads `UNAVAILABLE` and says the
+server verdict in the header came from the run itself and is correct. On step 1's report or over a
+refused payload, it still reads `NOT COLLECTED` or `REFUSED`, and says it cannot list what was
+declared.
 A run that declared no server asserts has no card at all: it has not passed anything, so nothing
 claims it did.
 
@@ -320,8 +323,8 @@ the page was loaded (see [Drafts and saving](#drafts-and-saving)).
 
 Then one filter row:
 
-- **Filter server asserts…** finds a row by its id, its catalogue metric's label, its description or
-  its component.
+- **Filter server asserts…** finds a row by its id, its catalogue metric's label or id, its
+  description or its component.
 - **Status chips** with counts, worded as the Asserts tab's: `All 12`, `FAIL 1`, `WARN 1` and so on,
   one per status on the board. Every reason a server assert was not judged is a chip of its own, as
   on the Asserts tab. The counts follow the other filters, the text you are typing included, so the
@@ -416,8 +419,9 @@ review, the editor's band boxes and JUnit write the same unit. The CI/CD JSON's 
 declared unit.
 
 A band is written with every digit the file gives it, never rounded: `warn > 0.4 s · fail > 2.955 s`.
-A measured number, such as Actual, a chart tooltip or a run's peak, has two decimals in every unit
-(`2.95 s`, `2.95 ms`) and never reads `0` when it is not zero. An Actual that two decimals would
+A measured number, such as Actual, a chart tooltip or a run's peak, has at most two decimals in
+every unit, with trailing zeros dropped (`2.95 s`, `2.5 ms`, `900 msgs`), and never reads `0` when
+it is not zero. An Actual that two decimals would
 put on a band it did not reach, or across one, gets the digits that keep it on its side:
 `3.004 s` beside `breached > 3 s`, not `3 s`. Large numbers are grouped the same way in both:
 `60,000,000 B/min` against `fail > 50,000,000 B/min`. Digits are written the same in every
@@ -440,7 +444,7 @@ reason, and the board shows the reason with the sentence that explains it undern
 | `DISABLED` | `DISABLED` | `"enabled": false`. Not collected either | No |
 | `UNMATCHED` | `NO_MATCH` | The source answered and the query matched no series (for a CSV: no row names this component and metric) | No, it is counted and reported |
 | `NO VALUE` | `NO_VALUE` | No point fell inside the judged window, the reducer had nothing to say, or a `divideBy` divisor measured zero | No |
-| `INVALID` | `INVALID_RULE` | The file is wrong, or the payload was collected for another version of it. In the file: an unknown component, component type or catalogue metric; `metric` and `query` both or neither; a `custom` component with no `query`; no band at all, or an unreadable one; an unknown reducer, or a tolerance it cannot take; a retired key. Against the run: a `requiresLoad` or `divideBy` that names no client rule, or a rule that is not a throughput rule; a `divideBy` rule that matched more than one sampler; a `sustainedFor` longer than one step that is not a whole number of the collection's steps. Against the payload: no series was collected for this assert's query (the file changed after `wir-collect` ran). The sentence names which | **Yes**, under `failonerror` |
+| `INVALID` | `INVALID_RULE` | The file is wrong, or the payload was collected for another version of it. In the file: an unknown component, component type or catalogue metric; `metric` and `query` both or neither; a `custom` component with no `query`; no band at all, or an unreadable one; an unknown reducer, or a tolerance it cannot take; a [refused key](#retired-and-refused-keys). Against the run: a `requiresLoad` or `divideBy` that names no client rule, or a rule that is not a throughput rule; a `divideBy` rule that matched more than one sampler; a `sustainedFor` longer than one step that is not a whole number of the collection's steps. Against the payload: no series was collected for this assert's query (the file changed after `wir-collect` ran). The sentence names which | **Yes**, under `failonerror` |
 | `SOURCE FAILED` | `SOURCE_FAILED` | The series could not be fetched: authentication, DNS, timeout, a 5xx, a placeholder the collector could not resolve, a catalogue metric with no Prometheus query asked of Prometheus or a recording, or a CSV row of this series that could not be read | **Yes**, under `failonerror` |
 | `LOW COVERAGE` | `LOW_COVERAGE` | Data came back, but below the coverage floor | **Yes**, under `failonerror` |
 | `LOAD NOT ACHIEVED` | `LOAD_NOT_ACHIEVED` | The client load rule it `requiresLoad` FAILED or was not judged, or the rule it `divideBy` was not judged. A `divideBy` rule that FAILED still divides | Not by itself. A load rule that FAILED: that FAIL is the client verdict, and exits 1 only under `failonassert`. A load rule that was not judged: that rule's own reason decides, so an `INVALID` client rule exits 1 under `failonerror`, and a disabled, unmatched or unmeasurable one fails nothing |
@@ -474,7 +478,9 @@ coverage of the collected window while the judged window holds much less. When a
 look thin, open its row and look at the gaps.
 
 The floor (`collection.coverageFloor`, default `0.9`) is applied at collection time too. Change it
-and re-collect. Until you do, the report tells you the payload was collected under a different floor.
+and re-collect: a raised floor applies only from the next collection. The payload does not record
+the floor it was collected under. A `LOW COVERAGE` row whose coverage the floor in the file would
+now pass says so, and asks you to re-run `wir-collect`.
 
 ### Opening a row: two panels
 
@@ -490,8 +496,9 @@ An open row has two panels:
 
 - It is drawn at the **collection's step** by default: every point `wir-collect` fetched. The
   selector beside its title, like the Samplers tab's chart selector, buckets it coarser: any rung
-  of the report's ladder (`5s` … `10min`) above the step and shorter than the judged window. A bucket
-  holds the assert's own reduction, so a `max` assert is drawn as a max. The choice applies to
+  of the report's ladder (`1s`, `5s`, `10s`, `30s`, `1min`, `5min`, `10min`) above the step and
+  shorter than the judged window. A `max` or `min` assert's bucket holds its extreme point, so a
+  `max` assert is drawn as a max; every other reducer's bucket holds the average of its points. The choice applies to
   every open row, and nothing else moves it: the Granularity in the client filter bar, which is
   hidden on this tab, does not reach these charts.
 - The warn and fail bands are drawn as lines, and the breached stretches are shaded.
@@ -502,7 +509,7 @@ An open row has two panels:
 - A server assert that was **not judged** draws no breach shading. Its band lines are dashed and
   muted, so the declared limit stays visible, and the note reads `not judged — <reason>`.
 - Gaps in the data are drawn as gaps, not bridged with a straight line.
-- Above the draw cap, the extra instances are listed as "and N more". Every instance was still judged.
+- Above the draw cap, the extra instances are listed as "and N more instance(s) not drawn". Every instance was still judged.
 - A series `wir-collect` read under another tool's name (`--csv FILE --from TOOL`) says which, in the
   note under the panels: `read as postgresql.percent_usage_connections (datadog, gauge, x100)`, the
   scale only when it is not 1. A series read under the catalogue's own name says nothing.
@@ -599,13 +606,13 @@ cards are offered inline, under **+ Add your first component**.
 
 | Field | |
 |---|---|
-| **Type** | One card per type: **Postgres**, **Kafka**, **Redis**, **Linux host**, **AWS EC2**, **Oracle Database**, **InfluxDB 2**, **InfluxDB 3**, **JVM**, **HTTP service**, **Kubernetes pod** and **MySQL**, each naming what it covers, what its metrics need (`Needs postgres_exporter`; Kafka's broker internals also need the JMX exporter with Strimzi's rules; AWS EC2's come from CloudWatch's `AWS/EC2` and `AWS/EBS`, and its ENA allowances from the CloudWatch agent; Oracle's five need [a custom metrics file](#oracle-the-custom-metrics-file); InfluxDB serves its own `/metrics`; JVM and HTTP service read [Micrometer's names](#jvm-and-http-service-micrometer-names); a Kubernetes pod's come from cAdvisor and kube-state-metrics) and how many catalogue metrics it has, and **Custom**, for anything else, where each assert writes its own query |
+| **Type** | One card per type: **Postgres**, **Kafka**, **Redis**, **Linux host**, **AWS EC2**, **Oracle Database**, **InfluxDB 2**, **InfluxDB 3**, **JVM**, **HTTP service**, **Kubernetes pod** and **MySQL**, each naming what it covers, what its metrics need (`Needs postgres_exporter`; Kafka's broker internals also need the JMX exporter with Strimzi's rules; AWS EC2's come from CloudWatch's `AWS/EC2` and `AWS/EBS`, and its ENA allowances from the CloudWatch agent; Oracle's five need [a custom metrics file](#oracle-the-custom-metrics-file); InfluxDB serves its own `/metrics`; JVM and HTTP service read [Micrometer's names](#jvm-and-http-service-micrometer-names); a Kubernetes pod's come from cAdvisor and kube-state-metrics) and, in the dialog, how many catalogue metrics it has, and **Custom**, for anything else, where each assert writes its own query |
 | **Id** | The name its server asserts, its card and the JUnit suite use, such as `orders-db` |
 | **Description** | The label on its card, the header chip and the Summary card, such as `Orders DB` |
-| **Advanced → Match** | Optional: a label selector added to every catalogue query, for when two components of one type share a source. See [`match`](#the-catalogue) |
+| **Advanced → Match** | Optional: a label selector added to every catalogue query, for when two components of one type share a source. See [`match`](#components) |
 
-A missing id, an id another component already has, and a reserved id (`assertions`, `(no gate)`)
-are each refused by name, and **Add component** stays disabled until the id is usable. Any other
+An id another component already has, and a reserved id (`assertions`, `(no gate)`), are each
+refused by name. **Add component** stays disabled until the id is usable, an empty one included. Any other
 id the run accepts is accepted here too.
 
 **Add component** writes the component into the document's `serverMetrics.components`, as a draft
@@ -760,7 +767,7 @@ make, then how the series is reduced, and the details last.
 | **Query** | Shown for Custom query… only: the PromQL (or, for a CSV, the text in its `metric` column), with `${env.*}` and `${run.*}` placeholders if you need them. A long query wraps. Enter adds no line break, because a query is its exact text and the payload is searched for it. A catalogue metric's query is the catalogue's, so the field is hidden |
 | **Warn**, **Fail** | An operator and a number each, with the unit the band is compared in beside it: the unit, `/min` added for a `slope`, ` ÷ <rule>` for a **Divide by**. Leave one empty for no band, unless the file declared a band there that the run [could not read](#a-band-the-run-could-not-read): then the empty box keeps it, and the row has a **×** |
 | **If saved** | The verdict the board would show for this assert if you saved it now, as you type: the chip, the actual against the band it breached, and `judged live` when the page recomputed a verdict (`live` on one that decided nothing, such as `DISABLED`). It is the board's own answer, so it never estimates. On a series the page holds capped it keeps the build's verdict while the assert is as the run judged it (`the build’s verdict — this series is capped here`) and reads `NOT RE-JUDGED` once you change it; a query this run did not collect reads `NEEDS RE-COLLECTION`. While Save is refused there is no verdict, only a pointer to the reason under the form |
-| **Reduce** | `max`, `min`, `avg`, `last`, `pN` or `slope` |
+| **Reduce** | `max`, `min`, `avg`, `last`, `slope`, `p50`, `p90`, `p95` or `p99`. Another percentile the file carries is offered too, marked `(from the file)` |
 | **Tolerance** | Offered on `max` and `min`, and on any assert that already carries one, so a tolerance the run refuses on another reducer can be removed: *sustained for* a duration, or a *breach budget* fraction. A tolerance you choose needs a value: left empty, Save is refused with the run's own sentence. To remove one, set Tolerance to *none*. Erasing its value does not remove it |
 | **Across instances** | `max` (the worst instance when higher is worse), `min` (the worst when lower is worse) or `avg`. A custom query starts at `max`; a catalogue metric starts at the catalogue's — `min` on most metrics where lower is worse, such as `up`, a hit ratio or free memory — and only a different choice is written |
 | **Unit** | A label shown beside every number. It converts nothing. For a catalogue metric, empty means the catalogue's. For a custom query, empty means no unit, and Save writes no `unit` key unless the file already had one |
@@ -770,13 +777,14 @@ make, then how the series is reduced, and the details last.
 The [Validate query](#validate-query) line sits under Metric (or Query). Enabling and disabling is
 not a field: it is **Disable** / **Enable** on the row.
 
-A [retired key](#retired-and-refused-keys) the assert carries has no field either. The editor lists
+A [refused key](#retired-and-refused-keys) the assert carries has no field either. The editor lists
 it at the top in the run's own words, with a `Remove "<key>" from this server assert` button, so
 the assert can be saved without it.
 
 **Save server assert** is disabled, with the sentence, for anything the run would refuse. The editor
-and `jmeter -g` share one set of refusals. Warnings that do not refuse (a warn band the fail band
-already covers, a duplicate id) are listed above the button. A warning about a run-level key the form
+and `jmeter -g` share one set of refusals. An id another server assert already has is refused
+(`Another server assert already has that id.`). Warnings that do not refuse, such as a warn band
+the fail band already covers, are listed above the button. A warning about a run-level key the form
 has no field for, such as `serverMetrics.requiresLoad`, says to fix it with **Edit document…** in this
 tab's toolbar.
 
@@ -830,7 +838,7 @@ data* for it and the exporter may not publish it.
 ### Generate from this run
 
 **Generate from this run (N)** offers one server assert for every collected series that no server
-assert on the page judges. Nothing is added straight away: it opens a review.
+assert on the page judges and that came back `OK` or `PARTIAL`. Nothing is added straight away: it opens a review.
 
 ![Generate from this run review](images/70-server-generate-review.png)
 
@@ -893,8 +901,9 @@ where the system's real behaviour says it belongs, and save.
 Every change is a draft until you save, exactly as on the Asserts tab, and the two tabs share one
 document:
 
-- **Drafts persist in your browser**, keyed by the run and the collection. A refresh keeps them,
-  and they do not follow you into another report or another collection.
+- **Drafts persist in your browser**, keyed by the run. A refresh keeps them, and they do not
+  follow you into another run's report. The server half is also tied to the collection it was made
+  against (see below).
 - **A restored draft is announced here.** When a refresh brings server edits back, a line under the
   actions says `Draft restored — N server-assert changes to this report were kept in this browser
   and are not downloaded yet.`, with **Discard drafts**, the same Discard as the Asserts tab's.
@@ -925,7 +934,8 @@ document:
   for another collection are not this page's, and stay saved.
 - **Delete** on a row is a draft too, and offers an **Undo**. Focus moves to the Undo, so the keyboard
   reaches it at once, and the toast stays up while it has focus. Tab or Escape from it goes back to
-  the next row, or to **+ Add component** when the row was the last of its card. Enter on Undo puts
+  the next row's ▸, else the previous row's ▸, else the card's **+ metric**, else
+  **+ Add component**. Enter on Undo puts
   the row back with focus on its Delete, and holding Enter down does not press that Delete. The
   Asserts tab's Delete works the same way.
 - **An Undo is offered only while nothing else has changed.** Every Undo — Delete on either tab,
@@ -957,19 +967,23 @@ with `max`, the instance that is worst when higher is worse. Where lower is wors
 hit ratio, free memory or disk, a credit balance — they fold with `min`, so one database that went
 down fails `up`'s `fail < 1` however healthy its twin was. The bands are still yours: the right
 number depends on the hardware, the workload and what "healthy" means for that service. A safe
-default ships only where a healthy machine meets it whatever it runs (no deadlocks, no OOM kill, no
-failed status check, no under-min-ISR partition or unclean leader election, no container restart, no
-connection refused at MySQL's `max_connections`, a warn on swapping, on ISR shrinks, on failed
-produce requests, on an EC2 instance that hit its EBS limit or a network allowance and on any server
-5xx; how many 5xx should fail the run is your service's error
-budget, so no fail band ships). NIC errors and drops have none: the kernel also counts a
+default ships only where a healthy machine meets it whatever it runs. For example: `up` fails below
+1 on every type that has it, and so do Kafka's active controller, Redis's replication link and EBS
+burst balance; a fail on any deadlock, OOM kill, panic, failed status check or compaction,
+under-replicated, under-min-ISR or offline partition, unclean leader election, container restart,
+or connection Redis or MySQL refused at its limit; a warn on swapping, on ISR shrinks, on failed
+produce requests, on rejected writes and object-store errors, on an EC2 instance that hit its EBS
+limit or a network allowance, and on any server 5xx. How many 5xx should fail the run is your
+service's error budget, so `http-service` ships no fail band for them. An InfluxDB server's own write
+and query error share is different: it warns above 0% and fails above 1%. Every safe default is in
+the catalogue files linked below. NIC errors and drops have none: the kernel also counts a
 frame of an unknown protocol as dropped, so a healthy host's rate need not be 0. Write a generous
 first guess, collect, then drag.
 
 | `type` | What it is for | What to run | Recommended metrics |
 |---|---|---|---|
 | `postgres` | A PostgreSQL server: connections, transactions, locks, cache, replication, checkpoints | postgres_exporter (prometheus-community), default collectors; on PostgreSQL 17 and later `checkpoints.requested` also needs its `stat_checkpointer` collector, which is off by default | `up`, `connections.used.pct`, `transaction.longest.seconds`, `locks.waiting`, `deadlocks`, `cache.hit.pct` |
-| `kafka` | A Kafka cluster: consumer lag and groups, brokers, partitions and ISR, controller, request latency, broker threads, throughput | kafka_exporter for lag, consumer groups, brokers and partitions; the JMX exporter with Strimzi's rules for broker internals. The request latency p99s, `request.handler.idle` and `consumer.lag.seconds.max` have no Prometheus query: collect them from a Datadog, OpenTelemetry or CloudWatch export | `consumer.lag.max`, `consumer.lag.final`, `brokers`, `partitions.under_replicated`, `partitions.under_min_isr`, `partitions.offline`, `isr.shrinks`, `elections.unclean`, `requests.produce.failed` |
+| `kafka` | A Kafka cluster: consumer lag and groups, brokers, partitions and ISR, controller, request latency, broker threads, throughput | kafka_exporter for lag, consumer groups, brokers and partitions; the JMX exporter with Strimzi's rules for broker internals. The request latency p99s, `request.handler.idle` and `consumer.lag.seconds.max` have no Prometheus query: collect them from an export of a tool the catalogue names for each (Datadog names all four) | `consumer.lag.max`, `consumer.lag.final`, `brokers`, `partitions.under_replicated`, `partitions.under_min_isr`, `partitions.offline`, `isr.shrinks`, `elections.unclean`, `requests.produce.failed` |
 | `redis` | A Redis node: memory against maxmemory, evictions, hit ratio, connections, main-thread CPU, replication | redis_exporter (oliver006) | `up`, `memory.used.pct`, `keys.evicted`, `connections.rejected`, `keyspace.hit.pct`, `command.latency.avg`, `cpu.main.pct`, `slowlog.entries` |
 | `host-linux` | A Linux machine or VM, seen from inside: CPU, steal, memory, swap, OOM kills, disk, filesystems, network | node_exporter, default collectors | `cpu.busy.pct`, `cpu.steal.pct`, `load.per.core`, `memory.available.pct`, `swap.pages.rate`, `oom.kills`, `disk.await.ms`, `filesystem.free.pct`, `network.errors.rate`, `tcp.retransmit.pct` |
 | `aws-ec2` | An EC2 instance, seen from outside: the ceilings the guest cannot see — CPU credits, EBS burst, IOPS, throughput and limits, ENA network allowances, status checks | an export from CloudWatch's `AWS/EC2` and `AWS/EBS` (`--csv --from cloudwatch`); it has no Prometheus query. The ENA allowances also need the CloudWatch agent's `ethtool` section. Four KPIs are computed with metric math ([below](#aws-ec2-four-kpis-computed-with-metric-math)) | `cpu.credit.balance`, `ebs.burst.balance.pct`, `ebs.limit.exceeded`, `status.check.failed`, `network.allowance.exceeded` |
@@ -982,7 +996,7 @@ first guess, collect, then drag.
 | `mysql` | A MySQL or MariaDB server: connections against `max_connections`, threads running, row lock waits, slow queries, the InnoDB buffer pool, replica lag | mysqld_exporter (prometheus-community), default collectors | `up`, `connections.used.pct`, `connections.refused`, `threads.running`, `row.lock.waits` |
 
 Every metric of each type, with its label, description, unit and query, is in the plugin's
-`catalogue/` resources (`index.json`, `postgres.json`, `kafka.json`, `redis.json`,
+[`catalogue/` resources](https://github.com/aharon890/JmeterWebInsightReport/tree/main/jmeter-report-core/src/main/resources/com/jmeterwebinsightreport/core/servermetrics/catalogue) (`index.json`, `postgres.json`, `kafka.json`, `redis.json`,
 `host-linux.json`, `aws-ec2.json`, `oracle.json`, `influxdb2.json`, `influxdb3.json`, `jvm.json`,
 `http-service.json`, `kubernetes-pod.json`, `mysql.json`), and the metric picker lists them; the
 report page carries the same files. Exporter metric names differ between
@@ -1123,8 +1137,9 @@ And `db.cpu.pct` needs exporter 2.0.4 or later: before it the default `db_system
 `influxdb2` and `influxdb3` share the ids of the ten KPIs both engines have (`write.latency.p95`,
 `write.rejected`, `query.errors.pct` and the rest), so moving a file from one version to the other
 changes only the component's `type`; each adds four of its own. Their queries differ, because the
-engines' metrics do: 2.x counts `status="5XX"` on `http_api_requests_total`, 3.x
-`status="server_error"` on `http_requests_total`. Two of their series are not InfluxDB's alone:
+engines' metrics do: `write.errors.pct` counts `status="5XX"` on `http_api_requests_total` in 2.x
+and `status="server_error"` on `http_requests_total` in 3.x, while 3.x's `query.errors.pct` reads
+the failed phase of `influxdb_iox_query_log_phase_entered_total`. Two of their series are not InfluxDB's alone:
 `up` is Prometheus' own series for every target, and 2.x's `memory.used.bytes` reads
 `go_memstats_heap_inuse_bytes`, which every Go program exports. Give the component a `match` that
 picks InfluxDB's (`job="influxdb"`, say): without one, `up`'s safe default fails when any other
@@ -1172,9 +1187,10 @@ renamed (`management.observations.http.server.requests.name`) names these otherw
 
 #### Kubernetes pods: match on namespace, pod or container
 
-Every `kubernetes-pod` query is per container, and three of them divide a cAdvisor series (CPU
-used, throttled periods, the working set) by a kube-state-metrics one (the container's limit),
-joined on `namespace`, `pod` and `container`. Those are the labels both exporters carry, so the
+Every `kubernetes-pod` query is per container, and two of them divide a cAdvisor series (CPU
+used, the working set) by a kube-state-metrics one (the container's limit), joined on `namespace`,
+`pod` and `container`. `cpu.throttled.pct` is a ratio of two cAdvisor counters, throttled CFS
+periods over all of them. Those are the labels both exporters carry, so the
 component's `match` should use them: `namespace="shop"`, or `namespace="shop", pod=~"api-.*"`. A
 match on `job` or `instance` names one exporter's scrape only and leaves the other side of the
 division empty. Without a `match` every container in the cluster is judged, `kube-system`'s
@@ -1401,6 +1417,9 @@ The console prints one clause per server component after the client verdict, for
   on one reads `NOT RE-JUDGED`, on the board and in Set thresholds alike. The picker, Set thresholds
   and Generate take the build's own number for such a series, never the thinned copy's; where the
   build has none, nothing is proposed from the run.
+- **A capped `across: avg` verdict cannot be re-derived from the page.** It is the average over
+  every collected instance, and the page draws at most 20 of them from thinned points, so averaging
+  the drawn instances' bars does not give the build's number. The build's actual is the one to read.
 - **Thresholds are literal numbers.** No per-environment thresholds. Interpolation reaches the
   `--prometheus-url` value and queries only.
 - **One verdict per server assert.** Instances are charted individually and judged through `across`
@@ -1436,7 +1455,7 @@ usage: wir-collect --jtl <results.jtl> --annotations <report-annotations.json> -
 | `--layout long\|wide` | With `--csv`: `long` (the default) is one row per point; `wide` is a time column and one column per series, the shape of Grafana's CSV download. See [From Grafana](#from-grafana-the-wide-layout) |
 | `--columns MAP` | With `--layout wide`: a CSV of `column,component,metric,instance` naming each export column by its exact header |
 | `--csv-columns SPEC` | With a long `--csv`: the file's names for the columns, as `key=column` pairs — `time`, `component`, `metric`, `instance`, `value`; a key not given keeps its own name. `metric=_measurement+_field` joins two columns as `<measurement>.<field>`. See [From InfluxDB 2](#from-influxdb-2-csv-columns-and-a-fixed-component) |
-| `--component ID` | With a long `--csv`: every row belongs to component `ID`, for an export with no component column whose asserts are all on `ID` — an assert on any other component finds no rows and reads `UNMATCHED`. Refused beside a component column of the file's own, or `--csv-columns component=` |
+| `--component ID` | With a long `--csv`: every row belongs to component `ID`, for an export with no component column whose asserts are all on `ID` — an assert on any other component finds no rows and reads `UNMATCHED`. Refused beside `--csv-columns component=` (exit 1). Beside a component column of the file's own, the file is refused and every series fails ([below](#from-influxdb-2-csv-columns-and-a-fixed-component)) |
 | `--time-zone ZONE` | With `--csv`: the zone of a time written with none — an IANA id (`Europe/Berlin`), `UTC`, or an offset (`+03:00`). Without it such a time is refused |
 | `--step DURATION` | The resolution asked for, and the coverage grid. Default `15s` |
 | `--clock-offset DURATION` | Added to every timestamp the source reports: `-30s` lines up servers whose clocks run 30 s ahead. Default `0` |
@@ -1743,8 +1762,10 @@ influx query --raw 'from(bucket: "telegraf")
   component finds no rows and reads `UNMATCHED` — counted and reported, never judged. A file that
   covers several components needs a component column, or `--csv-columns component=<tag>` naming a tag
   whose values are the component ids. An id the annotations do not declare is refused (exit 1), and so
-  is `--component` beside a component column of the file's own, or beside `--csv-columns component=`:
-  the component is said in one place.
+  is `--component` beside `--csv-columns component=`: the component is said in one place. Beside a
+  component column of the file's own, the file is refused instead: every series fails, naming both,
+  the payload is written with the source `FAILED`, and `wir-collect` exits 0, like any other source
+  that could not be read.
 - **`--from telegraf`** reads a catalogue metric under Telegraf's name for it, converted to the
   catalogue's unit ([which name each tool uses](#which-name-each-tool-uses)). `metric=_measurement+_field`
   joins exactly that name: rows of `postgresql`'s `deadlocks` field read `postgresql.deadlocks`, a
@@ -2058,8 +2079,8 @@ and collects with whichever plugin JAR that one holds.
 }
 ```
 
-Unknown keys are ignored and carried through a Save untouched. A retired key is refused
-([below](#retired-and-refused-keys)). A container of the wrong shape (`"asserts": {}`,
+Unknown keys are ignored and carried through a Save untouched. A few keys are refused instead,
+each with a sentence naming what to write ([below](#retired-and-refused-keys)). A container of the wrong shape (`"asserts": {}`,
 `"warn": 640`, `"reduce": "max"`) fails the whole annotations file at load, as a client rule's would.
 A written `null` means absent.
 
@@ -2170,7 +2191,7 @@ is judged. Each is refused with a sentence naming what to write instead.
 | `sources` | Nothing in the file: where the metrics come from is a `wir-collect` flag (`--prometheus-url`, `--recording`, `--csv`) |
 | `gates` | `components`, and a `component` on each server assert |
 | `kpis` | `asserts`. Nothing under `kpis` is read |
-| `packs` | Each server assert under `asserts`, directly. Packs are not in this version; the [catalogue](#the-catalogue) is the built-in set |
+| `packs` | `packs` is not a key: declare each server assert under `asserts`. The [catalogue](#the-catalogue) is the built-in set of metrics |
 
 **On a component**:
 
@@ -2224,7 +2245,7 @@ You rarely need to open it, but it is plain JSON:
 | Field | |
 |---|---|
 | `runId` | The run the payload belongs to. Must equal the report's, or the payload is refused |
-| `collectionId` | A hash of the source, the resolved queries, the window and `collectedAt`. Stamped into each `serverComponents[]` entry, and the key page drafts are stored under |
+| `collectionId` | A hash of the source, the resolved queries, the window and `collectedAt`. Stamped into each `serverComponents[]` entry. A page's server-assert drafts are tied to it: a draft made against another collection is not restored ([Drafts and saving](#drafts-and-saving)) |
 | `window` | Epoch milliseconds. `rampUpEnd` only when `--rampup` was given |
 | `sources[]` | The collection's one source, `metrics`: `type` is `prometheus`, `file` (`--recording`) or `csv`. `status` is `OK`, `PARTIAL` (some series failed, others came back) or `FAILED` (nothing came back) |
 | `sources[].resolvedUrl`, `error` | The URL, recording directory or CSV path. A URL is redacted: userinfo stripped, credential parameters and every secret value masked |

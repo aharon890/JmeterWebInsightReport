@@ -55,8 +55,9 @@ Swaps all semantic colors from green/red to blue/orange:
 - **Default:** OFF
 - **Toggle:** Click icon → body gets `cb-mode` CSS class
 - **Icon opacity:** 0.4 (off) → 1.0 (on), and the button fills with the primary colour while on
-- **Title attribute:** Updates to "Colorblind mode (on)" / "(off)"
-- **Persistence:** Saved to localStorage
+- **Title attribute:** Updates to "Colorblind mode (on)" / "(off)", and reads "(on)" when the mode
+  is restored after a reload
+- **Persistence:** Saved to localStorage; survives page reload
 
 ### Combined Modes
 
@@ -67,6 +68,15 @@ Dark mode and colorblind mode work independently — all 4 combinations are supp
 4. Dark + Colorblind
 
 Both CSS classes (`dark-mode` + `cb-mode`) can be applied simultaneously.
+
+## Keyboard and motion
+
+- **Focus ring:** Moving through the report with the keyboard draws a visible 2px outline in the
+  accent colour around the focused button, link, input or clickable control. It appears for
+  keyboard focus only, not on a mouse click.
+- **Reduced motion:** When the operating system asks for reduced motion
+  (`prefers-reduced-motion: reduce`), the report turns off its CSS animations and transitions —
+  toasts, tab switches and the slide-over panels appear without moving.
 
 ## Color Palettes
 
