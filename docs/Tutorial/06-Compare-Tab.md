@@ -149,7 +149,7 @@ The Compare tab includes UI controls to adjust thresholds on-the-fly:
 - Useful for exploring what thresholds make sense for your application
 - Changes are local (do not modify the annotations file)
 
-## "What Changed" Summary
+## What Changed summary
 
 Auto-generated text in the **Notes tab** when baseline comparison exists:
 - Overall line: the average P95 change and error-rate change across samplers (improved, stable or

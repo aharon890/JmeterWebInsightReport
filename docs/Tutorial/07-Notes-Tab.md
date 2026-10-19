@@ -52,7 +52,7 @@ Per-sampler annotations shown as blue (i) icons in the Samplers tab table:
 - Icon appears next to the sampler name
 - Hover to see the note text as a tooltip
 
-### "What Changed" Summary
+### What Changed summary
 
 When baseline comparison exists, an auto-generated summary of regressions and improvements appears in the Notes tab — see [Compare](06-Compare-Tab.md#what-changed-summary).
 

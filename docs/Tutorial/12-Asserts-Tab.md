@@ -19,7 +19,7 @@ Response Assertion, and nothing in your test plan replaces a rule here.
 `success = false`, which makes it an *error* to this report — so it is counted by `errorRate` and
 `errorCount`, and therefore by any rule here that names them. See
 [What `errorRate` counts](10-Asserts-Apdex.md#metrics),
-and [error classes](05-Errors-Tab.md#error-classes--where-a-failure-was-decided) for gating one
+and [error classes](05-Errors-Tab.md#error-classes-where-a-failure-was-decided) for gating one
 kind and not the other.
 
 A useful way to hold the two apart: a JMeter Assertion decides **whether a response was correct**.

@@ -107,7 +107,7 @@ the two rules to write instead.
 > every response was wrong. But it is easy to miss, so a threshold written as "fail above 2%
 > errors" can be read by its author as "2% HTTP failures" while meaning something broader. The
 > report *shows* you the split, via
-> [error classes](05-Errors-Tab.md#error-classes--where-a-failure-was-decided).
+> [error classes](05-Errors-Tab.md#error-classes-where-a-failure-was-decided).
 >
 > If you want a threshold on one kind, say which:
 > `errorRate:class=protocol` for HTTP failures, `errorRate:class=nonProtocol` for the rest.
@@ -143,7 +143,7 @@ of all of them:
 
 | Selector | Values |
 |---|---|
-| `class=` | `protocol`, `nonProtocol`, `transport` — see [error classes](05-Errors-Tab.md#error-classes--where-a-failure-was-decided) |
+| `class=` | `protocol`, `nonProtocol`, `transport` — see [error classes](05-Errors-Tab.md#error-classes-where-a-failure-was-decided) |
 | `code=` | A glob over the response code as JMeter wrote it. `404`, `5*`, `Non HTTP*`. |
 
 A 2% error rate that is all 404s from a stale data file is not the same run as 2% connection
@@ -364,7 +364,7 @@ reports `"assertsEvaluated": false`; it was reported, not judged.
 
 ---
 
-## Load validity — was the run even valid?
+## Load validity: was the run even valid?
 
 Ask for 5 requests a second, achieve 3, and every latency threshold in the file passes
 comfortably: the system was never put under the load those thresholds were written for. The run
