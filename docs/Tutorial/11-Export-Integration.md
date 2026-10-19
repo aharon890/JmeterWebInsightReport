@@ -131,10 +131,10 @@ nothing and why:
 | `DISABLED` | `enabled: false` | nobody's — it was parked |
 | `NO_MATCH` | the target selected nothing | the **file**, usually a renamed sampler |
 | `NO_VALUE` | the run cannot produce this metric | the **run**, not the file |
-| `INVALID_RULE` | unknown metric, unreadable target, no bands | the **file** |
-| `SOURCE_FAILED` | *server asserts only* — the series could not be collected: the metric source refused it or never answered (auth, timeout, DNS, 5xx), or a `--csv` row of it could not be read; the `reason` says which | **DevOps** — credentials or the endpoint; for a CSV row, whoever exported the file |
+| `INVALID_RULE` | unknown metric, unreadable target, no bands; for a server assert also an unknown component, a `requiresLoad`/`divideBy` naming no throughput rule, a `sustainedFor` the collection's step cannot hold, or a query the payload never collected ([Tutorial 13](13-Server-Tab.md#why-a-server-assert-was-not-judged) lists them all) | the **file** |
+| `SOURCE_FAILED` | *server asserts only* — the series could not be collected: the metric source refused it or never answered (auth, timeout, DNS, 5xx), a placeholder could not be resolved, a catalogue metric has no Prometheus query, or a `--csv` row of it could not be read; the `reason` says which | **DevOps** — credentials or the endpoint; for a CSV row, whoever exported the file |
 | `LOW_COVERAGE` | *server asserts only* — data covered less of the collected window than the coverage floor | whoever owns the collector's wait, step or floor |
-| `LOAD_NOT_ACHIEVED` | *server asserts only* — the load rule it names in `requiresLoad` FAILED, or was not judged: the load it depends on was not established | the **test** — re-run it (or, when the load rule matched nothing, the file) |
+| `LOAD_NOT_ACHIEVED` | *server asserts only* — the load rule it names in `requiresLoad` FAILED or was not judged, or the rule it names in `divideBy` was not judged: the load it depends on was not established | a FAILED load rule: the **test** — re-run it. A load rule that was not judged: whatever that rule's own reason says (a renamed sampler, a parked rule, a broken file) |
 
 Coverage is measured by `wir-collect` over the window it **collected**, and is not recomputed when
 the report judges. With a long ramp-up excluded from the judged window, the figure can therefore
@@ -306,8 +306,9 @@ either side, run", not "is there a `gate` block".
 
 **A gate that ran is `assertsEvaluated: true` even when it judged nothing.** Rules were declared
 — they just all came back `NOT_JUDGED`, whether from a renamed sampler, a metric this run could
-not produce or a file the loader could not read. `assertsEvaluated: false` is reserved for "there
-are no rules".
+not produce or a rule the file got wrong. `assertsEvaluated: false` is reserved for "there are no
+rules", and that includes an annotations file that could not be read at all: it declares nothing,
+and says so as an ERROR finding (`annotations`).
 
 In that case `gate.status` is **`NOT_EVALUATED`**, which is not `PASS`. A run that judged nothing
 has not passed anything. The top-level `status` carries the same verdict as `gate.status`, with
@@ -353,7 +354,7 @@ it — there is no rollup of client and server anywhere. It is present exactly w
 | Rank | `serverStatus` | Means |
 |---|---|---|
 | worst | `FAIL` | a component's fail band was breached |
-| | `NOT_EVALUATED` | a component judged nothing — every assert in it parked, unmatched or unable to run — or no component was reported |
+| | `NOT_EVALUATED` | a component judged nothing — every assert in it was `NOT_JUDGED`, whatever the reason, or it declares no asserts at all — or no component was reported |
 | | `WARN` | a component's warn band was crossed, nothing failed |
 | best | `PASS` | every component passed |
 

@@ -20,7 +20,8 @@ judging the draft to that tab.
 The mini badges beside *P95, whole run* and *P99, whole run* are the worst verdict across the
 rules judging that metric, on any sampler — so a FAIL there can come from one slow sampler while
 the whole-run figure beside it looks fine. A metric no rule mentions gets no badge — nothing judged
-it, so nothing is claimed.
+it, so nothing is claimed — and neither does one whose every rule decided nothing. The badges are
+the gated run's and do not follow a draft.
 
 ## Server card
 

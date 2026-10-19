@@ -247,22 +247,27 @@ every way of not reaching one.
 
 ### Why a rule was not judged
 
-| reason | Cause | Fix |
-|---|---|---|
-| `DISABLED` | `enabled: false`. | Nothing; it was parked on purpose. |
-| `NO_MATCH` | The target selected nothing — no sampler matched, or every match recorded no samples. | Usually the target: check it against the sampler names the run produced. The report offers a did-you-mean. |
-| `NO_VALUE` | The metric is real but this run cannot produce it — an off-grid percentile with no retained distribution, a JTL column the test did not write. | **The run**, not the file. The rule would work against a run carrying the data. |
-| `INVALID_RULE` | The file is wrong: unknown metric, a metric that does not exist in the rule's scope, an unparseable pattern, no bands, an unreadable target. | The rule. The message names what is wrong and suggests the nearest valid name. |
-| `SOURCE_FAILED` | *Server asserts only.* The series could not be collected — the metric source refused it or never answered (authentication, timeout, DNS, a 5xx), or a row of a `--csv` export could not be read. The reason quotes the collector's error, and the rest of the source may still have answered (`PARTIAL`). | What the reason names: credentials or the endpoint, usually DevOps, not the test author; or, for a CSV row, the file that was exported. |
-| `LOW_COVERAGE` | *Server asserts only.* Data arrived, but below the coverage floor — coverage measured over the collected window. | The collector's wait, the source's step, or the floor. |
-| `LOAD_NOT_ACHIEVED` | *Server asserts only.* The load it depends on was not established: the client load rule it names (`requiresLoad`) FAILED, or was not judged at all — so a band written for the target load says nothing about this run. | A FAIL: re-run the test; the load rule already carries the FAIL. Not judged: that rule's own reason — a renamed load sampler stands the server asserts down without failing the build. |
+The first column is the reason as the CI/CD JSON and JUnit write it; the second is the word the
+report's tables, chips and filters show for it.
+
+| reason | Page reads | Cause | Fix |
+|---|---|---|---|
+| `DISABLED` | `DISABLED` | `enabled: false`. | Nothing; it was parked on purpose. |
+| `NO_MATCH` | `UNMATCHED` | The target selected nothing — no sampler matched, or every match recorded no samples. | Usually the target: check it against the sampler names the run produced. The report offers a did-you-mean. |
+| `NO_VALUE` | `NO VALUE` | The metric is real but this run cannot produce it — an off-grid percentile with no retained distribution, a JTL column the test did not write. On a server assert: no point fell inside the judged window, or a `divideBy` divisor measured zero. | **The run**, not the file. The rule would work against a run carrying the data. |
+| `INVALID_RULE` | `INVALID` | The file is wrong: unknown metric, a metric that does not exist in the rule's scope, an unparseable pattern, no bands, an unreadable target. A server assert has causes of its own (an unknown component, a `requiresLoad` naming no throughput rule, a `sustainedFor` the collection's step cannot hold, …), listed on the [Server tab](13-Server-Tab.md#why-a-server-assert-was-not-judged). | The rule. The message names what is wrong and suggests the nearest valid name. |
+| `SOURCE_FAILED` | `SOURCE FAILED` | *Server asserts only.* The series could not be collected — the metric source refused it or never answered (authentication, timeout, DNS, a 5xx), a placeholder the collector could not resolve, a catalogue metric with no Prometheus query asked of Prometheus or a recording, or a row of a `--csv` export that could not be read. The reason quotes the collector's error, and the rest of the source may still have answered (`PARTIAL`). | What the reason names: credentials or the endpoint, usually DevOps, not the test author; or, for a CSV row, the file that was exported. |
+| `LOW_COVERAGE` | `LOW COVERAGE` | *Server asserts only.* Data arrived, but below the coverage floor — coverage measured over the collected window. | The collector's wait, the source's step, or the floor. |
+| `LOAD_NOT_ACHIEVED` | `LOAD NOT ACHIEVED` | *Server asserts only.* The load it depends on was not established: the client load rule it names (`requiresLoad`) FAILED, or was not judged at all, or the rule it divides by (`divideBy`) was not judged — so a band written for the target load says nothing about this run. A `divideBy` rule that FAILED still divides. | A FAIL: re-run the test; the load rule already carries the FAIL. Not judged: that rule's own reason — a renamed load sampler stands the server asserts down without failing the build. |
 
 The three server-only reasons are counted on every gate and are always zero on a client rule; they
 are in the vocabulary so a server assert and a client rule that matched nothing say the same word.
 `SOURCE_FAILED` and `LOW_COVERAGE` are configuration errors like `INVALID_RULE` — they exit the run
 non-zero under `failonerror`, on every server component, since every component can fail the
-build. `LOAD_NOT_ACHIEVED` is neither: the load rule already carries whatever is wrong. Server
-asserts have their own tab and are grouped by component:
+build. `LOAD_NOT_ACHIEVED` is neither: what went wrong is the load rule's to report. Its FAIL is
+the client verdict; an `INVALID_RULE` load rule is a configuration error of its own; a disabled,
+unmatched or unmeasurable one reports nothing, and the server asserts that depend on it stand down
+without failing the build. Server asserts have their own tab and are grouped by component:
 see [Server tab](13-Server-Tab.md).
 
 **`INVALID_RULE` is not a verdict, and it still fails the run.** Those are two different
@@ -316,7 +321,7 @@ Plus one state that belongs to the run rather than to a rule:
 
 | | |
 |---|---|
-| **NOT EVALUATED** | No rule gated. Either nothing was declared, or every declared rule is `NOT_JUDGED`. **This is not a pass.** A run with no gate has not passed one — it was reported, not judged. With nothing declared the CI/CD JSON says `"assertsEvaluated": false`; with rules declared and none judged, `gate.status` is `NOT_EVALUATED`. |
+| **NOT EVALUATED** | No rule gated. Either nothing was declared, or every declared rule is `NOT_JUDGED`. **This is not a pass.** A run with no gate has not passed one — it was reported, not judged. The CI/CD JSON's `status` is `UNKNOWN` in both cases. With no client rule declared there is no `gate` block, and `"assertsEvaluated"` is `false` unless server asserts were judged; with rules declared and none judged, `gate.status` is `NOT_EVALUATED`. The header badge tells the two apart: `NO ASSERTS DECLARED`, or `ASSERTS NOT EVALUATED` (`SERVER ASSERTS ONLY` when server asserts were judged). |
 
 > **Why there is no "inconclusive".** In CI such a status has to resolve to pass or fail anyway:
 > if it fails the build it is FAIL with extra vocabulary, and if it passes it is a silent green —
@@ -346,14 +351,16 @@ Plus one state that belongs to the run rather than to a rule:
    threshold pass. The report distinguishes the two cases, because the fixes differ: a name that
    matches nothing is a typo, a name that matches an empty row is a thread group that never
    started or a run that stopped early.
-4. Per match: `fail` first, then `warn`, else PASS. The rule takes the **worst** match, and
-   every match is kept, passing ones included.
+4. Per match: `fail` first, then `warn`, else PASS. A match this run cannot measure (an off-grid
+   percentile with no retained distribution, say) is `NOT_JUDGED / NO_VALUE` and decides nothing.
+   The rule takes the **worst** match that was judged, and is `NO_VALUE` only when none was. Every
+   match is kept, passing ones included.
 5. **The run verdict is the worst status across rules that decided something.** `NOT_JUDGED` is
    neutral whatever its reason — it never moves the verdict in either direction. A gate of
    nothing but `NOT_JUDGED` rules reports **NOT EVALUATED**, which is not a pass.
 
-Declaring nothing is not the same as passing. A run with no gate reports
-`"assertsEvaluated": false`; it was reported, not judged.
+Declaring nothing is not the same as passing. A run with no gate, and no server asserts judged,
+reports `"assertsEvaluated": false`; it was reported, not judged.
 
 ---
 

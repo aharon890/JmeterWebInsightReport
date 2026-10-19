@@ -48,8 +48,8 @@ release; the full set is ~5 minutes.
 Three easy ones to get wrong. **E19 is a fixture**, the listener half of external-data mode:
 `external-data.spec.ts` opens it to assert the payload was written to a sibling `.js` and
 referenced by `<script src>` — the one product promise no inline-payload fixture can
-exercise. **E25** is the one that renders every rule state in a single run (PASS, WARN, FAIL,
-and NOT_JUDGED for DISABLED, NO_MATCH and INVALID_RULE), with deliberately extreme thresholds
+exercise. **E25** is the one that renders every rule state but `NO_VALUE` in a single run (PASS,
+WARN, FAIL, and NOT_JUDGED for DISABLED, NO_MATCH and INVALID_RULE), with deliberately extreme thresholds
 so those states land identically on any machine. (E10, E11 and E12 carry `assertions` arrays
 too.)
 
@@ -61,8 +61,10 @@ says how to regenerate the payload. That is forced, not convenient: a live run's
 fingerprint of the run, so the report refuses a committed payload against it, and the committed
 CSV's fixed timestamps share no milliseconds with a live window, so collecting at run time
 would put coverage at zero. Every number on the tab is therefore a constant a spec can assert
-on, and it renders every state the tab has — two `custom` components, `kafka` and `db`, and a
-server assert for PASS, WARN, FAIL and the `NOT_JUDGED` reasons. Its `SOURCE_FAILED` comes from
+on, and it renders every state a judged board can show but one — two `custom` components, `kafka`
+and `db`, and a server assert for PASS, WARN, FAIL and six of the seven `NOT_JUDGED` reasons
+(`NO_VALUE` is the missing one). Being a step-3 report, it cannot show the interim or refused
+states (`NOT EVALUATED` rows, `Server · NOT COLLECTED` / `REFUSED`). Its `SOURCE_FAILED` comes from
 one CSV row whose time has no zone: that series fails, the others come back, and the source reads
 `PARTIAL`. Beside its two client load rules it carries four near-band client rules — means the
 client's rounding put on or across their bands, three within a hundredth and the whole-run mean

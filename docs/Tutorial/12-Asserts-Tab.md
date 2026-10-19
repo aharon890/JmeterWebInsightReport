@@ -49,15 +49,21 @@ in a tab.
 
 It carries:
 
-- **The verdict** — the worst status across every declared rule.
+- **The verdict** — the worst status across the declared rules that decided something, and
+  `NOT EVALUATED` when none of them did. A run that declared no client rule has no strip.
 - **How it was made up** — chips counting failed, warned and passed, then why the rest judged
-  nothing: invalid, unmatched, not measurable, load not achieved or disabled. Only the counts above
-  zero get a chip. They add up to the number declared, deliberately; nothing falls between the
-  buckets.
-- **The three worst entries** — a breach with the rule id, the measured number **and the limit
-  that rejected it**, or a rule that could not run with the reason it could not. A verdict without
-  the actual-versus-limit tells you something is wrong and leaves you to find out what.
+  nothing: invalid, unmatched, not measurable or disabled. Only the counts above zero get a chip.
+  They add up to the number declared, deliberately; nothing falls between the buckets.
+- **Worst breaches** — the three worst entries: FAILs, then WARNs, then rules that could not run,
+  and within a status the one furthest past its line first. A breach shows the rule id, the
+  measured number **and the limit that rejected it**; a rule that could not run shows the reason
+  it could not. A verdict without the actual-versus-limit tells you something is wrong and leaves
+  you to find out what.
 - **Open Asserts →**, which is where the rest of this page happens.
+
+On a large report whose data file (`<name>-data.js`) did not load, the strip reads `UNAVAILABLE`
+and says the rules and their verdicts could not be loaded; the badge in the header came from the
+run itself and is still correct.
 
 The strip speaks for the **client** rules only. Server asserts are judged separately and never
 folded into it: they have the server chip in the header and the [Server tab](13-Server-Tab.md).
@@ -88,14 +94,19 @@ being interesting.
 **Four statuses, seven words.** A rule has one of four statuses and only three of them are
 verdicts; the fourth, `NOT_JUDGED`, carries a reason. The table shows the *reason* rather than the
 status, because "3 not judged" sends you nowhere and "1 invalid, 1 unmatched, 1 disabled" sends
-you to three different places. Full reference:
+you to three different places. Worst first means FAIL, WARN, INVALID, then PASS, then NO VALUE,
+UNMATCHED and DISABLED: a rule that could not run sorts above a pass, because a check the file
+asked for never ran. Full reference, with the wire name behind each word:
 [Asserts & Apdex → The statuses](10-Asserts-Apdex.md#the-statuses).
 
 **Finding a rule.** The search box above the table matches a rule's id, description, target,
 metric and criteria, and the name of every sampler it judges. The status chips beside it, each
 with its count, narrow the table to the statuses you pick, and **More filters** adds the metric,
-the kind of target, the sampler a rule judges and *Drafts only*. Every column header sorts, and
-the sort is remembered in this browser.
+the kind of target, the sampler a rule judges and *Drafts only*. The ▼ in the Status header offers
+the same statuses as a list, plus **All statuses** and **Breaching only** (FAIL, WARN and
+INVALID: what needs attention). Every column header sorts, and the sort is remembered in this
+browser. A line above the table says how many rules it shows and how they are sorted, and a filter
+that leaves nothing says *No rule matches these filters*.
 
 Each row ends in **Edit**, **Duplicate** (the copy is named `<id>-copy`), **Disable** (or
 **Enable**) and **Delete**, which offers an **Undo** until the document next changes.
@@ -135,7 +146,7 @@ pair means: `24%` of the fail band used, or `212%` of it.
 | `96%` | inside, and worth knowing about — this is the number a status chip cannot tell you |
 | `212%` | past the line, and by how much |
 | `<1%` | a real budget, almost none of it used |
-| *empty* | there is **no** budget to measure — no fail band, nothing measured, or the rule decided nothing |
+| *empty* | there is **no** budget to measure — no fail band, nothing measured, the rule decided nothing, or a ratio with nothing to divide by (a `fail > 0` band, or a floor against a value of 0) |
 
 `<1%` and *empty* are deliberately different: "used almost none of it" and "has none of it" are
 opposite facts, and a rounded `0%` would read as the first while meaning the second.
@@ -176,10 +187,16 @@ in it, or a sampler was renamed, and the rule has never run at all. The suggesti
 nearest sampler name in the run — offered only when it is a genuine near miss, because a wild
 guess would undermine the ones that are right.
 
+A target that did select samplers, none of which recorded a sample, says that instead:
+
+> Matched `GET /api/cart`, but it recorded no samples in this run — there was nothing to judge.
+
+That one is a thread group that never started, or a run that stopped early, not a typo.
+
 **A parked rule is dimmed, not hidden.** `"enabled": false` keeps a rule in the file without
 evaluating it, and you should still be able to see it is there.
 
-**DISABLED, UNMATCHED, NO VALUE and LOAD NOT ACHIEVED never look like a pass.** They take a
+**DISABLED, UNMATCHED and NO VALUE never look like a pass.** They take a
 neutral grey, because they are not verdicts. INVALID borrows the fail colours and adds an outline:
 it is not a verdict either, but it fails the run under `failonerror`, and "this rule could not
 run" and "this rule failed" should not be indistinguishable at a glance.
@@ -336,10 +353,15 @@ run.
 
 Two verdicts therefore exist at once, and the report never confuses them:
 
-- **The header badge and the gate strip keep the verdict this run was actually gated on.**
-  Moving them because you typed in a form would make the report lie about what happened.
+- **The header badge, the gate strip and the PASS/WARN/FAIL badges on the Summary's p95 and p99
+  cards keep the verdict this run was actually gated on.** Moving them because you typed in a form
+  would make the report lie about what happened.
 - **The tab shows what the verdict would be** if the drafts were saved and the run repeated —
-  labelled as such, in as many words: *Client verdict if saved and re-run*.
+  labelled as such, in as many words: *Client verdict if saved and re-run*. The chip at the start
+  of the tab's toolbar is that verdict, with the counts beside it (`13 declared · 12 evaluated ·
+  8 passed · 1 warned · 1 failed · 1 unmatched · 1 invalid (could not run) · 1 disabled`); it reads
+  `NOT EVALUATED` when no rule decides anything, a page with no rules included. The badges in the
+  Samplers table follow the draft too.
 
 **One document, two slices.** The annotations file holds the client rules here and the server
 asserts edited on the [Server tab](13-Server-Tab.md), and the drafts of both are one set: the
@@ -509,7 +531,7 @@ never emphasised: it is context for the fail line above it, not a competing limi
 - **Only rules about samplers the chart is showing draw.** Untick a sampler in the filter bar
   and the rules judging it stop drawing. A limit stretched across a chart that is not showing
   the sampler it applies to is a limit over a series it does not judge. A `scope: overall` rule
-  always draws — it applies to the whole chart whatever is on it.
+  always draws — it applies to the whole chart whatever is on it. A disabled rule draws nothing.
 - **Drag a line** to retune that rule. Releasing it commits a draft, exactly like typing in the
   editor.
 - **+ Assert from chart** arms a crosshair; clicking a level opens the editor seeded with it.
