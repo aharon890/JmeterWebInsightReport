@@ -599,7 +599,7 @@ cards are offered inline, under **+ Add your first component**.
 
 | Field | |
 |---|---|
-| **Type** | One card per type: **Postgres**, **Kafka**, **Redis**, **Linux host**, **AWS EC2**, **Oracle Database**, **InfluxDB 2**, **InfluxDB 3**, **JVM**, **HTTP service**, **Kubernetes pod** and **MySQL**, each naming what it covers, what its metrics need (`Needs postgres_exporter`; Kafka's broker internals also need the JMX exporter with Strimzi's rules; AWS EC2's come from CloudWatch's `AWS/EC2` and `AWS/EBS`, and its ENA allowances from the CloudWatch agent; Oracle's five need [a custom metrics file](#oracle-the-custom-metrics-file); InfluxDB serves its own `/metrics`; JVM and HTTP service read [Micrometer's names](#jvm-and-http-service-micrometers-names); a Kubernetes pod's come from cAdvisor and kube-state-metrics) and how many catalogue metrics it has, and **Custom**, for anything else, where each assert writes its own query |
+| **Type** | One card per type: **Postgres**, **Kafka**, **Redis**, **Linux host**, **AWS EC2**, **Oracle Database**, **InfluxDB 2**, **InfluxDB 3**, **JVM**, **HTTP service**, **Kubernetes pod** and **MySQL**, each naming what it covers, what its metrics need (`Needs postgres_exporter`; Kafka's broker internals also need the JMX exporter with Strimzi's rules; AWS EC2's come from CloudWatch's `AWS/EC2` and `AWS/EBS`, and its ENA allowances from the CloudWatch agent; Oracle's five need [a custom metrics file](#oracle-the-custom-metrics-file); InfluxDB serves its own `/metrics`; JVM and HTTP service read [Micrometer's names](#jvm-and-http-service-micrometer-names); a Kubernetes pod's come from cAdvisor and kube-state-metrics) and how many catalogue metrics it has, and **Custom**, for anything else, where each assert writes its own query |
 | **Id** | The name its server asserts, its card and the JUnit suite use, such as `orders-db` |
 | **Description** | The label on its card, the header chip and the Summary card, such as `Orders DB` |
 | **Advanced → Match** | Optional: a label selector added to every catalogue query, for when two components of one type share a source. See [`match`](#the-catalogue) |
@@ -633,7 +633,7 @@ columns:
   categories. A category's count is how many of its metrics the other filters leave, so with
   **Has data in this run** ticked a category with nothing collected reads `(0)`.
 - **The metrics**: the type's catalogue, grouped by category. Each row has ★ when it is
-  recommended, this run's sparkline and [the number its verdict would compare](#this-runs-number),
+  recommended, this run's sparkline and [the number its verdict would compare](#the-number-from-this-run),
   and a checkbox. A metric already asserted on this component is disabled and marked
   `already asserted`.
 - **The detail** of the focused metric: its description, unit, what one line is per, which way is
@@ -669,7 +669,7 @@ The second step is one table for everything you picked:
 |---|---|
 | **Metric** | The catalogue metric's label |
 | **This run** | Its sparkline, folded across instances the way the verdict folds them |
-| **Actual** | [This run's number](#this-runs-number), named by what it is: `peak 2.9 s`, `low 97 %`, `slope … B/min`. `NO DATA` when nothing was collected, a dash when the run gives no number |
+| **Actual** | [This run's number](#the-number-from-this-run), named by what it is: `peak 2.9 s`, `low 97 %`, `slope … B/min`. `NO DATA` when nothing was collected, a dash when the run gives no number |
 | **Warn**, **Fail** | An operator and a value each, with the unit the band is compared in (`B/min` for a slope). A box left empty, or holding only spaces, is no band |
 | **Verdict** | What the board will call this assert once it is added, as you type: a live verdict, `NEEDS RE-COLLECTION` for a metric this run has no data for, `NOT RE-JUDGED` on a series the page holds capped. Under it, any warning the editor would give the same assert, such as a warn band the fail band already covers. Warnings never block Add. A row Add would refuse says why instead: `needs a band` while it has neither band, `not a number` while a box holds text that is not one |
 
@@ -713,7 +713,7 @@ metric's unit, so no ceiling bounds them and they get no such warning.
 An empty row reads `needs a band`, and **Add N server asserts** is disabled until every row has one.
 **Back** returns to the picker with your picks intact.
 
-#### This run's number
+#### The number from this run
 
 Everything the picker, Set thresholds and Generate show or propose from this run is one number per
 metric: the one its verdict would compare. That is the catalogue's reducer and `across` over the
@@ -850,7 +850,7 @@ at all. Untick a seed to leave it out.
 What a seed is depends on what was collected:
 
 - **A catalogue metric** (collected for the picker) is seeded **as that metric**, with the bands
-  [Suggested](#setting-thresholds) would give it, from [this run's number](#this-runs-number). The
+  [Suggested](#setting-thresholds) would give it, from [this run's number](#the-number-from-this-run). The
   file names the metric, never its PromQL. Its description says
   `seeded from this run — review this threshold before trusting it`. A metric whose run gives no
   band, and has no safe default, is not seeded.
@@ -1131,7 +1131,7 @@ picks InfluxDB's (`job="influxdb"`, say): without one, `up`'s safe default fails
 target is down, and the memory reads the largest Go heap Prometheus scrapes. Both versions'
 duration histograms stop at 10 s, so a p95 reads at most 10 and a band above it can never fire.
 
-#### JVM and HTTP service: Micrometer's names
+#### JVM and HTTP service: Micrometer names
 
 `jvm` and `http-service` read the names Micrometer's Prometheus registry writes, which is what
 Spring Boot Actuator serves at `/actuator/prometheus` once `micrometer-registry-prometheus` is on the
@@ -1297,7 +1297,7 @@ client rule that declares the load, and the server assert is judged only when th
 - The block-level key is the default for every server assert. A per-assert key overrides it.
 - It names a client rule **by id**, and the rule's metric must be `throughput`. A `loadValidity`
   block becomes the rule `load:throughput` (see
-  [Load validity](10-Asserts-Apdex.md#load-validity--was-the-run-even-valid)).
+  [Load validity](10-Asserts-Apdex.md#load-validity-was-the-run-even-valid)).
 - Load rule PASS or WARN: the server assert is judged. Load rule FAIL: it is
   `LOAD_NOT_ACHIEVED`, naming the actual and the limit. Load rule not judged (a renamed sampler, say):
   `LOAD_NOT_ACHIEVED`, worded "was not judged" and never "missed".
@@ -1433,9 +1433,9 @@ usage: wir-collect --jtl <results.jtl> --annotations <report-annotations.json> -
 | `--recording DIR` | Recorded Prometheus responses, replayed instead of a live server |
 | `--csv FILE` | A CSV export, one row per point: `time,component,metric,instance,value` |
 | `--from TOOL` | With `--csv`: the file was exported from `telegraf`, `datadog`, `otel` or `cloudwatch`. Its `metric` column holds that tool's names, and a value read under one is converted to the catalogue's unit. See [Where the metrics come from](#where-the-metrics-come-from) |
-| `--layout long\|wide` | With `--csv`: `long` (the default) is one row per point; `wide` is a time column and one column per series, the shape of Grafana's CSV download. See [From Grafana](#from-grafana-layout-wide) |
+| `--layout long\|wide` | With `--csv`: `long` (the default) is one row per point; `wide` is a time column and one column per series, the shape of Grafana's CSV download. See [From Grafana](#from-grafana-the-wide-layout) |
 | `--columns MAP` | With `--layout wide`: a CSV of `column,component,metric,instance` naming each export column by its exact header |
-| `--csv-columns SPEC` | With a long `--csv`: the file's names for the columns, as `key=column` pairs — `time`, `component`, `metric`, `instance`, `value`; a key not given keeps its own name. `metric=_measurement+_field` joins two columns as `<measurement>.<field>`. See [From InfluxDB 2](#from-influxdb-2-csv-columns-and-component) |
+| `--csv-columns SPEC` | With a long `--csv`: the file's names for the columns, as `key=column` pairs — `time`, `component`, `metric`, `instance`, `value`; a key not given keeps its own name. `metric=_measurement+_field` joins two columns as `<measurement>.<field>`. See [From InfluxDB 2](#from-influxdb-2-csv-columns-and-a-fixed-component) |
 | `--component ID` | With a long `--csv`: every row belongs to component `ID`, for an export with no component column whose asserts are all on `ID` — an assert on any other component finds no rows and reads `UNMATCHED`. Refused beside a component column of the file's own, or `--csv-columns component=` |
 | `--time-zone ZONE` | With `--csv`: the zone of a time written with none — an IANA id (`Europe/Berlin`), `UTC`, or an offset (`+03:00`). Without it such a time is refused |
 | `--step DURATION` | The resolution asked for, and the coverage grid. Default `15s` |
@@ -1548,7 +1548,7 @@ time,component,metric,instance,value
   its end (U+00A0) that is not trimmed like a plain space, so no row written that way is read as
   this series - delete it`.
 - A file another tool wrote under other column names, or with no component column, is read with
-  `--csv-columns` and `--component`: see [From InfluxDB 2](#from-influxdb-2-csv-columns-and-component).
+  `--csv-columns` and `--component`: see [From InfluxDB 2](#from-influxdb-2-csv-columns-and-a-fixed-component).
 
 Whichever flag is used, the payload names the collection's one source `metrics`.
 
@@ -1600,7 +1600,7 @@ source row says the file was read as the tool's export, and an open row's note s
 writes neither. The tool enters the `collectionId` only when given: the same file read as a tool's
 export is a different collection, with different numbers.
 
-#### From Grafana: `--layout wide`
+#### From Grafana: the wide layout
 
 Grafana sits in front of Prometheus, InfluxDB, CloudWatch, Datadog and the rest, so its CSV download
 is the export most people can produce. It is **wide**: a time column, then one column per series.
@@ -1696,7 +1696,7 @@ The payload records `"layout": "wide"` and the `"timeZone"` on the source, each 
 the Collection panel says both beside the source's id — `wide CSV, times without a zone read in UTC`.
 A long collection with no zone writes neither. Each enters the `collectionId` only when given.
 
-#### From InfluxDB 2: `--csv-columns` and `--component`
+#### From InfluxDB 2: CSV columns and a fixed component
 
 InfluxDB 2 writes one format from all three of its paths — `influx query --raw`, the API
 (`POST /api/v2/query` with `Accept: application/csv`) and a cell's CSV download — its **annotated
@@ -1909,7 +1909,7 @@ time,component,metric,instance,value
   catalogue's own name, as it is — the [metric-math KPIs](#aws-ec2-four-kpis-computed-with-metric-math)
   are computed in the request, as here.
 - **Through Grafana's CloudWatch data source**, a name in an AWS namespace cannot be a legend: the
-  [header convention](#from-grafana-layout-wide) splits on `/`, so
+  [header convention](#from-grafana-the-wide-layout) splits on `/`, so
   `web/AWS/EC2:StatusCheckFailed/i-0abc12345def67890` is not a component, a metric and an instance,
   and the column is listed as not mapped. (The agent's `CWAgent:` names have no `/`, and a legend
   can carry them.) Name such a column in a `--columns` map, whose `metric` cell holds the name

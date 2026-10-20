@@ -525,7 +525,7 @@ Filenames bind the four artifacts together, and filenames are not unique per run
 
 ## Documentation
 
-See [docs/Tutorial](docs/Tutorial/README.md) for full documentation with screenshots covering every tab, feature, and control.
+See the [documentation site](https://aharon890.github.io/JmeterWebInsightReport/) ([source in docs/](docs/README.md)) for full documentation with screenshots covering every tab, feature, and control.
 
 See [docs/FEATURES.md](docs/FEATURES.md) for the feature list.
 

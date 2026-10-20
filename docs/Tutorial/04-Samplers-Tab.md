@@ -36,7 +36,7 @@ A virtual aggregate row that always appears at the top of the table:
   median and percentiles; sample-weighted mean and Apdex; transaction children left out
 - **Chart behavior:** When enabled, appears as a dashed line in time-series charts
 
-### Assert badges — the row
+### Assert badges on the row
 
 When the run declared a quality gate (via `report-annotations.json`):
 
@@ -173,7 +173,7 @@ The detail panel has **3 chart slots** by default:
 - Changes apply to **all currently expanded rows** (global sync)
 - Configuration saved to localStorage
 
-The chart panel and the [judging-rules row](#assert-badges--the-row) are separate: either can be
+The chart panel and the [judging-rules row](#assert-badges-on-the-row) are separate: either can be
 open without the other, and both follow their sampler when the table is sorted or filtered.
 
 ## Transaction Controller Hierarchy

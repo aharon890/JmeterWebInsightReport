@@ -5,7 +5,7 @@ Error breakdown charts and detail tables for investigating test failures.
 ![Errors Overview](images/12-errors-overview.png)
 
 
-## Error classes — where a failure was decided
+## Error classes: where a failure was decided
 
 Every row in this tab is a sample JMeter judged failed (`success = false`). That is **not** the
 same as an HTTP error, and the report says which is which.
@@ -47,7 +47,7 @@ Three charts provide different views of error data. The first two sit side by si
 ### Error Breakdown by Response Code (Pie Chart)
 
 - Donut/pie chart showing error distribution by HTTP status code, each slice labelled with the
-  code and its [class](#error-classes--where-a-failure-was-decided) (`500 · HTTP`)
+  code and its [class](#error-classes-where-a-failure-was-decided) (`500 · HTTP`)
 - Fixed colors per code: 500=red, 401=blue, 404=orange, etc.
 - Hover for exact counts and percentages
 
@@ -86,7 +86,7 @@ Groups errors by **sampler + response code** with aggregate counts.
 |--------|-------------|
 | **Sampler** | Request label |
 | **Response Code** | HTTP status code (e.g., 500, 404) |
-| **Class** | Where the failure was decided — see [Error classes](#error-classes--where-a-failure-was-decided) |
+| **Class** | Where the failure was decided — see [Error classes](#error-classes-where-a-failure-was-decided) |
 | **Count** | Number of occurrences |
 | **% of Errors** | Percentage of total errors |
 | **% of All Samples** | Percentage of all requests |
@@ -136,7 +136,7 @@ One row per error, in the order they happened.
 | **Time** | Time of the error (`HH:mm:ss.SSS`) |
 | **Sampler** | Request label |
 | **Code** | HTTP response code |
-| **Class** | Where the failure was decided — see [Error classes](#error-classes--where-a-failure-was-decided) |
+| **Class** | Where the failure was decided — see [Error classes](#error-classes-where-a-failure-was-decided) |
 | **Message** | Response message text |
 | **Thread** | JMeter thread name |
 

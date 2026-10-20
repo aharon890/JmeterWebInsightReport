@@ -76,6 +76,7 @@ apache-jmeter-*/
 !/scripts/lib/
 !/scripts/*.sh
 !/scripts/*.bat
+!/scripts/check-docs-site.js
 
 # Temp / scratch — temp/ holds ad-hoc review and audit output (hundreds of files,
 # including a vendored sbadmin2 tree); one `git add .` away from being committed.
