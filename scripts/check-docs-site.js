@@ -56,6 +56,12 @@ function serve(dir) {
             const s = document.querySelector('.markdown-section');
             return s && s.textContent.trim().length > 0;
         }, null, { timeout: 20000 });
+        // A hash route is a same-document navigation, so `networkidle` above resolves before the
+        // page's images are even requested; over the network they are still loading when checked.
+        // Wait for every image to settle (loaded or failed), and judge only then.
+        await page.waitForFunction(() => [...document.querySelectorAll('.markdown-section img')]
+            .every(i => { i.loading = 'eager'; return i.complete; }), null, { timeout: 30000 })
+            .catch(() => {});
         await page.waitForTimeout(300);
     }
 
