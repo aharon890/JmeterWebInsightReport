@@ -1293,7 +1293,11 @@ function applyThemeFromStorage() {
     if (localStorage.getItem('wir_colorblindMode') === 'true') {
         document.body.classList.add('cb-mode');
         var cbBtn = document.getElementById('cbModeToggle');
-        if (cbBtn) cbBtn.classList.add('cb-active');
+        if (cbBtn) {
+            cbBtn.classList.add('cb-active');
+            /* The template says "(off)"; a restored mode must not keep saying so. */
+            cbBtn.title = 'Colorblind mode (on)';
+        }
         var cbIcon = document.getElementById('cbModeIcon');
         if (cbIcon) cbIcon.style.opacity = '1';
     }
@@ -1390,6 +1394,36 @@ function initCharts(data) {
  *  Per-Sampler Series Builder
  * ============================================================ */
 
+/**
+ * A Σ Total series for a metric that has no server-side total (percentiles, max, connect,
+ * latency): combined across samplers per second, each weighted by its sample count in that second
+ * — an unweighted mean lets a 10 req/s sampler drag the line as hard as a 990 req/s one — and
+ * `max` taken as the maximum across samplers. Shared by the Timeline charts and the Compare tab.
+ */
+function combinedTotalValues(perSampler, names, length, metric) {
+    var isMaxMetric = metric === 'max';
+    var computed = new Array(length);
+    for (var ti = 0; ti < length; ti++) {
+        var sum = 0, weight = 0, maxAcross = null;
+        names.forEach(function (n) {
+            var values = perSampler[n] && perSampler[n][metric];
+            if (!values || values[ti] == null) return;
+            var v = values[ti];
+            if (isMaxMetric) {
+                if (maxAcross === null || v > maxAcross) maxAcross = v;
+                return;
+            }
+            var counts = perSampler[n].throughput;
+            var w = (counts && counts[ti] != null) ? counts[ti] : 1;
+            sum += v * w;
+            weight += w;
+        });
+        if (isMaxMetric) computed[ti] = maxAcross;
+        else computed[ti] = weight > 0 ? sum / weight : null;
+    }
+    return computed;
+}
+
 function buildPerSamplerSeries(data, metric, overrideMetric) {
     var perSampler = data.perSamplerSeries;
     if (!perSampler) return [];
@@ -1436,27 +1470,7 @@ function buildPerSamplerSeries(data, metric, overrideMetric) {
          * maximum, not an average, so take the max across samplers. */
         if (!totalValues && perSampler) {
             var allNames = data.samplers ? data.samplers.map(function (s) { return s.name; }) : [];
-            var isMaxMetric = effectiveMetric === 'max';
-            var computed = new Array(data.timestamps.length);
-            for (var ti = 0; ti < data.timestamps.length; ti++) {
-                var sum = 0, weight = 0, maxAcross = null;
-                allNames.forEach(function (n) {
-                    var values = perSampler[n] && perSampler[n][effectiveMetric];
-                    if (!values || values[ti] == null) return;
-                    var v = values[ti];
-                    if (isMaxMetric) {
-                        if (maxAcross === null || v > maxAcross) maxAcross = v;
-                        return;
-                    }
-                    var counts = perSampler[n].throughput;
-                    var w = (counts && counts[ti] != null) ? counts[ti] : 1;
-                    sum += v * w;
-                    weight += w;
-                });
-                if (isMaxMetric) computed[ti] = maxAcross;
-                else computed[ti] = weight > 0 ? sum / weight : null;
-            }
-            totalValues = computed;
+            totalValues = combinedTotalValues(perSampler, allNames, data.timestamps.length, effectiveMetric);
         }
         if (totalValues) {
             series.push({
@@ -3507,18 +3521,24 @@ function exportChartAsSvg(chart) {
 function toggleFullscreen(btn) {
     var section = btn.closest('.report-section');
     if (!section) return;
-    var chartEl = section.querySelector('.chart-container');
-    if (!chartEl) return;
+    /* The Error Breakdown section holds two side-by-side charts and no .chart-container, so its
+       Fullscreen button did nothing; fall back to the section's chart elements. */
+    var chartEls = section.querySelectorAll('.chart-container');
+    if (!chartEls.length) chartEls = section.querySelectorAll('[id$="-chart"]');
+    if (!chartEls.length) return;
 
-    if (section.classList.contains('chart-fullscreen')) {
-        section.classList.remove('chart-fullscreen');
-        btn.textContent = 'Fullscreen';
-        chartEl.style.height = '400px';
-    } else {
-        section.classList.add('chart-fullscreen');
-        btn.textContent = 'Exit Fullscreen';
-        chartEl.style.height = 'calc(100vh - 60px)';
-    }
+    var entering = !section.classList.contains('chart-fullscreen');
+    section.classList.toggle('chart-fullscreen', entering);
+    btn.textContent = entering ? 'Exit Fullscreen' : 'Fullscreen';
+    Array.prototype.forEach.call(chartEls, function (el) {
+        if (entering) {
+            el.setAttribute('data-wir-height', el.style.height || '');
+            el.style.height = chartEls.length > 1 ? 'calc(100vh - 120px)' : 'calc(100vh - 60px)';
+        } else {
+            el.style.height = el.getAttribute('data-wir-height') || '400px';
+            el.removeAttribute('data-wir-height');
+        }
+    });
 
     setTimeout(function () {
         chartInstances.forEach(function (c) { c.resize(); });
@@ -3895,10 +3915,16 @@ function applyColumnVisibility() {
     var table = document.getElementById('samplerTable');
     if (!table) return;
 
-    // Header
+    /* hiddenColumns is keyed by the column's logical id — its COLUMN_NAMES index, which is the
+       data-col-id a header keeps when it is dragged elsewhere — and a cell is hidden by where
+       that column is now. Keyed by physical position, the Columns menu hid whichever column had
+       been dragged into the unchecked one's place. */
     var headerCells = table.tHead.rows[0].cells;
+    var hiddenAt = [];
     for (var i = 0; i < headerCells.length; i++) {
-        headerCells[i].style.display = hiddenColumns[i] ? 'none' : '';
+        var cid = headerCells[i].getAttribute('data-col-id');
+        hiddenAt[i] = !!hiddenColumns[cid == null ? i : cid];
+        headerCells[i].style.display = hiddenAt[i] ? 'none' : '';
     }
     // Body
     var rows = table.tBodies[0].rows;
@@ -3908,7 +3934,7 @@ function applyColumnVisibility() {
         if (isSamplerCompanionRow(rows[r])) continue;
         var cells = rows[r].cells;
         for (var c = 0; c < cells.length; c++) {
-            cells[c].style.display = hiddenColumns[c] ? 'none' : '';
+            cells[c].style.display = hiddenAt[c] ? 'none' : '';
         }
     }
     /* Pinned widths are per-column, so hiding one has to shrink the table by
@@ -4905,9 +4931,10 @@ function saveFilterPreset() {
 }
 
 function resetToDefaults() {
-    /* Restore all samplers to visible */
+    /* Restore all samplers to visible — except the virtual Σ Total, whose default is off
+       (initFilterBar). Setting it true too made "Default" switch the Total row on. */
     for (var s in samplerVisibility) {
-        samplerVisibility[s] = true;
+        samplerVisibility[s] = s !== TOTAL_SAMPLER_NAME;
     }
     /* Apply default hidden samplers from chart data */
     if (globalChartData && globalChartData.hiddenSamplers) {
@@ -5093,7 +5120,13 @@ function copySummaryAsHtml() {
         var value = card.querySelector('.card-value');
         var label = card.querySelector('.card-label');
         if (value && label) {
-            rows += '<tr><td style="padding:4px 12px;font-weight:bold;">' + escapeHtml(label.textContent.trim()) + '</td>' +
+            /* The P95/P99 labels carry the gate's mini badge, which its own title calls "not a
+               verdict on this whole-run figure"; copied as text it read "P95, whole run FAIL". The
+               copy is the numbers only — Copy Verdict is the verdict. */
+            var bare = label.cloneNode(true);
+            bare.querySelectorAll('.assert-badge-mini').forEach(function (b) { b.remove(); });
+            var labelText = bare.textContent.replace(/\s+/g, ' ').trim();
+            rows += '<tr><td style="padding:4px 12px;font-weight:bold;">' + escapeHtml(labelText) + '</td>' +
                     '<td style="padding:4px 12px;">' + escapeHtml(value.textContent.trim()) + '</td></tr>';
         }
     });
@@ -6541,6 +6574,19 @@ function initComparisonTab(data) {
     }});
 }
 
+/**
+ * A response-time change in percent of the baseline, by ComparisonResult.SamplerDiff's rule: a
+ * baseline of 0 followed by any increase is +100%. The payload's p95PctChange/meanPctChange read 0
+ * in that case (getP95PctChange guards the division), so Apply re-derives the change from the
+ * current value and the delta — otherwise Apply with the run's own thresholds turned REGRESSION
+ * into OK.
+ */
+function comparisonPctIncrease(curr, delta) {
+    if (curr == null || delta == null) return null;
+    var base = curr - delta;
+    return base > 0 ? (delta / base) * 100.0 : (delta > 0 ? 100.0 : 0);
+}
+
 function applyComparisonThresholds() {
     if (!globalChartData || !globalChartData.comparisonDiffs) return;
 
@@ -6553,21 +6599,26 @@ function applyComparisonThresholds() {
     /* Re-evaluate regression flags client-side */
     globalChartData.comparisonDiffs.forEach(function (diff) {
         if (diff.isNew) { diff.regression = false; return; }
+        /* Java counts a removed sampler as a regression whatever the thresholds say: an endpoint
+           that stopped being exercised is the change a gate should catch. It carries no deltas,
+           so every check below skipped it and Apply cleared the flag. */
+        if (diff.removed) { diff.regression = true; return; }
 
         var regressed = false;
 
-        if (p95Th >= 0 && diff.p95PctChange != null) {
-            if (diff.p95PctChange > p95Th) regressed = true;
+        var p95Pct = comparisonPctIncrease(diff.currP95, diff.deltaP95);
+        if (p95Th >= 0 && p95Pct != null) {
+            if (p95Pct > p95Th) regressed = true;
         }
         if (errTh >= 0 && diff.deltaErrorRate != null) {
             if (diff.deltaErrorRate > errTh) regressed = true;
         }
-        if (meanTh >= 0 && diff.meanPctChange != null) {
-            if (diff.meanPctChange > meanTh) regressed = true;
+        var meanPct = comparisonPctIncrease(diff.currMean, diff.deltaMean);
+        if (meanTh >= 0 && meanPct != null) {
+            if (meanPct > meanTh) regressed = true;
         }
-        if (p99Th >= 0) {
-            var p99Pct = diff.currP99 && diff.deltaP99 && (diff.currP99 - diff.deltaP99) > 0
-                ? (diff.deltaP99 / (diff.currP99 - diff.deltaP99)) * 100.0 : 0;
+        var p99Pct = comparisonPctIncrease(diff.currP99, diff.deltaP99);
+        if (p99Th >= 0 && p99Pct != null) {
             if (p99Pct > p99Th) regressed = true;
         }
         if (tpTh >= 0 && diff.deltaThroughput != null && diff.currThroughput != null) {
@@ -6639,8 +6690,17 @@ function buildComparisonSeries(data, metric) {
     /* Total series */
     if (isTotalVisible()) {
         var totalColor = getTotalColor();
-        var currGlobal = metric === 'throughput' ? data.throughputs : data.meanResponseTimes;
-        var baseGlobal = metric === 'throughput' ? data.baseline.throughputs : data.baseline.meanResponseTimes;
+        /* The selected metric, as the Timeline's Σ Total draws it. This drew the mean whatever
+           the Metric toggle said, beside per-sampler lines of the selected metric. */
+        var totalOf = function (run, perSampler) {
+            var direct = { responseTime: run.meanResponseTimes, throughput: run.throughputs,
+                errorRate: run.errorRates }[metric];
+            if (direct) return direct;
+            if (!run.timestamps) return null;
+            return combinedTotalValues(perSampler, Object.keys(perSampler), run.timestamps.length, metric);
+        };
+        var currGlobal = totalOf(data, currPerSampler);
+        var baseGlobal = totalOf(data.baseline, basePerSampler);
 
         if (currGlobal) {
             series.push({
@@ -6802,7 +6862,7 @@ function populateComparisonTable(data) {
         tr.innerHTML =
             '<td title="' + escapedName + '">' + escapedName + '</td>' +
             '<td><span class="status-badge ' + statusClass + '" style="font-size:0.65rem;padding:2px 8px;">' + statusText + '</span></td>' +
-            '<td>' + (diff.currSamples || '\u2014') + inlineDelta(diff.deltaSamples, '') + '</td>' +
+            '<td>' + (diff.currSamples || '\u2014') + inlineDelta(diff.deltaSamples, '', 'neutral') + '</td>' +
             '<td>' + (diff.currErrors || 0) + inlineDelta(diff.deltaErrors, '') + '</td>' +
             '<td>' + diff.currErrorRate + '%' + inlineDelta(diff.deltaErrorRate, '%') + '</td>' +
             '<td>' + formatCellMs(diff.currMean) + inlineDelta(diff.deltaMean, ' ms') + '</td>' +
@@ -6836,8 +6896,10 @@ function inlineDelta(val, suffix, invertColor) {
     if (typeof text === 'number' || !String(text).match(/^[-]/)) {
         text = (val > 0 ? '+' : '') + text;
     }
+    /* invertColor: true when lower is worse (throughput), 'neutral' when neither direction is —
+       more samples is a longer or busier run, not a regression, and coloured it red. */
     var bad = invertColor ? (val < 0) : (val > 0);
-    var cls = bad ? 'delta-bad' : 'delta-good';
+    var cls = invertColor === 'neutral' ? 'delta-neutral' : (bad ? 'delta-bad' : 'delta-good');
     return '<sup class="' + cls + '">' + text + '</sup>';
 }
 
@@ -6949,6 +7011,8 @@ function initWhatChanged(data) {
         html += '<span class="status-badge cmp-regression" style="font-size:0.65rem;padding:2px 8px;margin-right:6px;">Regressions (' + regressions.length + ')</span>';
         var topReg = regressions.slice(0, 3);
         var regNames = topReg.map(function (d) {
+            /* A removed sampler has no P95 change to quote; it read "name ( P95)". */
+            if (d.removed) return escapeHtml(truncateName(d.name)) + ' (removed)';
             return escapeHtml(truncateName(d.name)) + ' (' + fmtPct(d.p95PctChange) + ' P95)';
         });
         html += regNames.join(', ');
@@ -7074,29 +7138,12 @@ function showAllRows() {
     if (!table) return;
     var rows = table.tBodies[0].rows;
     for (var i = 0; i < rows.length; i++) {
-        /* Don't show collapsed transaction children */
-        if (rows[i].classList.contains('transaction-child')) {
-            var samplerName = rows[i].getAttribute('data-sampler');
-            if (samplerName && globalChartData && globalChartData.transactionHierarchy) {
-                /* Check if parent is expanded */
-                var parentExpanded = false;
-                for (var pName in globalChartData.transactionHierarchy) {
-                    var children = globalChartData.transactionHierarchy[pName];
-                    if (Array.isArray(children) && children.indexOf(samplerName) >= 0) {
-                        var parentRow = table.querySelector('tr[data-sampler="' + pName + '"] .tc-icon');
-                        if (parentRow && parentRow.getAttribute('data-expanded') === 'true') {
-                            parentExpanded = true;
-                        }
-                        break;
-                    }
-                }
-                if (!parentExpanded) continue;
-            }
-        }
-        if (!isSamplerCompanionRow(rows[i])) {
-            rows[i].classList.remove('user-hidden');
-            rows[i].style.display = '';
-        }
+        if (isSamplerCompanionRow(rows[i])) continue;
+        /* Every × is undone, and a transaction child shows only while Transaction Details is on.
+           This asked the parent's .tc-icon for data-expanded="true", which nothing ever sets, so a
+           child hidden with × stayed hidden while the count — and the button — reset to 0. */
+        rows[i].classList.remove('user-hidden');
+        rows[i].style.display = isSamplerRowSuppressed(rows[i]) ? 'none' : '';
     }
     if (syncSamplerCompanionRows(table.tBodies[0])) setTimeout(resizeDetailCharts, 0);
     hiddenRowCount = 0;
@@ -12929,7 +12976,10 @@ WIR.asserts = (function () {
         a.download = 'report-annotations.json';
         a.click();
         URL.revokeObjectURL(a.href);
-        showToast('Downloaded report-annotations.json — drop it next to the JTL');
+        /* Nothing reads a file beside the JTL: auto-detection looks in the report's output
+           directory only, and -g -o needs the property (its output directory must be empty). */
+        showToast('Downloaded report-annotations.json — put it in the report’s output directory, '
+            + 'or pass -Jwebinsight.report.annotations=<path>');
     }
 
     /* The download is the DOCUMENT's, not this tab's: there is exactly one file, exactly one
@@ -14992,7 +15042,10 @@ WIR.asserts = (function () {
               'JSR223 samplers are rarely worth gating, and their numbers seed poor ' +
               'thresholds. Tick any of them to include it. '
             : '') +
-            'Every sampler in the run is listed; nothing is hidden.';
+            /* It claimed every sampler was listed: wizardTargets leaves out Transaction Controller
+               children, samplers the report hides by default and samplers with no samples. */
+            'Every top-level sampler with samples is listed; Transaction Controller children ' +
+            'and the samplers the report hides by default are not.';
     }
 
     /** The metric picker: the engine's vocabulary, grouped by family. */
@@ -15032,7 +15085,8 @@ WIR.asserts = (function () {
             '</span></div>' +
             '<div class="wir-wz-box" id="wizardMetrics">' + groups + '</div>' +
             '<p class="wir-hint">Every metric the gate can evaluate for a sampler. Direction is ' +
-            'inferred: throughput and apdex seed as <em>fail below</em>, everything else as ' +
+            'inferred: throughput, received KB/s and apdex seed as <em>fail below</em>, ' +
+            'everything else as ' +
             '<em>fail above</em>.</p>' +
             '</div>';
     }

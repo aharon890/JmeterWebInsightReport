@@ -631,7 +631,7 @@ body.col-resizing * {
 }
 
 /* Inline delta superscripts for comparison table */
-sup.delta-bad, sup.delta-good {
+sup.delta-bad, sup.delta-good, sup.delta-neutral {
     font-size: 0.75em;
     font-weight: 600;
     margin-left: 1px;
@@ -640,6 +640,8 @@ sup.delta-bad  { color: #dc2626; }
 sup.delta-good { color: #16a34a; }
 body.dark-mode sup.delta-bad  { color: #f87171; }
 body.dark-mode sup.delta-good { color: #4ade80; }
+/* A count that is neither better nor worse for being larger (Samples). */
+sup.delta-neutral { color: var(--color-text-secondary); }
 
 /* Error tables — auto layout so columns redistribute on hide.
    Long text columns get max-width to prevent table overflow. */
@@ -651,7 +653,8 @@ body.dark-mode sup.delta-good { color: #4ade80; }
     white-space: nowrap;
 }
 
-#errorDetailsTable td:nth-child(4) {
+/* Message — the 5th column since Class was added at 4; this used to clip Class instead. */
+#errorDetailsTable td:nth-child(5) {
     max-width: 300px;
     overflow: hidden;
     text-overflow: ellipsis;
