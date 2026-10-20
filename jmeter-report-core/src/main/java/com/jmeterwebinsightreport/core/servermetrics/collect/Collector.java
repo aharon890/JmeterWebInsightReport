@@ -280,7 +280,7 @@ public final class Collector {
 
         // A source that answered some queries and failed others is PARTIAL, not FAILED: with one
         // source per collection (C8), "FAILED" on the first bad query read as if nothing had come
-        // back (Aaron, 2026-10-03). FAILED is kept for a source where nothing did.
+        // back (decided 2026-10-03). FAILED is kept for a source where nothing did.
         for (Map.Entry<String, List<String>> e : failedBySource.entrySet()) {
             ServerMetricsPayload.SourceRecord rec = records.get(e.getKey());
             if (rec == null || !"OK".equals(rec.getStatus())) {
@@ -345,7 +345,7 @@ public final class Collector {
     }
 
     /**
-     * D1 (Aaron, 2026-10-03): every catalogue metric of every declared component, beside the ones
+     * D1 (2026-10-03): every catalogue metric of every declared component, beside the ones
      * the asserts name — so the page's metric picker can show what each did in this run and seed
      * a band from it. One fetch each, never settled ({@link SeriesSource.Request#oneShot}): these
      * numbers inform, they judge nothing.

@@ -236,7 +236,7 @@ class CsvSourceTest {
 
         ServerMetricsPayload.SeriesRecord broken = p.findByQuery(ServerSource.COLLECTION_ID, "broken", "a");
         assertEquals(CollectionStatus.FAILED, broken.collectionStatus());
-        // PARTIAL, not FAILED: two of three came back (Aaron, 2026-10-03).
+        // PARTIAL, not FAILED: two of three came back (decided 2026-10-03).
         ServerMetricsPayload.SourceRecord src = p.getSources().get(0);
         assertEquals("PARTIAL", src.getStatus());
         assertEquals("1 of 3 series failed - first: m.csv line 6: value \"oops\" is not a number - write it with a"

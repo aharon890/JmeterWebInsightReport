@@ -261,7 +261,7 @@ public class CiCdJsonSerializer {
     }
 
     /**
-     * Jackson's default layout, with LF line endings on every OS (Aaron, 2026-10-03). The default
+     * Jackson's default layout, with LF line endings on every OS (decided 2026-10-03). The default
      * printer ends a line with the platform separator, so the same run was a different file on
      * Windows, and a pipeline hashing or diffing it saw a change where there was none.
      */

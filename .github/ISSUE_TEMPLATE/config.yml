@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Question or idea
+    url: https://github.com/aharon890/JmeterWebInsightReport/discussions
+    about: Ask how to do something, or float an idea, in Discussions.
+  - name: Security vulnerability
+    url: https://github.com/aharon890/JmeterWebInsightReport/security/advisories/new
+    about: Report it privately — please do not open a public issue.
+  - name: Documentation
+    url: https://aharon890.github.io/JmeterWebInsightReport/
+    about: The tutorial and the feature reference.

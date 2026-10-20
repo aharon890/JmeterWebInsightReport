@@ -105,12 +105,15 @@ JmeterWebInsightReport_Screenshots/
 # price is a dotfile that stays behind, so it is ignored rather than cleaned up.
 .web-insight-publish.lock
 
-# Claude Code — local settings stay out, shared skills go in.
+# Claude Code — local settings stay out; the shared skills, the three subagents CLAUDE.md
+# describes, and the project settings (its Stop hook) go in, so a clone gets the same flow.
 # `.claude/*` rather than `.claude/`: git cannot re-include anything beneath an
 # excluded DIRECTORY, so ignoring the directory itself makes the negation below
 # silently do nothing.
 .claude/*
 !.claude/skills/
+!.claude/agents/
+!.claude/settings.json
 
 # flatten-maven-plugin output (CI-friendly ${revision} resolution)
 .flattened-pom.xml
