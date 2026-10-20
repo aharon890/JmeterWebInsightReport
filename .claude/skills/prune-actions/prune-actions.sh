@@ -62,13 +62,19 @@ case "$REPO" in
 esac
 
 # gh occasionally drops a connection on this network; one retry costs nothing.
+#
+# Data is stdout only. stderr used to be folded in (2>&1), so a warning gh printed on a successful
+# runs listing was read as a run id and DELETEd. The error text goes to stderr instead.
 api() {
-  local out rc
-  out=$(gh api "$@" 2>&1); rc=$?
-  if [ $rc -ne 0 ] && printf '%s' "$out" | grep -qi 'dial tcp\|timeout\|connection'; then
+  local out rc err
+  err=$(mktemp)
+  out=$(gh api "$@" 2>"$err"); rc=$?
+  if [ $rc -ne 0 ] && grep -qi 'dial tcp\|timeout\|connection' "$err"; then
     sleep 2
-    out=$(gh api "$@" 2>&1); rc=$?
+    out=$(gh api "$@" 2>"$err"); rc=$?
   fi
+  [ -s "$err" ] && cat "$err" >&2
+  rm -f "$err"
   printf '%s' "$out"
   return $rc
 }
