@@ -61,6 +61,23 @@
     </dependencies>
 
     <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <!-- The repository's NOTICE and LICENSE go into the JAR's META-INF: the JAR
+                 redistributes ECharts and the shaded libraries, and Apache-2.0 asks for their
+                 notices to travel with it. ECharts is a static resource, not a dependency, so
+                 nothing else would carry its NOTICE in. -->
+            <resource>
+                <directory>${project.basedir}/..</directory>
+                <includes>
+                    <include>NOTICE</include>
+                    <include>LICENSE</include>
+                </includes>
+                <targetPath>META-INF</targetPath>
+            </resource>
+        </resources>
         <plugins>
             <!-- Shade plugin — produces fat JAR with core + t-digest + thymeleaf -->
             <plugin>
@@ -146,6 +163,11 @@
                                     </manifestEntries>
                                 </transformer>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                                <!-- attoparser and unbescape each ship a META-INF/NOTICE.txt; without
+                                     this, one overwrote the other. Merged beside ours, no header. -->
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ApacheNoticeResourceTransformer">
+                                    <addHeader>false</addHeader>
+                                </transformer>
                             </transformers>
                         </configuration>
                     </execution>
