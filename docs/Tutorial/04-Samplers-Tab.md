@@ -23,7 +23,7 @@ Detailed per-sampler statistics table with sorting, filtering, column control, a
 | **Max (ms)** | Maximum response time | Whole milliseconds |
 | **Throughput** | Requests per second | Up to 2 decimals (e.g., "15.23/s") |
 | **Recv KB/s** | Received kilobytes per second | Up to 2 decimals |
-| **Apdex** | Application Performance Index | 0.00–1.00, coloured as on the [Apdex card](02-Summary-Tab.md#apdex-card) |
+| **Apdex** | Application Performance Index | 0 to 1 with up to two decimals (e.g., "0.9", "0.85"), coloured as on the [Apdex card](02-Summary-Tab.md#apdex-card) |
 
 ![Table Header](images/10b-table-header.png)
 
@@ -127,7 +127,8 @@ When sampler notes are configured in annotations:
 - Each data row has an **× (hide) button** at the right of the Sampler cell, shown on hover
 - Click × → the row and anything open under it disappear from the table
 - A **"Show N Hidden Rows"** button appears above the table
-- Click it → all hidden rows restored
+- Click it → all hidden rows restored; a Transaction Controller child comes back into view
+  while **Transaction Details** is on, and with the other children when it is next turned on
 
 ### CSV Export
 

@@ -2,20 +2,28 @@
 
 Comprehensive review of ALL scenarios across runtime, configuration, data, UI, and integration dimensions.
 
-**Last updated:** 2026-08-06
-**Current totals:** 19 JMeter execution (E) + 32 config (C)
-+ 9 error handling (N) + 2 Docker (E16/E17) + 10 -g -o pipeline + 6 data integrity.
+**Last updated:** 2026-10-20 (4.0.4)
 
-The JMeter figure is broken out per runner rather than as one "29 config/runtime"
-bucket, which matched no runner grouping. The JUnit and Playwright counts that used
-to sit here, and the total they fed, are gone deliberately: both drifted within weeks
-every time they were written, and a stale count reads as a verified figure. The
-runners print the real numbers.
+No counts are written here, of scenarios, tests or rows. Every one that was drifted within
+weeks, and a stale count reads as a verified figure. `./scripts/list-scenarios.sh --count`
+prints how many scenarios the runners record, `--text` lists them by runner, and each
+runner and `mvn test` print their own totals.
+
+Two things to know when reading a citation:
+
+- `list-scenarios.sh` reads `record` calls only. The `run_test` scenarios of
+  `run-all-tests.sh` (E01–E25) and `run-docker-tests.sh` (E16, E17) are not in its list,
+  and neither are the exporter scenarios `run-family-cd-tests.sh` records as C01–C08, whose
+  ids `run-config-tests.sh` also uses. "C01 (cd)" below means the family runner's.
+- E01, E03, E04, E13, E15, E22 and E24 are **manual tier**: `validate_results` asks only
+  whether the report files exist, and no spec opens them. A row backed by one of them alone
+  is partial, not covered.
 
 ## Legend
 
-- [x] Covered by existing tests
-- [ ] NOT covered — needs test
+- [x] Covered — an automated test asserts the scenario
+- [~] Partial — adjacent behaviour is tested, or the check is manual
+- [ ] Gap — nothing tests it
 
 ---
 
@@ -23,13 +31,13 @@ runners print the real numbers.
 
 | # | Scenario | Status | Existing Test |
 |---|----------|--------|---------------|
-| 1.1 | Non-GUI listener mode (`jmeter -n -t test.jmx`) | [x] | E01-E24 |
-| 1.2 | GUI listener mode (open JMeter GUI, run, report generates on stop) | [~] | Manual smoke check (plugin loads → E01-E24 prove JAR is valid; GUI is thin config wrapper over -J properties already tested in C01-C13) |
-| 1.3 | `-g -o` CLI pipeline (`jmeter -g results.jtl -o report/`) | [x] | G01 |
-| 1.4 | `-g -o` with all `-J` properties (title, filename, baseline, annotations) | [x] | G02-G05 |
-| 1.5 | Docker containerized execution | [x] | E16 |
-| 1.6 | Listener + `-g -o` collision (both produce report — exporter should skip) | [x] | G06 |
-| 1.7 | Multiple Web Insight listeners in same test plan | [x] | ML test (no crash, no ConcurrentModification) |
+| 1.1 | Non-GUI listener mode (`jmeter -n -t test.jmx`) | [x] | E02, E05–E12, E19, E25 (fixtures Playwright opens); S04/E24 smoke |
+| 1.2 | GUI listener mode (open JMeter GUI, run, report generates on stop) | [~] | Manual smoke check (the GUI is a thin config wrapper over the `-J` properties tested in C01–C13) |
+| 1.3 | `-g -o` CLI pipeline (`jmeter -g results.jtl -o report/`) | [x] | C01–C08 (cd), E20, E26, E27, R06 goldens |
+| 1.4 | `-g -o` with `-J` properties (title, filename, baseline, annotations) | [x] | I35 (title), C04/C05 (cd) (filename), C34 (baseline), E26/E27 and C35 (annotations) |
+| 1.5 | Docker containerized execution | [x] | E16, E17 (`run-docker-tests.sh`); G01–G05 |
+| 1.6 | Listener + `-g -o` collision (both produce report — exporter should skip) | [x] | D01–D06 |
+| 1.7 | Multiple Web Insight listeners in same test plan | [x] | A07, A08, C26 |
 
 ## 2. Output Path Configuration
 
@@ -37,9 +45,9 @@ runners print the real numbers.
 |---|----------|--------|---------------|
 | 2.1 | Custom absolute output directory | [x] | All tests use -Jwebinsight.report.output |
 | 2.2 | Default output dir (no -J, writes to working directory) | [x] | C01 |
-| 2.3 | Relative output path (`reports/` → resolves from working dir) | [x] | C07, P01-P02 |
-| 2.4 | Output dir that doesn't exist (auto-created) | [x] | C08, P05 |
-| 2.5 | Path with spaces (`D:\My Reports\load test\`) | [~] | P03 (JMeter -J limitation) |
+| 2.3 | Relative output path (`reports/` → resolves from working dir) | [x] | C07 |
+| 2.4 | Output dir that doesn't exist (auto-created) | [x] | C08, A11 |
+| 2.5 | Path with spaces (`D:\My Reports\load test\`) | [ ] | — (no runner passes one; quoting a `-J` value with spaces is JMeter's) |
 | 2.6 | Custom filename | [x] | All tests |
 | 2.7 | Default filename (no -J, uses `web-insight-report.html`) | [x] | C01 |
 | 2.8 | Filename with `${timestamp}` placeholder | [x] | C05 |
@@ -47,7 +55,7 @@ runners print the real numbers.
 | 2.10 | Default title (no -J, uses "JMeter Web Insight Report") | [x] | C03 |
 | 2.11 | Title with special characters (`&`, `<`, quotes) | [x] | C09 |
 | 2.12 | Two consecutive runs with `${timestamp}` — unique filenames | [x] | C14 |
-| 2.13 | Two runs without timestamp — second overwrites first | [ ] | — |
+| 2.13 | Two runs without timestamp — second overwrites first | [x] | A01, A02, B02, N06 |
 
 ## 3. Output File Validation
 
@@ -55,12 +63,12 @@ runners print the real numbers.
 |---|----------|--------|---------------|
 | 3.1 | HTML file exists after test | [x] | All E-tests check this |
 | 3.2 | HTML is valid (opens in browser without error) | [x] | Playwright tests |
-| 3.3 | JSON file exists alongside HTML | [x] | Verified in reports |
-| 3.4 | JSON is valid and has correct schema (testName, status, totalSamples, errorRate, samplers) | [~] | Python script checks some fields |
+| 3.3 | JSON file exists alongside HTML | [x] | C04, C06 |
+| 3.4 | JSON is valid and has correct schema (testName, status, totalSamples, errorRate, samplers) | [x] | R06 (the goldens diff the whole `.json` of a fixed JTL), CiCdJsonSerializerTest |
 | 3.5 | JSON `status` field: PASS when the asserts pass | [x] | E10 |
 | 3.6 | JSON `status` field: FAIL when an assert fails | [x] | E11 |
-| 3.7 | JSON `status` field: UNKNOWN when no asserts are configured | [x] | E01 |
-| 3.8 | JSON samplers array has correct count | [x] | Data integrity script |
+| 3.7 | JSON `status` field: UNKNOWN when no asserts are configured | [x] | R06 G1 |
+| 3.8 | JSON samplers array has correct count | [x] | R06 goldens (`verify-data-integrity.py` also checks it, by hand) |
 | 3.9 | JSON samplers have apdex field | [x] | CiCdJsonSerializerTest |
 | 3.10 | JSON assertViolations populated when an assert fails | [x] | CiCdJsonSerializerTest |
 | 3.11 | JUnit XML generated when `-Jwebinsight.report.junit=true` | [x] | C10 |
@@ -69,15 +77,15 @@ runners print the real numbers.
 | 3.14 | JUnit XML: assert failures produce `<failure>` elements | [x] | JunitXmlWriterTest |
 | 3.15 | JUnit XML: no asserts = all test cases pass | [x] | JunitXmlWriterTest |
 | 3.16 | JUnit XML filename matches HTML filename (.xml extension) | [x] | C10 (C10.html → C10.xml) |
-| 3.17 | External data mode:  `web-insight-data.js` created for large tests | [ ] | — |
-| 3.18 | External data mode: HTML loads data via `<script src>` | [ ] | — |
+| 3.17 | External data mode:  `web-insight-data.js` created for large tests | [x] | E20, F01, F05, C25 |
+| 3.18 | External data mode: HTML loads data via `<script src>` | [x] | E19, E20; external-data.spec.ts |
 | 3.19 | HTML + JSON filenames derived correctly (my-report.html → my-report.json) | [x] | C05-C06 |
 
 ## 4. Asserts / Apdex Configuration
 
 | # | Scenario | Status | Existing Test |
 |---|----------|--------|---------------|
-| 4.1 | No asserts (no annotations file) | [x] | E01, E02 |
+| 4.1 | No asserts (no annotations file) | [x] | E02 (header-global), R06 G1 |
 | 4.2 | Blanket (`match: "*"`) rules only | [x] | E10, E11 |
 | 4.3 | Rules with per-sampler targets | [x] | AssertionEngineTest |
 | 4.4 | Rules on p95, p99, errorRate and mean | [x] | AssertionEngineTest |
@@ -113,17 +121,17 @@ runners print the real numbers.
 |---|----------|--------|---------------|
 | 5.1 | No annotations file — editor shown in Notes tab | [x] | Playwright notes tests |
 | 5.2 | Auto-detect `report-annotations.json` in output dir | [x] | E10, E11, E12 |
-| 5.3 | Custom annotations path via `-Jwebinsight.report.annotations` | [ ] | — |
+| 5.3 | Custom annotations path via `-Jwebinsight.report.annotations` | [x] | E26, E27, C35 |
 | 5.4 | Annotations with only testNotes | [ ] | — |
 | 5.5 | Annotations with only assertions | [x] | E10, E11 |
-| 5.6 | Annotations with only timeline markers | [x] | E13 |
+| 5.6 | Annotations with only timeline markers | [~] | E13 (manual tier) |
 | 5.7 | Annotations with everything (notes + asserts + markers + sampler notes) | [x] | E12 |
 | 5.8 | Annotations JSON that will not parse — graceful handling | [x] | N02, AnnotationLoaderTest |
 | 5.8b | Annotations JSON that parses, whose **rules** are unreadable (listener) | [x] | N08, ErrorSelectorTest, assert-parity-vectors |
 | 5.8c | The same, through the `-g -o` exporter — different failure mode (exit 1) | [x] | N09 |
 | 5.9 | Missing version field in annotations | [x] | AnnotationLoaderTest |
 | 5.10 | Annotations with comparisonThresholds | [x] | AnnotationLoaderTest |
-| 5.11 | Timeline markers appear as vertical lines on charts | [x] | Playwright asserts-apdex |
+| 5.11 | Timeline markers appear as vertical lines on charts | [~] | asserts-apdex.spec.ts checks the markers list, not the lines on the charts |
 
 **Why 5.8, 5.8b and 5.8c are three rows.** They were one row, marked covered by a unit test, and
 that is how a crash in rule evaluation stayed invisible through 19 scenarios, 33 config
@@ -135,9 +143,11 @@ the way to judging before anything goes wrong. Both rows must stay populated by 
 end-to-end test, not only by a unit test: "the report is still generated" is a claim about
 a file existing after a run, and nothing below the scenario tier can observe it.
 
-Both ingestion paths, because they fail differently. The listener catches and leaves no
-report; the exporter lets the exception propagate and JMeter exits 1, which no file check
-sees. The docs promise not-fatal for both without qualification, so 5.8b and 5.8c are two
+Both ingestion paths, because they are built differently: the exporter re-parses the JTL
+where the listener is fed live samples, so "same evaluator" is not "same input". On both,
+the report is written with the broken rules isolated (`gate.passed` is the one healthy
+rule) and the run exits non-zero as a CONFIG ERROR through `NonZeroExit`, with no stack
+trace. N08 asserts that on the listener and N09 on the exporter, so 5.8b and 5.8c are two
 rows rather than one with two test names.
 
 ## 6. Baseline Comparison Configuration
@@ -145,10 +155,10 @@ rows rather than one with two test names.
 | # | Scenario | Status | Existing Test |
 |---|----------|--------|---------------|
 | 6.1 | No baseline — Compare tab hidden | [x] | Playwright compare-tab |
-| 6.2 | `baseline.jtl` in output dir — Compare tab shown | [x] | CMP report + Playwright |
-| 6.3 | Custom baseline path via `-Jwebinsight.report.baseline` | [ ] | — |
+| 6.2 | `baseline.jtl` auto-detected in the output dir — Compare tab shown | [ ] | — (CMP, C16 and C34 all pass the baseline explicitly; nothing exercises auto-detection) |
+| 6.3 | Custom baseline path via `-Jwebinsight.report.baseline` | [x] | CMP (compare-tab.spec.ts), C16, C34 |
 | 6.4 | Custom regression thresholds via annotations | [x] | ComparisonResultTest |
-| 6.5 | Custom thresholds via `-Jwebinsight.compare.*` properties | [ ] | — |
+| 6.5 | Custom thresholds via `-Jwebinsight.compare.*` properties | [x] | C34, ComparisonThresholdResolverTest |
 | 6.6 | Disabled thresholds (-1 value) | [x] | ComparisonThresholdsTest |
 | 6.7 | Regression detected (>10% P95 increase) | [x] | ComparisonResultTest |
 | 6.8 | New sampler (in current but not baseline) | [x] | ComparisonResultTest |
@@ -166,15 +176,15 @@ rows rather than one with two test names.
 
 | # | Scenario | Status | Existing Test |
 |---|----------|--------|---------------|
-| 8.1 | Single sampler | [x] | E04 |
+| 8.1 | Single sampler | [~] | E04 (manual tier); E19 is single-sampler and is opened by external-data.spec.ts |
 | 8.2 | Many samplers (20+) | [x] | E05 |
 | 8.3 | Zero errors | [x] | E06 |
 | 8.4 | 100% errors | [x] | E07 |
-| 8.5 | Mixed error codes (400, 401, 404, 500, 503, 504) | [x] | E03 |
+| 8.5 | Mixed error codes (400, 401, 404, 500, 503, 504) | [~] | E03, E15 (manual tier) |
 | 8.6 | Very long sampler names | [x] | E08 |
-| 8.7 | Special characters in sampler names (`&`, `<`, `/`, `?`) | [x] | E01 (URL-like names) |
+| 8.7 | Special characters in sampler names (`&`, `<`, `/`, `?`) | [~] | E01 (URL-like names, manual tier); escaping of hostile names: xss-escaping.spec.ts |
 | 8.8 | Transaction controllers (parent/child hierarchy) | [x] | E02 |
-| 8.9 | Very short test (1 thread, 5s) | [x] | E24 |
+| 8.9 | Very short test (1 thread, 5s) | [~] | E24 (S04 smoke: the report is written; nothing reads it) |
 | 8.10 | Medium test (50 threads, 120s) | [x] | E02 |
 | 8.11 | Large sample volume (210k samples) | [x] | E20 (generated JTL, `-g -o`) |
 | 8.11b | Genuine high-throughput load generation | [ ] | Not tested, and not testable as written — no test plan contains an HTTP sampler, so thread count produces rows, not throughput. E18 (100 threads) claimed this and was removed: it asserted only that a file appeared. |
@@ -183,7 +193,7 @@ rows rather than one with two test names.
 | 8.14 | Connect time and latency NOT present (JTL without columns) | [x] | JtlParserTest missing-optional |
 | 8.15 | Error response bodies captured (listener mode) | [x] | E02 |
 | 8.16 | Error URL captured | [x] | LiveStatisticsEngineTest |
-| 8.17 | Very large JTL (210k rows, 26MB) | [x] | EDM test (report generates, 10 samplers correct; external mode not triggered — chart JSON only ~1.4MB after aggregation) |
+| 8.17 | Very large JTL (210k rows, 26MB) | [x] | E20 (a generated 210k-row JTL through `-g -o`, external data forced) |
 | 8.18 | Error body truncation (>16KB) | [x] | LiveStatisticsEngineTest |
 | 8.19 | Custom max body length via `-Jwebinsight.error.body.maxsize` | [ ] | — |
 
@@ -197,10 +207,10 @@ rows rather than one with two test names.
 | 9.4 | JTL with malformed rows (skips and continues) | [x] | JtlParserTest |
 | 9.5 | Empty JTL (header only) | [x] | JtlParserTest |
 | 9.6 | JTL with transaction controller naming | [x] | JtlParserTest |
-| 9.7 | Very large JTL performance (210k rows) | [x] | EDM test (generates in <30s) |
-| 9.8 | Generate report from JTL via `-g -o` (end-to-end) | [x] | G01 |
-| 9.9 | Generate report from JTL with annotations present | [x] | G03 |
-| 9.10 | Generate report from JTL with baseline.jtl present | [x] | G04 |
+| 9.7 | Very large JTL performance (210k rows) | [~] | E20 generates it; no time bound is asserted |
+| 9.8 | Generate report from JTL via `-g -o` (end-to-end) | [x] | C01 (cd), E20, R06 |
+| 9.9 | Generate report from JTL with annotations present | [x] | E26, E27, N09, R06 G2–G9 |
+| 9.10 | Generate report from JTL with a baseline | [x] | C34 |
 
 ## 10. Playwright UI — Still Missing
 
@@ -217,41 +227,44 @@ rows rather than one with two test names.
 | 10.9 | localStorage: detail chart config persists | [x] | ui-interactions.spec.ts |
 | 10.10 | localStorage: hidden columns persist | [x] | ui-interactions.spec.ts |
 | 10.11 | localStorage: chart order persists after drag-reorder | [ ] | — |
-| 10.12 | localStorage: filter row collapse persists | [x] | Playwright tab-navigation |
+| 10.12 | localStorage: filter row collapse persists | [ ] | — (no spec collapses a filter row and reloads) |
 | 10.13 | Report title matches `-Jwebinsight.report.title` value | [x] | ui-interactions.spec.ts |
 | 10.14 | Default title "JMeter Web Insight Report" when no -J | [x] | C03 |
 | 10.15 | Sampler search in filter bar (type partial name → filtered) | [x] | Playwright filter-controls |
 | 10.16 | Transaction hierarchy in filter bar (children indented) | [x] | ui-interactions.spec.ts |
 | 10.17 | Copy Summary: verify clipboard content is HTML table | [x] | ui-interactions.spec.ts |
-| 10.18 | CSV download: verify file is downloaded + content verified | [x] | csv-export.spec.ts (11 tests) |
+| 10.18 | CSV download: verify file is downloaded + content verified | [x] | csv-export.spec.ts |
 | 10.19 | Smart Y-axis units (ms → s → min for large values) | [x] | advanced-interactions.spec.ts |
 | 10.20 | Chart tooltip shows human-readable duration | [x] | Smart Y-axis test covers formatter |
-| 10.21 | Legend truncation (long names cut at 35 chars in legend) | [x] | advanced-interactions.spec.ts (E08) |
+| 10.21 | Legend truncation (long names cut to 30 chars in legend) | [x] | advanced-interactions.spec.ts (E08) |
 | 10.22 | Error Details: JSON response body auto-formatted | [x] | remaining-gaps.spec.ts (pretty-print, syntax highlighting, Copy/Wrap/Raw buttons) |
 | 10.23 | Compare tab: live threshold adjustment via Apply button | [x] | remaining-gaps.spec.ts (low threshold → more regressions, high → none) |
 | 10.24 | Notes tab: markdown editor live preview | [x] | ui-interactions.spec.ts |
-| 10.25 | Notes tab: "Save Annotations" downloads JSON file | [~] | Button tested in ui-interactions, download event not captured |
+| 10.25 | Notes tab: "Save Annotations" downloads JSON file | [x] | asserts-save.spec.ts (a Notes edit reaches the downloaded document) |
 
 ## 11. Data Integrity
 
 | # | Scenario | Status | Existing Test |
 |---|----------|--------|---------------|
-| 11.1 | Sample count matches between our JSON and native statistics.json | [x] | Data integrity script (6/6 exact) |
-| 11.2 | Error count matches | [x] | Verified via script |
-| 11.3 | Mean response time within ±1ms | [x] | 6/6 within tolerance |
-| 11.4 | P95/P99 within ±5% (different algorithms) | [~] | 11/12 pass (1 at 12.8% — small sample T-Digest divergence) |
-| 11.5 | Throughput within ±2% | [ ] | Not in current script |
+| 11.1 | Sample count matches between our JSON and native statistics.json | [~] | `verify-data-integrity.py`, by hand |
+| 11.2 | Error count matches | [~] | `verify-data-integrity.py`, by hand |
+| 11.3 | Mean response time within ±1ms | [~] | `verify-data-integrity.py`, by hand |
+| 11.4 | P95/P99 within ±5% (different algorithms) | [~] | `verify-data-integrity.py`, by hand (small samples can diverge past 5%: T-Digest) |
+| 11.5 | Throughput within ±2% | [~] | `verify-data-integrity.py`, by hand |
 | 11.6 | Samplers table values match JSON output values | [ ] | — |
+
+No runner calls `verify-data-integrity.py`, so section 11 is manual: run it as
+§ 7 of Instructions.md shows.
 
 ## 12. Error Handling / Negative Tests
 
 | # | Scenario | Status | Existing Test |
 |---|----------|--------|---------------|
-| 12.1 | Invalid output directory path → error logged, no crash | [x] | N03 (missing baseline path) |
-| 12.2 | Read-only output directory → error logged | [ ] | — (OS-specific) |
+| 12.1 | Invalid output directory path → error logged, no crash | [x] | B09 (output path is a file), H04 |
+| 12.2 | Read-only output directory → error logged | [x] | C19, B10 |
 | 12.3 | Invalid annotations JSON → warning logged, report still generates | [x] | AnnotationLoaderTest |
 | 12.4 | Missing baseline.jtl path in -J property → no Compare tab | [x] | N03 |
-| 12.5 | Corrupt baseline.jtl → warning logged, no Compare | [x] | N02 (analogous — bad input gracefully handled) |
+| 12.5 | Corrupt baseline.jtl → warning logged, no Compare | [ ] | — (N02 is a corrupt annotations file, H03 a missing baseline; no runner passes a corrupt one) |
 | 12.6 | Zero samples (empty test run) → report generates without crash | [x] | N01 |
 | 12.7 | Sampler name with only special chars | [x] | N05 (empty label) |
 
@@ -259,60 +272,24 @@ rows rather than one with two test names.
 
 ## Summary
 
-The tables above use three markers, and this summary counts them separately —
-a partial is not a pass, and rolling the two together is what let the old
-headline drift away from the rows it claimed to summarise.
+The rows are the summary. A partial is not a pass, so the markers are never rolled
+together, and there is no totals table: the one that stood here had drifted from the rows
+it claimed to count. To count them, grep the tables, for example
+`grep -c '| \[ \] |' docs/TEST-COVERAGE-GAPS.md` for the gaps.
 
-- `[x]` **Covered** — an automated test asserts the scenario
-- `[~]` **Partial** — adjacent behaviour is tested, or the check is manual/visual
-- `[ ]` **Gap** — nothing tests it
-
-| Category | Total | Covered `[x]` | Partial `[~]` | Gap `[ ]` |
-|----------|-------|---------------|---------------|-----------|
-| 1. Runtime Modes | 7 | 6 | 1 | 0 |
-| 2. Output Paths | 13 | 11 | 1 | 1 |
-| 3. Output Validation | 19 | 16 | 1 | 2 |
-| 4. Asserts/Apdex | 24 | 24 | 0 | 0 |
-| 5. Annotations | 11 | 9 | 0 | 2 |
-| 6. Baseline Comparison | 9 | 7 | 0 | 2 |
-| 7. Ramp-Up | 3 | 2 | 0 | 1 |
-| 8. Data Scenarios | 19 | 18 | 0 | 1 |
-| 9. JTL Parser | 10 | 10 | 0 | 0 |
-| 10. Playwright UI | 25 | 20 | 4 | 1 |
-| 11. Data Integrity | 6 | 3 | 1 | 2 |
-| 12. Error Handling | 7 | 6 | 0 | 1 |
-| **TOTAL** | **153** | **132** | **8** | **13** |
-
-**Current coverage: 86% fully covered (132/153); 91% counting the 8 partials (140/153).**
-
-### The 13 open gaps
-
-| # | Scenario | Why it is open |
-|---|----------|----------------|
-| 2.13 | Two runs without `${timestamp}` → second overwrites first | Needs two full runs a minute apart |
-| 3.17 | External data mode:  `web-insight-data.js` created for large tests | Threshold not reachable without millions of rows |
-| 3.18 | External data mode: HTML loads data via `<script src>` | Same threshold |
-| 5.3 | Custom annotations path via `-Jwebinsight.report.annotations` | Only the auto-detected path is exercised |
-| 5.4 | Annotations with only `testNotes` | Edge case of the annotations schema |
-| 6.3 | Custom baseline path via `-Jwebinsight.report.baseline` | Only the auto-detected `baseline.jtl` is exercised |
-| 6.5 | Custom thresholds via `-Jwebinsight.compare.*` | Defaults only |
-| 7.3 | Ramp-up overlay visible in Playwright | Verified visually, not asserted |
-| 8.19 | Custom max body length via `-Jwebinsight.error.body.maxsize` | Default only |
-| 10.11 | localStorage: chart order persists after drag-reorder | Reorder is tested; its persistence is not |
-| 11.5 | Throughput within ±2% of JMeter's own dashboard | No cross-check harness |
-| 11.6 | Samplers table values match JSON output values | No cross-check harness |
-| 12.2 | Read-only output directory → error logged | OS-specific setup |
-
-The 8 partials are 1.2 (GUI mode — manual smoke check), 2.5 (paths with
-spaces — a JMeter `-J` limitation), 3.4 (JSON schema — the Python script
-checks some fields), 10.4, 10.7, 10.8, 10.25 and 11.4.
+Recent tests not tied to one row: `docs-check-bugs.spec.ts` (the product bugs a docs
+review found — Compare Apply, the Default preset, Columns after a drag, Show all, Error
+Breakdown fullscreen, and more), `js-unit/docs-links.test.js` (every docs link resolves as
+the docs site resolves it) and `js-unit/schema-published.test.js` (the published schema
+copy is the plugin's).
 
 ---
 
 ## 13. Specified but never automated
 
-These 43 scenarios were designed — entry point, precondition, expected result — and no
-runner was ever written for them. They came from a scenario matrix kept as a spreadsheet
+These scenarios were designed — entry point, precondition, expected result — and no
+runner records them yet (the twelve `T` ids `run-title-junit-tests.sh` now records were
+removed from this table). They came from a scenario matrix kept as a spreadsheet
 outside version control; that file has been retired, because a hand-maintained list of
 what the runners cover drifts from the runners (it had, badly: 43 rows claimed and never
 executed, 24 executed and never listed) and the runners are the only list that cannot lie.
@@ -348,7 +325,6 @@ thing that could not be regenerated.
 | T04 | EMPTY -J with a JMX title set. | -J is empty so it falls THROUGH to the JMX field, which wins. Not the hardcoded default. | CLI-listener |
 | T05 | Non-empty -J and a JMX literal. | -J wins. | CLI-listener |
 | T06 | Blank JMX field and no -J. | Hardcoded default. | CLI-listener |
-| T07 | Whitespace-only -J title (' '). | Not empty under isEmpty(), so it survives verbatim rather than falling back. Assert on the JSON: an HTML parser strips whitespace and cannot tell 'kept it' from 'wrote no | CLI-listener |
 | T08 | JMX full property reference ${__P(wir.jmx.title)}, property set. | Evaluated to the property's value. | CLI-listener |
 | T09 | Same, property unset. | The __P default argument is used: 'JMX Fallback Title'. | CLI-listener |
 | T10 | JMX PARTIAL reference 'Load ${__P(wir.env)} build ${__P(wir.build)}', both set. | Both substituted, literal text preserved: 'Load staging build 42'. | CLI-listener |
@@ -356,21 +332,10 @@ thing that could not be regenerated.
 | T12 | -J title containing a function reference. | NOT evaluated - the literal ${__P(wir.jmx.title)} becomes the title. | CLI-listener |
 | T13 | -J function reference plus a good JMX literal title. | -J wins and is literal, so the working JMX title is discarded. Worst-of-both combination. | CLI-listener |
 | T14 | Title containing the plugin's own ${timestamp}. | ${timestamp} is a FILENAME placeholder only, so it survives literally in the title. Confirms the two substitution mechanisms do not leak into each other. | CLI-listener |
-| T15 | Title contains HTML: <script>alert(1)</script>. | Escaped - rendered as visible text, &lt;script&gt; in the source, no live markup. | CLI-listener |
-| T16 | Title contains XML-hostile characters (& < > single and double quotes), JUnit ON. | All three artifacts stay well-formed: HTML escaped, .json parses, .xml parses, and testsuites name round-trips exactly. An unescaped ampersand breaks JUnit XML for CI con | CLI-listener |
 | T17 | Non-ASCII title via the JMX path (UTF-8 bytes inside the .jmx). | Round-trips exactly through HTML, JSON and XML. Tests the PLUGIN's encoding with no argv in the way. | CLI-listener |
 | T18 | Very long title (520 characters). | Handled; round-trips intact. | CLI-listener |
-| T19 | Title with a lone unterminated ${. | Must not throw or hang; report still produced. | CLI-listener |
-| T29 | Non-ASCII title via -J (platform characterisation, not a defect check). | PASS either way, recording the answer. On a Windows console the value is transcoded to the console codepage before the JVM starts, so CJK arrives as '????' while Latin-1  | CLI-listener |
 | I37 | -J title of ${__P(env)} with a working literal title in the JMX field. | The title is still the literal ${__P(env)} - -J values are never function-evaluated (F14) and -J still wins (F13) - but an unevaluated ${...} surviving into the rendered  | CLI-listener |
 | | **J-JUnit XML** | | |
 | T20 | Nothing set on either surface. | No .xml. Assertion must first prove a report WAS produced - an absence check passes for free when nothing ran. | CLI-listener |
-| T21 | -Jwebinsight.report.junit=true. | Well-formed .xml sibling written. | CLI-listener |
-| T22 | JMX checkbox true, no -J. | .xml written from the plan setting. | CLI-listener |
-| T23 | -J true with the JMX checkbox false. | -J wins; .xml written. | CLI-listener |
 | T24 | -J false with the JMX checkbox true. | No .xml. Note it disables via the DEFAULT, not by reading the flag - the checkbox is never consulted. | CLI-listener |
-| T25 | -Jwebinsight.report.junit=yes (junk) with the JMX checkbox true. | No .xml. 'yes' matches neither branch, so a checked box is SILENTLY suppressed by a typo. Documents the gap; a DIFF here means resolution changed. | CLI-listener |
-| T26 | -Jwebinsight.report.junit=TRUE (uppercase). | Accepted - equalsIgnoreCase. | CLI-listener |
-| T27 | JUnit on with a CUSTOM report filename. | .xml and .json are siblings of the custom name; no default-named .xml appears. | CLI-listener |
-| T28 | JUnit on with an evaluated JMX title. | testsuites name is the RESOLVED title. | CLI-listener |
 | J35 | -Jwebinsight.report.junit=yes with the JMX checkbox TICKED. | A WARN naming the property and the value it got, and the .xml IS written - from the ticked box, because an unrecognised boolean is treated as UNSET rather than as false,  | CLI-listener |

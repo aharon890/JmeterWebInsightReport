@@ -20,8 +20,14 @@ and that is a question only you can answer, so you declare it.
 }
 ```
 
-Put that in `report-annotations.json` in the report's output directory (or point at it with
-`-Jwebinsight.report.annotations=…`) and the run is judged by it.
+Save that as `report-annotations.json`, point the run at it with
+`-Jwebinsight.report.annotations=<path>`, and the run is judged by it. With no path given, a file
+of that name in the report's output directory is picked up too, and the log says so at WARN,
+because a file nobody named is deciding the verdict. A `jmeter -g … -o DIR` run always needs the
+property: `-o` requires an empty directory, so there is nothing there to pick up.
+
+A path that names no file, or a file that is not valid JSON, is a configuration error: nothing is
+judged, the console prints a `CONFIG ERROR` line, and the run exits non-zero under `failonerror`.
 
 ## Four principles
 
@@ -36,7 +42,11 @@ for the whole run.
 `fail: {"lt": 30}` for throughput. There is no per-metric table of which way is bad, which is
 why latency, throughput and apdex share one rule shape.
 
-**Mistakes are loud.** A JSON Schema drives editor completion. Load-time validation names the
+**Mistakes are loud.** A JSON Schema drives editor completion: make
+`"$schema": "https://aharon890.github.io/JmeterWebInsightReport/schema/report-annotations.schema.json"`
+the file's first key, and an editor that reads JSON Schema (VS Code, IntelliJ IDEA) completes keys
+and flags typos as you write. The plugin ignores the key and keeps it when the report saves the
+file. Load-time validation names the
 rule and the fix. A rule the *file* got wrong is `NOT_JUDGED / INVALID_RULE` and exits the run
 non-zero under `failonerror`. A rule that merely matched nothing is `NOT_JUDGED / NO_MATCH` —
 reported on every surface, never hidden, but not fatal on its own, because a plan running a
@@ -57,12 +67,14 @@ subset is legitimate.
 
 ### Targets
 
-```json
-{ "sampler":  "POST /api/checkout" }
-{ "samplers": ["GET /a", "GET /b"] }
-{ "match":    "POST /api/*", "exclude": ["POST /api/health"] }
-{ "scope":    "overall" }
-```
+A rule's `target` takes exactly one of these forms:
+
+| Selects | `target` |
+|---|---|
+| one sampler | `{ "sampler": "POST /api/checkout" }` |
+| several samplers | `{ "samplers": ["GET /a", "GET /b"] }` |
+| a pattern, minus exceptions | `{ "match": "POST /api/*", "exclude": ["POST /api/health"] }` |
+| the whole run | `{ "scope": "overall" }` |
 
 **Reach matters.** Naming a sampler reaches it whatever it is — a transaction-controller child,
 a hidden utility sampler, a row the report does not display by default. Naming is an unambiguous
@@ -72,8 +84,10 @@ A `match` pattern reaches only **top-level, non-hidden** samplers. If patterns r
 a blanket rule would start failing on rows whose time is already counted inside their parent.
 
 **Patterns are globs.** `*` is the only special character; everything else is literal, because
-sampler names are full of `{id}`, `?`, `+` and query strings of `&`, and you mean them. Prefix
-with `regex:` for a full expression.
+sampler names are full of `{id}`, `?`, `+` and query strings of `&`, and you mean them. A glob,
+like a regex, must match the **whole** name. Prefix with `regex:` for a full Java regular
+expression: `regex:GET /(search|browse).*` selects every search and browse request, while
+`regex:^GET /(search|browse)` selects only samplers named exactly `GET /search` or `GET /browse`.
 
 ### Predicates
 
@@ -110,7 +124,10 @@ the two rules to write instead.
 > [error classes](05-Errors-Tab.md#error-classes-where-a-failure-was-decided).
 >
 > If you want a threshold on one kind, say which:
-> `errorRate:class=protocol` for HTTP failures, `errorRate:class=nonProtocol` for the rest.
+> `errorRate:class=protocol` for HTTP failures (a status outside 2xx),
+> `errorRate:class=transport` for samples that got no HTTP status at all (connection refused, a
+> timeout, a failed TLS handshake), and `errorRate:class=nonProtocol` for samples that got a 2xx
+> and were failed anyway, by an assertion or a script.
 
 **Per sampler:** `sampleCount` · `errorCount` · `errorRate` (%) · `mean` · `median` · `min` ·
 `max` · `stdDev` (ms) · `latency` (ms) · `connectTime` (ms) · `throughput` (/s) ·
@@ -131,14 +148,18 @@ that cell would seed a threshold three orders of magnitude off.
 of all of them:
 
 ```json
-{ "target": { "sampler": "POST /checkout" },
-  "metric": "errorRate:class=nonProtocol", "fail": { "gt": 0 } }
+{
+  "assertions": [
+    { "target": { "sampler": "POST /checkout" },
+      "metric": "errorRate:class=nonProtocol", "fail": { "gt": 0 } },
 
-{ "target": { "scope": "overall" },
-  "metric": "errorRate:class=transport", "fail": { "gt": 0 } }
+    { "target": { "scope": "overall" },
+      "metric": "errorRate:class=transport", "fail": { "gt": 0 } },
 
-{ "target": { "sampler": "POST /checkout" },
-  "metric": "errorRate:code=5*", "fail": { "gt": 1 }, "warn": { "gt": 0.2 } }
+    { "target": { "sampler": "POST /checkout" },
+      "metric": "errorRate:code=5*", "fail": { "gt": 1 }, "warn": { "gt": 0.2 } }
+  ]
+}
 ```
 
 | Selector | Values |
@@ -154,7 +175,7 @@ enough to miss a real failure.
 `Non HTTP response code: java.net.ConnectException` into that field verbatim. A glob over the
 string is the honest expression; a richer taxonomy would be the plugin inventing one JMeter does
 not provide. `*` is the only special character; prefix with `regex:` for a full expression
-(`code=regex:5[0-9]{2}`). A pattern that will not compile makes the rule INVALID at load time,
+(`code=regex:5[0-9]{2}`). Either way it must match the whole code. A pattern that will not compile makes the rule INVALID at load time,
 with the reason, rather than failing later.
 
 **`code=` is case-sensitive; `class=` is not.** `class=NONPROTOCOL` and `class=nonProtocol` are
@@ -321,7 +342,7 @@ Plus one state that belongs to the run rather than to a rule:
 
 | | |
 |---|---|
-| **NOT EVALUATED** | No rule gated. Either nothing was declared, or every declared rule is `NOT_JUDGED`. **This is not a pass.** A run with no gate has not passed one — it was reported, not judged. The CI/CD JSON's `status` is `UNKNOWN` in both cases. With no client rule declared there is no `gate` block, and `"assertsEvaluated"` is `false` unless server asserts were judged; with rules declared and none judged, `gate.status` is `NOT_EVALUATED`. The header badge tells the two apart: `NO ASSERTS DECLARED`, or `ASSERTS NOT EVALUATED` (`SERVER ASSERTS ONLY` when server asserts were judged). |
+| **NOT EVALUATED** | No rule gated. Either nothing was declared, or every declared rule is `NOT_JUDGED`. **This is not a pass.** A run with no gate has not passed one — it was reported, not judged. The CI/CD JSON's `status` is `UNKNOWN` in both cases. With no client rule declared there is no `gate` block, and `"assertsEvaluated"` is `false` unless server asserts were judged; with rules declared and none judged, `gate.status` is `NOT_EVALUATED`. With no client verdict, the header badge reads one of three things: `NO ASSERTS DECLARED` when the file declares neither client rules nor server asserts, `SERVER ASSERTS ONLY` when server asserts were judged (their verdict is the server chip beside it), and `ASSERTS NOT EVALUATED` otherwise. |
 
 > **Why there is no "inconclusive".** In CI such a status has to resolve to pass or fail anyway:
 > if it fails the build it is FAIL with extra vocabulary, and if it passes it is a silent green —
@@ -340,8 +361,9 @@ Plus one state that belongs to the run rather than to a rule:
    for, such as `stdDev` on a whole-run rule or `maxThreads` on a per-sampler one. So are a band
    with two operators (`{"gt": 100, "lt": 50}`) even beside a readable sibling band, a band
    nothing can breach (`{"lt": -19}` — no metric here is ever negative), a threshold that is not
-   a finite number (`{"gt": 1e400}` is past the largest double, so it reads as Infinity), and the
-   retired keys `observe` and `onMissing`. All are rejected before anything is resolved.
+   a finite number (`{"gt": 1e400}` is past the largest double, so it reads as Infinity), and a
+   rule carrying the key `observe` or `onMissing`, which is refused rather than ignored. All are
+   rejected before anything is resolved.
 3. The target resolves to matched samplers. **Nothing matched — or every matched row recorded
    zero samples** — is **`NOT_JUDGED / NO_MATCH`**, which gates in neither direction: the rule was not
    evaluated, so there is no performance verdict to report. What there *is* is a configuration
@@ -371,50 +393,47 @@ comfortably: the system was never put under the load those thresholds were writt
 reports success and means nothing.
 
 JMeter records what was *achieved* and never what was *intended*, so the target has to be
-declared:
+declared — as an ordinary whole-run rule with a floor below the load you asked for:
 
 ```json
-"loadValidity": {
-  "metric": "throughput",
-  "target": 5,
-  "warn": { "tolerance": 0.05 },
-  "fail": { "tolerance": 0.20 }
+{
+  "assertions": [
+    {
+      "id": "load:throughput",
+      "description": "Asked for 5 requests a second",
+      "target": { "scope": "overall" },
+      "metric": "throughput",
+      "warn": { "lt": 4.75 },
+      "fail": { "lt": 4.0 }
+    }
+  ]
 }
 ```
 
-That expands into an ordinary whole-run rule — `warn` below 4.75/s, `fail` below 4.0/s — so both
-evaluators judge it, the editor previews it, the charts draw it, and the CI/CD JSON and JUnit XML
-carry it. **No new status was invented for it**: a shortfall is a fact about the run, and the rule
-row already shows the number, the limit and the gap between them.
+That is 5/s with 5 % slack before a warning and 20 % before a failure. Being an ordinary rule,
+both evaluators judge it, the editor previews it, the charts draw it, and the CI/CD JSON and JUnit
+XML carry it. **There is no special status for it**: a shortfall is a fact about the run, and the
+rule row already shows the number, the limit and the gap between them.
 
-| Field | |
-|---|---|
-| `metric` | Any whole-run metric. `throughput` (default) or `maxThreads` are the honest answers to "did we apply the load we asked for". |
-| `target` | The load asked for. Omitted, zero or negative disables the check. |
-| `warn` / `fail` | The bands, each with its own `tolerance` — a fraction of slack. `0.05` means "within 5 % of target is fine". An omitted tolerance means no slack at all. |
+`throughput` or `maxThreads` are the honest answers to "did we apply the load we asked for", and
+any whole-run metric works. The bands are the policy, and you choose it:
 
-**The block decides nothing on your behalf.** There is no default consequence and no
-`fail`-versus-`warn` switch:
-
-- Declare only `warn` and **nothing here can fail a build**.
+- Declare only `warn` and **this rule cannot fail a build**.
 - Declare only `fail` and there is no warning stage.
-- Declare **both** and you get the policy people actually want — warn when slightly short, fail
-  when badly short — which a single switch could not express at all.
-- Declare **neither** and no rule is produced. A block naming a target and no consequence has not
-  asked for anything to be judged, and what gates a run is your decision, not the plugin's.
+- Declare **both** and you get the policy people usually want — warn when slightly short, fail
+  when badly short.
 
-**The block is migrated into `assertions[]` at load**, as one ordinary rule with the id
-`load:<metric>` — editable, disableable, deletable and retunable exactly like a rule written by
-hand. It is *consumed*: a save from the Asserts tab writes the rule and no `loadValidity` block
-at all, so the file never declares the same check twice. Until you save, it is re-created on
-every run, so a tester who never opens the report loses nothing, and each such run says so in a
-warning finding naming the rule.
+A server assert can name this rule with `requiresLoad`, so that a server band written for the
+target load stands down on a run that never reached it — see `LOAD_NOT_ACHIEVED` above.
 
-A `tolerance` of 1 or more is not clamped. It puts the band at or below zero (`1 − 1` is zero),
-and a band nothing can breach is refused: the rule is `NOT_JUDGED / INVALID_RULE`, and the run
-exits non-zero under `failonerror`. A tolerance meant as a percentage is written as a fraction:
-`0.2`, not `20`. A `target` or `tolerance` that is not a finite number is refused the same way, in
-a sentence naming the field: `loadValidity.target must be a finite number, not NaN`.
+A file that carries a `loadValidity` block (`metric`, `target`, and `warn` / `fail` each with a
+`tolerance` fraction) is still read: at load it becomes exactly this rule, with the id
+`load:<metric>` and each band at `lt target × (1 − tolerance)`, and every run reports a WARNING
+finding naming the rule until the file is saved from the Asserts tab, which writes the rule and
+drops the block. A `tolerance` of 1 or more puts the band at or below zero, which nothing can
+breach, so the rule is `NOT_JUDGED / INVALID_RULE` — write a fraction, `0.2`, not `20`. A `target`
+or `tolerance` that is not a finite number is refused the same way, in a sentence naming the
+field: `loadValidity.target must be a finite number, not NaN`.
 
 ---
 
@@ -453,7 +472,9 @@ report — and names the rule and the fix:
 - an **unreachable warn band** — `warn > 500` beside `fail > 400` can never fire, because
   `fail` is tested first. Verdicts stay correct, so the loader warns; the report's editor says
   so under the form and still saves the rule.
-- duplicate ids
+- **duplicate ids** — an ERROR finding, because ids name JUnit testcases and CI/CD entries and two
+  rules sharing one make those ambiguous. Both rules are still judged and the run does not exit
+  non-zero over it, so rename one.
 
 **An unrecognised key is not one of them.** This plugin parses one specific shape, and a key
 outside it — a field from a newer version, a note you added by hand, something another tool
@@ -462,12 +483,15 @@ saves the file back.
 
 That is affordable because an unknown key cannot change a verdict by definition, and because a
 key *mistyped* from one of ours still surfaces through what it costs rather than how it is
-spelt: `"faill": {"gt": 800}` leaves the rule with no band at all, which is `INVALID_RULE`, which
-is loud. The one gap is a mistyped **optional** key — `"warnn"` beside a valid `fail` runs
-without a warn band and says nothing.
+spelt: `"faill": {"gt": 800}` on its own leaves the rule with no band at all, which is
+`INVALID_RULE`, which is loud. The gap is a mistyped band **beside a valid one**: `"warnn"` beside
+a valid `fail` runs without a warn band, and `"faill"` beside a valid `warn` runs warn-only and
+can never FAIL — both without a word. If a rule never warns, or never fails, when it should, check
+the spelling of its band keys first.
 
-**The report is always written.** A rule that cannot run reports `NOT_JUDGED / INVALID_RULE` and
-you still get the HTML, the JSON and the JUnit XML — they are the artifacts you need in order to
+**The report is always written.** A rule that cannot run reports `NOT_JUDGED / INVALID_RULE`, and
+an annotations file that is missing or will not parse is reported as a finding naming the path
+(and the parser's line and column), and either way you still get the HTML, the JSON and the JUnit XML — they are the artifacts you need in order to
 fix the config, so producing them is not conditional on the config being right.
 
 **The verdict does not go red, but the run does.** `gate.status` stays clean: a FAIL comes from a

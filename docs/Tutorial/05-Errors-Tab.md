@@ -10,11 +10,11 @@ Error breakdown charts and detail tables for investigating test failures.
 Every row in this tab is a sample JMeter judged failed (`success = false`). That is **not** the
 same as an HTTP error, and the report says which is which.
 
-| Class | Condition | What it means |
+| Class (selector token) | Condition | What it means |
 |---|---|---|
-| **HTTP failure** | code in 100–599, outside 2xx | The server answered and the status said no — 404, 500, 503. 3xx lands here too: a redirect reaching the error set means redirect handling was off or the target failed, which is an HTTP-level story either way. |
-| **Non-protocol failure** | code in 200–299 | The server answered *successfully* and the sampler failed it anyway — a Response Assertion, or a script calling `setSuccessful(false)`. |
-| **Transport failure** | anything else | No HTTP status at all. Either JMeter wrote the exception into the code field (`Non HTTP response code: java.net.ConnectException`), or it wrote **`000`** — its marker for "no status line was ever read", which is a connection refused, a timeout before the first byte, or a failed TLS handshake. Numeric codes outside the status range land here too, which is what a JDBC, JMS or TCP sampler writes. |
+| **HTTP failure** (`protocol`) | code in 100–599, outside 2xx | The server answered and the status said no — 404, 500, 503. 3xx lands here too: a redirect reaching the error set means redirect handling was off or the target failed, which is an HTTP-level story either way. |
+| **Non-protocol failure** (`nonProtocol`) | code in 200–299 | The server answered *successfully* and the sampler failed it anyway — a Response Assertion, or a script calling `setSuccessful(false)`. |
+| **Transport failure** (`transport`) | anything else | No HTTP status at all. Either JMeter wrote the exception into the code field (`Non HTTP response code: java.net.ConnectException`), or it wrote **`000`** — its marker for "no status line was ever read", which is a connection refused, a timeout before the first byte, or a failed TLS handshake. Numeric codes outside the status range land here too, which is what a JDBC, JMS or TCP sampler writes. |
 
 > **`000` is a transport failure.** It is all digits, but digits alone do not make a status — the
 > 100–599 range does. So a run whose errors are all connection failures counts them under
@@ -24,9 +24,9 @@ same as an HTTP error, and the report says which is which.
 > **This is inferred, not read.** The class comes from the response code of a sample already known
 > to have failed — nothing more. The report cannot tell you *which* assertion fired, or whether an
 > assertion fired at all rather than a JSR223 marking the sample failed: `failureMessage` and
-> `getAssertionResults()` are captured on neither ingestion path. It says **where** the failure was
-> decided, never why. That is also why it is the same answer on a live listener run and on a JTL
-> re-parsed by `-g`.
+> `getAssertionResults()` are captured neither by the listener nor from a JTL. It says **where** the
+> failure was decided, never why. That is also why it is the same answer on a live listener run and
+> on a JTL re-parsed by `-g`.
 
 **Why a non-protocol row shows no message.** Its response message is the HTTP reason phrase —
 `OK` — which says nothing about why the sampler failed it. Printing that in an errors table
@@ -92,7 +92,8 @@ Groups errors by **sampler + response code** with aggregate counts.
 | **% of All Samples** | Percentage of all requests |
 
 Both percentages count every recorded sample, transaction children included — the population the
-rows are drawn from — so they can differ from the header's error rate, which leaves children out.
+rows are drawn from — so they can differ from the Summary tab's Error Rate card, which leaves
+children out.
 
 **The Total row is the sum of the rows shown.** Its Count adds up the Count column above it, and
 its two percentages are that count's share of every error and of every sample — the same two
@@ -157,8 +158,8 @@ In the By time view, click any row to expand it. The panel shows what was captur
   and **Copy**, **Wrap** (word wrap) and **Raw** (the body as received, unformatted). A body cut at
   the size limit is marked *(truncated)*
 
-Request and response headers are not captured on either ingestion path, so the panel never shows
-them. A record with neither a URL nor a body says the body is not available and points to the
+Request and response headers are captured neither by the listener nor from a JTL, so the panel
+never shows them. A record with neither a URL nor a body says the body is not available and points to the
 listener.
 
 **Response body size limit:** 16,384 characters by default. Configure via:
@@ -182,6 +183,7 @@ showing.
 The error charts respect the sampler filter:
 - **Uncheck a sampler** → its errors disappear from all 3 charts (from the breakdown charts only
   when the run kept every error's details — see [the first 500 errors](#error-timeline-scatter-plot))
+- While **Σ Total** is checked the filter does not apply: all 3 charts show every sampler's errors
 - **Re-check** → errors reappear
 - This allows focusing on specific request types when investigating failures
 

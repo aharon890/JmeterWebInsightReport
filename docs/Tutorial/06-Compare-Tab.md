@@ -34,13 +34,19 @@ When a baseline is loaded, the **Compare** tab button becomes visible in the tab
 - **Current run:** solid lines per sampler
 - **Baseline run:** dashed lines per sampler
 - Both aligned by elapsed time (starting from 0)
-- Respects the **Metric toggle** (Mean/P50/P90/P95/P99/Max)
+- Respects the **Metric toggle** (Mean/P50/P90/P95/P99/Max), the Σ Total line included
 - Respects the **Sampler filter** (deselected samplers hidden)
 
 ### Throughput Comparison
 
 - Same current (solid) vs baseline (dashed) layout for throughput
 - Per-sampler series
+
+With **Σ Total** checked in the filter bar, both charts add a thicker total line: solid for the
+current run, dashed for the baseline.
+
+Both charts draw the runs' 1-second data: the filter bar's **Granularity** setting does not apply
+to them.
 
 Both charts support: drag-to-reorder, fullscreen, hide/show, zoom, cross-chart sync, dark mode, PNG/SVG export.
 
@@ -69,12 +75,14 @@ Both charts support: drag-to-reorder, fullscreen, hide/show, zoom, cross-chart s
 
 Each metric shows a superscript delta — the current value minus the baseline's, in the column's
 own unit:
-- **Green** (or blue in colorblind mode) — improvement (lower response time, fewer errors, more
-  throughput)
-- **Red** (or orange in colorblind mode) — regression (higher response time, more errors, less
-  throughput)
+- **Green** (or blue in colorblind mode) — improvement: lower on Errors, Error % and every time
+  column (Mean to Max, Min included), higher on Throughput and Recv KB/s
+- **Red** (or orange in colorblind mode) — regression: the opposite direction on those columns
+- **Neutral** (no colour) — Samples: more samples means a longer or busier run, not a better or
+  worse one
 - Format: "+120" or "-1.2s" on a time column, "+0.5%" on Error % (percentage points), "-3.4/s" on
-  Throughput; no delta where nothing changed
+  Throughput. No delta is shown only when the change is exactly zero; a change smaller than the
+  column's precision still shows, as "+0" or "+0.0/s"
 
 ### Status Badges
 
@@ -85,7 +93,7 @@ The badges are outlined, so they read as a comparison rather than an assert verd
 | **OK** | Green | No regression detected |
 | **REGRESSION** | Red | Any enabled threshold crossed — by default P95 increased > threshold OR error rate increased > threshold |
 | **NEW** | Blue | Sampler exists in current but not in baseline |
-| **REMOVED** | Red, dimmed | Sampler ran in the baseline but not in this run; its row shows dashes. Counts as a regression |
+| **REMOVED** | Red, dimmed | Sampler ran in the baseline but not in this run; its row shows dashes. Counts as a regression, whatever the thresholds |
 
 ### Table Controls
 
@@ -94,6 +102,10 @@ Same as Samplers tab: sortable columns, drag-to-reorder, column resize, column t
 ## Regression Thresholds
 
 Thresholds that determine what constitutes a "regression":
+
+> **Informational only.** A REGRESSION badge decides nothing outside the page: the comparison is
+> not in the CI/CD JSON or the JUnit XML, and it never changes the exit code. To fail a build on
+> a slower run, declare a rule on the [Asserts tab](12-Asserts-Tab.md).
 
 | Metric | Default | Meaning |
 |--------|---------|---------|
@@ -145,7 +157,9 @@ Set any threshold to **-1** to disable that check. CLI properties override annot
 The Compare tab includes UI controls to adjust thresholds on-the-fly:
 - Input fields for each threshold: *P95 increase >*, *Error rate increase >*, *Mean increase >*,
   *P99 increase >*, *Throughput decrease >* (`-1` = disabled)
-- **"Apply"** button to re-evaluate regression flags client-side
+- **"Apply"** button to re-evaluate regression flags client-side, by the same rules the report
+  was generated with: a removed sampler stays a regression, and a metric whose baseline was 0
+  counts any increase as +100%
 - Useful for exploring what thresholds make sense for your application
 - Changes are local (do not modify the annotations file)
 
@@ -154,8 +168,9 @@ The Compare tab includes UI controls to adjust thresholds on-the-fly:
 Auto-generated text in the **Notes tab** when baseline comparison exists:
 - Overall line: the average P95 change and error-rate change across samplers (improved, stable or
   degraded)
-- Regressed samplers with their P95 % change (the top three, then "…and N more")
+- Regressed samplers with their P95 % change (the top three, then "…and N more"); a removed
+  sampler is listed as "(removed)"
 - Improved samplers — P95 down by more than 5 % — likewise
 - New samplers not in baseline
 
-Updates live when regression thresholds are adjusted via the Compare tab controls.
+Rebuilt each time you press **Apply** on the Compare tab's threshold controls.

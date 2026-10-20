@@ -31,17 +31,20 @@ three server asserts that most need looking at with actual against limit, and **
 On the interim report it says NOT COLLECTED, and over a refused payload REFUSED. See
 [Server tab](13-Server-Tab.md).
 
-![Summary Cards](images/03-summary-cards.png)
-
 ## Metric Cards
+
+![Summary Cards](images/03-summary-cards.png)
 
 ### Row 1 — Primary Metrics (always visible)
 
 | Card | Value | Behavior |
 |------|-------|----------|
 | **Total Samples** | Integer count of all requests | Formatted with comma separators (e.g., 6,654) |
-| **Error Rate** | Percentage of failed requests | Card background turns red (`card-error` class) when errors > 0 |
-| **Duration** | Test execution time | Human-readable: "2m 11s", "1h 5m 30s" |
+| **Error Rate** | Percentage of failed requests | Card background turns red when errors > 0 |
+| **Duration** | Test execution time | Human-readable: "150ms" under a second, "32.6s" under a minute, then "2m 11s", "1h 5m 30s" |
+
+Total Samples and Error Rate count top-level samplers only: a Transaction Controller's children
+are left out, because their parent already counts them.
 | **Max Threads** | Peak concurrent threads | Maximum active thread count during test |
 
 ### Row 2 — Statistical Metrics (visible when data available)
@@ -59,7 +62,7 @@ On the interim report it says NOT COLLECTED, and over a refused payload REFUSED.
 
 Displays the overall Apdex (Application Performance Index) score:
 
-- **Score range:** 0.00 to 1.00
+- **Score range:** 0 to 1, shown with up to two decimals (e.g., `0.9`, `0.85`)
 - **Color coding:**
   - Excellent (> 0.94) — green
   - Good (0.85–0.94) — blue
@@ -100,7 +103,11 @@ Each row shows:
 - **Mean value** — "mean: 567 ms"
 - **Error rate** — shown only when errors > 0 (e.g., "4.05% errors")
 
-**CSV download:** Click the ↓ icon to download as `top5-slowest-samplers.csv`.
+The list ranks top-level samplers: a Transaction Controller's children are left out.
+
+**CSV download:** Click the ↓ icon to download as `top5-slowest-samplers.csv`. The file adds
+P99, Samples and Error % columns, and ranks every sampler, Transaction Controller children
+included — so on a run with Transaction Controllers it can name samplers the list above does not.
 
 ## Copy Summary
 

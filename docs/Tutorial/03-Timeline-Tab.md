@@ -54,7 +54,7 @@ Every chart has these controls in its header:
 | Control | Location | Behavior |
 |---------|----------|----------|
 | **Drag handle** (☰) | Left of title | Drag to reorder charts; order saved to localStorage |
-| **Hide** | Right of title | Hides the chart section; text changes to "Show" |
+| **Hide** | Right of title | Removes the whole chart section; **Show N Hidden Charts** brings it back |
 | **Fullscreen** | Right of title | Expands chart to full viewport; click again to exit |
 | **PNG export** | Chart toolbox (top-right) | Downloads chart as PNG image |
 | **SVG export** | Chart toolbox | Downloads chart as SVG vector |
