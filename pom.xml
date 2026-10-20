@@ -43,7 +43,11 @@
 
         <!-- Dependency versions -->
         <jmeter.version>5.6.3</jmeter.version>
-        <jackson.version>2.18.11</jackson.version>
+        <!-- Jackson is JMeter's own copy (provided, never shaded): this must be the version
+             JMeter ships in lib/, or the tests run on a Jackson no user ever has. A newer
+             databind beside JMeter's jackson-core fails with NoSuchMethodError. Dependabot is
+             told to leave it alone in .github/dependabot.yml. -->
+        <jackson.version>2.16.1</jackson.version>
         <commons-math3.version>3.6.1</commons-math3.version>
         <slf4j.version>1.7.36</slf4j.version>
         <tdigest.version>3.3</tdigest.version>
