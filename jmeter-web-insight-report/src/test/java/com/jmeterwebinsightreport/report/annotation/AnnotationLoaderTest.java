@@ -26,7 +26,13 @@ class AnnotationLoaderTest {
     private File getResourceFile(String name) {
         URL url = getClass().getClassLoader().getResource("annotations/" + name);
         assertNotNull(url, "Test resource not found: annotations/" + name);
-        return new File(url.getFile());
+        // toURI, not getFile: getFile keeps the URL's %20, so a checkout under a path with a space
+        // found no resource at all.
+        try {
+            return new File(url.toURI());
+        } catch (java.net.URISyntaxException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     @Test

@@ -37,7 +37,13 @@ class JtlParserTest {
     private File getResourceFile(String name) {
         URL url = getClass().getClassLoader().getResource("jtl/" + name);
         assertNotNull(url, "Test fixture file not found: " + name);
-        return new File(url.getFile());
+        // toURI, not getFile: getFile keeps the URL's %20, so a checkout under a path with a space
+        // (C:\Users\First Last\...) found no fixture at all.
+        try {
+            return new File(url.toURI());
+        } catch (java.net.URISyntaxException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     private SamplerStatistics findSampler(ReportData data, String name) {
