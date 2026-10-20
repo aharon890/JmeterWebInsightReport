@@ -8134,7 +8134,7 @@ WIR.document = (function () {
     'use strict';
 
     var SCHEMA_URL =
-        'https://aharon890.github.io/jmeter-web-insight-report/schema/report-annotations.schema.json';
+        'https://aharon890.github.io/JmeterWebInsightReport/schema/report-annotations.schema.json';
 
     /* One record per run, holding every slice. It replaces wir_asserts_drafts_<runId>, and the
        old records are simply not read: they are per-browser, minutes old, and unreadable to
