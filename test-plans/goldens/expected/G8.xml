@@ -16,7 +16,7 @@
       <property name="webinsight.runId" value="967a1b397b7fb1d2"/>
     </properties>
     <testcase name="serverMetrics.payload" classname="server-metrics">
-      <failure message="the server-metrics payload does not exist: &apos;server-metrics-that-does-not-exist.json&apos; — no server assert was judged. The server asserts this run declares depend on it, so this is a configuration error">
+      <failure message="the server-metrics payload does not exist: &apos;server-metrics-that-does-not-exist.json&apos; — no server assert was judged. The server asserts this run declares depend on it. The client report and verdict are unaffected; this fails the build only under webinsight.report.server.failonerror=true">
 payload:   refused (MISSING)
 asserts:   3 declared, none judged
       </failure>

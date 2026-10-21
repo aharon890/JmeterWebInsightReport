@@ -194,8 +194,9 @@ public final class ServerGateEvaluation {
         }
         if (payloadRequired(config)) {
             findings.add(AssertionValidator.finding(AssertionValidator.Severity.ERROR, PAYLOAD_FINDING_ID,
-                    sentence(collected.detail()) + " The server asserts this run declares depend on it, so "
-                            + "this is a configuration error"));
+                    sentence(collected.detail()) + " The server asserts this run declares depend on it. "
+                            + "The client report and verdict are unaffected; this fails the build only "
+                            + "under webinsight.report.server.failonerror=true"));
             return;
         }
         String why = config.declaresAnything()
@@ -285,7 +286,8 @@ public final class ServerGateEvaluation {
                             config.kpis().size(), collected.refusal(), collected.problem());
                 } else {
                     log.info("Server: {} - {} server assert(s) declared, no payload given. Run "
-                            + "wir-collect and regenerate with -Jwebinsight.report.servermetrics=<server-metrics.json>",
+                            + "wir-collect and regenerate with webinsight.report.servermetrics in a -q "
+                            + "properties file (or a quoted \"-Jwebinsight.report.servermetrics=<server-metrics.json>\")",
                             Chip.unjudged(Chip.NOT_COLLECTED).getStatusLabel(), config.kpis().size());
                 }
             }

@@ -88,4 +88,12 @@ public final class NonZeroExit {
 
     /** The flag that makes a FAIL verdict fatal. Defaults to false, and stays that way. */
     public static final String FAIL_ON_ASSERT = "webinsight.report.failonassert";
+
+    /**
+     * The flag that makes a server-data problem fatal — a collection that failed, coverage under
+     * the floor, a server assert that cannot run, a refused or missing payload. Defaults to false:
+     * the server tab is a bonus on top of the client report, and nothing about server data may
+     * change the exit code unless a team asks for it. Set, it restores exactly the 4.0.x fold.
+     */
+    public static final String FAIL_ON_SERVER_ERROR = "webinsight.report.server.failonerror";
 }

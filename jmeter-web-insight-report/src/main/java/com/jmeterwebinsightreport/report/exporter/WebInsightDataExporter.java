@@ -8,6 +8,7 @@ import com.jmeterwebinsightreport.report.generator.ExitPolicy;
 import com.jmeterwebinsightreport.report.generator.NonZeroExit;
 import com.jmeterwebinsightreport.report.generator.BooleanSetting;
 import com.jmeterwebinsightreport.report.generator.OutputDirectories;
+import com.jmeterwebinsightreport.report.generator.PropertyCheck;
 import com.jmeterwebinsightreport.report.generator.ReportArtifacts;
 import com.jmeterwebinsightreport.report.generator.ReportConfiguration;
 import com.jmeterwebinsightreport.report.generator.WebInsightReportGenerator;
@@ -87,6 +88,15 @@ public class WebInsightDataExporter extends AbstractDataExporter {
                        ReportGeneratorConfiguration reportGeneratorConfiguration)
             throws ExportException {
         log.info("Web Insight Data Exporter: starting report generation from JTL: {}", jtlFile);
+
+        // A setting that arrived under a name nothing reads (the PowerShell -J split, a typo) is
+        // said before anything is generated, and the split is a config error like any other.
+        String propertyError = PropertyCheck.emit(
+                PropertyCheck.check(JMeterUtils.getJMeterProperties()), log::warn);
+        if (propertyError != null && failOnError()) {
+            NonZeroExit.arrange(NonZeroExit.FAIL_ON_ERROR, propertyError
+                    + " (set -Jwebinsight.report.failonerror=false to exit 0 anyway)");
+        }
 
         try {
             // 1. Resolve output directory from exporter properties or JMeter properties
@@ -220,12 +230,32 @@ public class WebInsightDataExporter extends AbstractDataExporter {
      * tell me", which is not what anyone opts into.
      */
     private static void configError(ReportArtifacts artifacts) {
-        System.err.println("WEB-INSIGHT-REPORT: CONFIG ERROR — " + artifacts.configProblemReason());
-        // Printed for every reportable problem, and fatal under failonerror.
-        if (artifacts.hasConfigProblem() && failOnError()) {
-            NonZeroExit.arrange(NonZeroExit.FAIL_ON_ERROR, artifacts.configProblemReason()
-                    + " (set -Jwebinsight.report.failonerror=false to exit 0 anyway)");
+        // Two sides, two flags. The client's problems are fatal under failonerror (default true);
+        // the server's only under webinsight.report.server.failonerror (default false), because the
+        // server tab is a bonus on the client report. Each side prints its own marker.
+        String client = artifacts.clientConfigMarker();
+        if (client != null) {
+            System.err.println(client);
+            if (failOnError()) {
+                NonZeroExit.arrange(NonZeroExit.FAIL_ON_ERROR, artifacts.clientConfigProblemReason()
+                        + " (set -Jwebinsight.report.failonerror=false to exit 0 anyway)");
+            }
         }
+        boolean serverFatal = failOnServerError();
+        String server = artifacts.serverConfigMarker(serverFatal);
+        if (server != null) {
+            System.err.println(server);
+            if (serverFatal) {
+                NonZeroExit.arrange(NonZeroExit.FAIL_ON_SERVER_ERROR, artifacts.serverConfigProblemReason()
+                        + " (" + NonZeroExit.FAIL_ON_SERVER_ERROR + "=true)");
+            }
+        }
+    }
+
+    private static boolean failOnServerError() {
+        return ExitPolicy.failOnServerError(
+                JMeterUtils.getProperty(NonZeroExit.FAIL_ON_SERVER_ERROR),
+                WebInsightDataExporter::warn);
     }
 
     /**

@@ -211,8 +211,84 @@ public final class ReportArtifacts {
      * the instruction — not the tool judging the system under test.
      */
     public boolean hasConfigProblem() {
-        return configErrors > 0 || loadProblem != null || serverMetricsProblem != null
+        return hasClientConfigProblem() || hasServerConfigProblem();
+    }
+
+    /**
+     * The client half of {@link #hasConfigProblem()}: a client rule that could not run, or an
+     * annotations file that could not be read at all (which loses the client rules with it).
+     * What {@code failonerror} acts on.
+     */
+    public boolean hasClientConfigProblem() {
+        return configErrors > 0 || loadProblem != null;
+    }
+
+    /**
+     * The server half: a server check the file asked for never ran — a failed collection, coverage
+     * under the floor, a server assert that cannot run, a refused or missing payload. What
+     * {@code webinsight.report.server.failonerror} acts on; with it off (the default) these are
+     * said loudly and never change the exit code, because server data is a bonus on top of the
+     * client report.
+     */
+    public boolean hasServerConfigProblem() {
+        return serverMetricsProblem != null
                 || (serverGates != null && serverGates.fatalConfigErrors() > 0);
+    }
+
+    /** The client half of {@link #configProblemReason()}, or an empty string. */
+    public String clientConfigProblemReason() {
+        if (loadProblem != null) {
+            return loadProblem + " — no gate ran";
+        }
+        if (configErrors > 0) {
+            return configErrors + " declared check(s) never ran — see the findings and the gate's "
+                    + "not-judged reasons; the gate did not judge what the file declared";
+        }
+        return "";
+    }
+
+    /**
+     * The console marker for a client config problem, or null. {@code CONFIG ERROR} keeps
+     * meaning "this can exit non-zero": it is printed only for the side {@code failonerror} acts on.
+     */
+    public String clientConfigMarker() {
+        return hasClientConfigProblem()
+                ? "WEB-INSIGHT-REPORT: CONFIG ERROR — " + clientConfigProblemReason() : null;
+    }
+
+    /**
+     * The console marker for a server-data problem, or null. Under the opt-in it is a
+     * {@code CONFIG ERROR} like the client's, because then it exits non-zero; otherwise it says the
+     * check never ran and that the report and the client verdict stand.
+     *
+     * @param fatal whether {@code webinsight.report.server.failonerror} is on
+     */
+    public String serverConfigMarker(boolean fatal) {
+        if (!hasServerConfigProblem()) {
+            return null;
+        }
+        if (fatal) {
+            return "WEB-INSIGHT-REPORT: CONFIG ERROR — " + serverConfigProblemReason();
+        }
+        return "WEB-INSIGHT-REPORT: SERVER NOT JUDGED — " + serverConfigProblemReason()
+                + ". The report and the client verdict are complete and the exit code is unchanged"
+                + " (set " + NonZeroExit.FAIL_ON_SERVER_ERROR + "=true to make this fatal)";
+    }
+
+    /** The server half of {@link #configProblemReason()}, or an empty string. */
+    public String serverConfigProblemReason() {
+        StringBuilder reason = new StringBuilder();
+        if (serverMetricsProblem != null) {
+            reason.append(serverMetricsProblem);
+        }
+        String server = serverGates == null ? null : serverGates.reportableConfigReason();
+        if (server != null) {
+            if (reason.length() > 0) {
+                reason.append("; ");
+            }
+            reason.append(server);
+        }
+        return reason.toString();
     }
 
     /**
@@ -255,33 +331,12 @@ public final class ReportArtifacts {
      * clause below — one refused payload is said once here, not twice.
      */
     public String configProblemReason() {
-        StringBuilder reason = new StringBuilder();
-        if (loadProblem != null) {
-            reason.append(loadProblem).append(" — no gate ran");
-        } else if (configErrors > 0) {
-            // "check(s)", not "rule(s)": a server KPI whose source never answered is counted here
-            // too, and it has no validator finding to see — the reason is on the gate itself.
-            reason.append(configErrors).append(" declared check(s) never ran — see the findings and the gate's "
-                    + "not-judged reasons; the gate did not judge what the file declared");
+        String client = clientConfigProblemReason();
+        String server = serverConfigProblemReason();
+        if (client.isEmpty()) {
+            return server;
         }
-        if (serverMetricsProblem != null) {
-            if (reason.length() > 0) {
-                reason.append("; ");
-            }
-            reason.append(serverMetricsProblem);
-        }
-        // The REPORTABLE reason, not the fatal one: this sentence is what the console prints, and
-        // an observe gate's failed collection is named here and marked "(observe)" — it just does
-        // not reach the exit code. The same string feeds the exception on a run that IS failing,
-        // where the fatal subset is a prefix of what it says.
-        String server = serverGates == null ? null : serverGates.reportableConfigReason();
-        if (server != null) {
-            if (reason.length() > 0) {
-                reason.append("; ");
-            }
-            reason.append(server);
-        }
-        return reason.toString();
+        return server.isEmpty() ? client : client + "; " + server;
     }
 
     /**

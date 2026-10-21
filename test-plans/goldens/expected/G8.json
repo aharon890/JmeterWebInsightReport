@@ -42,7 +42,7 @@
     {
       "severity": "error",
       "ruleId": "serverMetrics.payload",
-      "message": "the server-metrics payload does not exist: 'server-metrics-that-does-not-exist.json' — no server assert was judged. The server asserts this run declares depend on it, so this is a configuration error"
+      "message": "the server-metrics payload does not exist: 'server-metrics-that-does-not-exist.json' — no server assert was judged. The server asserts this run declares depend on it. The client report and verdict are unaffected; this fails the build only under webinsight.report.server.failonerror=true"
     }
   ],
   "artifacts": {

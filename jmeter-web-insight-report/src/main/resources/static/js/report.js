@@ -17821,9 +17821,12 @@ WIR.serverKpis = (function () {
             return reserved && reserved.label ? reserved.label : NO_COMPONENT_LABEL;
         };
         /* The three that most need looking at: breaches and checks that never ran, worst first —
-           the Asserts card's rule. From the baked entries: this is the run as judged. */
+           the Asserts card's rule. From the baked entries: this is the run as judged. An assert
+           that matched nothing is among them: server data problems never change the exit code,
+           so the page is where "this was never judged" has to be said (decision B). */
         var worstRows = state.kpis.filter(function (k) {
-            return k.status === 'FAIL' || k.status === 'WARN' || S.isConfigErrorReason(k.notJudged);
+            return k.status === 'FAIL' || k.status === 'WARN' || S.isConfigErrorReason(k.notJudged)
+                || k.notJudged === 'NO_MATCH';
         }).sort(function (a, b) {
             /* FAIL ranks 0, so `rank || 99` would sort it LAST — explicit undefined only. */
             var rank = function (k) {
@@ -17918,7 +17921,8 @@ WIR.serverKpis = (function () {
        written only once a payload is judged, so counting them said "0 declared" on every interim
        report (C-9). */
     function notCollectedHtml() {
-        var regenerate = '-Jwebinsight.report.servermetrics=<server-metrics.json>';
+        /* Quoted: Windows PowerShell splits an unquoted -Jwebinsight.report.x=y at the first dot. */
+        var regenerate = '"-Jwebinsight.report.servermetrics=<server-metrics.json>"';
         if (!state.declaredKpis.length) {
             /* A block holding nothing but a retired key (`kpis`, `packs`) reaches here with no
                component at all: the findings below say what is wrong, and a sentence claiming
@@ -18779,7 +18783,27 @@ WIR.serverKpis = (function () {
      * selector however many components there are.
      */
     function boardHtml() {
-        return '<div id="serverKpiTable" class="wir-component-cards">' + cardsHtml() + '</div>';
+        return problemsHtml()
+            + '<div id="serverKpiTable" class="wir-component-cards">' + cardsHtml() + '</div>';
+    }
+
+    /* Server data problems never change the exit code (decision B: the server tab is a bonus on
+       the client report), so a check that never ran must be said here instead, above the board,
+       where nobody can read a quiet PASS beside it as "everything was judged". From the baked
+       entries: this is the run as judged. */
+    function problemsHtml() {
+        if (!state.evaluated) return '';
+        var unjudged = state.kpis.filter(function (k) {
+            return S.isConfigErrorReason(k.notJudged) || k.notJudged === 'NO_MATCH';
+        });
+        if (!unjudged.length) return '';
+        return '<div class="wir-server-problems" id="serverProblems" role="note">'
+            + '<strong>' + esc(unjudged.length + ' server assert' + (unjudged.length === 1 ? ' was' : 's were')
+                + ' not judged') + '</strong> '
+            + esc(EM_DASH + ' each row below says why. Server data problems do not fail the build: the '
+                + 'client report and its verdict are complete. '
+                + 'webinsight.report.server.failonerror=true makes them fatal.')
+            + '</div>';
     }
 
     function cardsHtml() {

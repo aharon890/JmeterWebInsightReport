@@ -168,7 +168,8 @@ Low:
   - pre-test/cool-down
   - coverage over the judged window
   - run-over-run baseline
-  - `mustHaveData`
+  - `mustHaveData` — answered no (2026-10-21): missing server data never fails the build; it may
+    later join `webinsight.report.server.failonerror` if a team asks
   - `serverMetrics.load`
   - per-instance verdicts
   - per-environment thresholds

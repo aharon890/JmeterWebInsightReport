@@ -26,15 +26,18 @@
 #   DEFAULT  the verdicts. The client half passes a run that declared no client rule; the server
 #            half fails only on serverStatus FAIL (D24: the worst over the components). A
 #            component that judged nothing reads NOT_EVALUATED and is not refused here. Whether
-#            the run exits 1 depends on WHY it judged nothing: failonerror (the default) exits 1
-#            for INVALID_RULE, SOURCE_FAILED and LOW_COVERAGE, and for a refused payload an
-#            enabled server assert needed - configuration errors, not verdicts. It does NOT for
+#            the run exits 1 depends on WHY it judged nothing and on which side: on the client,
+#            failonerror (the default) exits 1 for INVALID_RULE; on the server, nothing exits 1 by
+#            default (the server tab is a bonus on the client report) - INVALID_RULE,
+#            SOURCE_FAILED, LOW_COVERAGE and a refused payload an enabled server assert needed are
+#            fatal only under webinsight.report.server.failonerror=true. It never does for
 #            NO_MATCH, NO_VALUE, DISABLED or LOAD_NOT_ACHIEVED, nor for a component with no
 #            asserts: those exit 0, and neither DEFAULT nor STRICT refuses them. The four
 #            not-judged reasons are counted in serverComponents[].notJudged; a component with no
 #            asserts is counted in none of them - it reads status NOT_EVALUATED with declared 0.
 #            A query that matches nothing therefore passes the build - check notJudged.noMatch if
-#            that must fail it. Pair DEFAULT with failonerror, or use STRICT.
+#            that must fail it. Pair DEFAULT with failonerror (and server.failonerror for the
+#            server side), or use STRICT.
 #   STRICT   DEFAULT, and also no check the file asked for that never ran, as far as the JSON
 #            can show it: INVALID_RULE on the client gate and on any server gate (a defect in the
 #            file, D4); SOURCE_FAILED / LOW_COVERAGE on any server gate — every component builds

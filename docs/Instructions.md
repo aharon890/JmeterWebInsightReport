@@ -484,14 +484,16 @@ three server-metrics steps through real processes — `wir-collect.sh --recordin
 Prometheus response, then `jmeter -g -o` with `-Jwebinsight.report.servermetrics` — and proves a
 collected `server-metrics.json` is embedded for the run it was collected against and refused for
 any other: the payload carries the run identity, so a stale one cannot quietly become this run's
-evidence. The refusal is a CONFIG ERROR, a non-zero exit and an ERROR finding in the CI/CD JSON,
-because a declared server assert needed the payload. It also asserts the collector's console said
+evidence. The refusal is an ERROR finding in the CI/CD JSON and a `SERVER NOT JUDGED` line with
+exit 0 by default; under `webinsight.report.server.failonerror=true` it is a CONFIG ERROR and a
+non-zero exit, and C35 pins both. It also asserts the collector's console said
 the recording was read (`wir-collect: OK app/up coverage=`): the collector exits 0 for an empty
 series too, so the exit code alone does not prove it. **C36** collects through the CSV backend
 (`--csv`) and pins the `failonassert` fold: a component's FAIL exits 0 by default and 1 under the
 flag, and is a JUnit `<failure>` in that component's suite. **C37** pins a collection failure —
 `--prometheus-url` on a dead port: the collector exits 0 because it wrote the payload, the
-payload records the source `FAILED`, and step 3 is a CONFIG ERROR with the assert counted as
+payload records the source `FAILED`, and step 3 says `SERVER NOT JUDGED` with exit 0 (a CONFIG ERROR
+and exit 1 under `webinsight.report.server.failonerror=true`), with the assert counted as
 `sourceFailed` and written as a JUnit `<failure>`. C37 also runs the three documented steps as one
 `set -e` script, with `jmeter` on `PATH`, `JMETER_HOME` unset and a lone copy of
 `wir-collect.sh`; the script must reach step 3's report (a collector that exited non-zero would

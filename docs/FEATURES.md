@@ -974,8 +974,9 @@ asked" and "the plugin checked, and here is the answer".
 |---|---|---|
 | Client gate FAIL, or FAIL on any server component | 0 | `failonassert=true` → 1 |
 | WARN, or `NOT_JUDGED` as `DISABLED`, `NO_MATCH`, `NO_VALUE` or `LOAD_NOT_ACHIEVED` | 0 | none |
-| `INVALID_RULE` — a client rule or a server assert | 1 | `failonerror=false` → 0 |
-| `SOURCE_FAILED` / `LOW_COVERAGE`, or a missing or refused payload while a server assert is declared | 1 | `failonerror=false` → 0 |
+| `INVALID_RULE` on a client rule, or an annotations file that is not JSON | 1 | `failonerror=false` → 0 |
+| `INVALID_RULE` on a server assert, `SOURCE_FAILED` / `LOW_COVERAGE`, a `serverMetrics` block that does not read, or a missing or refused payload while a server assert is declared | 0, said as `SERVER NOT JUDGED` | `webinsight.report.server.failonerror=true` → 1 |
+| An unquoted `-Jwebinsight.report.x=y` split by PowerShell into a property named `webinsight` | 1 | `failonerror=false` → 0 |
 | A refused payload with no enabled server assert declared | 0 (a WARNING finding) | none |
 | The report written but its `.json` or `.xml` not | 1 | `failonerror=false` → 0 |
 | No report written at all | 1 | listener run: `failonerror=false` → 0; `-g -o`: none |
@@ -997,9 +998,11 @@ Six greppable markers, one line each:
 | `WEB-INSIGHT-REPORT: OK <path>` | stdout | the report was published |
 | `WEB-INSIGHT-REPORT: INCOMPLETE — <reason>` | stderr | the report exists, a sibling does not; the reason names the artifact |
 | `WEB-INSIGHT-REPORT: FAILED <reason>` | stderr | nothing usable was produced; the exception class is named |
-| `WEB-INSIGHT-REPORT: CONFIG ERROR — <reason>` | stderr | every artifact is there, but a gate is not the one the file declared — client or server |
+| `WEB-INSIGHT-REPORT: CONFIG ERROR — <reason>` | stderr | every artifact is there, but the client gate is not the one the file declared (or, under `webinsight.report.server.failonerror=true`, a server check never ran); always an exit 1 unless `failonerror=false` |
+| `WEB-INSIGHT-REPORT: SERVER NOT JUDGED — <reason>` | stderr | server checks the file asked for never ran (a failed collection, coverage under the floor, a server assert that cannot run, a refused payload). The report and the client verdict are complete; the exit code is unchanged unless `webinsight.report.server.failonerror=true`, which prints this as `CONFIG ERROR` instead |
+| `WEB-INSIGHT-REPORT: WARNING — <reason>` | stderr | a `webinsight.*` property nothing reads (with the nearest known name), or a path mangled by single backslashes in a properties file |
 | `WEB-INSIGHT-REPORT: ASSERT FAIL — <verdict line>` | stderr | `failonassert=true` and a gate said FAIL; `-g -o` only (a listener run logs `webinsight.report.failonassert=true and a gate said FAIL — this run will exit 1` to `jmeter.log` instead) |
-| `WEB-INSIGHT-REPORT: exiting 1 because <flag>=true` | stderr | printed as the process exits 1 over a flag, naming `webinsight.report.failonerror` or `webinsight.report.failonassert`. Not printed when a `-g -o` run exits 1 over an artifact that was not written: JMeter reports that step's failure itself |
+| `WEB-INSIGHT-REPORT: exiting 1 because <flag>=true` | stderr | printed as the process exits 1 over a flag, naming `webinsight.report.failonerror`, `webinsight.report.server.failonerror` or `webinsight.report.failonassert`. Not printed when a `-g -o` run exits 1 over an artifact that was not written: JMeter reports that step's failure itself |
 
 `CONFIG ERROR` deliberately arrives with a complete report rather than instead of one — the
 report is where you diagnose the config, and its Asserts tab opens on a banner naming each rule

@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Map;
 
 /**
  * Loads user-defined annotations from a companion JSON file
@@ -164,13 +165,83 @@ public class AnnotationLoader {
             annotations.migrateLegacyBlocks();
             return new Result(annotations, null);
         } catch (Exception e) {
+            // Only the serverMetrics block may be what does not bind ("asserts": {}). The server
+            // tab is a bonus on the client report, so a shape fault there must not cost the client
+            // rules: read the rest of the file without the block and carry the block as one
+            // server-side problem.
+            Result isolated = readWithoutServerBlock(annotationFile, e);
+            if (isolated != null) {
+                return isolated;
+            }
             // A parse failure is louder than a missing file, not quieter: the tester wrote the
             // file, so they believe the gate is running. The message keeps the parser's own
-            // text because it names the line and column, which is the only actionable part.
+            // text because it names the line and column, which is the only actionable part — but
+            // not Jackson's "[Source: (File)<absolute path>]", which would publish a local path in
+            // the report. The path is named as it was given, and in full in jmeter.log.
             String problem = "the annotations file could not be read: "
-                    + annotationFile.getAbsolutePath() + " — " + e.getMessage();
-            log.error("{}", problem);
+                    + annotationFile.getPath() + " — " + parserMessage(e);
+            log.error("{} ({})", problem, annotationFile.getAbsolutePath());
             return new Result(new ReportAnnotations(), problem);
         }
+    }
+
+    /**
+     * The file again, without its {@code serverMetrics} block — or null when that does not help:
+     * the file is not JSON at all (a syntax error cannot be split, and loses both sides), it has no
+     * such block, or the rest of the file does not bind either.
+     */
+    private Result readWithoutServerBlock(File annotationFile, Exception original) {
+        com.fasterxml.jackson.databind.JsonNode root;
+        try {
+            root = objectMapper.readTree(annotationFile);
+        } catch (Exception notJson) {
+            return null;
+        }
+        if (!(root instanceof com.fasterxml.jackson.databind.node.ObjectNode) || !root.has("serverMetrics")) {
+            return null;
+        }
+        com.fasterxml.jackson.databind.node.ObjectNode rest = ((com.fasterxml.jackson.databind.node.ObjectNode) root).deepCopy();
+        com.fasterxml.jackson.databind.JsonNode block = rest.remove("serverMetrics");
+        ReportAnnotations annotations;
+        try {
+            annotations = objectMapper.treeToValue(rest, ReportAnnotations.class);
+        } catch (Exception clientSideToo) {
+            return null;
+        }
+        ServerMetricsJson unreadable = new ServerMetricsJson();
+        if (block != null && block.isObject()) {
+            // Verbatim, so a Download from the page writes back what the file said.
+            java.util.Iterator<Map.Entry<String, com.fasterxml.jackson.databind.JsonNode>> fields = block.fields();
+            while (fields.hasNext()) {
+                Map.Entry<String, com.fasterxml.jackson.databind.JsonNode> f = fields.next();
+                unreadable.setUnknownKey(f.getKey(), objectMapper.convertValue(f.getValue(), Object.class));
+            }
+        }
+        unreadable.setUnreadable("the serverMetrics block could not be read — " + parserMessage(original)
+                + ". Nothing in it is judged; the client asserts are read and judged as usual. "
+                + "Fix the block's shape (the JSON Schema names every key)");
+        annotations.setServerMetrics(unreadable);
+        annotations.migrateLegacyBlocks();
+        log.warn("{}: {}", annotationFile.getAbsolutePath(), unreadable.getUnreadable());
+        return new Result(annotations, null);
+    }
+
+    /** Jackson's own sentence and its line/column, without the source description (a local path). */
+    static String parserMessage(Exception e) {
+        if (e instanceof com.fasterxml.jackson.core.JsonProcessingException) {
+            com.fasterxml.jackson.core.JsonProcessingException j = (com.fasterxml.jackson.core.JsonProcessingException) e;
+            String message = j.getOriginalMessage();
+            com.fasterxml.jackson.core.JsonLocation at = j.getLocation();
+            if (at != null && at.getLineNr() > 0) {
+                message += " (line " + at.getLineNr() + ", column " + at.getColumnNr() + ")";
+            }
+            String path = e instanceof com.fasterxml.jackson.databind.JsonMappingException
+                    ? ((com.fasterxml.jackson.databind.JsonMappingException) e).getPathReference() : null;
+            if (path != null && !path.isEmpty()) {
+                message += " at " + path;
+            }
+            return message;
+        }
+        return String.valueOf(e.getMessage());
     }
 }

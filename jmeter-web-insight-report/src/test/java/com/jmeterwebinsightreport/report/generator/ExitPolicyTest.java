@@ -35,6 +35,19 @@ class ExitPolicyTest {
     }
 
     @Test
+    void aServerDataProblemIsFatalOnlyWhenAsked() {
+        // The server tab is a bonus on the client report: off by default.
+        assertFalse(ExitPolicy.failOnServerError(null, this::warn));
+        assertFalse(ExitPolicy.failOnServerError("", this::warn));
+        assertTrue(ExitPolicy.failOnServerError("true", this::warn));
+        assertFalse(ExitPolicy.failOnServerError("false", this::warn));
+        assertTrue(warnings.isEmpty(), warnings.toString());
+        assertFalse(ExitPolicy.failOnServerError("1", this::warn));
+        assertEquals(1, warnings.size());
+        assertTrue(warnings.get(0).contains(NonZeroExit.FAIL_ON_SERVER_ERROR), warnings.get(0));
+    }
+
+    @Test
     void aVerdictIsFatalOnlyWhenAsked() {
         // Off by default and it stays off: deciding what a FAIL means is the tester's job.
         assertFalse(ExitPolicy.failOnAssert(null, this::warn));

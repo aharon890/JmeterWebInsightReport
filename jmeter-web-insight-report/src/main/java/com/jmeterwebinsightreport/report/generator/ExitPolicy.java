@@ -66,6 +66,22 @@ public final class ExitPolicy {
         return BooleanSetting.parse(raw).orElse(false);
     }
 
+    /**
+     * A server-data problem is fatal only when asked.
+     *
+     * <p>Kept apart from {@code failonerror} because the two sides carry different weight: the
+     * client report is the product, the server tab a bonus on it. A failed collection, a source
+     * that never answered or a payload of another run must not turn a build red by default — they
+     * are said loudly on the console, the page and the JSON instead. A team whose pipeline needs
+     * server data to be there sets this, and gets back exactly the fold {@code failonerror} used to
+     * apply to both sides.
+     */
+    public static boolean failOnServerError(String raw, Consumer<String> warn) {
+        report(warn, BooleanSetting.warningFor(NonZeroExit.FAIL_ON_SERVER_ERROR, raw,
+                "a server-data problem will NOT fail this run, which is the default"));
+        return BooleanSetting.parse(raw).orElse(false);
+    }
+
     private static void report(Consumer<String> warn, String warning) {
         if (warning != null && warn != null) {
             warn.accept(warning);

@@ -445,6 +445,21 @@ public class ServerMetricsJson {
     @JsonAnyGetter
     public Map<String, Object> getUnknownKeys() { return unknownKeys; }
 
+    /**
+     * Why the block as written could not be bound, or null. Set by {@code AnnotationLoader} when
+     * the rest of the file reads and only this block does not ({@code "asserts": {}}, a band that
+     * is not an object): the block is then carried here with its keys verbatim, so a Download still
+     * writes what the file said, and {@link ServerMetricsMapper} refuses it as one block problem —
+     * a server-side problem, which costs the client rules nothing.
+     */
+    private String unreadable;
+
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public String getUnreadable() { return unreadable; }
+
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public void setUnreadable(String unreadable) { this.unreadable = unreadable; }
+
     public Map<String, ComponentJson> getComponents() { return components; }
     public void setComponents(Map<String, ComponentJson> components) { this.components = components; }
     public Map<String, SourceJson> getSources() { return sources; }

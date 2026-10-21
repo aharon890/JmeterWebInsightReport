@@ -1290,12 +1290,13 @@ assert_contains "$C35_DIR/collect.log" "wir-collect: OK app/up coverage=" \
 C35_COLLECTION="$(grep -o '"collectionId" *: *"[0-9a-f]*"' "$C35_DIR/server-metrics.json" 2>/dev/null | grep -o '[0-9a-f]\{16\}')"
 [[ -n "$C35_COLLECTION" ]] || C35_NOTES="$(append_note "$C35_NOTES" "no collectionId in the payload")"
 
-c35_generate() {   # <subdir> <payload> [annotations]
+c35_generate() {   # <subdir> <payload> [annotations] [extra -J...]
     local sub="$1" payload="$2" ann="${3:-$C35_DIR/annotations.json}"
+    if (( $# >= 3 )); then shift 3; else shift $#; fi
     WIR_RUNTIME_LOG="$C35_DIR/$sub-runtime.log" \
     run_jmeter -g "$C35_DIR/current.jtl" -o "$C35_DIR/$sub" \
         -Jwebinsight.report.annotations="$ann" \
-        -Jwebinsight.report.servermetrics="$payload" > "$C35_DIR/$sub.log" 2>&1
+        -Jwebinsight.report.servermetrics="$payload" "$@" > "$C35_DIR/$sub.log" 2>&1
     echo $? > "$C35_DIR/$sub.exit"
 }
 
@@ -1304,6 +1305,9 @@ c35_generate mine "$C35_DIR/server-metrics.json"
 sed 's/"runId" *: *"[0-9a-f]*"/"runId" : "0123456789abcdef"/' "$C35_DIR/server-metrics.json" \
     > "$C35_DIR/foreign.json"
 c35_generate foreign "$C35_DIR/foreign.json"
+# The same refusal under the server opt-in, which restores the 4.0.x fold: fatal, CONFIG ERROR.
+c35_generate foreign-strict "$C35_DIR/foreign.json" "$C35_DIR/annotations.json" \
+    -Jwebinsight.report.server.failonerror=true
 
 C35_MINE="$C35_DIR/mine/web-insight-report.html"
 C35_FOREIGN="$C35_DIR/foreign/web-insight-report.html"
@@ -1321,10 +1325,19 @@ else
     if assert_contains "$C35_FOREIGN" "\\\"collectionId\\\":\\\"$C35_COLLECTION\\\""; then
         C35_NOTES="$(append_note "$C35_NOTES" "another run's payload was drawn under this run's report")"
     fi
-    grep -q "CONFIG ERROR" "$C35_DIR/foreign.log" "$C35_DIR/foreign-runtime.log" 2>/dev/null \
-        || C35_NOTES="$(append_note "$C35_NOTES" "no CONFIG ERROR marker for a foreign payload")"
-    [[ "$(cat "$C35_DIR/foreign.exit")" != "0" ]] \
-        || C35_NOTES="$(append_note "$C35_NOTES" "a foreign payload exited 0 under the default failonerror")"
+    # Decision B: a server-data problem never changes the exit code by default. It is said as
+    # SERVER NOT JUDGED, never as CONFIG ERROR (which keeps meaning "this exits non-zero").
+    grep -q "SERVER NOT JUDGED" "$C35_DIR/foreign.log" 2>/dev/null \
+        || C35_NOTES="$(append_note "$C35_NOTES" "no SERVER NOT JUDGED marker for a foreign payload")"
+    if grep -q "CONFIG ERROR" "$C35_DIR/foreign.log" 2>/dev/null; then
+        C35_NOTES="$(append_note "$C35_NOTES" "a foreign payload printed CONFIG ERROR although it does not exit non-zero")"
+    fi
+    [[ "$(cat "$C35_DIR/foreign.exit")" == "0" ]] \
+        || C35_NOTES="$(append_note "$C35_NOTES" "a foreign payload exited $(cat "$C35_DIR/foreign.exit") by default, expected 0 (server data never fails the build unless asked)")"
+    grep -q "CONFIG ERROR" "$C35_DIR/foreign-strict.log" 2>/dev/null \
+        || C35_NOTES="$(append_note "$C35_NOTES" "no CONFIG ERROR marker for a foreign payload under server.failonerror=true")"
+    [[ "$(cat "$C35_DIR/foreign-strict.exit")" != "0" ]] \
+        || C35_NOTES="$(append_note "$C35_NOTES" "a foreign payload exited 0 under webinsight.report.server.failonerror=true")"
     # ...and the CI/CD JSON says so: a refused payload leaves no serverStatus or serverGates to
     # read, so the ERROR finding is the only trace a pipeline on failonerror=false can see (the
     # STRICT line of test-plans/goldens/jq-gate.txt reads it). It used to leave none.
@@ -1340,7 +1353,7 @@ fi
 
 if [[ -z "$C35_NOTES" ]]; then
     record C35 "Server-metrics payload property" PASS \
-        "collected $C35_COLLECTION, embedded for this run, refused (and fatal) for another"
+        "collected $C35_COLLECTION, embedded for this run, refused for another (fatal only under server.failonerror)"
 else
     record C35 "Server-metrics payload property" FAIL "$C35_NOTES"
 fi
@@ -1491,23 +1504,31 @@ assert_contains "$C37_DIR/server-metrics.json" '"status" : "FAILED"' \
 assert_contains "$C37_DIR/collect.log" "wir-collect: FAILED kafka/up" \
     || C37_NOTES="$(append_note "$C37_NOTES" "the collector's console does not name the failed series")"
 
-c37_generate() {   # <subdir> <annotations>
+c37_generate() {   # <subdir> <annotations> [extra -J...]
     local sub="$1" ann="$2"
+    shift 2
     WIR_RUNTIME_LOG="$C37_DIR/$sub-runtime.log" \
     run_jmeter -g "$C37_DIR/current.jtl" -o "$C37_DIR/$sub" \
         -Jwebinsight.report.annotations="$ann" \
         -Jwebinsight.report.servermetrics="$C37_DIR/server-metrics.json" \
-        -Jwebinsight.report.junit=true > "$C37_DIR/$sub.log" 2>&1
+        -Jwebinsight.report.junit=true "$@" > "$C37_DIR/$sub.log" 2>&1
     echo $? > "$C37_DIR/$sub.exit"
 }
 
+# Decision B: by default a dead source is said (SERVER NOT JUDGED) and never changes the exit code;
+# under webinsight.report.server.failonerror=true it is the 4.0.x CONFIG ERROR, exit 1.
 c37_generate building "$C37_DIR/building.json"
-[[ "$(cat "$C37_DIR/building.exit")" != "0" ]] \
-    || C37_NOTES="$(append_note "$C37_NOTES" "a source failure on a building gate left the exit code at 0")"
-grep -q "WEB-INSIGHT-REPORT: CONFIG ERROR" "$C37_DIR/building.log" "$C37_DIR/building-runtime.log" 2>/dev/null \
-    || C37_NOTES="$(append_note "$C37_NOTES" "no CONFIG ERROR marker for the failed source")"
+c37_generate building-strict "$C37_DIR/building.json" -Jwebinsight.report.server.failonerror=true
+[[ "$(cat "$C37_DIR/building.exit")" == "0" ]] \
+    || C37_NOTES="$(append_note "$C37_NOTES" "a source failure exited $(cat "$C37_DIR/building.exit") by default, expected 0 (server data never fails the build unless asked)")"
+grep -q "WEB-INSIGHT-REPORT: SERVER NOT JUDGED" "$C37_DIR/building.log" 2>/dev/null \
+    || C37_NOTES="$(append_note "$C37_NOTES" "no SERVER NOT JUDGED marker for the failed source")"
 grep -q "kafka: 1 source failed" "$C37_DIR/building.log" "$C37_DIR/building-runtime.log" 2>/dev/null \
-    || C37_NOTES="$(append_note "$C37_NOTES" "the CONFIG ERROR line does not name the gate and the reason")"
+    || C37_NOTES="$(append_note "$C37_NOTES" "the SERVER NOT JUDGED line does not name the gate and the reason")"
+[[ "$(cat "$C37_DIR/building-strict.exit")" != "0" ]] \
+    || C37_NOTES="$(append_note "$C37_NOTES" "a source failure left the exit code at 0 under server.failonerror=true")"
+grep -q "WEB-INSIGHT-REPORT: CONFIG ERROR" "$C37_DIR/building-strict.log" 2>/dev/null \
+    || C37_NOTES="$(append_note "$C37_NOTES" "no CONFIG ERROR marker for the failed source under server.failonerror=true")"
 assert_contains "$C37_DIR/building/web-insight-report.json" '"sourceFailed" : 1' \
     || C37_NOTES="$(append_note "$C37_NOTES" "serverComponents does not count the source failure")"
 file_exists "$C37_DIR/building/web-insight-report.html" \
@@ -1586,7 +1607,7 @@ fi
 
 if [[ -z "$C37_NOTES" ]]; then
     record C37 "A source that never answered" PASS \
-        "SOURCE_FAILED exits 1 under the default failonerror, is marked and is a JUnit failure; the collector exits 0, and the three steps under set -e reach step 3; a missing java is exit 1, not 127"
+        "SOURCE_FAILED is said and exits 0 by default (1 under server.failonerror), and is a JUnit failure; the collector exits 0, and the three steps under set -e reach step 3; a missing java is exit 1, not 127"
 else
     record C37 "A source that never answered" FAIL "$C37_NOTES"
 fi

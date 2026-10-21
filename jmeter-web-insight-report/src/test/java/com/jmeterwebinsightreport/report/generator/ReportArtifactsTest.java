@@ -41,6 +41,41 @@ class ReportArtifactsTest {
                 "r-data.js", true, 10_000_000L);
     }
 
+    // ---- client and server config problems, two flags -------------------------
+
+    @Test
+    void aServerProblemIsReportedApartFromTheClientAndSaysTheExitCodeIsUnchanged() {
+        ReportArtifacts a = inlineRun().recordServerMetricsProblem("the payload was refused");
+        assertTrue(a.hasServerConfigProblem());
+        assertFalse(a.hasClientConfigProblem());
+        assertNull(a.clientConfigMarker(), "no CONFIG ERROR for a side that cannot exit non-zero");
+        String lenient = a.serverConfigMarker(false);
+        assertTrue(lenient.startsWith("WEB-INSIGHT-REPORT: SERVER NOT JUDGED — the payload was refused"), lenient);
+        assertTrue(lenient.contains("exit code is unchanged"), lenient);
+        assertTrue(lenient.contains(NonZeroExit.FAIL_ON_SERVER_ERROR + "=true"), lenient);
+        // Under the opt-in it exits non-zero, so it is a CONFIG ERROR like the client's.
+        assertEquals("WEB-INSIGHT-REPORT: CONFIG ERROR — the payload was refused", a.serverConfigMarker(true));
+    }
+
+    @Test
+    void aClientProblemKeepsItsConfigErrorAndCarriesNoServerClause() {
+        ReportArtifacts a = inlineRun().recordConfigProblem(2, null);
+        assertTrue(a.hasClientConfigProblem());
+        assertFalse(a.hasServerConfigProblem());
+        assertTrue(a.clientConfigMarker().startsWith("WEB-INSIGHT-REPORT: CONFIG ERROR — 2 declared check(s) never ran"));
+        assertNull(a.serverConfigMarker(false));
+        assertEquals(a.clientConfigProblemReason(), a.configProblemReason());
+    }
+
+    @Test
+    void bothSidesWrongNameBothInTheCombinedReason() {
+        ReportArtifacts a = inlineRun().recordConfigProblem(0, "the annotations file does not exist")
+                .recordServerMetricsProblem("the payload was refused");
+        assertEquals("the annotations file does not exist — no gate ran; the payload was refused",
+                a.configProblemReason());
+        assertTrue(a.hasConfigProblem());
+    }
+
     // ---- intent line ---------------------------------------------------------
 
     @Test

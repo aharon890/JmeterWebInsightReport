@@ -137,6 +137,41 @@ class AnnotationLoaderTest {
     }
 
     @Test
+    void aMalformedServerBlockCostsTheServerSideOnlyAndTheClientRulesStillLoad(@TempDir Path dir) throws Exception {
+        // "asserts": {} does not bind to a list. It used to fail the whole file: the client rule
+        // was lost, the gate read "nothing was declared" and the run exited 1. The server tab is a
+        // bonus on the client report, so the block is carried as one server-side problem instead.
+        Path file = dir.resolve("a.json");
+        Files.write(file, ("{\"assertions\":[{\"id\":\"p95\",\"target\":{\"scope\":\"overall\"},\"metric\":\"p95\","
+                + "\"fail\":{\"gt\":1000}}],"
+                + "\"serverMetrics\":{\"components\":{\"db\":{\"type\":\"custom\"}},\"asserts\":{}}}")
+                .getBytes(StandardCharsets.UTF_8));
+        AnnotationLoader.Result r = loader.read(file.toFile());
+        assertFalse(r.unusable(), String.valueOf(r.problem()));
+        assertEquals(1, r.annotations().getAssertions().size(), "the client rule is read");
+        ServerMetricsJson block = r.annotations().getServerMetrics();
+        assertNotNull(block);
+        assertTrue(block.getUnreadable().startsWith("the serverMetrics block could not be read — "),
+                block.getUnreadable());
+        // Carried verbatim for a Download.
+        assertTrue(block.getUnknownKeys().containsKey("asserts"));
+        assertTrue(block.getUnknownKeys().containsKey("components"));
+        // And refused as one block problem: nothing under it is judged.
+        ServerMetricsMapper.Result mapped = new ServerMetricsMapper().map(block);
+        assertTrue(mapped.config().kpis().isEmpty());
+        assertEquals(1, mapped.config().errorCount());
+    }
+
+    @Test
+    void aSyntaxErrorStillLosesTheWholeFile(@TempDir Path dir) throws Exception {
+        // One file cannot be half-parsed: a client rule beside a broken brace is lost too.
+        Path file = dir.resolve("a.json");
+        Files.write(file, "{\"assertions\":[], \"serverMetrics\": {\"asserts\": [}"
+                .getBytes(StandardCharsets.UTF_8));
+        assertTrue(loader.read(file.toFile()).unusable());
+    }
+
+    @Test
     void aFileIsOneJsonValueAndAnythingAfterItIsRefusedNotDropped(@TempDir Path dir) throws Exception {
         // SF4. Jackson stopped after the first value, so `cat a.json b.json` (or a >> append)
         // loaded a.json, dropped b.json's rules without a word, and the run exited 0 under
@@ -150,13 +185,15 @@ class AnnotationLoaderTest {
             Files.write(file, (first + trailing).getBytes(StandardCharsets.UTF_8));
             AnnotationLoader.Result r = loader.read(file.toFile());
             assertTrue(r.unusable(), "trailing content must not load as the first document: " + trailing);
-            assertTrue(r.problem().startsWith("the annotations file could not be read: " + file.toFile().getAbsolutePath()),
+            assertTrue(r.problem().startsWith("the annotations file could not be read: " + file.toFile().getPath()),
                     r.problem());
             // The parser's own reason, which names the line: a second document is a trailing
             // token, a stray brace an unexpected close marker.
             assertTrue(r.problem().contains(trailing.contains("load:min") ? "Trailing token" : "Unexpected close marker"),
                     r.problem());
-            assertTrue(r.problem().contains("line: 2"), r.problem());
+            assertTrue(r.problem().contains("(line 2,"), r.problem());
+            // Jackson's source description is a local path; it never reaches the published text.
+            assertFalse(r.problem().contains("(File)"), r.problem());
         }
         // ...and trailing whitespace is not content.
         Path spaced = dir.resolve("spaced.json");

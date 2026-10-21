@@ -250,8 +250,9 @@ public class JunitXmlWriter {
             }
         } else {
             message = "Nothing collected yet: no server-metrics payload was given, so none of the " + declared
-                    + " declared server assert(s) was judged. Run wir-collect and regenerate with "
-                    + "-Jwebinsight.report.servermetrics=<server-metrics.json>";
+                    + " declared server assert(s) was judged. Collect the server data (wir-collect), then regenerate "
+                    + "with webinsight.report.servermetrics in a -q properties file (or a quoted "
+                    + "\"-Jwebinsight.report.servermetrics=<server-metrics.json>\")";
         }
         List<KpiResult> unrunnable = server.unrunnableResultsWithUnknownTypes();
         int failures = (fatal ? 1 : 0) + unrunnable.size();

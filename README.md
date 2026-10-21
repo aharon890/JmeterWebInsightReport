@@ -116,7 +116,8 @@ Precedence: **`-J` property > GUI field > default.**
 | `webinsight.report.rampup` | Ramp-up duration in ms, for the timeline overlay | none |
 | `webinsight.report.externaldata` | Force the chart payload into a separate `.js` file | `false` |
 | `webinsight.report.externaldata.threshold` | Payload size (chars) above which that happens automatically. Values ≤ 0 are rejected with a warning | `10000000` |
-| `webinsight.report.failonerror` | Exit non-zero when the plugin could not do what it was told: the artifact set is incomplete (the report itself, or its `.json`/`.xml` sibling, could not be written), **or** the gate could not be built from what the annotations file declared — a rule or server assert that cannot run; a series that could not be collected (SOURCE FAILED) or data below the coverage floor on any server component; a refused server-metrics payload when an enabled server assert is declared. **On by default**; `=false` makes these exit 0 and changes nothing else — every marker still prints | `true` |
+| `webinsight.report.failonerror` | Exit non-zero when the plugin could not do what it was told: the artifact set is incomplete (the report itself, or its `.json`/`.xml` sibling, could not be written), **or** the client gate could not be built from what the annotations file declared — a rule that cannot run, an annotations file that is not JSON, or a `webinsight.report.*` setting PowerShell split into a property named `webinsight`. Server-side problems are governed by `webinsight.report.server.failonerror` instead. **On by default**; `=false` makes these exit 0 and changes nothing else — every marker still prints | `true` |
+| `webinsight.report.server.failonerror` | Exit non-zero when a server check never ran: a server assert that cannot run, a series that could not be collected (SOURCE FAILED), data below the coverage floor, a `serverMetrics` block that does not read, a refused or missing server-metrics payload when an enabled server assert is declared. **Off by default**: the server tab is a bonus on the client report, so these are said (`SERVER NOT JUDGED` on stderr, the Server tab, the JSON, JUnit) and never change the exit code unless this is set | `false` |
 | `webinsight.report.failonassert` | Exit non-zero when the client gate's verdict is `FAIL`, or any server component FAILed. **Off by default and staying that way** — a verdict is yours to act on. Fires on `FAIL` only, never on `WARN` or a rule that did not judge | `false` |
 | `webinsight.apdex.threshold` | Apdex satisfied threshold in ms | `500` |
 | `webinsight.error.body.maxsize` | Response-body characters kept per error record. Listener runs only: the `-g` path reads no response bodies from the JTL. Negative values are rejected | `16384` |
@@ -211,10 +212,12 @@ These markers are what a pipeline should grep rather than parsing the block abov
 | `WEB-INSIGHT-REPORT: OK <path>` | stdout | the report was published |
 | `WEB-INSIGHT-REPORT: INCOMPLETE — <reason>` | stderr | the report exists but a sibling does not; the reason names the artifact |
 | `WEB-INSIGHT-REPORT: FAILED <reason>` | stderr | nothing usable was produced; the exception class is named |
-| `WEB-INSIGHT-REPORT: CONFIG ERROR — <reason>` | stderr | every artifact is there, but the gate is not the one your file declared; the reason says how many checks never ran and why, a refused server-metrics payload included |
+| `WEB-INSIGHT-REPORT: CONFIG ERROR — <reason>` | stderr | every artifact is there, but the client gate is not the one your file declared; the reason says how many checks never ran and why |
+| `WEB-INSIGHT-REPORT: SERVER NOT JUDGED — <reason>` | stderr | server checks the file asked for never ran (a failed collection, coverage under the floor, a server assert that cannot run, a refused payload). The report and the client verdict are complete; the exit code is unchanged unless `webinsight.report.server.failonerror=true`, which prints this as `CONFIG ERROR` instead |
+| `WEB-INSIGHT-REPORT: WARNING — <reason>` | stderr | a `webinsight.*` property nothing reads (with the nearest known name), or a path mangled by single backslashes in a properties file |
 | `WEB-INSIGHT-REPORT: ASSERT FAIL — <verdict line>` | stderr | `failonassert=true` and the client gate or a server component said FAIL (`-g -o` only; the listener writes it to `jmeter.log`) |
 
-`INCOMPLETE`, `FAILED` and `CONFIG ERROR` exit non-zero by default;
+`INCOMPLETE`, `FAILED` and `CONFIG ERROR` exit non-zero by default, `SERVER NOT JUDGED` never does;
 `-Jwebinsight.report.failonerror=false` makes them exit 0. The one exception is a `-g -o` run that
 fails outright: the exporter's exception propagates, and JMeter exits non-zero whatever the flag
 says.

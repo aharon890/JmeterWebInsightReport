@@ -9,6 +9,7 @@ import com.jmeterwebinsightreport.report.generator.ExitPolicy;
 import com.jmeterwebinsightreport.report.generator.NonZeroExit;
 import com.jmeterwebinsightreport.report.generator.BooleanSetting;
 import com.jmeterwebinsightreport.report.generator.OutputDirectories;
+import com.jmeterwebinsightreport.report.generator.PropertyCheck;
 import com.jmeterwebinsightreport.report.generator.ReportArtifacts;
 import com.jmeterwebinsightreport.report.generator.ReportConfiguration;
 import com.jmeterwebinsightreport.report.generator.WebInsightReportGenerator;
@@ -445,6 +446,14 @@ public class WebInsightReportListener extends ResultCollector {
         }
         log.info("Web Insight Report Listener: test ended, generating report");
 
+        // Same check as the exporter's: a setting under a name nothing reads is said, and the
+        // PowerShell -J split is a config error like any other.
+        String propertyError = PropertyCheck.emit(
+                PropertyCheck.check(JMeterUtils.getJMeterProperties()), log::warn);
+        if (propertyError != null && failOnError()) {
+            failTheRun(NonZeroExit.FAIL_ON_ERROR, new IllegalStateException(propertyError));
+        }
+
         if (statsEngine == null) {
             log.warn("Statistics engine is null, skipping report generation");
             return;
@@ -542,14 +551,27 @@ public class WebInsightReportListener extends ResultCollector {
                 // path and the precedent C19 sets for artifact failures: failonerror=false buys
                 // back the EXIT CODE and nothing else. Silencing the marker too would make the
                 // opt-out mean "and never tell me", which is not what anyone opts into.
-                System.err.println("WEB-INSIGHT-REPORT: CONFIG ERROR — "
-                        + artifacts.configProblemReason());
-                // Reportable is wider than fatal: D4 lets an observe gate's failed collection be
-                // named here and cost no exit code. failTheRun is guarded so the two branches
-                // above can both run and still arrange at most one non-zero exit.
-                if (artifacts.hasConfigProblem() && failOnError()) {
-                    failTheRun(NonZeroExit.FAIL_ON_ERROR,
-                            new IllegalStateException(artifacts.configProblemReason()));
+                // Two sides, two flags: the client's problems are fatal under failonerror, the
+                // server's only under webinsight.report.server.failonerror (default off) — server
+                // data is a bonus on the client report. failTheRun is guarded so every branch can
+                // run and still arrange at most one non-zero exit.
+                String client = artifacts.clientConfigMarker();
+                if (client != null) {
+                    System.err.println(client);
+                    if (failOnError()) {
+                        failTheRun(NonZeroExit.FAIL_ON_ERROR,
+                                new IllegalStateException(artifacts.clientConfigProblemReason()));
+                    }
+                }
+                boolean serverFatal = ExitPolicy.failOnServerError(
+                        getJMeterProperty(NonZeroExit.FAIL_ON_SERVER_ERROR), log::warn);
+                String server = artifacts.serverConfigMarker(serverFatal);
+                if (server != null) {
+                    System.err.println(server);
+                    if (serverFatal) {
+                        failTheRun(NonZeroExit.FAIL_ON_SERVER_ERROR,
+                                new IllegalStateException(artifacts.serverConfigProblemReason()));
+                    }
                 }
             }
 

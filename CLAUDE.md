@@ -1026,12 +1026,28 @@ states, not verdicts — `serverStatus` stays absent on both — and the chip is
 server assert is declared. It used to be absent on both, by a decision `headerChip`'s javadoc
 recorded, and was then silent about the one CONFIG ERROR a refused run exits 1 over.
 
+**Server data never changes the exit code by default (decision B, 2026-10-21).** Aaron: "the server
+tab is a bonus, not the basic jmeter report". `ReportArtifacts.hasConfigProblem()` is split into
+`hasClientConfigProblem()` (a client rule that cannot run, an unreadable annotations file — what
+`failonerror` acts on) and `hasServerConfigProblem()` (`fatalConfigErrors` and a refused payload —
+what `webinsight.report.server.failonerror`, default **false**, acts on; `ExitPolicy.failOnServerError`,
+`NonZeroExit.FAIL_ON_SERVER_ERROR`). With the flag off a server problem prints
+`WEB-INSIGHT-REPORT: SERVER NOT JUDGED`, never `CONFIG ERROR` — that word keeps meaning "this exits
+non-zero"; with it on, the 4.0.x fold comes back exactly, which is how C35 and C37 keep their exit-1
+assertions as `-strict` sub-runs. JUnit is unchanged (Aaron, decision 3): server collection and config
+faults stay `<failure>`. A `serverMetrics` block whose shape does not bind (`"asserts": {}`) costs the
+server side only: `AnnotationLoader` re-reads the file without it and carries it, keys verbatim, as
+`ServerMetricsJson.unreadable`, which the mapper refuses as one block problem. A JSON *syntax* error
+still loses both sides. `PropertyCheck` (both paths) makes a property named exactly `webinsight` —
+PowerShell's split of an unquoted `-Jwebinsight.report.x=y` — a client CONFIG ERROR, and warns on an
+unknown `webinsight.*` name and on a path a properties file mangled.
+
 One thing that looks like a bug and is not. A component whose judged asserts PASS beside a
-SOURCE_FAILED or LOW_COVERAGE one reads PASS — and so do `serverStatus` and the chip — on a run
-that exits 1 under `failonerror` (G7 pins exactly this). The status is the verdict; a
-configuration or collection error is the exit code, exactly as a broken client rule contributes
-nothing to `gate.status`, and making only the server side differ would give the two statuses
-different meanings. In JUnit a server FAIL, and a SOURCE_FAILED, LOW_COVERAGE or `INVALID_RULE`
+SOURCE_FAILED or LOW_COVERAGE one reads PASS — and so do `serverStatus` and the chip (G7 pins
+exactly this). The status is the verdict; a configuration or collection error is reported beside it
+(SERVER NOT JUDGED, the Server tab's not-judged box, JUnit, STRICT), exactly as a broken client rule
+contributes nothing to `gate.status`, and making only the server side differ would give the two
+statuses different meanings. In JUnit a server FAIL, and a SOURCE_FAILED, LOW_COVERAGE or `INVALID_RULE`
 (D4), is a `<failure>`; the other NOT_JUDGED reasons are `<skipped>`, and WARN is `<system-out>`.
 (D29 — an observe-only gate's FAIL and collection failures as `<skipped>`, so Jenkins' `junit`
 step would not mark the build UNSTABLE — is retired with observe-only, C6.) With server asserts
@@ -1046,7 +1062,7 @@ type included, which the CONFIG ERROR count takes once, at the component). G8 pi
 **The jq a pipeline gates with lives in one file**, `test-plans/goldens/jq-gate.txt`, and
 documentation copies a line from it verbatim — never a line retyped. DEFAULT is the verdicts: the
 client half passes a run that declared no client rule, the server half fails only on
-`serverStatus` FAIL; pair it with `failonerror`. STRICT is DEFAULT plus every check the file asked
+`serverStatus` FAIL; pair it with `failonerror` and `server.failonerror`. STRICT is DEFAULT plus every check the file asked
 for that never ran, as far as the JSON can show it — `INVALID_RULE` anywhere, SOURCE_FAILED or
 LOW_COVERAGE in any component (every one builds, so there is nothing to exempt), and any ERROR
 finding — and is meant for
@@ -1262,7 +1278,9 @@ been warned about: `failonassert` was read on the listener path and **not read a
 `-g -o` exporter, so one annotations file and one FAIL verdict exited 1 under `-n -t` and 0
 under `-g -o`, and nothing noticed because the scenario covering the flag only runs the
 listener. A path can no longer forget a flag without deleting a call. Spell the properties as
-`NonZeroExit.FAIL_ON_ERROR` / `FAIL_ON_ASSERT`, never as literals at a call site.
+`NonZeroExit.FAIL_ON_ERROR` / `FAIL_ON_SERVER_ERROR` / `FAIL_ON_ASSERT`, never as literals at a call
+site. `failOnServerError` (default **false**) is the third: it alone decides whether a server-side
+config problem exits non-zero.
 
 Only `true` and `false` are accepted, so `failonerror=0` is read as saying nothing and the
 default applies — which for this one property is the *failing* direction, unlike `junit` and

@@ -165,14 +165,12 @@ Points that cost people a build:
 - **Step 3 is the report that gates.** Pass gating flags such as
   `-Jwebinsight.report.failonassert=true` to step 3 only. On step 1, a client FAIL would stop a
   `set -e` script, or a Jenkins `sh` step, before the server metrics were ever compared.
-- **Step 3 exits 1 on a series that could not be collected** (SOURCE FAILED), or on data below the
-  coverage floor (`failonerror`, on by default). In a `set -e`
-  script that is the last step, so nothing is lost. If the script runs its own jq gate after step 3,
-  give step 3 `-Jwebinsight.report.failonerror=false` and gate with the [STRICT](#gating-a-pipeline)
-  line, which refuses the same thing.
-- **Step 1 can still exit 1** on a file it cannot honour, such as a server assert naming an unknown
-  component. That is the same configuration error step 3 would refuse, so stopping early loses
-  nothing. Fix the file.
+- **Server data never fails the build by default.** A series that could not be collected
+  (SOURCE FAILED), data below the coverage floor, a server assert the file got wrong or a refused
+  payload is said on the console (`WEB-INSIGHT-REPORT: SERVER NOT JUDGED`), at the top of the
+  Server tab and in the CI/CD JSON, and the exit code stays as the client side decides it. To make
+  those fatal, add `webinsight.report.server.failonerror=true`; or gate on the JSON with the
+  [STRICT](#gating-a-pipeline) line, which refuses the same things.
 - **A title on step 3 means a `--test-name` on step 2.** The run's identity hashes its name, and
   `jmeter -g` names the run by its report title. With `-Jwebinsight.report.title="Checkout soak"` on
   step 3, step 2 needs `--test-name "Checkout soak"`. Otherwise the payload is refused as another
@@ -235,7 +233,7 @@ Beside the client badge, one chip speaks for the server side:
 | `Server · Kafka FAIL · 2 more` | The worst component (Kafka), its status, and how many other components the tab holds |
 | `Server · nothing judged` | The asserts were evaluated, but no component was reported |
 | `Server · NOT COLLECTED` | Server asserts are declared and no payload was given yet: the interim report, step 1 |
-| `Server · REFUSED` | Server asserts are declared and the payload given was refused. The tab says why. When an enabled assert depended on it, the run exits 1 (`failonerror`) |
+| `Server · REFUSED` | Server asserts are declared and the payload given was refused. The tab says why. It does not change the exit code unless `webinsight.report.server.failonerror=true` is set |
 | *(no chip)* | No server assert is declared: no `serverMetrics` block, or components and no asserts yet |
 
 `NOT COLLECTED` and `REFUSED` are drawn in the neutral style. They are states, not verdicts: the
@@ -285,11 +283,12 @@ component holds one server assert that PASSed, and another whose source failed (
 whose data came in under the floor (`LOW COVERAGE`). The component reads **PASS**, and so do
 `serverStatus` and the chip.
 
-The run still **exits 1** under `failonerror` (the default), because a check the build depended on
-never ran. The status is the verdict on what was measured. A configuration or collection error is
-reported by the exit code, the `CONFIG ERROR` console line, the JUnit `<failure>` and the STRICT jq
-line below. If your pipeline sets `failonerror=false` and gates on the JSON, use STRICT. The DEFAULT
-line reads that run as a pass.
+The status is the verdict on what was measured. The check that never ran is reported beside it: the
+`SERVER NOT JUDGED` console line, the "not judged" box at the top of the Server tab, the Summary
+card's "Needs looking at", the JUnit `<failure>` and the STRICT jq line below. It does not change the
+exit code unless `webinsight.report.server.failonerror=true` is set, in which case the run exits 1
+and the console line reads `CONFIG ERROR`. The DEFAULT line reads that run as a pass; use STRICT to
+refuse it from the JSON.
 
 ### The header and filters
 
@@ -444,9 +443,9 @@ reason, and the board shows the reason with the sentence that explains it undern
 | `DISABLED` | `DISABLED` | `"enabled": false`. Not collected either | No |
 | `UNMATCHED` | `NO_MATCH` | The source answered and the query matched no series (for a CSV: no row names this component and metric) | No, it is counted and reported |
 | `NO VALUE` | `NO_VALUE` | No point fell inside the judged window, the reducer had nothing to say, or a `divideBy` divisor measured zero | No |
-| `INVALID` | `INVALID_RULE` | The file is wrong, or the payload was collected for another version of it. In the file: an unknown component, component type or catalogue metric; `metric` and `query` both or neither; a `custom` component with no `query`; no band at all, or an unreadable one; an unknown reducer, or a tolerance it cannot take; a [refused key](#retired-and-refused-keys). Against the run: a `requiresLoad` or `divideBy` that names no client rule, or a rule that is not a throughput rule; a `divideBy` rule that matched more than one sampler; a `sustainedFor` longer than one step that is not a whole number of the collection's steps. Against the payload: no series was collected for this assert's query (the file changed after `wir-collect` ran). The sentence names which | **Yes**, under `failonerror` |
-| `SOURCE FAILED` | `SOURCE_FAILED` | The series could not be fetched: authentication, DNS, timeout, a 5xx, a placeholder the collector could not resolve, a catalogue metric with no Prometheus query asked of Prometheus or a recording, or a CSV row of this series that could not be read | **Yes**, under `failonerror` |
-| `LOW COVERAGE` | `LOW_COVERAGE` | Data came back, but below the coverage floor | **Yes**, under `failonerror` |
+| `INVALID` | `INVALID_RULE` | The file is wrong, or the payload was collected for another version of it. In the file: an unknown component, component type or catalogue metric; `metric` and `query` both or neither; a `custom` component with no `query`; no band at all, or an unreadable one; an unknown reducer, or a tolerance it cannot take; a [refused key](#retired-and-refused-keys). Against the run: a `requiresLoad` or `divideBy` that names no client rule, or a rule that is not a throughput rule; a `divideBy` rule that matched more than one sampler; a `sustainedFor` longer than one step that is not a whole number of the collection's steps. Against the payload: no series was collected for this assert's query (the file changed after `wir-collect` ran). The sentence names which | No by default; **yes** under `webinsight.report.server.failonerror` |
+| `SOURCE FAILED` | `SOURCE_FAILED` | The series could not be fetched: authentication, DNS, timeout, a 5xx, a placeholder the collector could not resolve, a catalogue metric with no Prometheus query asked of Prometheus or a recording, or a CSV row of this series that could not be read | No by default; **yes** under `webinsight.report.server.failonerror` |
+| `LOW COVERAGE` | `LOW_COVERAGE` | Data came back, but below the coverage floor | No by default; **yes** under `webinsight.report.server.failonerror` |
 | `LOAD NOT ACHIEVED` | `LOAD_NOT_ACHIEVED` | The client load rule it `requiresLoad` FAILED or was not judged, or the rule it `divideBy` was not judged. A `divideBy` rule that FAILED still divides | Not by itself. A load rule that FAILED: that FAIL is the client verdict, and exits 1 only under `failonassert`. A load rule that was not judged: that rule's own reason decides, so an `INVALID` client rule exits 1 under `failonerror`, and a disabled, unmatched or unmeasurable one fails nothing |
 
 On a report with no collected metrics (step 1's report, or one whose payload was refused), a server
@@ -1339,13 +1338,13 @@ The exit code is the first gate, and it needs nothing extra:
 | What happened | Exit with the defaults |
 |---|---|
 | A component FAILed | 0, or 1 with `-Jwebinsight.report.failonassert=true` |
-| A server assert the file got wrong | 1 (`failonerror`) |
-| A source failed or coverage fell short | 1 (`failonerror`) |
+| A server assert the file got wrong | 0, said as `SERVER NOT JUDGED`; 1 with `webinsight.report.server.failonerror=true` |
+| A source failed or coverage fell short | 0, said as `SERVER NOT JUDGED`; 1 with `webinsight.report.server.failonerror=true` |
 | A query matched nothing (`NO_MATCH`) | 0, counted and reported |
 | A server assert parked with `enabled: false` (`DISABLED`), one with no point in the judged window (`NO_VALUE`), or one whose load rule FAILED or was not judged (`LOAD_NOT_ACHIEVED`) | 0, counted and reported |
 | A component with no server asserts yet | 0 |
 | No payload given (step 1) | 0. The server asserts are not evaluated and `serverComponents` is omitted. JUnit's `serverMetrics` suite says so with a `<skipped>` |
-| A payload given and refused (missing, another run's, unreadable) while an enabled server assert is declared | 1 (`failonerror`), with the ERROR finding `serverMetrics.payload`, and the same sentence as a JUnit `<failure>` |
+| A payload given and refused (missing, another run's, unreadable) while an enabled server assert is declared | 0, said as `SERVER NOT JUDGED`; 1 with `webinsight.report.server.failonerror=true`. Either way the ERROR finding `serverMetrics.payload`, and the same sentence as a JUnit `<failure>` |
 | The same with no enabled server assert declared | 0, with a warning |
 
 To gate on the CI/CD JSON, copy one of these two lines. Both are tested on every build. Both treat a run with no client rule as passing the client half, and a run with no server block as
@@ -1353,8 +1352,8 @@ passing the server half.
 
 **DEFAULT** refuses a client FAIL and `serverStatus` FAIL, the verdicts. It does not refuse a
 component that judged nothing or a check that could not run. A check that could not run
-(`INVALID_RULE`, `SOURCE_FAILED`, `LOW_COVERAGE`, or a refused payload) exits 1 through
-`failonerror`, so pair this line with `failonerror` (the default). A query that matched nothing,
+(`INVALID_RULE`, `SOURCE_FAILED`, `LOW_COVERAGE`, or a refused payload) exits 1 only when
+`webinsight.report.server.failonerror=true` is set, so pair this line with that, or use STRICT. A query that matched nothing,
 a parked assert, a value that could not be measured, a load that was not established and a
 component with no asserts exit 0, as the table above says, and neither line refuses them. The four
 not-judged reasons are counted in `serverComponents[].notJudged`; a component with no asserts is
@@ -1369,7 +1368,7 @@ as far as the JSON can show it: `INVALID_RULE` on the client gate and on any ser
 `SOURCE_FAILED` or `LOW_COVERAGE` on any server component (every component builds, and so does the
 `(no gate)` entry, so asserts in no declared component are counted); and any ERROR finding, which
 covers an annotations file that could not be read and a refused payload a server assert needed. It
-is meant for `failonerror=false`. It cannot see an artifact that failed to be written. Only the exit
+is the line to use when server data must be there and complete. It cannot see an artifact that failed to be written. Only the exit
 code reports that:
 
 ```bash
@@ -1480,7 +1479,7 @@ worth.
 
 | Code | Means |
 |---|---|
-| `0` | The payload was written, **whatever each series' status**. A failed source, a bad CSV row or an empty query is recorded in the payload, and step 3 decides what it means (`failonerror`) |
+| `0` | The payload was written, **whatever each series' status**. A failed source, a bad CSV row or an empty query is recorded in the payload, and step 3 decides what it means |
 | `1` | Nothing was written: bad arguments (no source flag, or two), an unreadable or empty JTL, an unreadable annotations file, a file with nothing to collect (no server assert and no component of a catalogue type), an undeclared `--env` or `--component`, an unwritable `--out`, a ramp-up as long as the run, or (from `wir-collect.sh`) no `java`, no JMeter install, or not exactly one plugin JAR in `lib/ext` |
 
 There is no other code, on purpose. A collector that exited non-zero on a dead source would
@@ -2184,7 +2183,8 @@ a warning too.
 A file that carries one of these keys means something by it, so ignoring the key would change what
 is judged. Each is refused with a sentence naming what to write instead.
 
-**In the block**: a configuration error, exit 1 under `failonerror`:
+**In the block**: refused, so nothing it says is judged (exit 1 only under
+`webinsight.report.server.failonerror=true`):
 
 | Key | Write instead |
 |---|---|
