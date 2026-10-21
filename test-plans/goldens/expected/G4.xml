@@ -84,7 +84,7 @@ instances: 1
       </failure>
     </testcase>
     <testcase name="nothing-recorded" classname="server-metrics">
-      <skipped message="Server assert matched nothing in this run: the query matched no series"/>
+      <skipped message="Server assert matched nothing in this run: no row of the CSV names component db, metric nothing"/>
     </testcase>
     <testcase name="typo-reducer" classname="server-metrics">
       <failure message="Server assert could not run: reduce.kind &apos;maxx&apos; is not a reducer — valid here: max, min, avg, last, slope, pN (e.g. p95)">

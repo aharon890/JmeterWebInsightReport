@@ -81,6 +81,117 @@ class CsvSourceTest {
         assertTrue(none.instances().isEmpty());
     }
 
+    // ---- the silent cases the research found (P3): each is now said, by line or by span ----------
+
+    @Test
+    void aFileWhollyOutsideTheRunSaysSoWithBothSpansAndAZoneHint() throws IOException {
+        // Local +03:00 wall-clock written with a Z: every row 3 h after the run. It used to come back
+        // EMPTY, reported as "the query matched no series", and pass the build.
+        ServerSource s = csv("time,component,metric,instance,value\n"
+                + "2023-11-15T01:13:20Z,app,cpu,,40\n"
+                + "2023-11-15T01:13:35Z,app,cpu,,41\n"
+                + "2023-11-15T01:14:20Z,app,cpu,,42\n");
+        String e = ask(new CsvSource(), s, "app", "cpu").error();
+        assertEquals("m.csv has 3 rows for app/cpu and none inside the run: they run 2023-11-15T01:13:20Z .."
+                + " 2023-11-15T01:14:20Z, after the run (2023-11-14T22:13:20Z .. 2023-11-14T22:14:20Z). They start"
+                + " 3h late, which is usually a time zone: were local times written with Z? Give the file's zone"
+                + " with --time-zone, or move the rows with --clock-offset -3h", e);
+    }
+
+    @Test
+    void aSkewOfSecondsIsNamedAsClockSkewWithTheOffsetThatMovesIt() throws IOException {
+        ServerSource s = csv("time,component,metric,instance,value\n"
+                + "1700000100000,app,cpu,,40\n1700000115000,app,cpu,,41\n");
+        String e = ask(new CsvSource(), s, "app", "cpu").error();
+        assertTrue(e.endsWith("if the server's clock is off, move the rows with --clock-offset -100s"), e);
+    }
+
+    @Test
+    void aNameThatDiffersOnlyByCaseOrPunctuationIsSaidNotEmpty() throws IOException {
+        ServerSource s = csv("time,component,metric,instance,value\n"
+                + "1700000000000,App,cpu_pct,,40\n1700000015000,App,cpu_pct,,41\n");
+        CsvSource reader = new CsvSource();
+        assertEquals("no row names component app, metric cpu.pct; 2 rows name App/cpu_pct - component and metric"
+                + " must be written exactly as the annotations file writes them", ask(reader, s, "app", "cpu.pct").error());
+        // And a name nothing resembles is still an empty answer: NO_MATCH.
+        assertNull(ask(reader, s, "db", "connections").error());
+        assertTrue(ask(reader, s, "db", "connections").instances().isEmpty());
+    }
+
+    @Test
+    void theLongFilesSeriesNothingAskedForAreListed() throws IOException {
+        ServerSource s = csv("time,component,metric,instance,value\n"
+                + "1700000000000,app,cpu,,40\n1700000000000,cache,hits,,7\n");
+        CsvSource reader = new CsvSource();
+        ask(reader, s, "app", "cpu");
+        assertEquals(Collections.singletonList("cache/hits"), reader.seriesNotAskedFor());
+    }
+
+    @Test
+    void anUnquotedDecimalCommaIsRefusedByLineNeverReadAsAWrongNumber() throws IOException {
+        // "90,9" unquoted is two cells: it used to read as 90, and a FAIL over a 90 band became a WARN.
+        ServerSource s = csv("time,component,metric,instance,value\n"
+                + "1700000000000,app,cpu,,40\n1700000015000,app,cpu,,90,9\n");
+        assertEquals("m.csv line 3: has 6 cells where the header has 5 - an unquoted ',' inside a value? Write"
+                + " numbers with a '.' decimal point and no thousands separator, or quote the cell",
+                ask(new CsvSource(), s, "app", "cpu").error());
+        // A trailing comma is not another cell.
+        ServerSource trailing = csv("time,component,metric,instance,value\n1700000000000,app,cpu,,40,\n");
+        assertNull(ask(new CsvSource(), trailing, "app", "cpu").error());
+    }
+
+    @Test
+    void aRowThatStopsBeforeTheValueIsRefusedByLine() throws IOException {
+        ServerSource s = csv("time,component,metric,instance,value\n1700000000000,app,cpu\n");
+        assertEquals("m.csv line 2: has 3 cells and stops before the value column - a truncated or hand-edited row",
+                ask(new CsvSource(), s, "app", "cpu").error());
+    }
+
+    @Test
+    void anUnclosedQuoteIsRefusedNamingItsLine() throws IOException {
+        ServerSource s = csv("time,component,metric,instance,value\n"
+                + "1700000000000,app,cpu,\"pod-1,40\n1700000015000,app,cpu,,41\n");
+        assertEquals("m.csv line 2: a quoted cell opens here and never closes, so every line after it reads as one"
+                + " cell - close the quote or remove it", ask(new CsvSource(), s, "app", "cpu").error());
+    }
+
+    @Test
+    void epochMicrosecondsAreRefusedByName() throws IOException {
+        ServerSource s = csv("time,component,metric,instance,value\n1700000000000000,app,cpu,,40\n");
+        assertEquals("m.csv line 2: time \"1700000000000000\" looks like epoch microseconds or nanoseconds - this"
+                + " reader takes epoch milliseconds", ask(new CsvSource(), s, "app", "cpu").error());
+    }
+
+    @Test
+    void aRepeatedTimeWithAnotherValueKeepsTheLastAndSaysSo() throws IOException {
+        ServerSource s = csv("time,component,metric,instance,value\n"
+                + "1700000000000,app,cpu,,40\n1700000000000,app,cpu,,95\n");
+        CsvSource reader = new CsvSource();
+        assertEquals(95.0, points(ask(reader, s, "app", "cpu"), 0).get(0).getValue());
+        assertEquals(Collections.singletonList("m.csv line 3: repeats time \"1700000000000\" with another value (40,"
+                + " then 95) - the later row is kept; two hosts without an instance column, or an export appended"
+                + " twice?"), reader.duplicateNotes());
+    }
+
+    @Test
+    void anotherDelimiterOrUtf16IsNamedOnTheLongPathToo() throws IOException {
+        ServerSource semi = csv("time;component;metric;instance;value\n1700000000000;app;cpu;;40\n");
+        assertEquals("m.csv line 1: the delimiter is ';' and only ',' is read - export with commas (a"
+                + " spreadsheet's 'CSV UTF-8, comma delimited')", ask(new CsvSource(), semi, "app", "cpu").error());
+        Path file = dir.resolve("u.csv");
+        Files.write(file, ("﻿time,component,metric,instance,value\n").getBytes(StandardCharsets.UTF_16LE));
+        ServerSource utf16 = ServerSource.csv(ServerSource.COLLECTION_ID, file.toString(), 15_000, 0);
+        assertTrue(ask(new CsvSource(), utf16, "app", "cpu").error().startsWith("u.csv is UTF-16"));
+    }
+
+    @Test
+    void rowsInsideTheRunWithNoValueAreSaidNotEmpty() throws IOException {
+        ServerSource s = csv("time,component,metric,instance,value\n"
+                + "1700000000000,app,cpu,,\n1700000015000,app,cpu,,NaN\n");
+        assertEquals("m.csv has 2 rows for app/cpu and every value is empty or NaN - the export carries the"
+                + " series' times and no numbers", ask(new CsvSource(), s, "app", "cpu").error());
+    }
+
     @Test
     void columnsAreFoundByNameAndTheRestIsTolerated() throws IOException {
         ServerSource s = csv("﻿Value,Metric,note,Component,TIME\r\n"
@@ -833,11 +944,13 @@ class CsvSourceTest {
         assertEquals("m.csv line 4: time \"2023-03-26 02:30:00\" is not one moment in Europe/Berlin, whose clocks"
                 + " change then - give --time-zone as the offset the file was written in (such as +01:00), or write"
                 + " epoch milliseconds", ask(reader, s, "c", "y").error());
-        // Either side of the change the zone reads as ever (outside this test's window, so no points).
-        assertNull(ask(reader, s, "c", "z").error());
-        // An offset has no such hour.
+        // Either side of the change the zone reads as ever. This row is outside the test's window,
+        // and a series whose every row is outside the run is said, with both spans - never EMPTY.
+        assertTrue(ask(reader, s, "c", "z").error().startsWith("m.csv has 1 row for c/z and none inside the run:"
+                + " they run 2023-10-29T02:30:00Z .. 2023-10-29T02:30:00Z, before the run"), ask(reader, s, "c", "z").error());
+        // An offset has no such hour: the row is read (and, outside the window, said as such).
         ServerSource offset = csv("time,component,metric,instance,value\n2023-10-29 02:30:00,c,x,,1\n", "+01:00");
-        assertNull(ask(new CsvSource(), offset, "c", "x").error());
+        assertTrue(ask(new CsvSource(), offset, "c", "x").error().contains("none inside the run"));
     }
 
     // ---- --layout wide: Grafana's export ------------------------------------------------------
@@ -1225,7 +1338,7 @@ class CsvSourceTest {
         for (ServerMetricsPayload.SeriesRecord series : wide.getSeries()) {
             material.add(series.getSource() + "|" + series.getComponent() + "|" + series.getResolvedQuery());
         }
-        material.add(ServerSource.COLLECTION_ID + "|csv|" + wideFile + "|layout=wide|timeZone=UTC");
+        material.add(ServerSource.COLLECTION_ID + "|csv|" + wideFile.getFileName() + "|layout=wide|timeZone=UTC");
         material.add(WINDOW.getStart() + "-" + WINDOW.getEnd());
         material.add("now");
         assertEquals(com.jmeterwebinsightreport.core.util.RunIdentity.digest(String.join("\n", material)),
@@ -1600,7 +1713,7 @@ class CsvSourceTest {
         for (ServerMetricsPayload.SeriesRecord series : mappedP.getSeries()) {
             material.add(series.getSource() + "|" + series.getComponent() + "|" + series.getResolvedQuery());
         }
-        material.add(ServerSource.COLLECTION_ID + "|csv|" + influx + "|columns=time=_time,metric=_field,instance=host,"
+        material.add(ServerSource.COLLECTION_ID + "|csv|" + influx.getFileName() + "|columns=time=_time,metric=_field,instance=host,"
                 + "value=_value|component=web");
         material.add(WINDOW.getStart() + "-" + WINDOW.getEnd());
         material.add("now");
@@ -1643,7 +1756,10 @@ class CsvSourceTest {
         for (ServerMetricsPayload.SeriesRecord series : payload.getSeries()) {
             material.add(series.getSource() + "|" + series.getComponent() + "|" + series.getResolvedQuery());
         }
-        material.add(ServerSource.COLLECTION_ID + "|csv|" + pathAndKeys);
+        // The source is recorded by its file name (no local directory on the page).
+        String[] parts = pathAndKeys.split("[|]", 2);
+        String name = java.nio.file.Paths.get(parts[0]).getFileName().toString();
+        material.add(ServerSource.COLLECTION_ID + "|csv|" + name + (parts.length > 1 ? "|" + parts[1] : ""));
         material.add(WINDOW.getStart() + "-" + WINDOW.getEnd());
         material.add("now");
         return material;

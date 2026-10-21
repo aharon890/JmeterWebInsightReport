@@ -441,7 +441,7 @@ reason, and the board shows the reason with the sentence that explains it undern
 | Board reads | Reason | Cause | Fails the run? |
 |---|---|---|---|
 | `DISABLED` | `DISABLED` | `"enabled": false`. Not collected either | No |
-| `UNMATCHED` | `NO_MATCH` | The source answered and the query matched no series (for a CSV: no row names this component and metric) | No, it is counted and reported |
+| `UNMATCHED` | `NO_MATCH` | The source answered and the query matched no series (for a CSV: no row of the file names this component and metric — a file whose rows for it are all outside the run, or named with another case, is `SOURCE FAILED` instead, with the reason) | No, it is counted and reported |
 | `NO VALUE` | `NO_VALUE` | No point fell inside the judged window, the reducer had nothing to say, or a `divideBy` divisor measured zero | No |
 | `INVALID` | `INVALID_RULE` | The file is wrong, or the payload was collected for another version of it. In the file: an unknown component, component type or catalogue metric; `metric` and `query` both or neither; a `custom` component with no `query`; no band at all, or an unreadable one; an unknown reducer, or a tolerance it cannot take; a [refused key](#retired-and-refused-keys). Against the run: a `requiresLoad` or `divideBy` that names no client rule, or a rule that is not a throughput rule; a `divideBy` rule that matched more than one sampler; a `sustainedFor` longer than one step that is not a whole number of the collection's steps. Against the payload: no series was collected for this assert's query (the file changed after `wir-collect` ran). The sentence names which | No by default; **yes** under `webinsight.report.server.failonerror` |
 | `SOURCE FAILED` | `SOURCE_FAILED` | The series could not be fetched: authentication, DNS, timeout, a 5xx, a placeholder the collector could not resolve, a catalogue metric with no Prometheus query asked of Prometheus or a recording, or a CSV row of this series that could not be read | No by default; **yes** under `webinsight.report.server.failonerror` |
@@ -1547,6 +1547,8 @@ time,component,metric,instance,value
   time below 100000000000 (before 1973) is refused as epoch seconds — `time "1759406535" looks like
   epoch seconds - this reader takes epoch milliseconds` — because read as milliseconds it lands in
   January 1970, outside the run, and the series would come back `EMPTY` with nothing to say why.
+  An all-digit time of 15 digits or more is refused the same way, as epoch microseconds or
+  nanoseconds.
 - **`component`**: a component id from the file. A series is its component and its query, so two
   components of one type are told apart by this column alone.
 - **`metric`**: a catalogue metric's name (`connections.used.pct`), or a custom assert's `query`
@@ -1556,7 +1558,23 @@ time,component,metric,instance,value
 - **`value`**: a number with `.` as the decimal point and no thousands separator. Empty or `NaN` is
   a gap, not zero. Without `--from` it is the metric's value in the catalogue's unit and nothing is
   converted, so a counter must be exported as the rate the catalogue's query would have computed.
-- Rows more than one step outside the run's window are dropped.
+- Rows more than one step outside the run's window are dropped. **A series whose every row falls
+  outside the run is said**, not dropped in silence: `server.csv has 62 rows for db/connections and
+  none inside the run: they run 2026-10-20T23:21:44Z .. 2026-10-20T23:22:45Z, after the run (…). They
+  start 3h late, which is usually a time zone: were local times written with Z? Give the file's zone
+  with --time-zone, or move the rows with --clock-offset -3h` — the series is `SOURCE FAILED` with
+  that sentence on the console and the Server tab. A shift of seconds is named as clock skew, with
+  the `--clock-offset` that moves it. Nothing is ever shifted without being asked.
+- **The names must match exactly.** `component` and `metric` are compared as written; a row whose
+  names differ from the annotations only by case or by `.`, `_` and `-` (`App` for `app`,
+  `cpu_pct` for `cpu.pct`) fails the series with a sentence naming both spellings, and every
+  component/metric pair in the file that nothing asked for is listed on the console.
+- **A row with more cells than the header is refused by line**: an unquoted `90,9` is two cells,
+  and read cell by cell it would be 90. Quote such a value, or write it with a `.`. A row that
+  stops before the value column, and a quoted cell that never closes, are refused the same way.
+- A repeated time with another value keeps the later row and says so on the console (two hosts
+  exported without an `instance` column, or an export appended twice).
+- A `;` or tab delimiter and a UTF-16 file are refused by name; export comma-separated UTF-8.
 - **A bad row fails only the series it belongs to**, naming the line — e.g.
   `metrics.csv line 1328: time "2023-11-14 22:13:20" has no time zone - …` — and the source
   reads `PARTIAL`. A missing required column fails the whole file, quoting the header it has.

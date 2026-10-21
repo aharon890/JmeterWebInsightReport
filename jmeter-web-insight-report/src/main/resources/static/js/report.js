@@ -19503,10 +19503,17 @@ WIR.serverKpis = (function () {
     function collectionHtml() {
         var sources = (state.metrics && state.metrics.sources) || [];
         if (!sources.length) return '';
-        var failing = sources.some(function (s) { return s.status !== 'OK'; });
+        /* A series that came back with nothing usable opens the panel too: a source reads OK while one
+           of its series was EMPTY (a name or a time window that did not match), and that series is
+           the one a reader needs to see (research H2). Server data never changes the exit code, so
+           the page is where it has to be said. */
+        var unusable = ((state.metrics && state.metrics.series) || []).filter(function (s) {
+            return s.status === 'EMPTY' || s.status === 'INSUFFICIENT' || s.status === 'FAILED';
+        });
+        var failing = unusable.length > 0 || sources.some(function (s) { return s.status !== 'OK'; });
         var summary = sources.map(function (s) {
             return s.id + ' ' + s.status;
-        }).join(' · ');
+        }).join(' · ') + (unusable.length ? ' · ' + unusable.length + ' series without usable data' : '');
         /* When it was collected, ONCE (SF38): it was printed here and again in the footer below,
            the same time twice. Here, because this is the line a closed panel shows — in the reader's
            zone and the window line's format (M5 exploratory F16, orchestrator call 2026-10-02), with
@@ -19548,6 +19555,13 @@ WIR.serverKpis = (function () {
             }
         });
         html += '</tbody></table></div>';
+        if (unusable.length) {
+            html += '<ul class="wir-unusable-series">' + unusable.map(function (s) {
+                var name = (s.component ? s.component + '/' : '') + (s.metric != null ? s.metric : s.resolvedQuery);
+                return '<li><strong>' + esc(name) + '</strong> ' + esc(s.status)
+                    + (s.error ? ' ' + EM_DASH + ' ' + esc(s.error) : '') + '</li>';
+            }).join('') + '</ul>';
+        }
         /* The collection's id, stamped into serverComponents[] — the time is on the line above. */
         if (state.metrics && state.metrics.collectionId) {
             html += '<p class="wir-dim wir-collection-id">Collection '
@@ -21972,7 +21986,15 @@ WIR.serverKpis = (function () {
                a claim about the wrong thing. With no error on either, the status is all there is. */
             return source && source.error ? source.error : 'the payload marks it FAILED and records no reason';
         }
-        if (status === 'EMPTY') return 'the query matched no series';
+        if (status === 'EMPTY') {
+            /* ServerKpiEvaluator's words: a CSV is searched by component and metric, never by query. */
+            var src = sourceById(payload, series.source);
+            if (src && src.type === 'csv' && series.component != null) {
+                return 'no row of the CSV names component ' + series.component + ', metric '
+                    + (series.metric != null ? series.metric : series.resolvedQuery);
+            }
+            return 'the query matched no series';
+        }
         if (status === 'INSUFFICIENT') {
             var got = series.coverage;
             /* The floor was applied at COLLECT time. This file may declare a different one now,

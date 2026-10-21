@@ -131,7 +131,18 @@ public final class WirCollect {
     }
 
     public static void main(String[] args) {
-        System.exit(run(args, System.out, System.err, System.getenv()));
+        int code;
+        try {
+            code = run(args, System.out, System.err, System.getenv());
+        } catch (OutOfMemoryError e) {
+            // The CSV is held in memory while it is indexed - about ten times its size. A raw stack
+            // trace said nothing a CI log reader could act on.
+            System.err.println("wir-collect: ran out of memory reading the server data (" + e.getMessage()
+                    + "). Give the JVM more heap, e.g. JAVA_TOOL_OPTIONS=-Xmx2g, or export a narrower window"
+                    + " - the rows outside the run are not used");
+            code = 1;
+        }
+        System.exit(code);
     }
 
     /** The whole program, testable: returns the exit code instead of calling {@code System.exit}. */
@@ -230,6 +241,12 @@ public final class WirCollect {
 
         // 3. The source: one, from the flags (C8), under the id every assert names.
         ServerSource source = collectionSource(opts);
+        if (source.type() == ServerSource.Type.CSV && !new File(source.path()).isFile()) {
+            // As a missing --jtl is: a typo here used to write a payload of failed series and exit 0,
+            // to be found only at step 3.
+            println(err, "wir-collect: CSV file does not exist: " + new File(source.path()).getAbsolutePath());
+            return 1;
+        }
         config = config.withSource(source);
         PrometheusSource.Settle settle = opts.containsKey("no-wait")
                 ? PrometheusSource.Settle.none()
@@ -281,6 +298,22 @@ public final class WirCollect {
         if (unasked != null) {
             println(out, "wir-collect: " + unasked);
         }
+        // The same for a long file: rows under a component and metric nothing asked for are a name
+        // the annotations spell otherwise ("App" for "app", cpu_pct for cpu.pct), or an export that
+        // carries more than is asserted on - listed, so the first is seen.
+        String unaskedSeries = unaskedSeriesLine(csvReader.seriesNotAskedFor());
+        if (unaskedSeries != null) {
+            println(out, "wir-collect: " + unaskedSeries);
+        }
+        for (String duplicate : csvReader.duplicateNotes()) {
+            println(out, "wir-collect: WARNING " + duplicate);
+        }
+        // The window the rows were matched against, so a file of another range or zone can be seen
+        // for what it is next to the lines below.
+        println(out, "wir-collect: run window " + java.time.Instant.ofEpochMilli(window.getStart()) + " .. "
+                + java.time.Instant.ofEpochMilli(window.getEnd()) + " (" + data.getTopLevelSampleCount()
+                + " samples" + (source.clockOffsetMs() != 0 ? ", rows moved by --clock-offset "
+                        + Durations.format(source.clockOffsetMs()) : "") + ")");
         boolean csv = source.type() == ServerSource.Type.CSV;
         int incomplete = 0;
         for (ServerMetricsPayload.SeriesRecord s : payload.getSeries()) {
@@ -304,7 +337,14 @@ public final class WirCollect {
             }
             // A file's rows are at the interval it was exported at, which the step must match.
             String spacing = csv ? spacingWarning(name, s, source.stepMillis()) : null;
-            if (spacing != null) {
+            int blank = csv && s.getComponent() != null ? csvReader.blankRows(s.getComponent(),
+                    s.getMetric() != null ? s.getMetric() : s.getResolvedQuery()) : 0;
+            if (spacing != null && blank > 0) {
+                // The rows are at the step; some carry no value. A coarser --step would read the
+                // gaps as covered, so say what they are instead.
+                println(out, "wir-collect: " + name + " has " + blank + " row" + (blank == 1 ? "" : "s")
+                        + " with no value (an empty cell or NaN) - gaps in the export, not a coarser interval");
+            } else if (spacing != null) {
                 println(out, "wir-collect: " + spacing);
             }
             if (!status.judgeable()) {
@@ -423,6 +463,19 @@ public final class WirCollect {
         }
         return headers.size() + (headers.size() == 1 ? " column names" : " columns name")
                 + " a component and metric the annotations do not ask for: " + quotedList(headers);
+    }
+
+    /**
+     * "N series in the file are not asked for by the annotations: ..." for a long file's
+     * component/metric pairs nothing asked for ({@link CsvSource#seriesNotAskedFor}), or null.
+     */
+    static String unaskedSeriesLine(List<String> series) {
+        if (series == null || series.isEmpty()) {
+            return null;
+        }
+        return series.size() + (series.size() == 1 ? " series" : " series") + " in the file "
+                + (series.size() == 1 ? "is" : "are") + " not asked for by the annotations (component/metric"
+                + " must match exactly): " + quotedList(series);
     }
 
     /** The line for {@code --columns} entries naming a column the export does not have: they map nothing. */

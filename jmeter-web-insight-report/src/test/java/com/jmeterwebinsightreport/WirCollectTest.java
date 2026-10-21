@@ -775,6 +775,39 @@ class WirCollectTest {
     }
 
     @Test
+    void aLongFileNamesItsUnaskedSeriesTheRunWindowAndRefusesAMissingFile() throws Exception {
+        Path ann = dir.resolve("custom.json");
+        Files.write(ann, ("{\"serverMetrics\":{\"components\":{\"app\":{\"type\":\"custom\"}},"
+                + "\"asserts\":[{\"id\":\"cpu\",\"component\":\"app\",\"query\":\"cpu.pct\",\"fail\":{\"gt\":90}}]}}")
+                .getBytes(StandardCharsets.UTF_8));
+        StringBuilder sb = new StringBuilder("time,component,metric,instance,value\n");
+        for (int t = 0; t <= 48; t++) {
+            sb.append(1_700_000_000_000L + t * 1000L).append(",App,cpu.pct,,41\n");
+        }
+        Path csv = dir.resolve("case.csv");
+        Files.write(csv, sb.toString().getBytes(StandardCharsets.UTF_8));
+        Streams s = new Streams();
+        assertEquals(0, WirCollect.run(new String[] {"--jtl", PLAIN_JTL.getPath(), "--annotations", ann.toString(),
+                "--out", dir.resolve("case.json").toString(), "--csv", csv.toString(), "--step", "1s", "--no-wait"},
+                s.outStream(), s.errStream(), Collections.<String, String>emptyMap()), s.out() + s.err());
+        // The near-miss fails the asked series by name, and the rows' own name is listed.
+        assertTrue(s.out().contains("wir-collect: FAILED app/cpu.pct - no row names component app, metric cpu.pct;"
+                + " 49 rows name App/cpu.pct"), s.out());
+        assertTrue(s.out().contains("wir-collect: 1 series in the file is not asked for by the annotations"
+                + " (component/metric must match exactly): \"App/cpu.pct\""), s.out());
+        assertTrue(s.out().contains("wir-collect: run window 2023-11-14T22:13:20.026Z .. 2023-11-14T22:14:08.490Z ("),
+                s.out());
+
+        // A --csv that does not exist is a usage fault, as a missing --jtl is: nothing written, exit 1.
+        Streams missing = new Streams();
+        assertEquals(1, WirCollect.run(new String[] {"--jtl", PLAIN_JTL.getPath(), "--annotations", ann.toString(),
+                "--out", dir.resolve("missing.json").toString(), "--csv", dir.resolve("nope.csv").toString(),
+                "--no-wait"}, missing.outStream(), missing.errStream(), Collections.<String, String>emptyMap()));
+        assertTrue(missing.err().contains("wir-collect: CSV file does not exist: "), missing.err());
+        assertFalse(Files.exists(dir.resolve("missing.json")));
+    }
+
+    @Test
     void aWideColumnNamingASeriesTheAnnotationsDoNotAskForIsSaid() throws Exception {
         // A legend with a typo in the component is component/metric/instance to the convention, so it
         // is not "not mapped" - and nothing asks for order-db. Without this line the only trace is an

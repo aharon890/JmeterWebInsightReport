@@ -350,7 +350,7 @@
       "across": "max",
       "status": "NOT_JUDGED",
       "notJudged": "NO_MATCH",
-      "reason": "the query matched no series",
+      "reason": "no row of the CSV names component db, metric nothing",
       "actual": null,
       "coverage": 0.0,
       "instances": 0,

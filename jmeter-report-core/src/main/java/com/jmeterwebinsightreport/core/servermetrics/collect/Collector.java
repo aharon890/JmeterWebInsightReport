@@ -179,7 +179,10 @@ public final class Collector {
                 }
             } else {
                 rec.setStatus("OK");
-                rec.setResolvedUrl(s.path());
+                // A CSV is recorded by its file name: the payload reaches the published page, and a
+                // path given absolute (as a -q properties file usually does) would carry a local
+                // directory into it. The name is all a reader needs to find the file.
+                rec.setResolvedUrl(s.type() == ServerSource.Type.CSV ? new java.io.File(s.path()).getName() : s.path());
                 resolved.put(s.id(), s);
             }
             records.put(s.id(), rec);

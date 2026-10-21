@@ -1,5 +1,6 @@
 package com.jmeterwebinsightreport.core.servermetrics.collect;
 
+import com.jmeterwebinsightreport.core.servermetrics.Durations;
 import com.jmeterwebinsightreport.core.servermetrics.KpiUsability;
 import com.jmeterwebinsightreport.core.servermetrics.ServerSource;
 import com.jmeterwebinsightreport.core.servermetrics.catalogue.ToolName;
@@ -98,6 +99,13 @@ public final class CsvSource implements SeriesSource {
      * is epoch seconds (1759406535 is 2025), which read as milliseconds is January 1970.
      */
     static final long EPOCH_MILLIS_FLOOR = 100_000_000_000L;
+
+    /**
+     * The first all-digit time NOT read as epoch milliseconds: 1e14, the year 5138. At or above it
+     * the number is epoch microseconds or nanoseconds (1792527704613000 is 2026 in microseconds),
+     * which read as milliseconds land tens of thousands of years out - the series EMPTY, nothing said.
+     */
+    static final long EPOCH_MILLIS_CEILING = 100_000_000_000_000L;
 
     /** A local date and time, as Grafana's Formatted data writes one: no offset, no zone. */
     private static final Pattern LOCAL_TIME = Pattern.compile("\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?");
@@ -203,6 +211,13 @@ public final class CsvSource implements SeriesSource {
         Map<String, TreeMap<Long, Double>> byInstance = idx.series.get(key);
         List<ServerMetricsPayload.InstanceRecord> instances = new ArrayList<>();
         if (byInstance == null) {
+            // No row names this series. When rows name one that differs only by case or by '.',
+            // '_' or '-', that is a typo in the export or the file, not a missing series: say so,
+            // by name, rather than an EMPTY that reads like a query that matched nothing.
+            String near = nearMiss(idx, request.component(), request.metricKey());
+            if (near != null) {
+                return Answer.failed(near);
+            }
             return Answer.of(instances, readAs);
         }
         // Rows outside the run are dropped, with one step of slack at each edge: a range query on
@@ -210,6 +225,16 @@ public final class CsvSource implements SeriesSource {
         // and coverage counts them. Clipping exactly read the same data as less covered than the
         // Prometheus backend did (98% against 100% on E26's own series).
         long slack = Math.max(0, source.stepMillis());
+        long fileFirst = Long.MAX_VALUE;
+        long fileLast = Long.MIN_VALUE;
+        int rowsRead = 0;
+        for (TreeMap<Long, Double> rows : byInstance.values()) {
+            if (!rows.isEmpty()) {
+                fileFirst = Math.min(fileFirst, rows.firstKey() + source.clockOffsetMs());
+                fileLast = Math.max(fileLast, rows.lastKey() + source.clockOffsetMs());
+                rowsRead += rows.size();
+            }
+        }
         for (Map.Entry<String, TreeMap<Long, Double>> e : byInstance.entrySet()) {
             // Converted over the whole instance, before the window: a counter's first rate in the
             // run is the difference from the row before it, which the window drops.
@@ -234,7 +259,134 @@ public final class CsvSource implements SeriesSource {
             inst.setPoints(points);
             instances.add(inst);
         }
+        if (instances.isEmpty() && rowsRead > 0) {
+            String file = new File(source.path()).getName();
+            if (window != null && (fileLast < window.getStart() - slack || fileFirst > window.getEnd() + slack)) {
+                // Rows exist for exactly this series and every one fell outside the run. That is a
+                // time problem - a local time written with Z, a wrong --time-zone, an export of
+                // another range, a skewed server clock - and never "the query matched no series":
+                // say so, with both spans and the shift between them.
+                return Answer.failed(outsideWindow(file, request.component(), request.metricKey(), rowsRead,
+                        fileFirst, fileLast, window, slack));
+            }
+            // Rows inside the run, and not one value among them.
+            return Answer.failed(file + " has " + rowsRead + " row" + (rowsRead == 1 ? "" : "s") + " for "
+                    + request.component() + "/" + request.metricKey() + " and every value is empty or NaN"
+                    + " - the export carries the series' times and no numbers");
+        }
         return Answer.of(instances, readAs);
+    }
+
+    /**
+     * The sentence for a series whose every row is outside the run window: how many rows, the span
+     * they cover against the run's, and the shift between them - a whole number of hours or quarter
+     * hours named as a likely time zone, anything else as clock skew, each with the flag that moves
+     * it. A hint only: nothing is shifted without being asked.
+     */
+    static String outsideWindow(String file, String component, String metric, int rows, long first, long last,
+                                ServerMetricsPayload.Window window, long slack) {
+        // Start to start: a file shifted whole keeps its distance from the run at both ends.
+        long shift = Math.round((first - window.getStart()) / 1000.0) * 1000L;
+        boolean before = last < window.getStart();
+        StringBuilder sb = new StringBuilder(file).append(" has ").append(rows).append(" row")
+                .append(rows == 1 ? "" : "s").append(" for ").append(component).append('/').append(metric)
+                .append(" and none inside the run: they run ").append(iso(first)).append(" .. ").append(iso(last))
+                .append(", ").append(before ? "before" : "after").append(" the run (").append(iso(window.getStart()))
+                .append(" .. ").append(iso(window.getEnd())).append(")");
+        long quarter = 15 * 60_000L;
+        long rounded = Math.round((double) shift / quarter) * quarter;
+        long tolerance = Math.max(2 * 60_000L, 2 * slack);
+        // Time zones span -12h..+14h: a shift a whole number of quarter hours inside that is a zone.
+        if (rounded != 0 && Math.abs(rounded) <= 14 * 3_600_000L && Math.abs(shift - rounded) <= tolerance) {
+            sb.append(". They start ").append(Durations.format(Math.abs(rounded))).append(before ? " early" : " late")
+                    .append(", which is usually a time zone: were local times written with Z? Give the file's")
+                    .append(" zone with --time-zone, or move the rows with --clock-offset ").append(rounded > 0 ? "-" : "")
+                    .append(Durations.format(Math.abs(rounded)));
+        } else if (shift != 0 && Math.abs(shift) <= 14 * 3_600_000L) {
+            sb.append(". Export the run's window; if the server's clock is off, move the rows with --clock-offset ")
+                    .append(shift > 0 ? "-" : "").append(Durations.format(Math.abs(shift)));
+        } else {
+            sb.append(". The file covers another period: export the run's window");
+        }
+        return sb.toString();
+    }
+
+    private static String iso(long millis) {
+        return java.time.Instant.ofEpochMilli(millis).toString();
+    }
+
+    /**
+     * When no row names {@code component/metric} but some name it with another case, or with
+     * {@code .}, {@code _} and {@code -} swapped: the sentence naming both, or null.
+     */
+    static String nearMiss(Index idx, String component, String metric) {
+        String wanted = loose(component) + "\u0000" + loose(metric);
+        for (Map.Entry<String, Map<String, TreeMap<Long, Double>>> e : idx.series.entrySet()) {
+            int sep = e.getKey().indexOf('\u0000');
+            String c = e.getKey().substring(0, sep);
+            String m = e.getKey().substring(sep + 1);
+            if ((loose(c) + "\u0000" + loose(m)).equals(wanted)) {
+                int rows = 0;
+                for (TreeMap<Long, Double> r : e.getValue().values()) {
+                    rows += r.size();
+                }
+                return "no row names component " + component + ", metric " + metric + "; " + rows + " row"
+                        + (rows == 1 ? "" : "s") + " name " + c + "/" + m + " - component and metric must be "
+                        + "written exactly as the annotations file writes them";
+            }
+        }
+        return null;
+    }
+
+    private static String loose(String s) {
+        return s.toLowerCase(Locale.ROOT).replace('_', '.').replace('-', '.');
+    }
+
+    /**
+     * One line per series of the file last read that repeats a time with another value - the later
+     * row is kept, and this says so (two hosts without an instance column, an export appended twice).
+     */
+    /**
+     * How many rows of the file last read name this series and carry no value (an empty cell or
+     * NaN): gaps the export wrote, not an interval coarser than the step - so the collector must not
+     * advise a coarser --step for them, which would read half-missing data as fully covered.
+     */
+    public int blankRows(String component, String metric) {
+        Map<String, TreeMap<Long, Double>> byInstance = index == null ? null
+                : index.series.get(seriesKey(component, metric));
+        int blank = 0;
+        if (byInstance != null) {
+            for (TreeMap<Long, Double> rows : byInstance.values()) {
+                for (Double v : rows.values()) {
+                    blank += v == null ? 1 : 0;
+                }
+            }
+        }
+        return blank;
+    }
+
+    public List<String> duplicateNotes() {
+        return index == null ? Collections.<String>emptyList()
+                : Collections.unmodifiableList(new ArrayList<>(index.duplicates.values()));
+    }
+
+    /**
+     * The (component, metric) pairs the long file last read has rows for that {@link #collect} was
+     * never asked for, as {@code component/metric}, in the file's order - so a name the annotations
+     * spell otherwise is listed rather than silently skipped. A wide file lists its columns through
+     * {@link #columnsNotAskedFor} instead.
+     */
+    public List<String> seriesNotAskedFor() {
+        if (index == null || !index.columnsByKey.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<String> out = new ArrayList<>();
+        for (String key : index.series.keySet()) {
+            if (!asked.contains(key)) {
+                out.add(key.replace('\u0000', '/'));
+            }
+        }
+        return Collections.unmodifiableList(out);
     }
 
     private Index indexFor(ServerSource source) {
@@ -258,15 +410,19 @@ public final class CsvSource implements SeriesSource {
     private Index read(ServerSource source) {
         File file = resolve(source.path());
         if (!file.isFile()) {
-            return Index.failed("CSV file does not exist: " + file.getAbsolutePath());
+            return Index.failed("CSV file does not exist: " + source.path());
         }
         byte[] bytes;
         try {
             bytes = Files.readAllBytes(file.toPath());
         } catch (IOException e) {
-            return Index.failed("CSV file could not be read: " + file.getAbsolutePath() + " - " + e.getMessage());
+            return Index.failed("CSV file could not be read: " + source.path() + " - " + e.getMessage());
         }
         if (source.csvLayout() != ServerSource.CsvLayout.WIDE) {
+            if (WideCsv.isUtf16(bytes)) {
+                return Index.failed(file.getName() + " is UTF-16 (a spreadsheet's 'Unicode Text') - save it as"
+                        + " 'CSV UTF-8'");
+            }
             CsvColumns columns;
             try {
                 columns = source.csvColumnSpec() == null ? CsvColumns.none() : CsvColumns.parse(source.csvColumnSpec());
@@ -325,6 +481,12 @@ public final class CsvSource implements SeriesSource {
         boolean afterBlank = false;
         boolean annotated = false;
         for (Row row : rows(text)) {
+            if (row.unclosedQuote) {
+                // Every line after an opening quote that never closes was read as one cell, named no
+                // series, and vanished - leaving only "coverage below the floor" to explain it.
+                return Index.failed(name + " line " + row.line + ": a quoted cell opens here and never closes,"
+                        + " so every line after it reads as one cell - close the quote or remove it");
+            }
             if (row.blank()) {
                 afterBlank = header != null;
                 continue;
@@ -337,6 +499,14 @@ public final class CsvSource implements SeriesSource {
             if (headerDue || (afterBlank && header.namesTimeColumn(row))) {
                 String problem = Header.problem(row, name, columns, component);
                 if (problem != null) {
+                    // A header that is one cell holding ';' or tabs is another delimiter, which no
+                    // flag here reads: said by name, as the wide reader says it.
+                    String only = row.cells.size() == 1 ? row.cells.get(0) : "";
+                    if (only.indexOf(';') >= 0 || only.indexOf('	') >= 0) {
+                        return Index.failed(name + " line " + row.line + ": the delimiter is "
+                                + (only.indexOf(';') >= 0 ? "';'" : "a tab") + " and only ',' is read"
+                                + " - export with commas (a spreadsheet's 'CSV UTF-8, comma delimited')");
+                    }
                     return Index.failed(problem);
                 }
                 header = new Header(row, columns, component);
@@ -368,6 +538,24 @@ public final class CsvSource implements SeriesSource {
             if (idx.errors.containsKey(key)) {
                 continue;   // the first bad line is the one reported
             }
+            // A row with more cells than its header has an unquoted ',' inside a cell - most often a
+            // decimal comma, "90,9", which read cell by cell is 90 and a stray 9: a wrong number with
+            // nothing said. Trailing empty cells (a trailing comma) are not more cells.
+            int written = row.cells.size();
+            while (written > header.width && row.cells.get(written - 1).trim().isEmpty()) {
+                written--;
+            }
+            if (written > header.width) {
+                idx.errors.put(key, where + "has " + written + " cells where the header has " + header.width
+                        + " - an unquoted ',' inside a value? Write numbers with a '.' decimal point and no"
+                        + " thousands separator, or quote the cell");
+                continue;
+            }
+            if (row.cells.size() <= header.value) {
+                idx.errors.put(key, where + "has " + row.cells.size() + " cells and stops before the value"
+                        + " column - a truncated or hand-edited row");
+                continue;
+            }
             String time = row.cell(header.time).trim();
             Long ts = parseTime(time, zone);
             if (ts == null) {
@@ -392,9 +580,16 @@ public final class CsvSource implements SeriesSource {
                 }
             }
             String instance = header.instance == null ? "" : row.cell(header.instance).trim();
-            idx.series.computeIfAbsent(key, k -> new LinkedHashMap<>())
+            Double previous = idx.series.computeIfAbsent(key, k -> new LinkedHashMap<>())
                     .computeIfAbsent(instance, k -> new TreeMap<>())
                     .put(ts, value);   // a repeated timestamp keeps the last row (§7.3)
+            if (previous != null && value != null && !previous.equals(value) && !idx.duplicates.containsKey(key)) {
+                // Two values for one instant: two hosts exported without an instance column, or one
+                // export appended to another. The last row wins, but not in silence.
+                idx.duplicates.put(key, where + "repeats time \"" + time + "\" with another value (" + Durations.trim(previous)
+                        + ", then " + Durations.trim(value) + ") - the later row is kept; two hosts without an"
+                        + " instance column, or an export appended twice?");
+            }
         }
         if (header == null) {
             // An InfluxDB query that matched nothing writes its annotations and no rows.
@@ -418,6 +613,8 @@ public final class CsvSource implements SeriesSource {
         final int[] metric;
         final Integer instance;
         final int value;
+        /** How many cells the header has: a data row with more has an unquoted ',' inside a cell. */
+        final int width;
         /** The time column's name, as a cell of a later header would write it: trimmed, lower case. */
         private final String timeName;
 
@@ -434,6 +631,7 @@ public final class CsvSource implements SeriesSource {
             instance = col.get(lower(columns.columnsFor("instance").get(0)));
             value = col.get(lower(columns.columnsFor("value").get(0)));
             timeName = lower(columns.columnsFor("time").get(0));
+            width = row.cells.size();
         }
 
         /** A row's metric: its one cell, or a join's two written {@code a.b} - empty when either side is. */
@@ -572,7 +770,7 @@ public final class CsvSource implements SeriesSource {
         if (t.chars().allMatch(Character::isDigit)) {
             try {
                 long ms = Long.parseLong(t);
-                return ms < EPOCH_MILLIS_FLOOR ? null : ms;
+                return ms < EPOCH_MILLIS_FLOOR || ms >= EPOCH_MILLIS_CEILING ? null : ms;
             } catch (NumberFormatException e) {
                 return null;
             }
@@ -615,6 +813,9 @@ public final class CsvSource implements SeriesSource {
             if (whole.length() < 19 && (whole.isEmpty() ? 0 : Long.parseLong(whole)) < EPOCH_MILLIS_FLOOR) {
                 return "looks like epoch seconds - this reader takes epoch milliseconds";
             }
+            if (whole.length() >= 15) {
+                return "looks like epoch microseconds or nanoseconds - this reader takes epoch milliseconds";
+            }
         }
         // A local time is refused by name: a silent zone guess shifts the whole window.
         if (LOCAL_TIME.matcher(t).matches()) {
@@ -646,6 +847,8 @@ public final class CsvSource implements SeriesSource {
     static final class Row {
         final int line;
         final List<String> cells;
+        /** True on the last row when the file ended inside a quoted cell that opened on {@link #line}. */
+        boolean unclosedQuote;
 
         Row(int line, List<String> cells) {
             this.line = line;
@@ -732,7 +935,9 @@ public final class CsvSource implements SeriesSource {
         }
         if (any || cell.length() > 0) {
             cells.add(cell.toString());
-            rows.add(new Row(rowLine, cells));
+            Row last = new Row(rowLine, cells);
+            last.unclosedQuote = quoted;
+            rows.add(last);
         }
         // A trailing newline leaves no empty row behind, and a file of blank lines has no header.
         while (!rows.isEmpty() && rows.get(rows.size() - 1).blank() && rows.size() > 1) {
@@ -760,6 +965,8 @@ public final class CsvSource implements SeriesSource {
         final Map<String, List<String>> columnsByKey = new LinkedHashMap<>();
         final List<String> unmapped = new ArrayList<>();
         final List<String> mapMissing = new ArrayList<>();
+        /** By series key, the first line that repeated a time with another value: said, never fatal. */
+        final Map<String, String> duplicates = new LinkedHashMap<>();
         String fileError;
 
         static Index failed(String error) {

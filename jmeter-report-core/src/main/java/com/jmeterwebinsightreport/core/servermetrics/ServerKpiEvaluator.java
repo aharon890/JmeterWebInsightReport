@@ -736,8 +736,17 @@ public final class ServerKpiEvaluator {
                 return source != null && source.getError() != null ? source.getError()
                         : "the payload marks it FAILED and records no reason";
             }
-            case EMPTY:
+            case EMPTY: {
+                // A CSV is searched by component and metric, never by a query: "the query matched no
+                // series" sent its reader looking for PromQL the file never held. The page's
+                // collectionDetail says the same words.
+                ServerMetricsPayload.SourceRecord source = payload.source(series.getSource());
+                if (source != null && "csv".equals(source.getType()) && series.getComponent() != null) {
+                    return "no row of the CSV names component " + series.getComponent() + ", metric "
+                            + (series.getMetric() != null ? series.getMetric() : series.getResolvedQuery());
+                }
                 return "the query matched no series";
+            }
             case INSUFFICIENT: {
                 // The floor was applied at COLLECT time (Collector.statusFor), against whatever
                 // the annotations file declared then. This file may declare a different one now,

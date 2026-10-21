@@ -928,6 +928,23 @@ padded with an invisible character `String.trim` leaves (a no-break, zero-width 
 used to be read as a series nobody asked for, and the one asked for came back empty, naming no
 line (F8-residual). A component's `match` with such an end is a WARNING under the component.
 
+**The CSV explains itself (P3, research H2-H4).** The silent cases the 2026-10 research found are all
+said now, in `CsvSource`: a series whose rows exist but all fall outside the window is FAILED with
+both spans and the shift (`outsideWindow`: a whole number of quarter hours within ±14 h is named as a
+time zone with `--time-zone`/`--clock-offset`, seconds as clock skew, anything larger as another
+period) — it used to be EMPTY → NO_MATCH "the query matched no series" and pass every gate; a name
+that differs only by case or `.`/`_`/`-` is FAILED naming both spellings (`nearMiss`); rows inside the
+run with no value are FAILED as such; a row with more cells than the header (an unquoted `90,9`), one
+that stops before the value, an unclosed quote, a 15+-digit epoch (µs/ns), a `;`/tab delimiter and a
+UTF-16 long file are refused by line or by name; a repeated time with another value is a console
+WARNING (`duplicateNotes`). `wir-collect` prints the run window, the long file's unasked series
+(`seriesNotAskedFor`), blank-cell gaps instead of advising a coarser `--step`, refuses a missing
+`--csv` with exit 1, and turns an OutOfMemoryError into a sentence. A CSV source's `resolvedUrl` is its
+file name only, and its NO_MATCH reason reads "no row of the CSV names component X, metric Y" on both
+sides (`ServerKpiEvaluator.collectionDetail`, report.js `collectionDetail`). The Collection panel opens
+on any EMPTY/INSUFFICIENT/FAILED series and lists them. The tests that used to pin the silence
+(`CsvSourceTest` out-of-window, the DST case) now pin the sentence.
+
 `--from TOOL` (telegraf, datadog, otel, cloudwatch; `--csv` only) reads a file exported from that
 tool: a catalogue metric is looked up under the tool's name first and converted by the catalogue's
 `names` entry (`collect/Conversion`: `gauge`, `counter`, `rate` or `sum-per-period`, times `scale`,
