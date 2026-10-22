@@ -219,12 +219,12 @@ class WebInsightDataExporterTest {
         ReportConfiguration config = new WebInsightDataExporter().buildConfiguration(outputDir.toFile());
         config.setAnnotationsFile(new File("../test-plans/goldens/gate-server.json"));
         config.setServerMetricsFile(new File("../test-plans/goldens/server-metrics.csv"));
-        new WebInsightDataExporter().collectServerCsvIfGiven(config, jtl);
+        com.jmeterwebinsightreport.core.model.ReportData run =
+                new com.jmeterwebinsightreport.core.parser.JtlParser().parse(jtl, config.getReportTitle());
+        new WebInsightDataExporter().collectServerCsvIfGiven(config, jtl, run);
         assertNull(config.getServerDataProblem());
         File payload = config.getServerMetricsFile();
         assertTrue(payload.getName().startsWith("wir-server-metrics-"), payload.toString());
-        com.jmeterwebinsightreport.core.model.ReportData run =
-                new com.jmeterwebinsightreport.core.parser.JtlParser().parse(jtl, config.getReportTitle());
         com.jmeterwebinsightreport.report.servermetrics.ServerMetricsPayloadLoader.Result read =
                 new com.jmeterwebinsightreport.report.servermetrics.ServerMetricsPayloadLoader()
                         .read(payload, com.jmeterwebinsightreport.core.util.RunIdentity.of(run));
@@ -235,7 +235,7 @@ class WebInsightDataExporterTest {
         ReportConfiguration again = new WebInsightDataExporter().buildConfiguration(outputDir.toFile());
         again.setAnnotationsFile(new File("../test-plans/goldens/gate-server.json"));
         again.setServerMetricsFile(new File("../test-plans/goldens/server-metrics.csv"));
-        new WebInsightDataExporter().collectServerCsvIfGiven(again, jtl);
+        new WebInsightDataExporter().collectServerCsvIfGiven(again, jtl, null);
         assertEquals(read.payload().getCollectionId(), new com.jmeterwebinsightreport.report.servermetrics
                 .ServerMetricsPayloadLoader().read(again.getServerMetricsFile(),
                         com.jmeterwebinsightreport.core.util.RunIdentity.of(run)).payload().getCollectionId());
@@ -243,13 +243,66 @@ class WebInsightDataExporterTest {
         // A payload is left as it is; a CSV with no annotations is a refusal that says why.
         ReportConfiguration json = new WebInsightDataExporter().buildConfiguration(outputDir.toFile());
         json.setServerMetricsFile(new File("../test-plans/goldens/server-metrics.json"));
-        new WebInsightDataExporter().collectServerCsvIfGiven(json, jtl);
+        new WebInsightDataExporter().collectServerCsvIfGiven(json, jtl, run);
         assertEquals("server-metrics.json", json.getServerMetricsFile().getName());
         ReportConfiguration bare = new WebInsightDataExporter().buildConfiguration(outputDir.toFile());
         bare.setAnnotationsFile(null);
         bare.setServerMetricsFile(new File("../test-plans/goldens/server-metrics.csv"));
-        new WebInsightDataExporter().collectServerCsvIfGiven(bare, jtl);
+        new WebInsightDataExporter().collectServerCsvIfGiven(bare, jtl, run);
         assertTrue(bare.getServerDataProblem().contains("no annotations file"), bare.getServerDataProblem());
+    }
+
+    /**
+     * The in-process collection reuses the report's own parse of the JTL rather than reading it again
+     * (PR #19 review F22), and writes exactly the payload wir-collect writes from the file: the same
+     * runId, window, collectionId and series. The report's parse carries its ramp-up and Apdex
+     * settings; neither moves the window or the identity, and --rampup is still the collector's.
+     */
+    @Test
+    void theInProcessCollectionReusesTheReportsParseAndWritesWhatWirCollectWritesFromTheFile() throws Exception {
+        File jtl = new File("../test-plans/goldens/plain.jtl");
+        File csv = new File("../test-plans/goldens/server-metrics.csv");
+        File annotations = new File("../test-plans/goldens/gate-server.json");
+        for (long rampUp : new long[] {0L, 5_000L}) {
+            ReportConfiguration config = new WebInsightDataExporter().buildConfiguration(outputDir.toFile());
+            config.setAnnotationsFile(annotations);
+            config.setServerMetricsFile(csv);
+            config.setRampUpDurationMillis(rampUp);
+            // Parsed as execute() parses it.
+            com.jmeterwebinsightreport.core.parser.JtlParser parser = new com.jmeterwebinsightreport.core.parser.JtlParser();
+            if (rampUp > 0) {
+                parser.setRampUpDurationMillis(rampUp);
+            }
+            parser.setApdexThreshold(250);
+            ReportData parsed = parser.parse(jtl, config.getReportTitle());
+            new WebInsightDataExporter().collectServerCsvIfGiven(config, jtl, parsed);
+            assertNull(config.getServerDataProblem());
+
+            File standalone = outputDir.resolve("standalone-" + rampUp + ".json").toFile();
+            java.util.List<String> args = new java.util.ArrayList<>(java.util.Arrays.asList("--jtl", jtl.getPath(),
+                    "--annotations", annotations.getPath(), "--out", standalone.getPath(), "--csv", csv.getPath(),
+                    "--no-wait", "--test-name", config.getReportTitle(),
+                    "--collected-at", Instant.ofEpochMilli(csv.lastModified()).toString()));
+            if (rampUp > 0) {
+                args.add("--rampup");
+                args.add(String.valueOf(rampUp));
+            }
+            java.io.ByteArrayOutputStream sink = new java.io.ByteArrayOutputStream();
+            java.io.PrintStream quiet = new java.io.PrintStream(sink, true);
+            assertEquals(0, com.jmeterwebinsightreport.WirCollect.run(args.toArray(new String[0]), quiet, quiet,
+                    java.util.Collections.<String, String>emptyMap()), sink.toString());
+
+            com.fasterxml.jackson.databind.ObjectMapper json = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.JsonNode inProcess = json.readTree(config.getServerMetricsFile());
+            com.fasterxml.jackson.databind.JsonNode fromFile = json.readTree(standalone);
+            assertEquals(RunIdentity.of(parsed), inProcess.get("runId").asText());
+            assertEquals(fromFile.get("runId"), inProcess.get("runId"));
+            assertEquals(fromFile.get("window"), inProcess.get("window"));
+            assertEquals(rampUp > 0, inProcess.get("window").hasNonNull("rampUpEnd"), inProcess.get("window").toString());
+            assertEquals(fromFile.get("collectionId"), inProcess.get("collectionId"));
+            assertEquals(fromFile.get("series"), inProcess.get("series"));
+            assertEquals(fromFile, inProcess, "the whole payload");
+        }
     }
 
     /**
@@ -266,7 +319,7 @@ class WebInsightDataExporterTest {
         config.setAnnotationsFile(null);
         config.setServerMetricsFile(new File("../test-plans/goldens/server-metrics.csv"));
 
-        new WebInsightDataExporter().readCompanionFiles(config, outputDir.toFile(), jtl);
+        new WebInsightDataExporter().readCompanionFiles(config, outputDir.toFile(), jtl, null);
 
         assertEquals(outputDir.resolve("report-annotations.json").toFile(), config.getAnnotationsFile());
         assertNull(config.getServerDataProblem());

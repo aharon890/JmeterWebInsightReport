@@ -21,14 +21,13 @@
 # with the plugin JAR in lib/ext and nothing else; the release attaches this file (and its .bat)
 # beside that JAR, not the scripts/lib/ it would need from a checkout. So it sources
 # nothing. It used to source scripts/lib/common.sh, which made it run only inside a checkout of
-# this repository. Everything it needs is below. (wir-collect.bat is a thin wrapper over this file
-# and needs it beside it.)
+# this repository. Everything it needs is below. (wir-collect.bat does not wrap this file: it is
+# one java line over the launcher in the plugin JAR, and needs no bash.)
 #
 # Without either script, the same command by hand -- `--help` prints it with the JAR's own name:
-#   java -cp "$JMETER_HOME/lib/ext/jmeter-web-insight-report-X.Y.Z.jar:$JMETER_HOME/lib/*" \
-#        com.jmeterwebinsightreport.WirCollect --jtl ...
-# It is not `java -jar`: Jackson and slf4j are `provided` by JMeter, so JMeter's lib/ has to be
-# on the classpath beside the plugin.
+#   java -jar "$JMETER_HOME/lib/ext/jmeter-web-insight-report-X.Y.Z.jar" --jtl ...
+# The JAR's launcher finds JMeter from its place in lib/ext and puts JMeter's lib/ (Jackson and
+# slf4j are `provided` by JMeter) on the classpath beside the plugin.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

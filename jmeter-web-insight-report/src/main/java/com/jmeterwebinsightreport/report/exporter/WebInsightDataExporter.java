@@ -165,7 +165,7 @@ public class WebInsightDataExporter extends AbstractDataExporter {
             // it might save, and it buys an answer that is correct.
             // The annotations and baseline found in the output directory, then the server data
             // given to this -g run: a payload, or a CSV collected here and now (P4).
-            readCompanionFiles(config, outputDir, jtlFile);
+            readCompanionFiles(config, outputDir, jtlFile, reportData);
 
             if (!bringsServerData(config) && thisRunAlreadyReported(outputDir, configuredName, reportData)) {
                 System.out.println("WEB-INSIGHT-REPORT: SKIPPED — this run's report is already in "
@@ -294,10 +294,11 @@ public class WebInsightDataExporter extends AbstractDataExporter {
      * annotations and baseline auto-detected in the output directory first, then the server data,
      * because collecting a CSV reads the annotations file to know what to collect. Collected first,
      * a CSV given beside an auto-detected annotations file was refused as having none.
+     * {@code reportData} is this run's parse of {@code jtlFile}, which the collection reuses.
      */
-    void readCompanionFiles(ReportConfiguration config, File outputDir, File jtlFile) {
+    void readCompanionFiles(ReportConfiguration config, File outputDir, File jtlFile, ReportData reportData) {
         autoDetectCompanionFiles(config, outputDir);
-        collectServerCsvIfGiven(config, jtlFile);
+        collectServerCsvIfGiven(config, jtlFile, reportData);
     }
 
     /**
@@ -327,13 +328,17 @@ public class WebInsightDataExporter extends AbstractDataExporter {
      * collect it here, in-process, with the collector's own code ({@link WirCollect#run}): every
      * check, refusal and console line the collector has, no second grammar. The run's window,
      * identity and ramp-up come from this very JTL and title, so there is no --test-name or second
-     * --rampup to get wrong. The payload goes to a temporary file that this report then reads; a CSV
-     * the collector refuses becomes a refused payload - said, never fatal by default (decision B).
+     * --rampup to get wrong. The JTL is not read again: {@code parsed}, this report's own parse of it
+     * under its title, is handed to the collector ({@link WirCollect#run(String[], ReportData,
+     * java.io.PrintStream, java.io.PrintStream, java.util.Map)}), whose window and runId derive from exactly the
+     * fields its own parse would give (null: the collector parses the file). The payload goes to a
+     * temporary file that this report then reads; a CSV the collector refuses becomes a refused
+     * payload - said, never fatal by default (decision B).
      *
      * <p>A relative path that does not exist where JMeter runs is looked up beside the JTL, so a
      * properties file with relative names works from JMeter's own Generate HTML report dialog too.
      */
-    void collectServerCsvIfGiven(ReportConfiguration config, File jtlFile) {
+    void collectServerCsvIfGiven(ReportConfiguration config, File jtlFile, ReportData parsed) {
         File given = config.getServerMetricsFile();
         if (given == null) {
             return;
@@ -387,7 +392,7 @@ public class WebInsightDataExporter extends AbstractDataExporter {
         }
         int code;
         try {
-            code = WirCollect.run(args.toArray(new String[0]), System.out, System.err, System.getenv());
+            code = WirCollect.run(args.toArray(new String[0]), parsed, System.out, System.err, System.getenv());
         } catch (OutOfMemoryError e) {
             System.err.println("wir-collect: ran out of memory reading " + given.getName()
                     + " - give JMeter more heap (JVM_ARGS=-Xmx2g) or export a narrower window");

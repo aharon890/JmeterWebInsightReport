@@ -935,7 +935,8 @@ line (F8-residual). A component's `match` with such an end is a WARNING under th
 **`jmeter -g` reads a CSV itself (P4, decision C).** When `webinsight.report.servermetrics` names a file
 whose first character is not `{`, `WebInsightDataExporter.collectServerCsvIfGiven` runs
 `WirCollect.run` in-process — the collector's own validation, refusals and console lines, no second
-grammar — into a temp payload, with `--test-name` = the report title, `--rampup` = the configured
+grammar, handed the report's own parse of the JTL so it is read once (F22; the payload is the one
+`wir-collect` writes from the file, `WebInsightDataExporterTest` compares them whole) — into a temp payload, with `--test-name` = the report title, `--rampup` = the configured
 ramp-up and `--collected-at` = the CSV's mtime (so a rebuild keeps the collectionId and the drafts).
 Reader options are `webinsight.report.servermetrics.<step|clockoffset|timezone|from|layout|columns|
 csvcolumns|component|env>`. A collection the collector refuses becomes `ReportConfiguration
@@ -943,7 +944,7 @@ csvcolumns|component|env>`. A collection the collector refuses becomes `ReportCo
 path missing in the cwd is looked up beside the JTL. Exporter only: the listener runs before the data
 exists, and ignores `webinsight.report.servermetrics` altogether (an INFO line), so one `run.properties`
 serves both commands — it used to read it and refuse it as another run's, so a shared file made every
-interim report read REFUSED, with no NEXT line. A -g run that brings server data is never skipped by `thisRunAlreadyReported` (it used to be,
+interim report read REFUSED, with no NEXT line. A -g run that brings server data that exists, or a recorded refusal of it, is never skipped by `thisRunAlreadyReported` (it used to be,
 silently, over the listener's interim report); any skip prints `WEB-INSIGHT-REPORT: SKIPPED`. This
 reverses "a report reads only the payload the collector wrote": for files it is two steps, not three.
 Golden G10 = G4's inputs given as the CSV; equal to G4 but for collectionId, which the canonicaliser
@@ -961,8 +962,11 @@ the header alone (`collect/CsvShape.looksWide`: Grafana's `Time,component/metric
 `--csv-columns` or `--component`), because the layout is part of what the file reads as. The step is
 measured from the reader's own index, under every flag given (`CsvSource.measuredStepMillis`) — no second
 CSV grammar: each instance's `Coverage.mostCommonSpacing` over its rows with a value inside the run window
-(plus one step), taken when that gap repeats at least 3 times, then the widest over every instance, as
-`Coverage.spacingMillis` takes it. The index is keyed without the step, so `WirCollect.measureCsv` hands
+(plus one step), taken when that gap repeats at least 3 times, then the widest over every instance of the
+series the asserts read, as `Coverage.spacingMillis` takes it — asked as the collection asks
+(`Collector.assertRequests`: the same names, `--from` tool names and resolved queries), so a coarse series
+no assert reads sets nothing; a file with no assert yet is measured over its components' catalogue metrics
+(`Collector.catalogueRequests`). Blank-row and row-spacing lines count the same rows. The index is keyed without the step, so `WirCollect.measureCsv` hands
 the collection the reader that measured, and the file is read once. A measured step coarser than 15 s that
 leaves fewer than 10 points in the run is not adopted, and said (F5). `measureCsv` puts either into the
 options only when the flag was absent and prints `step 5s, measured from the file's rows` / `layout wide,

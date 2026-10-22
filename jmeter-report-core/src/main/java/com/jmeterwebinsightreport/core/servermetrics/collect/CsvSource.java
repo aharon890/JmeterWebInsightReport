@@ -14,9 +14,11 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -370,24 +372,41 @@ public final class CsvSource implements SeriesSource {
      * with a value (a blank row is a gap, as {@link Coverage#spacingMillis} reads it), counting only
      * rows within {@code window} and one {@code source} step of it (null: every row), taken when that
      * spacing repeats at least {@value #MIN_STEP_REPEATS} times in the instance - a jittered or sparse
-     * export has no interval to measure; then the widest over every instance of every series, as
-     * {@link Coverage#spacingMillis} takes it, so a coarser series is never counted in slots finer than
-     * its rows. 0 when nothing was measured, a file the reader refuses included: its refusal follows.
+     * export has no interval to measure; then the widest over every instance of the series
+     * {@code requests} ask for, as {@link Coverage#spacingMillis} takes it, so a coarser series is never
+     * counted in slots finer than its rows. A series is found as {@link #collect} finds it - by
+     * component and metric key, under a {@code --from} tool's name first when the file has rows under
+     * it - and one the collection never reads, however coarse, sets nothing. 0 when nothing was
+     * measured, a file the reader refuses included: its refusal follows.
      */
-    public long measuredStepMillis(ServerSource source, ServerMetricsPayload.Window window) {
+    public long measuredStepMillis(ServerSource source, ServerMetricsPayload.Window window,
+                                   Collection<SeriesSource.Request> requests) {
         Index idx = indexFor(source);
         if (idx.fileError != null) {
             return 0;
         }
+        List<Map<String, TreeMap<Long, Double>>> measured = new ArrayList<>();
+        if (requests == null) {
+            measured.addAll(idx.series.values());
+        } else {
+            Set<String> keys = new LinkedHashSet<>();
+            for (SeriesSource.Request request : requests) {
+                keys.add(keyRead(idx, request));
+            }
+            for (String key : keys) {
+                if (idx.series.containsKey(key) && !idx.errors.containsKey(key) && !idx.padded.containsKey(key)) {
+                    measured.add(idx.series.get(key));
+                }
+            }
+        }
         long slack = Math.max(0, source.stepMillis());
         long widest = 0;
-        for (Map<String, TreeMap<Long, Double>> byInstance : idx.series.values()) {
+        for (Map<String, TreeMap<Long, Double>> byInstance : measured) {
             for (TreeMap<Long, Double> rows : byInstance.values()) {
                 List<Long> times = new ArrayList<>();
                 for (Map.Entry<Long, Double> p : rows.entrySet()) {
                     long ts = p.getKey() + source.clockOffsetMs();
-                    if (p.getValue() != null && (window == null
-                            || (ts >= window.getStart() - slack && ts <= window.getEnd() + slack))) {
+                    if (p.getValue() != null && inRun(ts, window, slack)) {
                         times.add(ts);
                     }
                 }
@@ -398,6 +417,35 @@ public final class CsvSource implements SeriesSource {
             }
         }
         return widest;
+    }
+
+    /** {@link #measuredStepMillis(ServerSource, ServerMetricsPayload.Window, Collection)} over every series in the file. */
+    long measuredStepMillis(ServerSource source, ServerMetricsPayload.Window window) {
+        return measuredStepMillis(source, window, null);
+    }
+
+    /**
+     * The index key {@link #collect} reads {@code request} under: a {@code --from} tool's name for the
+     * metric when the file has rows under it, else the component and metric key.
+     */
+    private static String keyRead(Index idx, SeriesSource.Request request) {
+        String key = seriesKey(request.component(), request.metricKey());
+        ToolName name = request.tool() == null ? null : request.toolName();
+        if (name != null) {
+            String toolKey = seriesKey(request.component(), name.metric());
+            if (idx.has(toolKey)) {
+                return toolKey;
+            }
+        }
+        return key;
+    }
+
+    /**
+     * Whether a row at {@code ts} (the clock offset applied) is one {@link #collect} keeps: inside
+     * {@code window} or within {@code slack} of it - always, with no window.
+     */
+    private static boolean inRun(long ts, ServerMetricsPayload.Window window, long slack) {
+        return window == null || (ts >= window.getStart() - slack && ts <= window.getEnd() + slack);
     }
 
     /** How many consecutive pairs of {@code ascending} are {@code spacing} apart. */
@@ -412,16 +460,28 @@ public final class CsvSource implements SeriesSource {
     /**
      * How far apart the rows of the file last read for this series are, a row with no value
      * included: each instance's {@linkplain Coverage#mostCommonSpacing most common spacing}, the
-     * widest over the instances, 0 with none. Beside {@link Coverage#spacingMillis} over the points,
-     * it tells an export at a coarser interval from one at the step whose blank rows left the gaps.
+     * widest over the instances, 0 with none. Only the rows {@link #collect} keeps count: those within
+     * {@code window} and one {@code source} step of it, the clock offset applied, as
+     * {@link #measuredStepMillis} and {@link #blankRows} count them - an export of a finer period
+     * before the run must not speak for the run's rows. Beside {@link Coverage#spacingMillis} over the
+     * points, it tells an export at a coarser interval from one at the step whose blank rows left the gaps.
      */
-    public long rowSpacingMillis(String component, String metric) {
+    public long rowSpacingMillis(ServerSource source, ServerMetricsPayload.Window window, String component,
+                                 String metric) {
         Map<String, TreeMap<Long, Double>> byInstance = index == null ? null
                 : index.series.get(seriesKey(component, metric));
+        long slack = Math.max(0, source.stepMillis());
         long widest = 0;
         if (byInstance != null) {
             for (TreeMap<Long, Double> rows : byInstance.values()) {
-                widest = Math.max(widest, Coverage.mostCommonSpacing(rows.keySet()));
+                List<Long> times = new ArrayList<>();
+                for (Long t : rows.keySet()) {
+                    long ts = t + source.clockOffsetMs();
+                    if (inRun(ts, window, slack)) {
+                        times.add(ts);
+                    }
+                }
+                widest = Math.max(widest, Coverage.mostCommonSpacing(times));
             }
         }
         return widest;
@@ -430,16 +490,18 @@ public final class CsvSource implements SeriesSource {
     /**
      * How many rows of the file last read name this series and carry no value (an empty cell or
      * NaN): gaps the export wrote, not an interval coarser than the step - so the collector must not
-     * advise a coarser --step for them, which would read half-missing data as fully covered.
+     * advise a coarser --step for them, which would read half-missing data as fully covered. Only the
+     * rows {@link #collect} keeps count, as in {@link #rowSpacingMillis}.
      */
-    public int blankRows(String component, String metric) {
+    public int blankRows(ServerSource source, ServerMetricsPayload.Window window, String component, String metric) {
         Map<String, TreeMap<Long, Double>> byInstance = index == null ? null
                 : index.series.get(seriesKey(component, metric));
+        long slack = Math.max(0, source.stepMillis());
         int blank = 0;
         if (byInstance != null) {
             for (TreeMap<Long, Double> rows : byInstance.values()) {
-                for (Double v : rows.values()) {
-                    blank += v == null ? 1 : 0;
+                for (Map.Entry<Long, Double> p : rows.entrySet()) {
+                    blank += p.getValue() == null && inRun(p.getKey() + source.clockOffsetMs(), window, slack) ? 1 : 0;
                 }
             }
         }

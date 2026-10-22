@@ -76,4 +76,24 @@ class WirCollectLauncherTest {
         Files.createDirectories(empty);
         assertEquals(loose, WirCollectLauncher.onePluginJar(empty.toFile(), loose));
     }
+
+    @Test
+    void aPluginJarOutsideLibExtWithAnotherBesideItIsRefusedNamingThem() throws Exception {
+        // wir-collect.bat's classpath starts with its own folder's *, so the JVM would run either.
+        File installed = jar("jm", "jmeter-web-insight-report-4.0.15.jar");
+        Path release = dir.resolve("release");
+        Files.createDirectories(release);
+        File loose = Files.write(release.resolve("jmeter-web-insight-report-4.1.0.jar"), new byte[] {1}).toFile();
+        Files.write(release.resolve("jmeter-web-insight-report-4.0.9.jar"), new byte[] {1});
+        WirCollectLauncher.Refusal two = assertThrows(WirCollectLauncher.Refusal.class,
+                () -> WirCollectLauncher.onePluginJar(installed.getParentFile(), loose));
+        assertEquals(release.toFile().getAbsoluteFile() + " holds 2 plugin JARs (jmeter-web-insight-report-4.0.9.jar,"
+                + " jmeter-web-insight-report-4.1.0.jar) - the java command would run whichever comes first; keep"
+                + " exactly one beside wir-collect", two.getMessage());
+        // Anything else beside it is no plugin JAR, and changes nothing.
+        Files.delete(release.resolve("jmeter-web-insight-report-4.0.9.jar"));
+        Files.write(release.resolve("wir-collect.bat"), new byte[] {1});
+        Files.write(release.resolve("jmeter-report-core-4.1.0.jar"), new byte[] {1});
+        assertEquals(loose, WirCollectLauncher.onePluginJar(installed.getParentFile(), loose));
+    }
 }

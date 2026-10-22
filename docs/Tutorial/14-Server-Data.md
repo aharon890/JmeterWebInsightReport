@@ -123,7 +123,8 @@ flock "$RUN/.rebuild.lock" sh -c "jmeter -g '$RUN/results.jtl' -o '$RUN/report.n
 - A ready-made version of this script, for bash and for PowerShell, is in the examples bundle
   (`examples/server-data/hooks/` in the repository, `server-data-example-X.Y.Z.zip` on a release):
   `after-run.sh <first-report.json> <results.jtl> <new-output-folder>`, with your export command in
-  `EXPORT_CMD` (called as `EXPORT_CMD <startMillis> <endMillis> server.csv`). It needs no `jq`, and the
+  `EXPORT_CMD` (called as `EXPORT_CMD <startMillis> <endMillis> server.csv`; it is split on
+  whitespace, so a path containing spaces is not supported). It needs no `jq`, and the
   PowerShell one runs JMeter as `java -jar …/ApacheJMeter.jar`, so the exit code is JMeter's.
 - Gate with the DEFAULT or STRICT line of the [Server tab's gating section](13-Server-Tab.md#gating-a-pipeline).
 - Prometheus: run `wir-collect --prometheus-url …` in place of the export and name its

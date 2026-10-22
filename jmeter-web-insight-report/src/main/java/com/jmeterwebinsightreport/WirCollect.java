@@ -42,6 +42,7 @@ import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 
 /**
  * {@code wir-collect}: the CI step between the JMeter run and the report.
@@ -149,6 +150,21 @@ public final class WirCollect {
 
     /** The whole program, testable: returns the exit code instead of calling {@code System.exit}. */
     public static int run(String[] args, PrintStream out, PrintStream err, Map<String, String> environment) {
+        return run(args, null, out, err, environment);
+    }
+
+    /**
+     * The same program over a run its caller has already parsed: {@code jmeter -g}, which collects a
+     * CSV in-process right after parsing {@code --jtl} for its report (P4), so the JTL is read once.
+     * {@code parsed} must be that file's parse under the report's title - the test name the report
+     * hashes into its {@code runId} - with or without the report's ramp-up and Apdex settings, which
+     * change neither the window nor the identity; the window, the {@code runId}, the {@code --rampup}
+     * check, every refusal, every console line and the payload are this collector's own, exactly as
+     * from the file. {@code --jtl} is still required and checked, and names the run in the sentences.
+     * Null parses {@code --jtl} here, as {@code wir-collect} always does.
+     */
+    public static int run(String[] args, ReportData parsed, PrintStream out, PrintStream err,
+                          Map<String, String> environment) {
         if (asksForHelp(args)) {
             for (String line : help(pluginJarName()).split("\n")) {
                 println(out, line);
@@ -176,11 +192,19 @@ public final class WirCollect {
         // 1. The run, through the same core the generator uses.
         String testName = opts.containsKey("test-name") ? opts.get("test-name") : DEFAULT_TEST_NAME;
         ReportData data;
-        try {
-            data = new JtlParser().parse(jtl, testName);
-        } catch (Exception e) {
-            println(err, "wir-collect: the JTL could not be parsed: " + jtl.getAbsolutePath() + " - " + e.getMessage());
-            return 1;
+        if (parsed != null) {
+            // The caller's parse names the run as its report does: that name is the one hashed.
+            data = parsed;
+            if (parsed.getMetadata() != null && parsed.getMetadata().getTestName() != null) {
+                testName = parsed.getMetadata().getTestName();
+            }
+        } else {
+            try {
+                data = new JtlParser().parse(jtl, testName);
+            } catch (Exception e) {
+                println(err, "wir-collect: the JTL could not be parsed: " + jtl.getAbsolutePath() + " - " + e.getMessage());
+                return 1;
+            }
         }
         TestMetadata meta = data.getMetadata();
         if (meta == null || meta.getStartTime() == null || meta.getEndTime() == null) {
@@ -244,10 +268,16 @@ public final class WirCollect {
         // 3. The source: one, from the flags (C8), under the id every assert names. For a CSV, what
         //    the flags left unsaid - the layout, the step - is read off the file (decision 12) and
         //    printed, so a measured value is never silent and the flag that overrides it is named.
-        //    The reader that measures is the one that collects, so the file is read once.
+        //    The reader that measures is the one that collects, so the file is read once; and it
+        //    measures only the series the collection will read, asked as the collection asks.
         CsvSource csvReader = new CsvSource();
+        Collector.Run run = new Collector.Run(runId, testName, window);
         if (opts.containsKey("csv") && new File(opts.get("csv")).isFile()) {
-            for (String line : measureCsv(opts, csvReader, window)) {
+            Collector planner = new Collector(Collections.<ServerSource.Type, SeriesSource>emptyMap(), environment);
+            ServerMetricsConfig declaration = config;
+            String env = opts.get("env");
+            for (String line : measureCsv(opts, csvReader, window,
+                    s -> seriesMeasured(planner, declaration, env, run, s))) {
                 println(out, "wir-collect: " + line);
             }
         }
@@ -275,8 +305,7 @@ public final class WirCollect {
         // 4. The collection.
         ServerMetricsPayload payload;
         try {
-            payload = new Collector(readers, environment).collect(config, opts.get("env"),
-                    new Collector.Run(runId, testName, window),
+            payload = new Collector(readers, environment).collect(config, opts.get("env"), run,
                     // --collected-at: the time to stamp, for jmeter -g collecting in-process (the CSV's
                     // own time), so a rebuild from the same file keeps its collectionId - and the
                     // reader's server drafts. Not in --help: the report passes it, a person does not.
@@ -352,8 +381,8 @@ public final class WirCollect {
             // A file's rows are at the interval it was exported at, which the step must match.
             if (csv) {
                 String key = s.getMetric() != null ? s.getMetric() : s.getResolvedQuery();
-                int blank = s.getComponent() != null ? csvReader.blankRows(s.getComponent(), key) : 0;
-                long rowSpacing = blank > 0 ? csvReader.rowSpacingMillis(s.getComponent(), key) : 0;
+                int blank = s.getComponent() != null ? csvReader.blankRows(source, window, s.getComponent(), key) : 0;
+                long rowSpacing = blank > 0 ? csvReader.rowSpacingMillis(source, window, s.getComponent(), key) : 0;
                 for (String line : spacingLines(name, s, blank, rowSpacing, source.stepMillis())) {
                     println(out, "wir-collect: " + line);
                 }
@@ -842,13 +871,16 @@ public final class WirCollect {
      * file itself, put into {@code opts} as if they had been passed, and one line each saying so. The
      * wide layout from the header ({@link CsvShape}), only where nothing else names columns (no
      * --csv-columns, no --component); then the step from {@code reader}'s own index of the file under
-     * every flag given ({@link CsvSource#measuredStepMillis}), which the collection reuses. A step
+     * every flag given ({@link CsvSource#measuredStepMillis}), which the collection reuses, over the
+     * series {@code asked} says the collection will read from the source those flags make
+     * ({@link #seriesMeasured}; null: every series in the file). A step
      * coarser than the default that would leave fewer than {@value #MIN_MEASURED_POINTS} points in
      * {@code window} is not adopted - a few points would judge the whole run at full coverage - and
      * that is said instead. Nothing measured, a file the reader refuses included, says nothing. An
      * explicit flag is never overridden.
      */
-    static List<String> measureCsv(Map<String, String> opts, CsvSource reader, ServerMetricsPayload.Window window) {
+    static List<String> measureCsv(Map<String, String> opts, CsvSource reader, ServerMetricsPayload.Window window,
+                                   Function<ServerSource, List<SeriesSource.Request>> asked) {
         List<String> lines = new ArrayList<>();
         if (!opts.containsKey("layout") && !opts.containsKey("csv-columns") && !opts.containsKey("component")
                 && CsvShape.looksWide(new File(opts.get("csv")))) {
@@ -861,7 +893,8 @@ public final class WirCollect {
         }
         long step;
         try {
-            step = reader.measuredStepMillis(collectionSource(opts), window);
+            ServerSource source = collectionSource(opts);
+            step = reader.measuredStepMillis(source, window, asked == null ? null : asked.apply(source));
         } catch (RuntimeException unmeasurable) {
             return lines;   // the collection says what is wrong with the file
         }
@@ -879,6 +912,19 @@ public final class WirCollect {
         lines.add("step " + Durations.format(step) + ", measured from the file's rows - pass --step"
                 + " to collect at another");
         return lines;
+    }
+
+    /**
+     * The series a measured step is taken over: those the enabled server asserts read, asked of
+     * {@code source} as the collection asks ({@link Collector#assertRequests}) - so a coarse series
+     * in the file that no assert reads cannot set the step every assert is counted in. A file with
+     * no assert yet, only catalogue components, is measured over their catalogue metrics, the only
+     * series its collection reads ({@link Collector#catalogueRequests}).
+     */
+    static List<SeriesSource.Request> seriesMeasured(Collector planner, ServerMetricsConfig config, String env,
+                                                     Collector.Run run, ServerSource source) {
+        List<SeriesSource.Request> asserts = planner.assertRequests(config, env, run, source);
+        return asserts.isEmpty() ? planner.catalogueRequests(config, env, run, source) : asserts;
     }
 
     /** The collection's one source, from the flags parseArgs has already checked. */

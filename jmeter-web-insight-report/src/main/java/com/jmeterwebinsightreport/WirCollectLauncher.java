@@ -116,27 +116,44 @@ public final class WirCollectLauncher {
     /**
      * The plugin JAR to run. A plugin JAR run from outside a lib/ext (a release folder, or beside
      * wir-collect.bat) is itself the plugin: lib/ext is then not what is running, so whatever version
-     * it holds, and how many, does not matter. Otherwise the one plugin JAR in lib/ext - refusing none
-     * (name the fix) and several (list them).
+     * it holds, and how many, does not matter - unless its own folder holds another plugin JAR beside
+     * it: wir-collect.bat puts that folder's {@code *} first on the classpath, so the JVM would run
+     * whichever it lists first, and that is refused, naming them. Otherwise the one plugin JAR in
+     * lib/ext - refusing none (name the fix) and several (list them).
      */
     static File onePluginJar(File ext, File self) throws Refusal {
-        if (self.isFile() && self.getName().startsWith("jmeter-web-insight-report-")
-                && self.getName().endsWith(".jar") && !inLibExt(self)) {
+        if (self.isFile() && isPluginJar(self.getName()) && !inLibExt(self)) {
+            File folder = self.getAbsoluteFile().getParentFile();
+            File[] beside = folder == null ? null : folder.listFiles((d, n) -> isPluginJar(n));
+            if (beside != null && beside.length > 1) {
+                throw new Refusal(folder + " holds " + beside.length + " plugin JARs (" + names(beside) + ") - the"
+                        + " java command would run whichever comes first; keep exactly one beside wir-collect");
+            }
             return self;
         }
-        File[] found = ext.listFiles((d, n) -> n.startsWith("jmeter-web-insight-report-") && n.endsWith(".jar"));
+        File[] found = ext.listFiles((d, n) -> isPluginJar(n));
         if (found == null || found.length == 0) {
             throw new Refusal("no jmeter-web-insight-report-*.jar in " + ext + " - copy the plugin JAR there");
         }
         if (found.length > 1) {
-            StringBuilder names = new StringBuilder();
-            for (File f : found) {
-                names.append(names.length() == 0 ? "" : ", ").append(f.getName());
-            }
-            throw new Refusal(ext + " holds " + found.length + " plugin JARs (" + names + ") - JMeter would load"
+            throw new Refusal(ext + " holds " + found.length + " plugin JARs (" + names(found) + ") - JMeter would load"
                     + " whichever comes first; keep exactly one");
         }
         return found[0];
+    }
+
+    private static boolean isPluginJar(String name) {
+        return name.startsWith("jmeter-web-insight-report-") && name.endsWith(".jar");
+    }
+
+    /** The files' names, sorted so the sentence is the same on every file system, comma separated. */
+    private static String names(File[] files) {
+        List<String> sorted = new ArrayList<>();
+        for (File f : files) {
+            sorted.add(f.getName());
+        }
+        java.util.Collections.sort(sorted);
+        return String.join(", ", sorted);
     }
 
     /** One refusal sentence; the launcher exits 1 with it. */

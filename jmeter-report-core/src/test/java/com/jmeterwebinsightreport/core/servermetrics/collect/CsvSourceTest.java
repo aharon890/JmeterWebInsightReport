@@ -1930,8 +1930,49 @@ class CsvSourceTest {
             sb.append(1_700_000_000_000L + i * 15_000L).append(",app,cpu,").append(i % 3 == 0 ? "1" : "").append('\n');
         }
         CsvSource reader = new CsvSource();
-        ask(reader, csv(sb.toString()), "app", "cpu");
-        assertEquals(15_000, reader.rowSpacingMillis("app", "cpu"));
-        assertEquals(8, reader.blankRows("app", "cpu"));
+        ServerSource s = csv(sb.toString());
+        ask(reader, s, "app", "cpu");
+        assertEquals(15_000, reader.rowSpacingMillis(s, HOUR, "app", "cpu"));
+        assertEquals(8, reader.blankRows(s, HOUR, "app", "cpu"));
+    }
+
+    @Test
+    void theRowsSpacingAndBlankRowsCountOnlyTheRowsTheCollectionKeeps() throws IOException {
+        // A day-old hour of 1 s rows, every other one blank, then 15 s rows over the run, one in three
+        // blank: the run's rows are 15 s apart with 8 blanks, whatever the file held before it.
+        StringBuilder sb = new StringBuilder("time,component,metric,value\n");
+        for (int i = 0; i < 3600; i++) {
+            sb.append(1_700_000_000_000L - 86_400_000L + i * 1000L).append(",app,cpu,").append(i % 2 == 0 ? "1" : "")
+                    .append('\n');
+        }
+        for (int i = 0; i < 12; i++) {
+            sb.append(1_700_000_000_000L + i * 15_000L).append(",app,cpu,").append(i % 3 == 0 ? "1" : "").append('\n');
+        }
+        CsvSource reader = new CsvSource();
+        ServerSource s = csv(sb.toString());
+        ask(reader, s, "app", "cpu");
+        assertEquals(15_000, reader.rowSpacingMillis(s, HOUR, "app", "cpu"));
+        assertEquals(8, reader.blankRows(s, HOUR, "app", "cpu"));
+        // The clock offset moves the rows as the collection moves them: a day later, the old hour is the run's.
+        ServerSource moved = ServerSource.csv(ServerSource.COLLECTION_ID, s.path(), 15_000, 86_400_000L);
+        assertEquals(1_000, reader.rowSpacingMillis(moved, HOUR, "app", "cpu"));
+        assertEquals(1800, reader.blankRows(moved, HOUR, "app", "cpu"));
+    }
+
+    @Test
+    void theMeasuredStepIsTheAskedSeriesOnesAndACoarseSeriesNobodyReadsSetsNothing() throws IOException {
+        // 1 s host rows an assert reads, beside a 60 s series no assert names: 1 s.
+        ServerSource s = csv("time,component,metric,value\n"
+                + rows("host,cpu", 1_700_000_000_000L, 1000, 600, false)
+                + rows("db,conns", 1_700_000_000_000L, 60_000, 40, false));
+        List<SeriesSource.Request> asked = Collections.singletonList(new SeriesSource.Request("q", "host", "cpu"));
+        assertEquals(1_000, new CsvSource().measuredStepMillis(s, HOUR, asked));
+        // Asked for both, the widest: the coarse one is now read, and must not be counted in 1 s slots.
+        List<SeriesSource.Request> both = java.util.Arrays.asList(new SeriesSource.Request("q", "host", "cpu"),
+                new SeriesSource.Request("q", "db", "conns"));
+        assertEquals(60_000, new CsvSource().measuredStepMillis(s, HOUR, both));
+        // Asked for nothing the file has: nothing measured.
+        assertEquals(0, new CsvSource().measuredStepMillis(s, HOUR,
+                Collections.singletonList(new SeriesSource.Request("q", "app", "mem"))));
     }
 }

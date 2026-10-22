@@ -1040,13 +1040,14 @@ class WirCollectTest {
         ServerMetricsPayload.Window run = new ServerMetricsPayload.Window(1_700_000_000_000L, 1_700_002_100_000L, null);
         assertEquals(Collections.singletonList("step 10m measured from the file's rows is too coarse for this 35m run"
                 + " (fewer than 10 points) - collecting at 15s; pass --step to collect at another"),
-                WirCollect.measureCsv(opts, new com.jmeterwebinsightreport.core.servermetrics.collect.CsvSource(), run));
+                WirCollect.measureCsv(opts, new com.jmeterwebinsightreport.core.servermetrics.collect.CsvSource(), run,
+                        null));
         assertFalse(opts.containsKey("step"));
         // The same rows over a 100-minute run leave eleven points: taken.
         Map<String, String> longer = csvOpts("rollup.csv", rows.toString());
         assertEquals(Collections.singletonList("step 10m, measured from the file's rows - pass --step to collect at another"),
                 WirCollect.measureCsv(longer, new com.jmeterwebinsightreport.core.servermetrics.collect.CsvSource(),
-                        new ServerMetricsPayload.Window(1_700_000_000_000L, 1_700_006_000_000L, null)));
+                        new ServerMetricsPayload.Window(1_700_000_000_000L, 1_700_006_000_000L, null), null));
         assertEquals("10m", longer.get("step"));
     }
 
@@ -1057,7 +1058,7 @@ class WirCollectTest {
         Map<String, String> jitter = csvOpts("jitter.csv", "time,component,metric,value\n1700000000000,app,cpu,1\n"
                 + "1700000015001,app,cpu,1\n1700000029999,app,cpu,1\n1700000045002,app,cpu,1\n");
         assertTrue(WirCollect.measureCsv(jitter, new com.jmeterwebinsightreport.core.servermetrics.collect.CsvSource(),
-                run).isEmpty());
+                run, null).isEmpty());
         assertFalse(jitter.containsKey("step"));
         // Epoch microseconds: the reader refuses them, and nothing is measured first (F11).
         StringBuilder micros = new StringBuilder("time,component,metric,value\n");
@@ -1066,7 +1067,7 @@ class WirCollectTest {
         }
         Map<String, String> us = csvOpts("micros.csv", micros.toString());
         assertTrue(WirCollect.measureCsv(us, new com.jmeterwebinsightreport.core.servermetrics.collect.CsvSource(),
-                run).isEmpty());
+                run, null).isEmpty());
         assertFalse(us.containsKey("step"));
     }
 
@@ -1084,7 +1085,7 @@ class WirCollectTest {
         com.jmeterwebinsightreport.core.servermetrics.collect.CsvSource reader =
                 new com.jmeterwebinsightreport.core.servermetrics.collect.CsvSource();
         assertEquals(Collections.singletonList("step 30s, measured from the file's rows - pass --step to collect at another"),
-                WirCollect.measureCsv(opts, reader, run));
+                WirCollect.measureCsv(opts, reader, run, null));
         assertEquals("30s", opts.get("step"));
         // A file mixing a 1 s series and a 15 s one is collected at 15 s (F7).
         StringBuilder mixed = new StringBuilder("time,component,metric,value\n");
@@ -1095,7 +1096,7 @@ class WirCollectTest {
             mixed.append(1_700_000_000_000L + i * 15_000L).append(",db,conns,1\n");
         }
         Map<String, String> both = csvOpts("mixed.csv", mixed.toString());
-        WirCollect.measureCsv(both, new com.jmeterwebinsightreport.core.servermetrics.collect.CsvSource(), run);
+        WirCollect.measureCsv(both, new com.jmeterwebinsightreport.core.servermetrics.collect.CsvSource(), run, null);
         assertEquals("15s", both.get("step"));
         // A wide file read through --columns: each column a series, never rows paired by equal values (F8).
         StringBuilder wide = new StringBuilder("Time,orders-db CPU\n");
@@ -1108,7 +1109,49 @@ class WirCollectTest {
         legend.put("layout", "wide");
         legend.put("columns", map.toString());
         assertEquals(Collections.singletonList("step 15s, measured from the file's rows - pass --step to collect at another"),
-                WirCollect.measureCsv(legend, new com.jmeterwebinsightreport.core.servermetrics.collect.CsvSource(), run));
+                WirCollect.measureCsv(legend, new com.jmeterwebinsightreport.core.servermetrics.collect.CsvSource(), run,
+                        null));
+    }
+
+    @Test
+    void theStepIsMeasuredOverTheSeriesTheAssertsReadAndACoarseSeriesNoAssertNamesSetsNothing() throws Exception {
+        // 1 s rows of app/cpu, which an assert reads, beside 10 s rows of app/mem, which none does, over
+        // plain.jtl's 48 s window. Measured over the whole file the step was 10 s, and cpu's gaps were
+        // counted in 10 s slots.
+        StringBuilder rows = new StringBuilder("time,component,metric,value\n");
+        for (int t = -5; t <= 55; t++) {
+            rows.append(1_700_000_000_000L + t * 1000L).append(",app,cpu,1\n");
+        }
+        for (int t = -20; t <= 70; t += 10) {
+            rows.append(1_700_000_000_000L + t * 1000L).append(",app,mem,1\n");
+        }
+        Path csv = dir.resolve("mixed-asked.csv");
+        Files.write(csv, rows.toString().getBytes(StandardCharsets.UTF_8));
+        String assertOn = "{\"id\":\"%s\",\"component\":\"app\",\"query\":\"%s\",\"reduce\":{\"kind\":\"max\"},\"fail\":{\"gt\":100}}";
+        Path cpuOnly = dir.resolve("cpu-only.json");
+        Files.write(cpuOnly, ("{\"serverMetrics\":{\"components\":{\"app\":{\"type\":\"custom\"}},\"asserts\":["
+                + String.format(assertOn, "cpu", "cpu") + "]}}").getBytes(StandardCharsets.UTF_8));
+        File out = dir.resolve("asked.json").toFile();
+        Streams s = new Streams();
+        assertEquals(0, WirCollect.run(new String[] {"--jtl", PLAIN_JTL.getPath(), "--annotations", cpuOnly.toString(),
+                "--out", out.getPath(), "--csv", csv.toString(), "--no-wait"}, s.outStream(), s.errStream(),
+                Collections.<String, String>emptyMap()), s.out() + s.err());
+        assertTrue(s.out().contains("wir-collect: step 1s, measured from the file's rows - pass --step to collect at another"),
+                s.out());
+        ServerMetricsPayload p = new ServerMetricsPayloadLoader()
+                .read(out, RunIdentity.of(new JtlParser().parse(PLAIN_JTL, WirCollect.DEFAULT_TEST_NAME))).payload();
+        assertEquals(1000L, p.getSources().get(0).getStepMillis());
+
+        // Asserted on too, the 10 s series is read, and the step is measured over it as well.
+        Path both = dir.resolve("both.json");
+        Files.write(both, ("{\"serverMetrics\":{\"components\":{\"app\":{\"type\":\"custom\"}},\"asserts\":["
+                + String.format(assertOn, "cpu", "cpu") + "," + String.format(assertOn, "mem", "mem") + "]}}")
+                .getBytes(StandardCharsets.UTF_8));
+        Streams b = new Streams();
+        assertEquals(0, WirCollect.run(new String[] {"--jtl", PLAIN_JTL.getPath(), "--annotations", both.toString(),
+                "--out", dir.resolve("both-out.json").toString(), "--csv", csv.toString(), "--no-wait"}, b.outStream(),
+                b.errStream(), Collections.<String, String>emptyMap()), b.out() + b.err());
+        assertTrue(b.out().contains("wir-collect: step 10s, measured from the file's rows"), b.out());
     }
 
     // ---- --csv-columns, --component: a long export another tool named -----------------------------

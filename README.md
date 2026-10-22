@@ -468,8 +468,10 @@ Replace `X.Y.Z` with the JAR's version, or run it once with `--help`: that print
 exit codes and this line with the actual JAR name filled in. Two plugin JARs in `lib/ext` are
 refused, naming both.
 
-**On Windows**, `wir-collect.bat` is one `java` line over `%JMETER_HOME%\lib\ext`: it needs
-`JMETER_HOME` set, and no bash.
+**On Windows**, `wir-collect.bat` is one `java` line, no bash. It runs the plugin JAR it finds
+beside itself, else in `..\lib\ext` (the `.bat` copied into `$JMETER_HOME\bin`), else in
+`%JMETER_HOME%\lib\ext`, so in `bin` or beside the JAR it needs no `JMETER_HOME`; a JAR beside it
+that is not in a `lib\ext` still needs `JMETER_HOME` to find JMeter, and says so.
 
 ### CI/CD Integration
 

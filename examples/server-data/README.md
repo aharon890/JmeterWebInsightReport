@@ -42,6 +42,7 @@ powershell -ExecutionPolicy Bypass -File hooks/after-run.ps1 web-insight-report.
 ```
 
 Point `EXPORT_CMD` at your tool's export, called as `<EXPORT_CMD> <startMillis> <endMillis>
-server.csv`; it defaults to `node fake-export.js`.
+server.csv`; it defaults to `node fake-export.js`. `EXPORT_CMD` is split on whitespace, so a path
+containing spaces is not supported: put the tool on `PATH`, or in a folder whose path has none.
 
 See [Getting Server Data In](../../docs/Tutorial/14-Server-Data.md) for the GUI and more.
