@@ -1458,7 +1458,9 @@ The console prints one clause per server component after the client verdict, for
   sample, so a step finer than the scrape interval counts those repeats as data. Coverage reads
   higher than the data supports, and `sustainedFor` and `breachBudget` count repeated samples as
   time held. A `sustainedFor` must also be a whole number of steps: at `15s`, `"20s"` can never be
-  true, and the assert is `INVALID_RULE`, naming the step.
+  true, and the assert is `INVALID_RULE`, naming the step. A CSV keeps its own spacing whatever
+  `--step` says, so the same holds for the spacing the data really has: 4 s rows collected at `15s`
+  under a `sustainedFor` of `30s` are `INVALID_RULE`, naming the measured 4 s spacing (`60s` works).
 - **`slope` is per minute.** A least-squares fit over the judged window, in units per minute, so
   `"fail": {"gt": 1048576}` on a bytes series means "growing faster than 1 MiB a minute". Every
   surface writes it per minute: `fail > 1,048,576 B/min` on the board, `fail > 1048576 B/min` in
@@ -2236,7 +2238,8 @@ no declared environment is a configuration error.
 
 A band takes **one** operator. `outside`, `min` and `max` are not operators: a corridor is two server
 asserts, or two bands in opposite directions, so each says which end was missed. `sustainedFor` must
-be a whole number of the collection's steps. One no longer than a step is the plain reducer.
+be a whole number of the collection's steps, and of the data's own spacing when that differs.
+One no longer than a step is the plain reducer.
 `"0s"` is refused: a level held for no time is the reducer without a tolerance, so remove
 `reduce.over` instead.
 `breachBudget` is a fraction: 2% is `0.02`.

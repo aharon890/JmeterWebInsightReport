@@ -22172,6 +22172,41 @@ WIR.serverKpis = (function () {
     }
 
     /**
+     * ServerKpiEvaluator.sustainedNeedsWholeSpacing: the step test for the spacing the data really
+     * has, asked only once the reduction found no complete window (H11) — 4 s CSV rows collected at
+     * --step 15s under a sustainedFor 30s. measuredSpacing is the most frequent in-window gap over
+     * every instance, the smaller on a tie.
+     */
+    function measuredSpacing(series, window) {
+        var counts = {};
+        (series.instances || []).forEach(function (inst) {
+            var points = inWindow(inst.points, window);
+            for (var i = 1; i < points.length; i++) {
+                var gap = points[i][0] - points[i - 1][0];
+                if (gap > 0) counts[gap] = (counts[gap] || 0) + 1;
+            }
+        });
+        var best = 0, most = 0;
+        Object.keys(counts).map(Number).sort(function (a, b) { return a - b; }).forEach(function (gap) {
+            if (counts[gap] > most) { best = gap; most = counts[gap]; }
+        });
+        return best;
+    }
+
+    function sustainedNeedsWholeSpacing(kpi, series, window, step, coverage, instances) {
+        var reducer = kpi.reducer;
+        if (!reducer || !reducer.over || !(reducer.over.sustainedForMillis > 0)) return null;
+        var spacing = measuredSpacing(series, window);
+        var d = reducer.over.sustainedForMillis;
+        if (spacing <= 0 || spacing === step || d <= spacing || d % spacing === 0) return null;
+        return notJudged(kpi, 'INVALID_RULE', 'reduce.over sustainedFor ' + formatDuration(d)
+            + " is not a whole number of the data's measured " + formatDuration(spacing)
+            + ' spacing (collected at --step ' + formatDuration(step) + '), so no window can ever span it'
+            + ' - use a multiple of ' + formatDuration(spacing)
+            + ', or export the data at the --step it is collected with', coverage, instances);
+    }
+
+    /**
      * Judge one KPI. The order is the Java evaluator's, and every early return is a reason.
      */
     /**
@@ -22254,6 +22289,8 @@ WIR.serverKpis = (function () {
 
         var reduced = reduceAcross(kpi, series, window, step);
         if (reduced === null) {
+            var spacing = sustainedNeedsWholeSpacing(kpi, series, window, step, coverage, instances);
+            if (spacing) return spacing;
             return notJudged(kpi, 'NO_VALUE', 'no value: ' + describeReducer(kpi)
                 + ' over the judged window [' + window[0] + ', ' + window[1] + '] has nothing to '
                 + 'reduce - the series carries no complete window there', coverage, instances);
