@@ -1,0 +1,120 @@
+name: Cross-OS smoke
+
+# Runs the operator's commands, as the docs print them, on Windows, macOS and Linux - the class of
+# defect the 2026-10 research found only by hand: a launcher that needs bash (WSL's on Windows),
+# jmeter.bat swallowing the exit code, quoting that one shell splits. Everything else is tested on
+# Ubuntu alone; this is the one place the three platforms run.
+#
+# NOT a required check, and kept out of ci.yml on purpose: CLAUDE.md's standing rule is that no
+# required status check may be slower than the fast tier, and this downloads JMeter on three
+# runners. It runs on pull requests that touch the plugin or the docs, and by hand.
+on:
+  pull_request:
+    paths:
+      - 'jmeter-report-core/**'
+      - 'jmeter-web-insight-report/**'
+      - 'scripts/wir-collect.*'
+      - 'docs/**'
+      - '.github/workflows/cross-os.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cross-os-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  JMETER_VERSION: '5.6.3'
+
+jobs:
+  smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Cache JMeter
+        id: jmeter-cache
+        uses: actions/cache@v4
+        with:
+          path: apache-jmeter-${{ env.JMETER_VERSION }}
+          key: jmeter-${{ env.JMETER_VERSION }}
+
+      - name: Download JMeter
+        if: steps.jmeter-cache.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL -o jmeter.tgz "https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-${JMETER_VERSION}.tgz"
+          tar -xzf jmeter.tgz
+
+      - name: Build the plugin
+        run: mvn -B -q -DskipTests install
+
+      - name: Install the plugin JAR (no reportgenerator.properties edit - the -q file registers the exporter)
+        run: |
+          rm -f apache-jmeter-${JMETER_VERSION}/lib/ext/jmeter-web-insight-report-*.jar
+          cp jmeter-web-insight-report/target/jmeter-web-insight-report-*.jar apache-jmeter-${JMETER_VERSION}/lib/ext/
+          ls apache-jmeter-${JMETER_VERSION}/lib/ext | grep insight
+
+      - name: Prepare a run folder (the goldens' fixed JTL, annotations and CSV)
+        run: |
+          mkdir -p run
+          cp test-plans/goldens/plain.jtl run/results.jtl
+          cp test-plans/goldens/gate-server.json run/report-annotations.json
+          cp test-plans/goldens/server-metrics.csv run/server.csv
+          # Forward slashes, absolute: the form the docs give, which every OS and the properties
+          # format read the same way.
+          ANN="$(cd run && pwd -W 2>/dev/null || pwd)/report-annotations.json"
+          printf '%s\n' \
+            "jmeter.reportgenerator.exporter.webinsight.classname=com.jmeterwebinsightreport.report.exporter.WebInsightDataExporter" \
+            "webinsight.report.annotations=${ANN//\\//}" \
+            "webinsight.report.servermetrics=server.csv" \
+            "webinsight.report.servermetrics.step=1s" > run/run.properties
+          cat run/run.properties
+
+      - name: "Step 2: jmeter -g with the CSV (Linux/macOS: bin/jmeter)"
+        if: runner.os != 'Windows'
+        run: apache-jmeter-${JMETER_VERSION}/bin/jmeter -g run/results.jtl -o run/report -q run/run.properties | tee run/report.log
+
+      - name: "Step 2: jmeter -g with the CSV (Windows: jmeter.bat from PowerShell, as the docs print it)"
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & "apache-jmeter-$env:JMETER_VERSION\bin\jmeter.bat" -g run/results.jtl -o run/report -q run/run.properties | Tee-Object run/report.log
+
+      - name: The report judged the server data, on every OS
+        run: |
+          test -f run/report/web-insight-report.html
+          grep -a "wir-collect: OK kafka/up" run/report.log
+          grep -q '"serverStatus"' run/report/web-insight-report.json
+          grep -q '"state" : "COLLECTED"' run/report/web-insight-report.json
+          echo "serverStatus: $(grep -o '"serverStatus" : "[A-Z_]*"' run/report/web-insight-report.json)"
+
+      - name: The real exit code, the same text on every OS (java -jar ApacheJMeter.jar)
+        run: |
+          # A server problem never changes the exit code (decision B): the run above exits 0.
+          java -jar apache-jmeter-${JMETER_VERSION}/bin/ApacheJMeter.jar -g run/results.jtl -o run/report2 -q run/run.properties > run/report2.log 2>&1
+          echo "exit=$?"
+
+      - name: Upload the run on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cross-os-${{ matrix.os }}
+          path: run/
+          retention-days: 7

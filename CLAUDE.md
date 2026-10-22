@@ -240,6 +240,7 @@ The division of labour:
 | `explore-report` skill (`.claude/skills/explore-report/`) | drive a browser session against a generated report, then turn findings into specs |
 | `prune-actions` skill (`.claude/skills/prune-actions/`) | delete old Actions runs, keeping the newest 10, and clear Actions caches. Dry run unless `--yes`. Written when this project's private predecessor was the account's entire Actions storage bill (Aug 2026); Actions on a public repository are free, so it is housekeeping now |
 | `.github/workflows/ci.yml` | on every push and PR: `mvn verify`, the `report.js` unit tests, and the static checks (`verify_shaded_jar`, `bash -n`, `verify_script_modes`, `verify_line_endings`, `verify_no_nul_bytes`, `verify_report_js_rules`, `verify_fixture_lists`, `verify_jq_idioms`, the `selftest_*` guards). About a minute. Never launches JMeter, a fixture or a browser |
+| `.github/workflows/cross-os.yml` | on pull requests touching the plugin or the docs (and by hand): the operator's two commands with a `-q` file over the goldens' CSV, on **Windows, macOS and Linux**, plus the `java -jar ApacheJMeter.jar` form. **Not a required check** — it downloads JMeter on three runners, so it must never be something people wait on |
 | `pre-commit` hook | **refuse** a commit *on* the primary branch; it runs no tests |
 | `pre-push` hook | **refuse** any push that touches the primary branch; it runs no tests |
 | `Stop` hook → `scripts/check-deploy-freshness.sh` | **warn** when the JAR in `lib/ext` is not the code in the tree. Never blocks |

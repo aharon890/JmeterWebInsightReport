@@ -1,5 +1,7 @@
 # Server Tab
 
+> New to server metrics? Start with [Getting Server Data In](14-Server-Data.md): the step-by-step for the JMeter GUI, any terminal, and a script.
+
 > **Where it sits:** after Asserts, before Notes. It is always shown, including on a run that
 > declared no server metrics, where it says so and how to add some.
 
@@ -123,9 +125,8 @@ webinsight.report.servermetrics=server.csv
 - `webinsight.report.servermetrics` takes either a CSV or a `server-metrics.json` payload; which one
   it is is read from the file. A relative path that does not exist where JMeter runs is looked up
   beside the JTL.
-- Write paths with **forward slashes**. A properties file reads `	`, ``, `` and `
-` in
-  `C:	estsun` as control characters; the plugin warns when a path holds one.
+- Write paths with **forward slashes**. A properties file reads `\t`, `\f`, `\r` and `\n` in
+  `C:\tests\run` as control characters; the plugin warns when a path holds one.
 - `-o` must be a folder that does not exist yet, or is empty; never the folder the JTL or the CSV is in.
 - The collector's console lines (`wir-collect: OK …`, the run window, unasked series) are printed by
   `jmeter -g`, and a CSV it cannot read is a refused payload: said, and never fatal by default.
