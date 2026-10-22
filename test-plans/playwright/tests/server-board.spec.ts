@@ -105,9 +105,29 @@ test.describe('Server tab — the component board', () => {
       const d = JSON.parse(JSON.stringify(W.chartData));
       d.serverMetrics.sources[0].status = 'OK';
       delete d.serverMetrics.sources[0].error;
+      // A series with nothing usable also opens it (P3), so make every series usable too.
+      d.serverMetrics.series.forEach((x: any) => { x.status = 'OK'; delete x.error; });
       W.WIR.serverKpis.init(d);
     });
     await expect(page.locator('details.wir-collection')).not.toHaveAttribute('open', '');
+  });
+
+  test('[R] P3: a series with no usable data opens the Collection and is listed with its reason', async ({ page }) => {
+    await loadClean(page, 'E26');
+    await switchTab(page, 'server');
+    await page.evaluate(() => {
+      const W = window as any;
+      const d = JSON.parse(JSON.stringify(W.chartData));
+      d.serverMetrics.sources[0].status = 'OK';
+      delete d.serverMetrics.sources[0].error;
+      d.serverMetrics.series.forEach((x: any) => { x.status = 'OK'; delete x.error; });
+      d.serverMetrics.series[0].status = 'FAILED';
+      d.serverMetrics.series[0].error = 'm.csv has 3 rows for app/cpu and none inside the run';
+      W.WIR.serverKpis.init(d);
+    });
+    await expect(page.locator('details.wir-collection')).toHaveAttribute('open', '');
+    await expect(page.locator('.wir-unusable-series li')).toHaveCount(1);
+    await expect(page.locator('.wir-unusable-series li')).toContainText('none inside the run');
   });
 
   test('[U] SF26: a catalogue assert is named by its label, with its id the dim line under it — on the board and in the editor', async ({ page }) => {

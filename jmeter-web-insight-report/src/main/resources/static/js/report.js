@@ -19513,7 +19513,7 @@ WIR.serverKpis = (function () {
         var failing = unusable.length > 0 || sources.some(function (s) { return s.status !== 'OK'; });
         var summary = sources.map(function (s) {
             return s.id + ' ' + s.status;
-        }).join(' · ') + (unusable.length ? ' · ' + unusable.length + ' series without usable data' : '');
+        }).join(' · ');
         /* When it was collected, ONCE (SF38): it was printed here and again in the footer below,
            the same time twice. Here, because this is the line a closed panel shows — in the reader's
            zone and the window line's format (M5 exploratory F16, orchestrator call 2026-10-02), with
