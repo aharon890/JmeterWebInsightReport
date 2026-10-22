@@ -78,22 +78,23 @@ class WirCollectLauncherTest {
     }
 
     @Test
-    void aPluginJarOutsideLibExtWithAnotherBesideItIsRefusedNamingThem() throws Exception {
-        // wir-collect.bat's classpath starts with its own folder's *, so the JVM would run either.
+    void aPluginJarOutsideLibExtWithAnotherOnTheClasspathFromItsFolderIsRefusedNamingThem() throws Exception {
+        // wir-collect.bat's classpath starts with its own folder's *, so the JVM ran either.
         File installed = jar("jm", "jmeter-web-insight-report-4.0.15.jar");
         Path release = dir.resolve("release");
         Files.createDirectories(release);
         File loose = Files.write(release.resolve("jmeter-web-insight-report-4.1.0.jar"), new byte[] {1}).toFile();
-        Files.write(release.resolve("jmeter-web-insight-report-4.0.9.jar"), new byte[] {1});
+        File older = Files.write(release.resolve("jmeter-web-insight-report-4.0.9.jar"), new byte[] {1}).toFile();
+        String bat = String.join(File.pathSeparator, older.getPath(), loose.getPath(), installed.getPath());
         WirCollectLauncher.Refusal two = assertThrows(WirCollectLauncher.Refusal.class,
-                () -> WirCollectLauncher.onePluginJar(installed.getParentFile(), loose));
+                () -> WirCollectLauncher.onePluginJar(installed.getParentFile(), loose, bat));
         assertEquals(release.toFile().getAbsoluteFile() + " holds 2 plugin JARs (jmeter-web-insight-report-4.0.9.jar,"
                 + " jmeter-web-insight-report-4.1.0.jar) - the java command would run whichever comes first; keep"
                 + " exactly one beside wir-collect", two.getMessage());
-        // Anything else beside it is no plugin JAR, and changes nothing.
-        Files.delete(release.resolve("jmeter-web-insight-report-4.0.9.jar"));
-        Files.write(release.resolve("wir-collect.bat"), new byte[] {1});
-        Files.write(release.resolve("jmeter-report-core-4.1.0.jar"), new byte[] {1});
-        assertEquals(loose, WirCollectLauncher.onePluginJar(installed.getParentFile(), loose));
+        // java -jar names its one JAR: a folder of several releases is no ambiguity there.
+        assertEquals(loose, WirCollectLauncher.onePluginJar(installed.getParentFile(), loose, loose.getPath()));
+        // lib/ext's JAR later on the bat's classpath is not from the folder, and changes nothing.
+        String one = String.join(File.pathSeparator, loose.getPath(), installed.getPath());
+        assertEquals(loose, WirCollectLauncher.onePluginJar(installed.getParentFile(), loose, one));
     }
 }

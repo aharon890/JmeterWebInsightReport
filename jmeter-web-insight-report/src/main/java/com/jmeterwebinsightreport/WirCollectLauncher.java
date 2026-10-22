@@ -43,7 +43,7 @@ public final class WirCollectLauncher {
     static int run(String[] args) throws Refusal {
         File jar = ownJar();
         File home = jmeterHome(jar, System.getenv("JMETER_HOME"));
-        File plugin = onePluginJar(new File(home, "lib/ext"), jar);
+        File plugin = onePluginJar(new File(home, "lib/ext"), jar, System.getProperty("java.class.path", ""));
         List<URL> urls = new ArrayList<>();
         try {
             urls.add(plugin.toURI().toURL());
@@ -116,18 +116,31 @@ public final class WirCollectLauncher {
     /**
      * The plugin JAR to run. A plugin JAR run from outside a lib/ext (a release folder, or beside
      * wir-collect.bat) is itself the plugin: lib/ext is then not what is running, so whatever version
-     * it holds, and how many, does not matter - unless its own folder holds another plugin JAR beside
-     * it: wir-collect.bat puts that folder's {@code *} first on the classpath, so the JVM would run
-     * whichever it lists first, and that is refused, naming them. Otherwise the one plugin JAR in
-     * lib/ext - refusing none (name the fix) and several (list them).
+     * it holds, and how many, does not matter - unless the classpath lists another plugin JAR from its
+     * folder: wir-collect.bat puts that folder's {@code *} first, so the JVM ran whichever it expanded
+     * first, and that is refused, naming them. {@code java -jar} names its one JAR, so a folder of
+     * several releases is no ambiguity there. Otherwise the one plugin JAR in lib/ext - refusing none
+     * (name the fix) and several (list them).
      */
+    /** {@link #onePluginJar(File, File, String)} as {@code java -jar} runs it: the classpath is the JAR. */
     static File onePluginJar(File ext, File self) throws Refusal {
+        return onePluginJar(ext, self, self.getPath());
+    }
+
+    static File onePluginJar(File ext, File self, String classPath) throws Refusal {
         if (self.isFile() && isPluginJar(self.getName()) && !inLibExt(self)) {
             File folder = self.getAbsoluteFile().getParentFile();
-            File[] beside = folder == null ? null : folder.listFiles((d, n) -> isPluginJar(n));
-            if (beside != null && beside.length > 1) {
-                throw new Refusal(folder + " holds " + beside.length + " plugin JARs (" + names(beside) + ") - the"
-                        + " java command would run whichever comes first; keep exactly one beside wir-collect");
+            List<File> listed = new ArrayList<>();
+            for (String entry : classPath.split(java.util.regex.Pattern.quote(File.pathSeparator))) {
+                File f = new File(entry).getAbsoluteFile();
+                if (!entry.isEmpty() && isPluginJar(f.getName()) && f.getParentFile() != null
+                        && f.getParentFile().equals(folder) && !listed.contains(f)) {
+                    listed.add(f);
+                }
+            }
+            if (listed.size() > 1) {
+                throw new Refusal(folder + " holds " + listed.size() + " plugin JARs (" + names(listed.toArray(new File[0]))
+                        + ") - the java command would run whichever comes first; keep exactly one beside wir-collect");
             }
             return self;
         }
