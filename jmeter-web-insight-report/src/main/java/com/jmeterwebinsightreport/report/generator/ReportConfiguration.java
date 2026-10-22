@@ -81,6 +81,20 @@ public class ReportConfiguration {
      */
     private File serverMetricsFile;
 
+    /**
+     * Why the server data given to this -g run could not be collected in-process (a CSV
+     * WirCollect refused), or null. Becomes a refused payload: said, never fatal by default.
+     */
+    private String serverDataProblem;
+
+    public String getServerDataProblem() {
+        return serverDataProblem;
+    }
+
+    public void setServerDataProblem(String serverDataProblem) {
+        this.serverDataProblem = serverDataProblem;
+    }
+
     public File getServerMetricsFile() {
         return serverMetricsFile;
     }

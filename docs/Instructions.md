@@ -653,6 +653,7 @@ without either — a golden check that cannot run must not look like one that pa
 | G7 | `gate-server-coverage.json` + payload | no client rule; one `db` component reads PASS over a `LOW_COVERAGE` assert — `serverStatus` PASS over a config error |
 | G8 | `gate-server-fail.json`, payload missing | refused where a server assert needed it: no server block, one ERROR finding |
 | G9 | `gate-digits.json` | client rules only, each band within a hundredth of plain.jtl's measured value: every client `actual` and JUnit number stays on its own side of every band its rule declares (`119.361` beside `"threshold": 119.36`, not `119.36`) |
+| G10 | `gate-server.json` + `server-metrics.csv` | G4's inputs with the CSV given straight to `jmeter -g` (`webinsight.report.servermetrics.step=1s`): collected in-process, the results read as G4's; `collectionId` is not compared (it is the CSV's file time) |
 
 There is no G6, and case ids are not reused.
 

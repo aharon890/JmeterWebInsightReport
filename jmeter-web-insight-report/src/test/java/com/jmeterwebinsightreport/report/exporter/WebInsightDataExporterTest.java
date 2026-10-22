@@ -208,6 +208,50 @@ class WebInsightDataExporterTest {
      * typo silently voided the setting with no message anywhere. There is no GUI surface on this
      * path, so "unset" resolves to off here; the warning is the part that matters.
      */
+    /**
+     * P4: {@code jmeter -g} given a CSV as its server data collects it in-process, with the
+     * collector's own code, into a payload of THIS run - the identity matches by construction, so
+     * the payload is accepted - and a rebuild from the same file keeps its collectionId.
+     */
+    @Test
+    void aCsvGivenAsServerDataIsCollectedInProcessForThisRun() throws Exception {
+        File jtl = new File("../test-plans/goldens/plain.jtl");
+        ReportConfiguration config = new WebInsightDataExporter().buildConfiguration(outputDir.toFile());
+        config.setAnnotationsFile(new File("../test-plans/goldens/gate-server.json"));
+        config.setServerMetricsFile(new File("../test-plans/goldens/server-metrics.csv"));
+        new WebInsightDataExporter().collectServerCsvIfGiven(config, jtl);
+        assertNull(config.getServerDataProblem());
+        File payload = config.getServerMetricsFile();
+        assertTrue(payload.getName().startsWith("wir-server-metrics-"), payload.toString());
+        com.jmeterwebinsightreport.core.model.ReportData run =
+                new com.jmeterwebinsightreport.core.parser.JtlParser().parse(jtl, config.getReportTitle());
+        com.jmeterwebinsightreport.report.servermetrics.ServerMetricsPayloadLoader.Result read =
+                new com.jmeterwebinsightreport.report.servermetrics.ServerMetricsPayloadLoader()
+                        .read(payload, com.jmeterwebinsightreport.core.util.RunIdentity.of(run));
+        assertNull(read.refusal(), String.valueOf(read.problem()));
+        assertFalse(read.payload().getSeries().isEmpty());
+
+        // The same file again: the same collectionId (stamped with the CSV's own time).
+        ReportConfiguration again = new WebInsightDataExporter().buildConfiguration(outputDir.toFile());
+        again.setAnnotationsFile(new File("../test-plans/goldens/gate-server.json"));
+        again.setServerMetricsFile(new File("../test-plans/goldens/server-metrics.csv"));
+        new WebInsightDataExporter().collectServerCsvIfGiven(again, jtl);
+        assertEquals(read.payload().getCollectionId(), new com.jmeterwebinsightreport.report.servermetrics
+                .ServerMetricsPayloadLoader().read(again.getServerMetricsFile(),
+                        com.jmeterwebinsightreport.core.util.RunIdentity.of(run)).payload().getCollectionId());
+
+        // A payload is left as it is; a CSV with no annotations is a refusal that says why.
+        ReportConfiguration json = new WebInsightDataExporter().buildConfiguration(outputDir.toFile());
+        json.setServerMetricsFile(new File("../test-plans/goldens/server-metrics.json"));
+        new WebInsightDataExporter().collectServerCsvIfGiven(json, jtl);
+        assertEquals("server-metrics.json", json.getServerMetricsFile().getName());
+        ReportConfiguration bare = new WebInsightDataExporter().buildConfiguration(outputDir.toFile());
+        bare.setAnnotationsFile(null);
+        bare.setServerMetricsFile(new File("../test-plans/goldens/server-metrics.csv"));
+        new WebInsightDataExporter().collectServerCsvIfGiven(bare, jtl);
+        assertTrue(bare.getServerDataProblem().contains("no annotations file"), bare.getServerDataProblem());
+    }
+
     @Test
     void anUnrecognisedBooleanIsReportedAndTreatedAsUnset() {
         String before = JMeterUtils.getProperty("webinsight.report.junit");

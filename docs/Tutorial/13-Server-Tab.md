@@ -94,6 +94,48 @@ The annotations document is written into every report, so anything in it is publ
 
 ---
 
+## With a CSV: two commands
+
+When the server data is a file exported from your monitoring tool (Grafana, Datadog, InfluxDB,
+CloudWatch, Telegraf, or your own script), `jmeter -g` reads it itself. There is no collector to
+run, no `--test-name` to match and no ramp-up to repeat: the run's window, identity and ramp-up are
+taken from the JTL and the title of the very report being built. The same two commands work in
+Windows PowerShell or cmd, macOS and Linux:
+
+```
+jmeter -n -t plan.jmx -l run/results.jtl -q run/run.properties
+jmeter -g run/results.jtl -o run/report -q run/run.properties
+```
+
+`run/run.properties` holds the settings, so no `-J` argument has to survive a shell's quoting:
+
+```properties
+webinsight.report.annotations=C:/runs/checkout/report-annotations.json
+webinsight.report.servermetrics=server.csv
+# only when the file needs it - each is the collector's flag of the same name:
+# webinsight.report.servermetrics.step=1s
+# webinsight.report.servermetrics.timezone=Europe/Berlin
+# webinsight.report.servermetrics.clockoffset=-30s
+# webinsight.report.servermetrics.from=datadog
+# webinsight.report.servermetrics.layout=wide
+```
+
+- `webinsight.report.servermetrics` takes either a CSV or a `server-metrics.json` payload; which one
+  it is is read from the file. A relative path that does not exist where JMeter runs is looked up
+  beside the JTL.
+- Write paths with **forward slashes**. A properties file reads `	`, ``, `` and `
+` in
+  `C:	estsun` as control characters; the plugin warns when a path holds one.
+- `-o` must be a folder that does not exist yet, or is empty; never the folder the JTL or the CSV is in.
+- The collector's console lines (`wir-collect: OK …`, the run window, unasked series) are printed by
+  `jmeter -g`, and a CSV it cannot read is a refused payload: said, and never fatal by default.
+- The report is stamped with the CSV's own file time, so rebuilding from the same file keeps the
+  Server tab's drafts.
+- In the JMeter GUI, **Tools › Generate HTML report** does the second command: the results file, the
+  properties file, and a new output folder.
+
+Prometheus and `--recording` still use the collector, as below.
+
 ## The three steps
 
 Server metrics are fetched **after** the run, over the window the JTL recorded. That gives you a

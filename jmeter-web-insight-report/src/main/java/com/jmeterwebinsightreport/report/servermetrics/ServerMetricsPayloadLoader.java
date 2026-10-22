@@ -63,6 +63,15 @@ public final class ServerMetricsPayloadLoader {
             return new Result(null, null, null, null);
         }
 
+        /**
+         * Server data that was given and could not be used, for a cause no payload file names - a CSV
+         * that jmeter -g could not collect in-process. {@code problem} is the console's sentence,
+         * {@code detail} the page's.
+         */
+        public static Result refused(Refusal refusal, String problem, String detail) {
+            return new Result(null, refusal, problem, detail);
+        }
+
         /** The payload, or {@code null} when none was configured or it could not be used. */
         public ServerMetricsPayload payload() { return payload; }
 

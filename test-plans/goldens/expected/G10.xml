@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="JMeter Web Insight Report" tests="3" failures="1">
+  <testsuite name="JMeter Web Insight Report" tests="3" failures="1">
+    <properties>
+      <property name="webinsight.runId" value="967a1b397b7fb1d2"/>
+    </properties>
+    <testcase name="GET /api/products" classname="performance">
+    </testcase>
+    <testcase name="GET /api/search" classname="performance">
+    </testcase>
+    <testcase name="POST /api/checkout" classname="performance">
+      <failure message="ASSERT FAIL: P95 611ms exceeds threshold">
+P95: 611ms (FAIL)
+      </failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="JMeter Web Insight Report - assertions" tests="3" failures="2" skipped="0">
+    <properties>
+      <property name="webinsight.runId" value="967a1b397b7fb1d2"/>
+    </properties>
+    <testcase name="load:throughput" classname="assertions">
+    </testcase>
+    <testcase name="load:unreachable" classname="assertions">
+      <failure message="Assertion &apos;load:unreachable&apos;: throughput 24.76 /s on Whole run breached &lt; 100000 /s - a load target this run misses — FAILs, so its dependents are LOAD_NOT_ACHIEVED">
+target:   Whole run
+metric:   throughput
+criteria: fail &lt; 100000 /s
+  [FAIL] Whole run = 24.76 /s
+      </failure>
+    </testcase>
+    <testcase name="checkout-p95-fails" classname="assertions">
+      <failure message="Assertion &apos;checkout-p95-fails&apos;: p95 610.50 ms on POST /api/checkout breached &gt; 20 ms - a real breach, measured">
+target:   POST /api/checkout
+metric:   p95
+criteria: warn &gt; 10 ms  ·  fail &gt; 20 ms
+  [FAIL] POST /api/checkout = 610.50 ms
+      </failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="JMeter Web Insight Report - kafka" tests="4" failures="1" skipped="2">
+    <properties>
+      <property name="webinsight.runId" value="967a1b397b7fb1d2"/>
+    </properties>
+    <testcase name="up-passes" classname="server-metrics">
+    </testcase>
+    <testcase name="up-fails" classname="server-metrics">
+      <failure message="Server assert &apos;up-fails&apos;: max 49 msgs breached &gt; 20 msgs - a real breach">
+component: kafka
+query:     up
+reduce:    max across max
+criteria:  warn &gt; 10 msgs  ·  fail &gt; 20 msgs
+actual:    49 msgs
+coverage:  100% of the collected window
+instances: 1
+      </failure>
+    </testcase>
+    <testcase name="up-needs-load" classname="server-metrics">
+      <skipped message="Server assert was not judged because the load it depends on was not established: load rule &apos;load:unreachable&apos; FAILED: throughput 24.76/s breached &lt; 100000 /s"/>
+    </testcase>
+    <testcase name="parked" classname="server-metrics">
+      <skipped message="Server assert was parked with enabled: false"/>
+    </testcase>
+  </testsuite>
+  <testsuite name="JMeter Web Insight Report - db" tests="6" failures="2" skipped="1">
+    <properties>
+      <property name="webinsight.runId" value="967a1b397b7fb1d2"/>
+    </properties>
+    <testcase name="up-p50-warns" classname="server-metrics">
+      <system-out>WARN: Server assert &apos;up-p50-warns&apos;: p50 25 breached &gt; 10 - over warn, under fail</system-out>
+    </testcase>
+    <testcase name="up-sustained" classname="server-metrics">
+    </testcase>
+    <testcase name="up-per-rps" classname="server-metrics">
+    </testcase>
+    <testcase name="sparse-low-coverage" classname="server-metrics">
+      <failure message="Server assert was collected below the coverage floor: coverage 6% of the collected window is below the floor 90%">
+component: db
+query:     sparse
+reduce:    max across max
+criteria:  fail &gt; 1
+problem:   Server assert was collected below the coverage floor: coverage 6% of the collected window is below the floor 90%
+coverage:  6% of the collected window
+instances: 1
+      </failure>
+    </testcase>
+    <testcase name="nothing-recorded" classname="server-metrics">
+      <skipped message="Server assert matched nothing in this run: no row of the CSV names component db, metric nothing"/>
+    </testcase>
+    <testcase name="typo-reducer" classname="server-metrics">
+      <failure message="Server assert could not run: reduce.kind &apos;maxx&apos; is not a reducer — valid here: max, min, avg, last, slope, pN (e.g. p95)">
+component: db
+query:     up
+criteria:  fail &gt; 1
+problem:   Server assert could not run: reduce.kind &apos;maxx&apos; is not a reducer — valid here: max, min, avg, last, slope, pN (e.g. p95)
+instances: 0
+      </failure>
+    </testcase>
+  </testsuite>
+</testsuites>

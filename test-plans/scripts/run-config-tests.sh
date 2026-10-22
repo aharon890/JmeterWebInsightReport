@@ -2029,6 +2029,47 @@ else
     record C41 "A Datadog export read by Datadog's names" FAIL "$C41_NOTES"
 fi
 
+# -----------------------------------------------------------------------------
+# C42: jmeter -g reads a CSV itself (P4). Two commands, no wir-collect: the server data and the
+#      annotations are named in a -q properties file - relative names, found beside the JTL - so no
+#      -J has to survive a shell's quoting. The collector's own lines are printed and the asserts
+#      are judged.
+# -----------------------------------------------------------------------------
+echo "[C42] jmeter -g reads the server CSV itself..."
+C42_DIR="$RESULTS/C42"
+rm -rf "$C42_DIR"
+mkdir -p "$C42_DIR/run"
+cp "$TEST_PLANS/goldens/plain.jtl" "$C42_DIR/run/results.jtl"
+cp "$TEST_PLANS/goldens/gate-server.json" "$C42_DIR/run/report-annotations.json"
+cp "$TEST_PLANS/goldens/server-metrics.csv" "$C42_DIR/run/server.csv"
+printf '%s\n' "webinsight.report.annotations=$C42_DIR/run/report-annotations.json" \
+    "webinsight.report.servermetrics=server.csv" \
+    "webinsight.report.servermetrics.step=1s" > "$C42_DIR/run/run.properties"
+C42_NOTES=""
+WIR_RUNTIME_LOG="$C42_DIR/runtime.log" \
+run_jmeter -g "$C42_DIR/run/results.jtl" -o "$C42_DIR/run/report" -q "$C42_DIR/run/run.properties" \
+    > "$C42_DIR/report.log" 2>&1
+C42_RC=$?
+assert_exit_code "$C42_RC" 0 \
+    || C42_NOTES="$(append_note "$C42_NOTES" "jmeter -g over a CSV exited $C42_RC -- see $C42_DIR/report.log")"
+grep -a -q "wir-collect: OK kafka/up" "$C42_DIR/report.log" \
+    || C42_NOTES="$(append_note "$C42_NOTES" "the collector's lines were not printed by jmeter -g")"
+grep -a -q "wir-collect: run window " "$C42_DIR/report.log" \
+    || C42_NOTES="$(append_note "$C42_NOTES" "no run window line")"
+assert_contains "$C42_DIR/run/report/web-insight-report.json" '"serverStatus"' \
+    || C42_NOTES="$(append_note "$C42_NOTES" "the server asserts were not judged from the CSV")"
+assert_contains "$C42_DIR/run/report/web-insight-report.json" '"state" : "COLLECTED"' \
+    || C42_NOTES="$(append_note "$C42_NOTES" "serverData does not say COLLECTED")"
+if grep -a -q "resolvedUrl\" *: *\"[A-Za-z]:" "$C42_DIR/run/report/web-insight-report.html" 2>/dev/null; then
+    C42_NOTES="$(append_note "$C42_NOTES" "a local path reached the page")"
+fi
+if [[ -z "$C42_NOTES" ]]; then
+    record C42 "jmeter -g reads the server CSV itself" PASS \
+        "two commands and a -q file: the CSV beside the JTL is collected in-process, its lines printed, its asserts judged"
+else
+    record C42 "jmeter -g reads the server CSV itself" FAIL "$C42_NOTES"
+fi
+
 print_summary "CONFIGURATION TEST SUMMARY"
 
 exit $FAIL

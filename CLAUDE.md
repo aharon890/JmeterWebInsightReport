@@ -928,6 +928,21 @@ padded with an invisible character `String.trim` leaves (a no-break, zero-width 
 used to be read as a series nobody asked for, and the one asked for came back empty, naming no
 line (F8-residual). A component's `match` with such an end is a WARNING under the component.
 
+**`jmeter -g` reads a CSV itself (P4, decision C).** When `webinsight.report.servermetrics` names a file
+whose first character is not `{`, `WebInsightDataExporter.collectServerCsvIfGiven` runs
+`WirCollect.run` in-process — the collector's own validation, refusals and console lines, no second
+grammar — into a temp payload, with `--test-name` = the report title, `--rampup` = the configured
+ramp-up and `--collected-at` = the CSV's mtime (so a rebuild keeps the collectionId and the drafts).
+Reader options are `webinsight.report.servermetrics.<step|clockoffset|timezone|from|layout|columns|
+csvcolumns|component|env>`. A collection the collector refuses becomes `ReportConfiguration
+.serverDataProblem` → a refused (UNREADABLE) payload, never an ExportException (decision B). A relative
+path missing in the cwd is looked up beside the JTL. Exporter only: the listener runs before the data
+exists. A -g run that brings server data is never skipped by `thisRunAlreadyReported` (it used to be,
+silently, over the listener's interim report); any skip prints `WEB-INSIGHT-REPORT: SKIPPED`. This
+reverses "a report reads only the payload the collector wrote": for files it is two steps, not three.
+Golden G10 = G4's inputs given as the CSV; equal to G4 but for collectionId, which the canonicaliser
+drops for a CSV case (`--volatile-collection`). Prometheus and `--recording` keep wir-collect.
+
 **The CSV explains itself (P3, research H2-H4).** The silent cases the 2026-10 research found are all
 said now, in `CsvSource`: a series whose rows exist but all fall outside the window is FAILED with
 both spans and the shift (`outsideWindow`: a whole number of quarter hours within ±14 h is named as a
@@ -1392,7 +1407,7 @@ docs/FEATURES.md             Feature list (E-numbered, referenced by tests)
 docs/TEST-COVERAGE-GAPS.md   Coverage tracker
 test-plans/*.jmx             Scenario test plans
 test-plans/annotations/      Assert/annotation fixtures used by E10-E13
-test-plans/goldens/          R06: plain.jtl, the G1-G9 annotation cases (no G6), server-metrics.csv, expected/, jq-gate.txt
+test-plans/goldens/          R06: plain.jtl, the G1-G10 annotation cases (no G6; G10 = G4 through the in-process CSV route), server-metrics.csv, expected/, jq-gate.txt
 test-plans/server-metrics/   E26's committed annotations, CSV server data and payload
 test-plans/server-catalogue/ E27's: two catalogue components (postgres, kafka) with D1 data, the picker's fixture
 test-plans/playwright/tests/ Browser specs; helpers.ts resolves fixture paths

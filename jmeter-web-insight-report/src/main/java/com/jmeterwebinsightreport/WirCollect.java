@@ -125,7 +125,7 @@ public final class WirCollect {
     static final Set<String> OPTIONS = new LinkedHashSet<>(Arrays.asList(
             "jtl", "annotations", "out", "prometheus-url", "prometheus-token-env", "recording", "csv", "from",
             "layout", "columns", "csv-columns", "component", "time-zone", "step", "clock-offset", "env", "test-name",
-            "rampup", "max-wait", "no-wait"));
+            "rampup", "max-wait", "no-wait", "collected-at"));
 
     private WirCollect() {
     }
@@ -266,7 +266,11 @@ public final class WirCollect {
         ServerMetricsPayload payload;
         try {
             payload = new Collector(readers, environment).collect(config, opts.get("env"),
-                    new Collector.Run(runId, testName, window), Instant.now().toString());
+                    new Collector.Run(runId, testName, window),
+                    // --collected-at: the time to stamp, for jmeter -g collecting in-process (the CSV's
+                    // own time), so a rebuild from the same file keeps its collectionId - and the
+                    // reader's server drafts. Not in --help: the report passes it, a person does not.
+                    opts.containsKey("collected-at") ? opts.get("collected-at") : Instant.now().toString());
         } catch (Collector.CollectionException e) {
             println(err, "wir-collect: " + e.getMessage());
             return 1;
@@ -564,6 +568,8 @@ public final class WirCollect {
                 + "                        the same number as -Jwebinsight.report.rampup\n"
                 + "  --max-wait DURATION   how long a source may take to settle (default 10m)\n"
                 + "  --no-wait             take what the sources hold now, without waiting\n"
+                + "  --collected-at TIME   the time to stamp the collection with (ISO 8601); jmeter -g\n"
+                + "                        passes the CSV's own time, so a rebuild keeps its collectionId\n"
                 + "  --help, -h            this text\n"
                 + "\n"
                 + "Exit codes:\n"

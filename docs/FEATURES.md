@@ -1276,7 +1276,8 @@ All settings can be overridden via JMeter `-J` properties. CLI properties take p
 | `webinsight.report.junit` | `false` |
 | `webinsight.report.failonerror` | `true` — an incomplete artifact set, or a gate that could not be built from the file, exits non-zero |
 | `webinsight.report.failonassert` | `false` — `true` exits non-zero on a client FAIL or a FAIL on any server component |
-| `webinsight.report.servermetrics` | none, never auto-detected — the `server-metrics.json` payload `wir-collect` wrote for this run. Pass it to the `-g -o` step only: a listener run is always a new run, so a payload named there is always another run's and is refused (a CONFIG ERROR when a server assert is declared) |
+| `webinsight.report.servermetrics.*` | none — for a CSV given to `-g`: `step`, `clockoffset`, `timezone`, `from`, `layout`, `columns`, `csvcolumns`, `component`, `env`, each the collector's flag of the same name |
+| `webinsight.report.servermetrics` | none, never auto-detected — a CSV exported from a monitoring tool, which `jmeter -g` collects in-process, or the `server-metrics.json` payload `wir-collect` wrote for this run. Pass it to the `-g -o` step only: a listener run is always a new run, so a payload named there is always another run's and is refused (a CONFIG ERROR when a server assert is declared) |
 | `webinsight.report.externaldata` | `false` — `true` always writes the chart data to a sibling `-data.js` (see [External Data Mode](#external-data-mode)) |
 | `webinsight.report.externaldata.threshold` | `10000000` (characters) — the size above which the chart data goes to the sibling file |
 

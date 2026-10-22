@@ -173,8 +173,12 @@ public class WebInsightReportGenerator {
         // generation: the exists-policy below keys on the same string.
         String runId = com.jmeterwebinsightreport.core.util.RunIdentity.of(reportData);
         com.jmeterwebinsightreport.report.servermetrics.ServerMetricsPayloadLoader.Result collected =
-                new com.jmeterwebinsightreport.report.servermetrics.ServerMetricsPayloadLoader()
-                        .read(configuration.getServerMetricsFile(), runId);
+                configuration.getServerDataProblem() != null
+                        ? com.jmeterwebinsightreport.report.servermetrics.ServerMetricsPayloadLoader.Result.refused(
+                                com.jmeterwebinsightreport.report.servermetrics.ServerMetricsPayloadLoader.Refusal.UNREADABLE,
+                                configuration.getServerDataProblem(), configuration.getServerDataProblem())
+                        : new com.jmeterwebinsightreport.report.servermetrics.ServerMetricsPayloadLoader()
+                                .read(configuration.getServerMetricsFile(), runId);
         com.jmeterwebinsightreport.core.servermetrics.collect.ServerMetricsPayload serverMetrics =
                 collected.payload();
 

@@ -111,7 +111,8 @@ Precedence: **`-J` property > GUI field > default.**
 | `webinsight.report.output` | Output directory path. Set explicitly, it is never relocated — it fails instead | Resolved — see [below](#where-the-report-goes-by-default) |
 | `webinsight.report.junit` | Also write a JUnit XML summary | `false` |
 | `webinsight.report.annotations` | Path to `report-annotations.json` (asserts, server asserts, markers, notes) | auto-detected in the output directory |
-| `webinsight.report.servermetrics` | Path to the `server-metrics.json` payload `wir-collect` wrote — the *actual* numbers the server asserts are judged against. Pass it to the `-g -o` step only: a listener run is new, so a payload named there is always another run's and is refused. See [Server asserts](#server-asserts) | none — never auto-detected |
+| `webinsight.report.servermetrics` | The *actual* numbers the server asserts are judged against: a CSV exported from your monitoring tool, which `jmeter -g` collects itself, or the `server-metrics.json` payload `wir-collect` wrote. Pass it to the `-g -o` step only: a listener run is new, so a payload named there is always another run's and is refused. A relative path missing where JMeter runs is looked up beside the JTL. See [Server asserts](#server-asserts) | none — never auto-detected |
+| `webinsight.report.servermetrics.*` | For a CSV: `step`, `clockoffset`, `timezone`, `from`, `layout`, `columns`, `csvcolumns`, `component`, `env` — each the collector's flag of the same name | none |
 | `webinsight.report.baseline` | Path to a baseline JTL, which enables the Compare tab | auto-detected as `baseline.jtl` in the output directory |
 | `webinsight.report.rampup` | Ramp-up duration in ms, for the timeline overlay | none |
 | `webinsight.report.externaldata` | Force the chart payload into a separate `.js` file | `false` |
