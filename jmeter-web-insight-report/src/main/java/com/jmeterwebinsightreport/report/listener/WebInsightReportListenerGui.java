@@ -15,6 +15,7 @@ public class WebInsightReportListenerGui extends AbstractListenerGui {
 
     private JTextField outputDirectoryField;
     private JTextField annotationsFileField;
+    private JTextField resultsFileField;
     private JTextField reportTitleField;
     private JTextField reportFilenameField;
     private JCheckBox generateJunitXmlCheckbox;
@@ -97,9 +98,31 @@ public class WebInsightReportListenerGui extends AbstractListenerGui {
         browseAnnotations.addActionListener(e -> browseAnnotationsFile());
         configPanel.add(browseAnnotations, gbc);
 
-        // Generate JUnit XML checkbox
+        // Results file (JTL). The listener IS a ResultCollector, so naming a file here makes JMeter
+        // write the run's samples to it, as a Simple Data Writer would. A GUI run with only this
+        // listener used to leave no JTL at all, and the server data cannot be added without one
+        // (P5): jmeter -g needs the run's JTL. Left empty, nothing is written, as before.
         gbc.gridx = 0;
         gbc.gridy = 4;
+        gbc.weightx = 0;
+        gbc.gridwidth = 1;
+        configPanel.add(new JLabel("Results file (JTL):"), gbc);
+        gbc.gridx = 1;
+        gbc.weightx = 1.0;
+        resultsFileField = new JTextField(30);
+        resultsFileField.setToolTipText("Where to write this run's samples (a CSV .jtl), e.g. C:/runs/checkout/results.jtl"
+                + " - needed to add server data afterwards with jmeter -g or Tools > Generate HTML report."
+                + " Leave empty when -l or another results writer already saves the JTL.");
+        configPanel.add(resultsFileField, gbc);
+        gbc.gridx = 2;
+        gbc.weightx = 0;
+        JButton browseResults = new JButton("Browse...");
+        browseResults.addActionListener(e -> browseResultsFile());
+        configPanel.add(browseResults, gbc);
+
+        // Generate JUnit XML checkbox
+        gbc.gridx = 0;
+        gbc.gridy = 5;
         gbc.weightx = 0;
         gbc.gridwidth = 1;
         configPanel.add(new JLabel(""), gbc); // empty label for alignment
@@ -119,6 +142,15 @@ public class WebInsightReportListenerGui extends AbstractListenerGui {
         chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
         if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
             annotationsFileField.setText(chooser.getSelectedFile().getAbsolutePath());
+        }
+    }
+
+    private void browseResultsFile() {
+        JFileChooser chooser = new JFileChooser(resultsFileField.getText());
+        chooser.setDialogTitle("Write the run's results (JTL) to");
+        chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
+        if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+            resultsFileField.setText(chooser.getSelectedFile().getAbsolutePath().replace(java.io.File.separatorChar, '/'));
         }
     }
 
@@ -155,6 +187,9 @@ public class WebInsightReportListenerGui extends AbstractListenerGui {
         element.setProperty(WebInsightReportListener.REPORT_FILENAME, reportFilenameField.getText());
         element.setProperty(WebInsightReportListener.REPORT_OUTPUT_DIR, outputDirectoryField.getText());
         element.setProperty(WebInsightReportListener.ANNOTATIONS_FILE, annotationsFileField.getText());
+        // ResultCollector's own property: JMeter writes the JTL, and its "file exists" prompt
+        // (append / overwrite / don't start) guards a re-run.
+        element.setProperty(org.apache.jmeter.reporters.ResultCollector.FILENAME, resultsFileField.getText().trim());
         element.setProperty(WebInsightReportListener.GENERATE_JUNIT_XML, generateJunitXmlCheckbox.isSelected());
     }
 
@@ -169,6 +204,8 @@ public class WebInsightReportListenerGui extends AbstractListenerGui {
                 WebInsightReportListener.REPORT_OUTPUT_DIR, ""));
         annotationsFileField.setText(element.getPropertyAsString(
                 WebInsightReportListener.ANNOTATIONS_FILE, ""));
+        resultsFileField.setText(element.getPropertyAsString(
+                org.apache.jmeter.reporters.ResultCollector.FILENAME, ""));
         generateJunitXmlCheckbox.setSelected(element.getPropertyAsBoolean(
                 WebInsightReportListener.GENERATE_JUNIT_XML, false));
     }
@@ -185,6 +222,7 @@ public class WebInsightReportListenerGui extends AbstractListenerGui {
         // then judged against another test's quality gate, which looks exactly like a real
         // verdict, or against a file that is not there, which now exits 1 by default.
         annotationsFileField.setText("");
+        resultsFileField.setText("");
         generateJunitXmlCheckbox.setSelected(false);
     }
 }

@@ -46,9 +46,9 @@ Telegraf's, OpenTelemetry's or CloudWatch's own metric names are read too: see
 
 ## By hand, in the JMeter GUI
 
-1. Add the **Web Insight Report** listener and set its **Annotations File**. Add a **Simple Data
-   Writer** (Add › Listener) with a file name such as `C:/runs/checkout/results.jtl` — the steps
-   below need the run's JTL.
+1. Add the **Web Insight Report** listener and set its **Annotations File** and its **Results file
+   (JTL)**, such as `C:/runs/checkout/results.jtl` — the steps below need the run's JTL. When the
+   file exists already, JMeter asks whether to append or overwrite; choose overwrite for a new run.
 2. Run the test. Open the report it wrote and go to the **Server** tab: under **Add the server
    data** it shows the window to export and the names to use, and **Download a CSV template**.
 3. Export that window from your monitoring tool as a CSV, and save it beside the JTL.

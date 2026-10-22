@@ -87,8 +87,8 @@ See [Export & CI/CD](11-Export-Integration.md) for setup details on the `-g -o` 
 
 With no output directory configured, a listener run writes to the first of these it can actually
 write to (each is probed with a real write, and the log names the one chosen): the directory of
-the listener's own results file — the `filename` property in the `.jmx`, which this listener's GUI
-does not show and `-l` does not set, so it is normally empty — then the working directory, then
+the listener's own results file — its **Results file (JTL)** field, which `-l` does not set — then
+the working directory, then
 the test plan's directory, then `~/.jmeter-web-insight-report`, then a `web-insight-report` folder
 in the system temp directory. A `jmeter -g … -o DIR` run writes to `DIR`.
 

@@ -579,21 +579,14 @@ checkout they are under `scripts/`); they find JMeter through `JMETER_HOME` or `
 `PATH`.
 
 Step 3 is the report that judges the server asserts and decides the exit code. `wir-collect` is
-a class inside the plugin JAR, run with `java -cp`, never `java -jar` — Jackson and slf4j come
-from JMeter, so the classpath is the plugin JAR plus JMeter's `lib/*`. Without the wrapper scripts
-(`wir-collect.sh`, `wir-collect.bat`):
+a class inside the plugin JAR, and the JAR runs it: the same command on every OS, no wrapper script
+needed:
 
-```bash
-# Linux, macOS
-java -cp "$JMETER_HOME/lib/ext/jmeter-web-insight-report-X.Y.Z.jar:$JMETER_HOME/lib/*" com.jmeterwebinsightreport.WirCollect --jtl results.jtl ...
+```
+java -jar <JMETER_HOME>/lib/ext/jmeter-web-insight-report-X.Y.Z.jar --jtl results.jtl ...
 ```
 
-```bat
-rem Windows cmd.exe (the separator is ';')
-java -cp "%JMETER_HOME%\lib\ext\jmeter-web-insight-report-X.Y.Z.jar;%JMETER_HOME%\lib\*" com.jmeterwebinsightreport.WirCollect --jtl results.jtl ...
-```
-
-`wir-collect --help` prints both lines with the real JAR name, the options and the exit codes. If
+`wir-collect --help` prints the line with the real JAR name, the options and the exit codes. If
 step 3 sets `-Jwebinsight.report.title`, step 2 must pass the same text as `--test-name`: the
 title is hashed into the run's identity, and a payload collected for another identity is refused.
 A ramp-up is given to both the same way, in milliseconds: `--rampup` and
@@ -1209,11 +1202,15 @@ Add **Web Insight Report** listener to your test plan (GUI or non-GUI mode). Aut
 
 ### GUI Configuration
 
+**Results file (JTL) field:** where the run's samples are written, through JMeter's own results
+writer (the listener is one), so a GUI run leaves the JTL that adding server data needs. Empty
+writes none. When the file exists, JMeter asks to append, overwrite or not start.
+
 **Output Directory field:**
 
 | Value | Resolves to |
 |-------|-------------|
-| *(empty)* | The first of these it can actually write to (each is probed with a real write, and the log names the one chosen): the directory of the listener's own results file — the `filename` property in the `.jmx`, which this listener's GUI does not show and `-l` does not set, so it is normally empty — then the working directory, then the test plan's directory, then `~/.jmeter-web-insight-report`, then a `web-insight-report` folder in the system temp directory |
+| *(empty)* | The first of these it can actually write to (each is probed with a real write, and the log names the one chosen): the directory of the listener's own results file — its **Results file (JTL)** field, which `-l` does not set — then the working directory, then the test plan's directory, then `~/.jmeter-web-insight-report`, then a `web-insight-report` folder in the system temp directory |
 | `/var/reports` or `D:\reports` | That path (absolute) |
 | `reports` | `{working dir}/reports` (relative) |
 | `../reports` | `{working dir}/../reports` (relative) |
@@ -1277,7 +1274,7 @@ All settings can be overridden via JMeter `-J` properties. CLI properties take p
 | `webinsight.report.failonerror` | `true` — an incomplete artifact set, or a gate that could not be built from the file, exits non-zero |
 | `webinsight.report.failonassert` | `false` — `true` exits non-zero on a client FAIL or a FAIL on any server component |
 | `webinsight.report.servermetrics.*` | none — for a CSV given to `-g`: `step`, `clockoffset`, `timezone`, `from`, `layout`, `columns`, `csvcolumns`, `component`, `env`, each the collector's flag of the same name |
-| `webinsight.report.servermetrics` | none, never auto-detected — a CSV exported from a monitoring tool, which `jmeter -g` collects in-process, or the `server-metrics.json` payload `wir-collect` wrote for this run. Pass it to the `-g -o` step only: a listener run is always a new run, so a payload named there is always another run's and is refused (a CONFIG ERROR when a server assert is declared) |
+| `webinsight.report.servermetrics` | none, never auto-detected — a CSV exported from a monitoring tool, which `jmeter -g` collects in-process, or the `server-metrics.json` payload `wir-collect` wrote for this run. Read by the `-g -o` step only: the listener writes its report before the server data exists and ignores the property, so one `run.properties` serves both commands |
 | `webinsight.report.externaldata` | `false` — `true` always writes the chart data to a sibling `-data.js` (see [External Data Mode](#external-data-mode)) |
 | `webinsight.report.externaldata.threshold` | `10000000` (characters) — the size above which the chart data goes to the sibling file |
 

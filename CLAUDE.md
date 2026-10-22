@@ -886,22 +886,19 @@ reads the block, `servermetrics/ServerMetricsPayloadLoader` reads the payload,
 the chart data. The merge is in `WebInsightReportGenerator`, so both ingestion paths have it.
 
 **The collector.** `WirCollect` is a `main` inside the shaded JAR. Jackson and slf4j are JMeter's,
-so it runs with `java -cp` over the plugin JAR plus JMeter's `lib/*` — **never `java -jar`**.
-`scripts/wir-collect.sh` builds that classpath from `JMETER_HOME` (the variable, then `jmeter` on
-`PATH` with symlinks followed, then a checkout's `apache-jmeter-*`) and is deliberately
-**self-contained**: it does not source `common.sh`, because it has to run with nothing else from
-this repository beside it. `wir-collect.bat` is its thin wrapper. `--help` (or `-h`, in option
-position only) prints the options, the exit codes and the plain line for a machine that has only
-the released JAR. A release attaches `wir-collect.sh` and `wir-collect.bat` beside the JAR (and the
-annotations JSON Schema, `static/schema/report-annotations.schema.json`), so the wrapper does not
-have to come from a checkout (`_perf_release`, step 6); the plain line is:
-
-```
-# Linux, macOS
-java -cp "$JMETER_HOME/lib/ext/jmeter-web-insight-report-X.Y.Z.jar:$JMETER_HOME/lib/*" com.jmeterwebinsightreport.WirCollect --jtl results.jtl ...
-# Windows cmd.exe (the separator is ';')
-java -cp "%JMETER_HOME%\lib\ext\jmeter-web-insight-report-X.Y.Z.jar;%JMETER_HOME%\lib\*" com.jmeterwebinsightreport.WirCollect --jtl results.jtl ...
-```
+so it runs over the plugin JAR plus JMeter's `lib/*`. Since decision 13 the JAR's `Main-Class` is
+`WirCollectLauncher`, a JDK-only class that finds JMETER_HOME from the JAR's own place in `lib/ext`
+(else the `JMETER_HOME` variable; set-but-wrong is an error), refuses no or several plugin JARs in
+`lib/ext` with a sentence, and invokes `WirCollect.main` through a `URLClassLoader` over plugin +
+`lib/*.jar` with the platform loader as parent (in-process: no second JVM, no Windows argument
+mangling). So `java -jar <JMETER_HOME>/lib/ext/jmeter-web-insight-report-X.Y.Z.jar ...` is the one
+command for every OS. `scripts/wir-collect.sh` stays the bash wrapper, self-contained (it does not
+source `common.sh`) and still what C35-C41 run; `wir-collect.bat` is one line,
+`java -cp "%JMETER_HOME%\lib\ext\*" com.jmeterwebinsightreport.WirCollectLauncher %*` — no bash,
+so no WSL trap, and no logic (the wildcard only finds the launcher, which re-checks the JAR count).
+`--help` (or `-h`) prints the options, the exit codes and the `java -jar` line. A release attaches
+`wir-collect.sh` and `wir-collect.bat` beside the JAR (and the annotations JSON Schema) —
+`_perf_release`, step 6.
 
 It exits **0 whenever it wrote the payload**, whatever each series' status, and **1** when nothing
 was written — a usage, input or environment fault. There is no other code (D27). It used to exit
@@ -938,7 +935,9 @@ Reader options are `webinsight.report.servermetrics.<step|clockoffset|timezone|f
 csvcolumns|component|env>`. A collection the collector refuses becomes `ReportConfiguration
 .serverDataProblem` → a refused (UNREADABLE) payload, never an ExportException (decision B). A relative
 path missing in the cwd is looked up beside the JTL. Exporter only: the listener runs before the data
-exists. A -g run that brings server data is never skipped by `thisRunAlreadyReported` (it used to be,
+exists, and ignores `webinsight.report.servermetrics` altogether (an INFO line), so one `run.properties`
+serves both commands — it used to read it and refuse it as another run's, so a shared file made every
+interim report read REFUSED, with no NEXT line. A -g run that brings server data is never skipped by `thisRunAlreadyReported` (it used to be,
 silently, over the listener's interim report); any skip prints `WEB-INSIGHT-REPORT: SKIPPED`. This
 reverses "a report reads only the payload the collector wrote": for files it is two steps, not three.
 Golden G10 = G4's inputs given as the CSV; equal to G4 but for collectionId, which the canonicaliser

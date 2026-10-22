@@ -1,5 +1,5 @@
 @echo off
-REM Thin wrapper — all logic lives in wir-collect.sh (single source of truth).
-REM Requires Git Bash's or MSYS2's bash on PATH, ahead of System32's. Copy both files together.
-bash "%~dp0wir-collect.sh" %*
+REM One line, no logic: the plugin JAR's launcher finds JMeter, refuses a lib\ext with no or
+REM several plugin JARs, and runs the collector. Needs JMETER_HOME set. No bash, so no WSL trap.
+java -cp "%JMETER_HOME%\lib\ext\*" com.jmeterwebinsightreport.WirCollectLauncher %*
 exit /b %ERRORLEVEL%

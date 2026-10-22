@@ -88,11 +88,12 @@ import java.util.Set;
  * stays inside D27's rule (0 whenever the payload was written). A custom component alone still
  * exits 1: it has no catalogue, so there is nothing to ask a source for.
  *
- * <p>Runs inside the shaded plugin JAR with JMeter's {@code lib/} on the classpath. Jackson
- * and slf4j are JMeter's, so it is {@code java -cp}, never {@code java -jar}. The wrappers
- * {@code scripts/wir-collect.sh} and {@code .bat} build that classpath from {@code JMETER_HOME}
- * and need nothing else from this repository. {@code --help} prints the plain {@code java -cp}
- * line for a machine that has only the released JAR.
+ * <p>Runs inside the shaded plugin JAR with JMeter's {@code lib/} on the classpath - Jackson and
+ * slf4j are JMeter's. {@code java -jar <the plugin JAR>} gets there through
+ * {@link WirCollectLauncher}, which finds JMeter from the JAR's place in {@code lib/ext} and runs
+ * this class over the plugin JAR plus {@code lib/*}: the same command on every OS. The wrappers
+ * {@code scripts/wir-collect.sh} (bash) and {@code .bat} (one {@code java} line) need nothing else
+ * from this repository. {@code --help} prints the plain {@code java -jar} line.
  *
  * <p>Console lines are ASCII. They are for {@code grep} in a CI log, and the JVM writes
  * {@code System.out} in the platform charset — an em dash became U+FFFD in every log captured
@@ -114,7 +115,7 @@ public final class WirCollect {
     static final int LISTED = 10;
 
     /** Printed under {@link #USAGE} after a usage error, so the long text is one flag away. */
-    static final String MORE = "wir-collect --help lists the options, the exit codes and the plain java -cp command";
+    static final String MORE = "wir-collect --help lists the options, the exit codes and the plain java -jar command";
 
     static final String MAIN_CLASS = "com.jmeterwebinsightreport.WirCollect";
 
@@ -580,14 +581,9 @@ public final class WirCollect {
                 + "     to collect (no server assert, and no component of type "
                 + String.join(" or ", Catalogue.builtIn().types().keySet()) + ").\n"
                 + "\n"
-                + "Without the wrapper scripts (wir-collect.sh, wir-collect.bat). It is not java -jar:\n"
-                + "Jackson and slf4j come from JMeter, so the classpath is the plugin JAR plus JMeter's lib/*.\n"
-                + "  Linux, macOS:\n"
-                + "    java -cp \"$JMETER_HOME/lib/ext/" + jarName + ":$JMETER_HOME/lib/*\" "
-                + MAIN_CLASS + " --jtl results.jtl ...\n"
-                + "  Windows cmd.exe (the separator is ';'):\n"
-                + "    java -cp \"%JMETER_HOME%\\lib\\ext\\" + jarName + ";%JMETER_HOME%\\lib\\*\" "
-                + MAIN_CLASS + " --jtl results.jtl ...\n";
+                + "Without the wrapper scripts, the same on Windows, macOS and Linux - the plugin JAR runs\n"
+                + "the collector, finding JMeter from its place in <JMETER_HOME>/lib/ext:\n"
+                + "    java -jar <JMETER_HOME>/lib/ext/" + jarName + " --jtl results.jtl ...\n";
     }
 
     /** Whether any declared component has a type from the built-in catalogue. */

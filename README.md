@@ -81,7 +81,7 @@ cp jmeter-web-insight-report/target/jmeter-web-insight-report-*.jar $JMETER_HOME
 
 ### GUI
 
-The **Web Insight Report** listener has four fields and a checkbox:
+The **Web Insight Report** listener has five fields and a checkbox:
 
 | Field | Description | Default |
 |-------|-------------|---------|
@@ -89,6 +89,7 @@ The **Web Insight Report** listener has four fields and a checkbox:
 | Report Filename | Output filename | `web-insight-report.html` |
 | Output Directory | Where report files are written | Resolved — see [Where the report goes by default](#where-the-report-goes-by-default) |
 | Annotations File | The `report-annotations.json` holding the asserts, timeline markers and notes the run is judged against | Auto-detected in the output directory |
+| Results file (JTL) | Where the run's samples are written, as a Simple Data Writer would. Needed to add server data afterwards (`jmeter -g`, or Tools › Generate HTML report). Leave empty when `-l` or another writer already saves the JTL | Empty: no JTL |
 | Generate JUnit XML | Also write `<name>.xml` | Off |
 
 ### CLI Properties
@@ -111,7 +112,7 @@ Precedence: **`-J` property > GUI field > default.**
 | `webinsight.report.output` | Output directory path. Set explicitly, it is never relocated — it fails instead | Resolved — see [below](#where-the-report-goes-by-default) |
 | `webinsight.report.junit` | Also write a JUnit XML summary | `false` |
 | `webinsight.report.annotations` | Path to `report-annotations.json` (asserts, server asserts, markers, notes) | auto-detected in the output directory |
-| `webinsight.report.servermetrics` | The *actual* numbers the server asserts are judged against: a CSV exported from your monitoring tool, which `jmeter -g` collects itself, or the `server-metrics.json` payload `wir-collect` wrote. Pass it to the `-g -o` step only: a listener run is new, so a payload named there is always another run's and is refused. A relative path missing where JMeter runs is looked up beside the JTL. See [Server asserts](#server-asserts) | none — never auto-detected |
+| `webinsight.report.servermetrics` | The *actual* numbers the server asserts are judged against: a CSV exported from your monitoring tool, which `jmeter -g` collects itself, or the `server-metrics.json` payload `wir-collect` wrote. Read by the `-g -o` step only: the listener writes its report when the run ends, before the server data exists, so it ignores the property (and says so in `jmeter.log`). One `run.properties` can therefore serve both commands. A relative path missing where JMeter runs is looked up beside the JTL. See [Server asserts](#server-asserts) | none — never auto-detected |
 | `webinsight.report.servermetrics.*` | For a CSV: `step`, `clockoffset`, `timezone`, `from`, `layout`, `columns`, `csvcolumns`, `component`, `env` — each the collector's flag of the same name | none |
 | `webinsight.report.baseline` | Path to a baseline JTL, which enables the Compare tab | auto-detected as `baseline.jtl` in the output directory |
 | `webinsight.report.rampup` | Ramp-up duration in ms, for the timeline overlay | none |
@@ -454,27 +455,19 @@ A release attaches `wir-collect.sh` and its `wir-collect.bat` wrapper beside the
 both scripts are in its source archive. `wir-collect.sh`
 is self-contained: copy it anywhere, set `JMETER_HOME`, and run it as `bash wir-collect.sh ...` —
 a downloaded release asset has no executable bit, so `./wir-collect.sh` needs a `chmod +x` first.
-Neither script is needed, though: the collector is a `main` inside the plugin JAR, and it is
-**not** `java -jar` — Jackson and slf4j come from JMeter, so the classpath is the plugin JAR plus
-JMeter's `lib/*`:
+Neither script is needed, though: the plugin JAR runs the collector itself, with the same command on
+Windows (PowerShell or cmd), macOS and Linux. It finds JMeter from its own place in `lib/ext`:
 
-```bash
-# Linux, macOS
-java -cp "$JMETER_HOME/lib/ext/jmeter-web-insight-report-X.Y.Z.jar:$JMETER_HOME/lib/*" com.jmeterwebinsightreport.WirCollect --jtl results.jtl ...
 ```
-
-```bat
-REM Windows cmd.exe (the separator is ';')
-java -cp "%JMETER_HOME%\lib\ext\jmeter-web-insight-report-X.Y.Z.jar;%JMETER_HOME%\lib\*" com.jmeterwebinsightreport.WirCollect --jtl results.jtl ...
+java -jar <JMETER_HOME>/lib/ext/jmeter-web-insight-report-X.Y.Z.jar --jtl results.jtl ...
 ```
 
 Replace `X.Y.Z` with the JAR's version, or run it once with `--help`: that prints the options, the
-exit codes and these two lines with the actual JAR name filled in.
+exit codes and this line with the actual JAR name filled in. Two plugin JARs in `lib/ext` are
+refused, naming both.
 
-**On Windows, use the `cmd.exe` line.** `wir-collect.bat` only hands its arguments to
-`wir-collect.sh`, so it needs a `bash` on `PATH` — Git Bash's or MSYS2's — **ahead of
-`System32`**, whose `bash.exe` is a different program that will not find your Windows
-`JMETER_HOME`. Under Git Bash itself, `./scripts/wir-collect.sh` works as on Linux.
+**On Windows**, `wir-collect.bat` is one `java` line over `%JMETER_HOME%\lib\ext`: it needs
+`JMETER_HOME` set, and no bash.
 
 ### CI/CD Integration
 

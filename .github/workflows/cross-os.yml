@@ -111,6 +111,14 @@ jobs:
           java -jar apache-jmeter-${JMETER_VERSION}/bin/ApacheJMeter.jar -g run/results.jtl -o run/report2 -q run/run.properties > run/report2.log 2>&1
           echo "exit=$?"
 
+      - name: "The collector as java -jar on the plugin JAR (decision 13: no bash, any OS)"
+        run: |
+          JAR=$(ls apache-jmeter-${JMETER_VERSION}/lib/ext/jmeter-web-insight-report-*.jar)
+          java -jar "$JAR" --jtl run/results.jtl --annotations run/report-annotations.json \
+            --csv run/server.csv --step 1s --out run/collected.json --no-wait | tee run/collect.log
+          grep -a "wir-collect: wrote " run/collect.log
+          grep -q '"runId"' run/collected.json
+
       - name: Upload the run on failure
         if: failure()
         uses: actions/upload-artifact@v4

@@ -190,15 +190,15 @@ public class WebInsightReportListener extends ResultCollector {
             config.setAnnotationsFile(new File(annotations));
         }
 
-        // The server-metrics payload wir-collect wrote. -J only, no GUI field and no
-        // auto-detection. Read here too so that no path can silently ignore a property (the
-        // failonassert lesson behind ExitPolicy) — not because it can ever succeed here: a
-        // listener run is new by definition, RunIdentity hashes its start time, so a payload
-        // named on this path is always another run's and is refused loudly. Which is the point.
-        // Do not set this property globally; pass it to the -g -o step only.
+        // The server data is for the -g step, and only for it: the listener writes its report when
+        // the run ends, before any server data for this run can exist. It used to read the
+        // property and refuse what it named as another run's - so one run.properties shared by
+        // both commands (the documented way: no -J to survive a shell) made every interim report
+        // read REFUSED instead of "Add the server data", with no NEXT line. Ignored here, and said.
         String serverMetrics = getJMeterProperty("webinsight.report.servermetrics");
         if (serverMetrics != null && !serverMetrics.isEmpty()) {
-            config.setServerMetricsFile(new File(serverMetrics));
+            log.info("webinsight.report.servermetrics ({}) is for the jmeter -g step: this report is written"
+                    + " when the run ends, before the server data exists", serverMetrics);
         }
 
         // Ramp-up overlay. The engine owns this in listener mode — the exporter's
@@ -731,9 +731,11 @@ public class WebInsightReportListener extends ResultCollector {
         // One line, fixed prefix, absolute path: this is what a pipeline greps rather than
         // parsing a block or reading jmeter.log.
         System.out.println(artifacts.successMarker());
-        // The listener cannot see -l's path, so the NEXT block names the JTL generically. Logged
-        // too, so the GUI's log viewer shows it.
-        String next = artifacts.nextStepsLine(null);
+        // The listener cannot see -l's path; it names its own Results file when one is set, and the
+        // JTL generically otherwise. Logged too, so the GUI's log viewer shows it.
+        String ownJtl = getFilename();
+        String next = artifacts.nextStepsLine(ownJtl == null || ownJtl.trim().isEmpty() ? null
+                : ownJtl.trim().replace(java.io.File.separatorChar, '/'));
         if (next != null) {
             System.out.println(next);
             log.info("{}", next);

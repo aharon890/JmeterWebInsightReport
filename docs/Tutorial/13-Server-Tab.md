@@ -1526,7 +1526,7 @@ usage: wir-collect --jtl <results.jtl> --annotations <report-annotations.json> -
 | `--rampup MILLIS` | Leave the first MILLIS of the run out of the judged window. The same number as `-Jwebinsight.report.rampup` |
 | `--max-wait DURATION` | How long a source may take to settle. Default `10m` |
 | `--no-wait` | Take what the source holds now. Right for a re-collection long after the run, a recording or a CSV |
-| `--help`, `-h` | The options, the exit codes and the plain `java -cp` command |
+| `--help`, `-h` | The options, the exit codes and the plain `java -jar` command |
 
 Exactly one of `--prometheus-url`, `--recording` and `--csv` is required; two are refused.
 `--key=value` works too. An unknown or repeated option is refused, because a misspelt
@@ -2108,22 +2108,14 @@ step 2 read has the same effect.
 
 ### Running it from a release
 
-Deploy the release's JAR to `$JMETER_HOME/lib/ext` as usual. `wir-collect` runs from that
-JAR with JMeter's own `lib/` on the classpath, because Jackson and slf4j come from JMeter. That is why
-it is `java -cp`, never `java -jar`. `--help` prints these lines with your JAR's real name:
+Deploy the release's JAR to `$JMETER_HOME/lib/ext` as usual. The JAR runs the collector itself, with
+the same command on Windows (PowerShell or cmd), macOS and Linux; it finds JMeter from its place in
+`lib/ext`, and refuses a `lib/ext` that holds two plugin JARs. `--help` prints the line with your
+JAR's real name:
 
-```bash
-# Linux, macOS
-java -cp "$JMETER_HOME/lib/ext/jmeter-web-insight-report-X.Y.Z.jar:$JMETER_HOME/lib/*" \
-     com.jmeterwebinsightreport.WirCollect --jtl results.jtl ...
 ```
-
-```bat
-REM Windows cmd.exe (the separator is ';')
-java -cp "%JMETER_HOME%\lib\ext\jmeter-web-insight-report-X.Y.Z.jar;%JMETER_HOME%\lib\*" com.jmeterwebinsightreport.WirCollect --jtl results.jtl ...
+java -jar <JMETER_HOME>/lib/ext/jmeter-web-insight-report-X.Y.Z.jar --jtl results.jtl ...
 ```
-
-Keep the quotes. The `*` is the JVM's classpath wildcard, not the shell's.
 
 **The wrapper scripts** are attached to the release beside the JAR, and are in its source archive,
 under `scripts/`:

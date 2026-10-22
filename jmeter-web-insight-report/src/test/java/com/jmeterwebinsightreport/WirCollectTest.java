@@ -194,11 +194,9 @@ class WirCollectTest {
             assertEquals("", s.err(), "help is an answer, not an error");
             String help = s.out();
             assertTrue(help.startsWith(WirCollect.USAGE), help);
-            assertTrue(help.contains("java -cp \"$JMETER_HOME/lib/ext/" + WirCollect.JAR_PLACEHOLDER
-                    + ":$JMETER_HOME/lib/*\" com.jmeterwebinsightreport.WirCollect --jtl"), help);
-            assertTrue(help.contains("java -cp \"%JMETER_HOME%\\lib\\ext\\" + WirCollect.JAR_PLACEHOLDER
-                    + ";%JMETER_HOME%\\lib\\*\" com.jmeterwebinsightreport.WirCollect --jtl"), help);
-            assertTrue(help.contains("not java -jar"), help);
+            // Decision 13: one line for every OS - the JAR's launcher finds JMeter's lib/ itself.
+            assertTrue(help.contains("java -jar <JMETER_HOME>/lib/ext/" + WirCollect.JAR_PLACEHOLDER
+                    + " --jtl results.jtl"), help);
             assertTrue(help.contains("0  the payload was written, whatever each series' status"), help);
             assertTrue(help.contains("1  nothing was written"), help);
             // The help cannot drift from the parser: every option it accepts is listed.
@@ -215,7 +213,7 @@ class WirCollectTest {
         // Loaded from target/classes here, so the placeholder; from lib/ext, the JAR's own name.
         assertEquals(WirCollect.JAR_PLACEHOLDER, WirCollect.pluginJarName());
         assertTrue(WirCollect.help("jmeter-web-insight-report-3.1.17.jar")
-                .contains("lib/ext/jmeter-web-insight-report-3.1.17.jar:$JMETER_HOME/lib/*"));
+                .contains("java -jar <JMETER_HOME>/lib/ext/jmeter-web-insight-report-3.1.17.jar --jtl"));
 
         // A usage error points at it.
         Streams s = new Streams();
