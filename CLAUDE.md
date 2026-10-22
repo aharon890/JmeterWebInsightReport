@@ -83,8 +83,8 @@ Regression regenerates the report fixtures only when their provenance stamps no
 longer match the tree, so a change that touched no plugin source costs the same as
 sanity. Force it with `--force-fixtures`.
 
-The stamp hashes **every file under both modules' `src/main`**, plus `test-plans/server-metrics`
-and `test-plans/server-catalogue` (E26's and E27's committed inputs), not a hand-picked
+The stamp hashes **every file under both modules' `src/main`**, plus `test-plans/server-metrics`,
+`test-plans/server-catalogue` and `test-plans/server-fixtures` (E26's, E27's, E28's and E29's inputs), not a hand-picked
 list. It used to name five rendering files, which meant a change to `core/stats`
 left every stamp matching — regeneration was skipped and every browser test
 asserted against numbers from the previous build, green. Widening it also made the
@@ -95,7 +95,7 @@ When fixtures are current, regression still runs the live E24 smoke — otherwis
 run that skips regeneration never launches JMeter at all, and could not notice that
 the plugin no longer loads in `lib/ext`.
 
-The suites cover the JMeter scenarios Playwright actually opens (E02, E05-E12, E19, E25, E26, E27)
+The suites cover the JMeter scenarios Playwright actually opens (E02, E05-E12, E19, E25-E29)
 plus CMP — the same list as `FIXTURE_IDS` in `common.sh`, which is where to check rather than
 here. E19 is easy to forget: `external-data.spec.ts` opens it to assert the payload was written
 to a sibling `.js` and referenced by `<script src>`, which is the one product promise no
@@ -132,7 +132,7 @@ referenced — so they are manual-tier.
 Run them before a release:
 
 ```bash
-./test-plans/scripts/run-all-tests.sh      # E01-E13, E15, E19, E20, E22, E24, E25, E26, E27
+./test-plans/scripts/run-all-tests.sh      # E01-E13, E15, E19, E20, E22, E24-E29
 ./test-plans/scripts/run-config-tests.sh   # C01-C41 plus C17b, C19 records once
 ./test-plans/scripts/run-error-tests.sh    # N01-N09
 ./test-plans/scripts/run-docker-tests.sh   # E16, E17
@@ -943,6 +943,13 @@ reverses "a report reads only the payload the collector wrote": for files it is 
 Golden G10 = G4's inputs given as the CSV; equal to G4 but for collectionId, which the canonicaliser
 drops for a CSV case (`--volatile-collection`). Prometheus and `--recording` keep wir-collect.
 
+**E28 and E29 are real pages in the shapes the in-page fakes imitated** (`server-fixtures.spec.ts`). E28 is
+`jmeter -g` reading a committed CSV over `plain.jtl` with one assert per misalignment (a 3 h shift, a
+near-miss name, blank values, 4 s rows under `sustainedFor 30s`, an unquoted `90,9`) beside one that lines
+up, plus `E28/interim/` and `E28/refused/` of the same file. E29 is generated at fixture time
+(`gen-soak.js`, a fixed seed, ~25 MB CSV): four hours, 24 instances at 1 s, so the page draws 20, thins
+to 4000 points and must still reach the 3-second spike the build judged, from a forced sidecar.
+
 **The committed payloads cannot drift.** `WirCollectTest.theCommittedPayloadsAreWhatTodaysCollectorWritesFromTheirCsv`
 re-collects E26's, E27's and the goldens' CSVs with today's collector and compares every series and
 source (only `collectionId`, `collectedAt` and the CSV's recorded path may differ): a change to what
@@ -1422,6 +1429,7 @@ test-plans/annotations/      Assert/annotation fixtures used by E10-E13
 test-plans/goldens/          R06: plain.jtl, the G1-G10 annotation cases (no G6; G10 = G4 through the in-process CSV route), server-metrics.csv, expected/, jq-gate.txt
 test-plans/server-metrics/   E26's committed annotations, CSV server data and payload
 test-plans/server-catalogue/ E27's: two catalogue components (postgres, kafka) with D1 data, the picker's fixture
+test-plans/server-fixtures/  E28 (a CSV that does not line up, plus real interim and refused pages) and E29 (a generated 4 h soak)
 test-plans/playwright/tests/ Browser specs; helpers.ts resolves fixture paths
 test-plans/scripts/          Runners (.sh = logic, .bat = wrapper) + Python verifiers
 test-plans/js-unit/          report.js unit tests in node — harness.js + *.test.js, no browser

@@ -17601,8 +17601,8 @@ WIR.serverKpis = (function () {
             return { cls: 'wir-uncollected-row', text: state.refused
                 ? 'Not judged — the server-metrics payload given to this report was refused, '
                     + 'so nothing collected answers for this server assert.'
-                : 'Not collected yet — run wir-collect with this file against this run’s '
-                    + 'results, then regenerate the report to judge this server assert.' };
+                : 'Not collected yet — add this run’s server data (below) and regenerate the '
+                    + 'report to judge this server assert.' };
         }
         /* The reason gets its own full-width row rather than a cell: it is a sentence
            written for a human by the evaluator, and the one thing a reader needs when
@@ -17958,8 +17958,8 @@ WIR.serverKpis = (function () {
         }
         return '<p class="wir-empty">'
             + state.declaredKpis.length + esc(' server assert(s) were declared and none was judged — '
-            + 'no collected payload was given to this report. Run wir-collect against this '
-            + 'run’s results, then regenerate with ' + regenerate + '.')
+            + 'no server data was given to this report. Add it as below: a CSV goes straight to '
+            + 'jmeter -g, Prometheus through wir-collect.')
             + '</p>' + finishHtml();
     }
 

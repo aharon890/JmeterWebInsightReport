@@ -38,7 +38,7 @@ stage S05 and points at regression rather than testing an old build.
 ### What the automated suites leave out
 
 They run the JMeter scenarios the Playwright specs actually open (E02, E05-E12, E19, E25,
-E26, E27) plus CMP — the authoritative list is `FIXTURE_IDS` in `scripts/lib/common.sh`, which
+E26-E29) plus CMP — the authoritative list is `FIXTURE_IDS` in `scripts/lib/common.sh`, which
 is where to check rather than here. The remaining scenarios in `run-all-tests.sh` are
 validated only by "an HTML and a JSON file appeared" — except E20, which asserts the
 external-data payload was written and referenced. Run the full set, plus the config, error,

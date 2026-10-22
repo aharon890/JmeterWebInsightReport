@@ -641,6 +641,7 @@ _fixture_stamp_files() {
         jmeter-web-insight-report/src/main \
         test-plans/server-metrics \
         test-plans/server-catalogue \
+        test-plans/server-fixtures \
         -type f 2>/dev/null | sort )
 }
 
@@ -862,7 +863,7 @@ _several_plugin_jars_sentence() {
 # much JMeter work an automated cycle has to do — every other scenario in
 # run-all-tests.sh validates only "a report was produced" and is manual-tier.
 # Keep in step with REQUIRED_FIXTURES in test-plans/playwright/global-setup.ts.
-FIXTURE_IDS="E02 E05 E06 E07 E08 E09 E10 E11 E12 E19 E25 E26 E27 CMP"
+FIXTURE_IDS="E02 E05 E06 E07 E08 E09 E10 E11 E12 E19 E25 E26 E27 E28 E29 CMP"
 
 # Every tracked .sh and git hook must be committed 100755.
 #

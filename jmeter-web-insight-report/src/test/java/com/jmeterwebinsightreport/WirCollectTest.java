@@ -817,6 +817,29 @@ class WirCollectTest {
     }
 
     @Test
+    void aComponentWhoseEveryCatalogueMetricCameBackEmptyIsSaidOnceAboutTheComponent() throws Exception {
+        // Only events' rows: orders-db's one asserted metric comes back EMPTY, and the cause is the
+        // component (its match, or an exporter nobody scrapes), so the collector says so about it.
+        Path csv = dir.resolve("only-events.csv");
+        StringBuilder rows = new StringBuilder("time,component,metric,instance,value\n");
+        for (String line : Files.readAllLines(new File("../test-plans/server-catalogue/e27-metrics.csv").toPath())) {
+            if (line.contains(",events,")) {
+                rows.append(line).append('\n');
+            }
+        }
+        Files.write(csv, rows.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        Streams s = new Streams();
+        assertEquals(0, WirCollect.run(new String[] {"--jtl", PLAIN_JTL.getPath(), "--annotations",
+                "../test-plans/server-catalogue/e27-server.json", "--csv", csv.toString(), "--step", "1s",
+                "--out", dir.resolve("p.json").toString(), "--no-wait"},
+                s.outStream(), s.errStream(), Collections.<String, String>emptyMap()), s.out() + s.err());
+        assertTrue(s.out().contains("wir-collect: WARNING component orders-db: every catalogue metric it asks for (1)"
+                + " came back empty - this source has none of its postgres series, or its exporter is not collected"),
+                s.out());
+        assertFalse(s.out().contains("component events:"), s.out());
+    }
+
+    @Test
     void aLongFileNamesItsUnaskedSeriesTheRunWindowAndRefusesAMissingFile() throws Exception {
         Path ann = dir.resolve("custom.json");
         Files.write(ann, ("{\"serverMetrics\":{\"components\":{\"app\":{\"type\":\"custom\"}},"

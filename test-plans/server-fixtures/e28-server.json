@@ -1,0 +1,16 @@
+{
+  "_comment": "E28: server data that does not line up with the run, one assert per way (see gen-e28.js), beside one that does.",
+  "serverMetrics": {
+    "components": {
+      "app": {"type": "custom", "description": "App"}
+    },
+    "asserts": [
+      {"id": "aligned", "component": "app", "query": "aligned", "unit": "%", "reduce": {"kind": "max"}, "fail": {"gt": 90}},
+      {"id": "shifted", "component": "app", "query": "shifted", "unit": "%", "reduce": {"kind": "max"}, "fail": {"gt": 90}},
+      {"id": "heap", "component": "app", "query": "heap.used", "unit": "%", "reduce": {"kind": "max"}, "fail": {"gt": 90}},
+      {"id": "blank", "component": "app", "query": "blank", "unit": "%", "reduce": {"kind": "max"}, "fail": {"gt": 90}},
+      {"id": "spaced", "component": "app", "query": "spaced", "unit": "%", "reduce": {"kind": "max", "over": {"sustainedFor": "30s"}}, "fail": {"gt": 90}},
+      {"id": "split", "component": "app", "query": "split", "unit": "%", "reduce": {"kind": "max"}, "fail": {"gt": 90}}
+    ]
+  }
+}

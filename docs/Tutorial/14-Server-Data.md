@@ -145,6 +145,8 @@ with the times your monitoring tool shows.
 | Server tab: **Add the server data** / chip `Server · NOT COLLECTED` | this report was built without server data | follow the panel; open the report in the new output folder |
 | `UNMATCHED` — "no row of the CSV names component db, metric connections" | no row carries that pair | the names table under **Add the server data**; the console lists the pairs the file does carry |
 | `SOURCE FAILED` — "no row names component app, metric cpu.pct; 62 rows name App/cpu.pct" | a case or `.`/`_`/`-` difference | write the names exactly as the annotations do |
+| `INVALID` — "sustainedFor 30s is not a whole number of the data's measured 4s spacing" | the export's interval does not divide the `sustainedFor` | a `sustainedFor` that is a multiple of both the interval and the step (`60s` for 4 s rows at 15 s) |
+| console: `WARNING component db: every catalogue metric it asks for (3) came back empty` | nothing in the source answers for that component | its `match`, or whether its exporter is collected at all |
 | `SOURCE FAILED` — "…has 6 cells where the header has 5" | an unquoted `,` inside a value (`90,9`) | a `.` decimal point, or quote the cell |
 | `SOURCE FAILED` — "…none inside the run…" | the times miss the run | [Lining up](#lining-up-the-data-with-the-run) |
 | chip `Server · REFUSED` | the payload belongs to another run, or the CSV could not be read | the tab says which |

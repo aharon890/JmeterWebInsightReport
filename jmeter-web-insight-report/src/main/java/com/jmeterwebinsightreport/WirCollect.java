@@ -356,12 +356,50 @@ public final class WirCollect {
                 incomplete++;
             }
         }
+        for (String line : allEmptyComponentLines(config, payload)) {
+            println(out, "wir-collect: WARNING " + line);
+        }
         println(out, "wir-collect: wrote " + outFile.getAbsolutePath() + " - run " + runId + ", collection "
                 + payload.getCollectionId() + ", " + payload.getSeries().size() + " series, "
                 + incomplete + " not judgeable"
                 + (incomplete > 0 ? " (recorded in the payload; the report decides what they mean)" : "")
                 + (payload.getSeries().isEmpty() ? emptyPayloadClause(config) : ""));
         return 0;
+    }
+
+    /**
+     * One line per catalogue component every one of whose series came back EMPTY. Each series
+     * already says EMPTY on its own line; when all of a component's do, the cause is almost never
+     * the metrics - it is the component: a {@code match} that selects nothing in this source, or an
+     * exporter nobody scrapes. Said once, about the component, so it is not read as N unrelated gaps.
+     */
+    static List<String> allEmptyComponentLines(ServerMetricsConfig config, ServerMetricsPayload payload) {
+        Map<String, int[]> byComponent = new LinkedHashMap<>();   // {series, empty}
+        for (ServerMetricsPayload.SeriesRecord s : payload.getSeries()) {
+            if (s.getComponent() == null || s.getMetric() == null) {
+                continue;   // a custom query says its own; only catalogue metrics share a cause
+            }
+            int[] n = byComponent.computeIfAbsent(s.getComponent(), k -> new int[2]);
+            n[0]++;
+            if (s.collectionStatus() == CollectionStatus.EMPTY) {
+                n[1]++;
+            }
+        }
+        List<String> lines = new ArrayList<>();
+        for (Map.Entry<String, int[]> e : byComponent.entrySet()) {
+            int[] n = e.getValue();
+            if (n[0] == 0 || n[1] != n[0]) {
+                continue;
+            }
+            ServerGate gate = config.gate(e.getKey());
+            String match = gate == null ? null : gate.match();
+            lines.add("component " + e.getKey() + ": every catalogue metric it asks for (" + n[0] + ") came back empty - "
+                    + (match != null && !match.trim().isEmpty()
+                            ? "its match (" + match + ") selects nothing in this source"
+                            : "this source has none of its " + (gate == null ? "" : gate.type() + " ") + "series")
+                    + ", or its exporter is not collected");
+        }
+        return lines;
     }
 
     /**

@@ -543,6 +543,115 @@ if should_run E27; then
     echo "E27,Server metrics catalogue,server_metrics,local,plain.jtl,$e27_status,true,true,$e27_note,$(iso_timestamp)" >> "$CSV_REPORT"
 fi
 
+# -----------------------------------------------------------------------------
+#  E28 — Server data that does not line up with the run
+#
+#  `jmeter -g` reading a committed CSV itself (P4), over the goldens' plain.jtl:
+#  one assert per way a real export goes wrong (a 3 h shift, a near-miss name,
+#  blank values, 4 s rows under sustainedFor 30s at the default 15 s step, an
+#  unquoted "90,9") beside one that lines up (test-plans/server-fixtures/,
+#  gen-e28.js says which is which). Beside it, under interim/ and refused/, the
+#  two pages a reader meets before the data is right: the step-1 report of the
+#  same file (NOT COLLECTED, "Add the server data") and a payload of another
+#  run (REFUSED, FOREIGN_RUN - the title is set, so the runId differs).
+# -----------------------------------------------------------------------------
+if should_run E28; then
+    E28_DIR="$RESULTS_DIR/E28"
+    E28_INPUTS="$TEST_PLANS/server-fixtures"
+    e28_status="PASS"; e28_note=""
+    e28_report="$E28_DIR/E28-report.html"
+
+    rm -rf "$E28_DIR"
+    if _report_survived_rm "$e28_report" "$RESULTS_DIR/E28-jmeter.log"; then
+        e28_status="FAIL"; e28_note="could not remove the previous report; not running over it"
+    else
+        echo "[E28] Server data that does not line up — -g -o reading the CSV itself ..."
+        run_jmeter -g "$TEST_PLANS/goldens/plain.jtl" -o "$E28_DIR" \
+            -Jwebinsight.report.filename=E28-report.html \
+            -Jwebinsight.report.annotations="$E28_INPUTS/e28-server.json" \
+            -Jwebinsight.report.servermetrics="$E28_INPUTS/e28-metrics.csv" \
+            > "$RESULTS_DIR/E28-jmeter.log" 2>&1
+        run_jmeter -g "$TEST_PLANS/goldens/plain.jtl" -o "$E28_DIR/interim" \
+            -Jwebinsight.report.filename=E28-interim.html \
+            -Jwebinsight.report.annotations="$E28_INPUTS/e28-server.json" \
+            >> "$RESULTS_DIR/E28-jmeter.log" 2>&1
+        run_jmeter -g "$TEST_PLANS/goldens/plain.jtl" -o "$E28_DIR/refused" \
+            -Jwebinsight.report.filename=E28-refused.html \
+            -Jwebinsight.report.title=E28-another-run \
+            -Jwebinsight.report.annotations="$E28_INPUTS/e28-server.json" \
+            -Jwebinsight.report.servermetrics="$TEST_PLANS/server-metrics/server-metrics.json" \
+            >> "$RESULTS_DIR/E28-jmeter.log" 2>&1
+    fi
+
+    for _f in "$e28_report" "$E28_DIR/interim/E28-interim.html" "$E28_DIR/refused/E28-refused.html"; do
+        file_exists "$_f" || { e28_status="FAIL"; e28_note="$(append_note "$e28_note" "$(basename "$_f") not generated")"; }
+    done
+    if file_exists "$E28_DIR/E28-report.json"; then
+        assert_contains "$E28_DIR/E28-report.json" 'measured 4s spacing' \
+            || { e28_status="FAIL"; e28_note="$(append_note "$e28_note" "the spaced assert was not refused for its spacing")"; }
+    else
+        e28_status="FAIL"; e28_note="$(append_note "$e28_note" "JSON not generated")"
+    fi
+    if log_has_stacktrace "$RESULTS_DIR/E28-jmeter.log"; then
+        e28_status="FAIL"; e28_note="$(append_note "$e28_note" "Stack trace in log")"
+    fi
+
+    [[ "$e28_status" == "PASS" ]] && write_fixture_stamp "$E28_DIR"
+
+    record E28 "Server data that does not line up" "$e28_status" "$e28_note"
+    echo "E28,Server data misaligned,server_metrics,local,plain.jtl,$e28_status,true,true,$e28_note,$(iso_timestamp)" >> "$CSV_REPORT"
+fi
+
+# -----------------------------------------------------------------------------
+#  E29 — Server data: a four-hour soak
+#
+#  Generated, not committed (the CSV is ~25 MB): gen-soak.js writes a seeded
+#  four-hour JTL and 24 instances of 1 s server data, so the runId and every
+#  number are the same on every machine. It exercises what no committed fixture
+#  can: the instance cap (20 of 24 drawn), thinning (14,401 points an instance),
+#  an hours-long axis, a sidecar payload, and a 3-second spike the build judged
+#  that the thinned line must still reach.
+# -----------------------------------------------------------------------------
+if should_run E29; then
+    E29_DIR="$RESULTS_DIR/E29"
+    E29_INPUTS="$RESULTS_DIR/E29-inputs"
+    e29_status="PASS"; e29_note=""
+    e29_report="$E29_DIR/E29-report.html"
+
+    rm -rf "$E29_DIR" "$E29_INPUTS"
+    if _report_survived_rm "$e29_report" "$RESULTS_DIR/E29-jmeter.log"; then
+        e29_status="FAIL"; e29_note="could not remove the previous report; not running over it"
+    elif ! node "$TEST_PLANS/server-fixtures/gen-soak.js" "$E29_INPUTS" > "$RESULTS_DIR/E29-jmeter.log" 2>&1; then
+        e29_status="FAIL"; e29_note="gen-soak.js failed"
+    else
+        echo "[E29] Server data, a four-hour soak — generated, then -g -o ..."
+        run_jmeter -g "$E29_INPUTS/soak.jtl" -o "$E29_DIR" \
+            -Jwebinsight.report.filename=E29-report.html \
+            -Jwebinsight.report.annotations="$TEST_PLANS/server-fixtures/e29-server.json" \
+            -Jwebinsight.report.servermetrics="$E29_INPUTS/soak.csv" \
+            -Jwebinsight.report.servermetrics.step=1s \
+            -Jwebinsight.report.externaldata=true \
+            >> "$RESULTS_DIR/E29-jmeter.log" 2>&1
+    fi
+
+    if ! file_exists "$e29_report"; then
+        e29_status="FAIL"; e29_note="$(append_note "$e29_note" "HTML not generated")"
+    else
+        file_exists "$E29_DIR/E29-report-data.js" \
+            || { e29_status="FAIL"; e29_note="$(append_note "$e29_note" "no sidecar payload")"; }
+        assert_contains "$E29_DIR/E29-report-data.js" 'serverKpis' \
+            || { e29_status="FAIL"; e29_note="$(append_note "$e29_note" "the server data did not reach the sidecar")"; }
+    fi
+    if log_has_stacktrace "$RESULTS_DIR/E29-jmeter.log"; then
+        e29_status="FAIL"; e29_note="$(append_note "$e29_note" "Stack trace in log")"
+    fi
+
+    [[ "$e29_status" == "PASS" ]] && write_fixture_stamp "$E29_DIR"
+
+    record E29 "Server data, a four-hour soak" "$e29_status" "$e29_note"
+    echo "E29,Server data soak,server_metrics,local,soak.jtl,$e29_status,true,true,$e29_note,$(iso_timestamp)" >> "$CSV_REPORT"
+fi
+
 for _id in $ONLY_IDS; do
     if [[ " $ONLY_RAN " != *" $_id "* ]]; then
         echo "ERROR: --only $_id was not run: it is not a scenario of --suite $SUITE" >&2
