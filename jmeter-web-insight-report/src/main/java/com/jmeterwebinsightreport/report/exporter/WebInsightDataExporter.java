@@ -189,6 +189,11 @@ public class WebInsightDataExporter extends AbstractDataExporter {
             log.info("{}", artifacts.successMarker());
             System.out.println(artifacts.consoleSummary());
             System.out.println(artifacts.successMarker());
+            String next = artifacts.nextStepsLine(jtlFile == null ? null : jtlFile.getPath().replace(File.separatorChar, '/'));
+            if (next != null) {
+                System.out.println(next);
+                log.info("{}", next);
+            }
             // Both markers, independently. They used to be an if/else chain, so a run that lost
             // an artifact AND could not build its gate printed only the first — and the one CI
             // is told to grep for a broken gate definition was the one withheld, on exactly the

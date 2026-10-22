@@ -731,6 +731,13 @@ public class WebInsightReportListener extends ResultCollector {
         // One line, fixed prefix, absolute path: this is what a pipeline greps rather than
         // parsing a block or reading jmeter.log.
         System.out.println(artifacts.successMarker());
+        // The listener cannot see -l's path, so the NEXT block names the JTL generically. Logged
+        // too, so the GUI's log viewer shows it.
+        String next = artifacts.nextStepsLine(null);
+        if (next != null) {
+            System.out.println(next);
+            log.info("{}", next);
+        }
         if (artifacts.anyFailed()) {
             // The HTML may well exist — but a CI job that gates on the .json or the .xml has to
             // be able to see that its file is missing without reading a log file it was never

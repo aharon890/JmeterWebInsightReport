@@ -448,6 +448,29 @@ public final class ServerGateEvaluation {
         return config;
     }
 
+    /**
+     * The server data the file asks for, as a CSV must name it: one entry per enabled server assert
+     * on a component, deduplicated, in declaration order - {component, metric, unit-or-null}, where
+     * metric is the catalogue metric's name or the custom assert's query text. What the CI/CD JSON's
+     * serverData block and the console's NEXT block both list, so the two cannot disagree.
+     */
+    public List<String[]> requiredSeries() {
+        List<String[]> out = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.LinkedHashSet<>();
+        for (ServerKpi kpi : config.kpis()) {
+            if (!kpi.enabled() || kpi.gate() == null) {
+                continue;
+            }
+            String metric = kpi.metric() != null ? kpi.metric() : kpi.query();
+            if (metric == null || metric.isEmpty() || !seen.add(kpi.gate() + "|" + metric)) {
+                continue;
+            }
+            String unit = kpi.unit() == null || kpi.unit().isEmpty() ? null : kpi.unit();
+            out.add(new String[] {kpi.gate(), metric, unit});
+        }
+        return out;
+    }
+
     /** The accepted payload's {@code collectionId}, or null when not evaluated. */
     public String collectionId() {
         return payload == null ? null : payload.getCollectionId();

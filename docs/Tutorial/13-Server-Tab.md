@@ -192,6 +192,26 @@ and then one card per component holding its server asserts. The client filter ba
 metric, granularity, time range) is hidden on this tab, because none of it applies here. It comes
 back on the other tabs.
 
+### Before the server data is added
+
+The report written when the run ends (and any `-g` report built without server data) cannot judge
+the server asserts yet, so the Server tab says what to do instead, under **Add the server data**:
+
+1. **The window to export**: the run's exact start and end in UTC, in your local time and in epoch
+   milliseconds. Export that period from your monitoring tool; a minute either side is fine, because
+   rows outside the run are counted and ignored.
+2. **The names to use**: one row per series the server asserts need — the `component` and the
+   `metric` exactly as the CSV must write them (a catalogue metric's name, or a custom assert's
+   query text), the unit, and the name each supported tool's export gives a catalogue metric.
+   **Download a CSV template** writes `server-metrics-template.csv`: the header and one row per series
+   at the run's start, ready to fill in.
+3. **How to add it**: JMeter's **Tools › Generate HTML report**, or `jmeter -g <results.jtl> -o <new
+   folder> -q run.properties` from any shell.
+
+The console prints the same at the end of the run, as one line starting
+`WEB-INSIGHT-REPORT: NEXT`, and the CI/CD JSON carries it for a script: `window` and `serverData`
+(see [Export & CI/CD](11-Export-Integration.md)).
+
 ### The Summary card
 
 The Summary tab carries a **Server** card under the Asserts card, in the same shape:

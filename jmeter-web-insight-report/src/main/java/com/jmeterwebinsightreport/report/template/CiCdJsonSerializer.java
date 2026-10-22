@@ -153,6 +153,39 @@ public class CiCdJsonSerializer {
         boolean evaluated = gateRan || serverRan || (assertResults != null && !assertResults.isEmpty());
         cicd.put("assertsEvaluated", evaluated);
         cicd.put("duration", meta != null ? meta.getDurationMillis() : 0);
+        // The run's exact window (earliest sample start .. latest start + elapsed), so a script or
+        // webhook knows what period to export server data for without parsing the JTL.
+        if (meta != null && meta.getStartTime() != null && meta.getEndTime() != null) {
+            Map<String, Object> window = new LinkedHashMap<>();
+            window.put("start", meta.getStartTime().toString());
+            window.put("end", meta.getEndTime().toString());
+            window.put("startMillis", meta.getStartTime().toEpochMilli());
+            window.put("endMillis", meta.getEndTime().toEpochMilli());
+            if (meta.getRampUpDurationMillis() > 0) {
+                window.put("rampUpEndMillis", meta.getStartTime().toEpochMilli() + meta.getRampUpDurationMillis());
+            }
+            cicd.put("window", window);
+        }
+        // What server data the annotations ask for, so a hook can export exactly those series under
+        // exactly those names: one entry per enabled server assert, the CSV's component and metric
+        // cells as they must be written. "state" says whether it was collected for this report.
+        if (server != null && server.declared()) {
+            Map<String, Object> serverData = new LinkedHashMap<>();
+            serverData.put("state", server.evaluated() ? "COLLECTED"
+                    : server.payloadRefusal() != null ? "REFUSED" : "NOT_COLLECTED");
+            List<Map<String, Object>> series = new ArrayList<>();
+            for (String[] required : server.requiredSeries()) {
+                Map<String, Object> one = new LinkedHashMap<>();
+                one.put("component", required[0]);
+                one.put("metric", required[1]);
+                if (required[2] != null) {
+                    one.put("unit", required[2]);
+                }
+                series.add(one);
+            }
+            serverData.put("series", series);
+            cicd.put("serverData", serverData);
+        }
         // Top-level population (transaction children excluded), so the pipeline's numbers match
         // the header tiles of the HTML report generated from the same run.
         long totalSamples = reportData.getTopLevelSampleCount();

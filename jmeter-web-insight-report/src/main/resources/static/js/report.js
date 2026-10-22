@@ -16931,6 +16931,8 @@ WIR.serverKpis = (function () {
            asserts yet is where authoring starts (R1-6). */
         /* Before anything is parsed: a catalogue metric resolves through it. */
         setCatalogue(data && data.serverCatalogue);
+        /* The run's exact window, for the "how to finish" panel (P2). */
+        state.runWindow = (data && data.runWindow) || null;
         state.evaluated = !!(data && data.serverEvaluated);
         state.gates = (data && data.serverGates) || [];
         /* THE fold's word, as Java chose it (SF22): {status, component, label, others, reserved?}.
@@ -17958,7 +17960,86 @@ WIR.serverKpis = (function () {
             + state.declaredKpis.length + esc(' server assert(s) were declared and none was judged — '
             + 'no collected payload was given to this report. Run wir-collect against this '
             + 'run’s results, then regenerate with ' + regenerate + '.')
-            + '</p>';
+            + '</p>' + finishHtml();
+    }
+
+    /* The series a CSV must carry, as it must name them: {component, metric, unit, tools} per enabled
+       declared assert, deduplicated — ServerGateEvaluation.requiredSeries, which the CI/CD JSON's
+       serverData and the console's NEXT block list too. tools: each tool's own name for a catalogue
+       metric, from the catalogue's names (null = "no single metric there"). */
+    function requiredSeries() {
+        var seen = Object.create(null);
+        var table = declaredComponents();
+        var out = [];
+        state.declaredKpis.forEach(function (k) {
+            if (k.enabled === false || !k.gate) return;
+            var metric = k.metric != null && k.metric !== '' ? k.metric : k.query;
+            if (!metric || seen[k.gate + '|' + metric]) return;
+            seen[k.gate + '|' + metric] = true;
+            var c = hasOwn(table.byId, k.gate) ? table.byId[k.gate] : null;
+            var type = c ? catalogueType(c.type) : null;
+            var m = type && k.metric && hasOwn(type.metrics, k.metric) ? type.metrics[k.metric] : null;
+            out.push({ component: k.gate, metric: metric, unit: k.unit || '', tools: m && m.names ? m.names : null });
+        });
+        return out;
+    }
+
+    /* The interim report's "how to finish" panel (P2): the window to export, the names the file
+       must use, a CSV template, and how to add it. The two things an operator otherwise has to
+       work out — the exact window and the exact names — the report already knows. */
+    function finishHtml() {
+        var w = state.runWindow;
+        var series = requiredSeries();
+        var html = '<div class="wir-finish" id="serverFinish"><div class="wir-section-label">Add the server data</div><ol>';
+        if (w && typeof w.start === 'number' && typeof w.end === 'number') {
+            var from = new Date(w.start).toISOString();
+            var to = new Date(w.end).toISOString();
+            html += '<li><strong>Export this window</strong> from your monitoring tool: '
+                + esc(from + ' → ' + to)
+                + ' <span class="wir-dim">(' + esc(collectedAtText(from) + ' → ' + collectedAtText(to))
+                + ' your time; epoch ms ' + esc(String(w.start) + ' → ' + String(w.end)) + ')</span>.'
+                + ' A minute either side is fine: rows outside the run are counted and ignored.</li>';
+        }
+        if (series.length) {
+            html += '<li><strong>Name each series exactly like this</strong> (CSV columns'
+                + ' <code>time,component,metric,instance,value</code>; times need a zone, such as'
+                + ' 2026-10-20T20:21:44Z, or epoch ms):'
+                + '<div class="table-wrapper"><table class="data-table"><thead><tr><th>component</th><th>metric</th>'
+                + '<th>unit</th><th>In a tool’s export</th></tr></thead><tbody>'
+                + series.map(function (row) {
+                    var tools = row.tools ? Object.keys(row.tools).map(function (t) {
+                        var n = row.tools[t];
+                        return t + ': ' + (n && n.metric ? n.metric : '(computed)');
+                    }).join(' · ') : '';
+                    return '<tr><td>' + esc(row.component) + '</td><td><code>' + esc(row.metric) + '</code></td><td>'
+                        + esc(row.unit) + '</td><td class="wir-dim">' + esc(tools) + '</td></tr>';
+                }).join('') + '</tbody></table></div>'
+                + '<button type="button" class="wir-btn"'
+                + '\n                    onclick="WIR.serverKpis.downloadCsvTemplate()">Download a CSV template</button>'
+                + ' <span class="wir-dim">Grafana: set each series’ legend to component/metric and use'
+                + ' Download CSV with “Series joined by time”.</span></li>';
+        }
+        html += '<li><strong>Add it to this run</strong>: in JMeter, Tools › Generate HTML report with the'
+            + ' run’s results file, a properties file naming <code>webinsight.report.annotations</code> and'
+            + ' <code>webinsight.report.servermetrics</code> (forward slashes in paths) and a new output'
+            + ' folder; or from any shell: <code>jmeter -g &lt;results.jtl&gt; -o &lt;new folder&gt; -q'
+            + ' run.properties</code>. Server data never changes the build’s exit code.</li></ol></div>';
+        return html;
+    }
+
+    /* The template: the header and one row per required series at the run's start, with no value.
+       Its own writer: csvQuote would put a ' before a cell starting with = + - @, which corrupts a
+       custom query or a negative value. */
+    function csvTemplateText() {
+        var w = state.runWindow;
+        var at = w && typeof w.start === 'number' ? new Date(w.start).toISOString() : '';
+        var cell = function (v) {
+            v = String(v == null ? '' : v);
+            return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+        };
+        return ['time,component,metric,instance,value'].concat(requiredSeries().map(function (row) {
+            return [at, row.component, row.metric, '', ''].map(cell).join(',');
+        })).join('\n') + '\n';
     }
 
     /**
@@ -25509,6 +25590,17 @@ WIR.serverKpis = (function () {
            not see. verify_report_js_rules refuses an oninput/onchange handler in this module. ---- */
 
         addKpi: function () { openEditor(null); },
+
+        /* "Download a CSV template" on the interim panel (P2). */
+        downloadCsvTemplate: function () {
+            var blob = new Blob([csvTemplateText()], { type: 'text/csv;charset=utf-8' });
+            var a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'server-metrics-template.csv';
+            a.click();
+            URL.revokeObjectURL(a.href);
+        },
+        _csvTemplateText: function () { return csvTemplateText(); },
 
         /* Every collected series nothing declares, as a KPI seeded from what it actually did.
            A seeded KPI PASSes on this run by construction — that is what a threshold derived

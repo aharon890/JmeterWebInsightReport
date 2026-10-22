@@ -1186,6 +1186,14 @@ reads as its default on every comparison, the blocks no slice owns included — 
 `-Jwebinsight.report.junit=true`), and `web-insight-data.js` for large runs. The `.json`
 and `.xml` names are derived from the resolved HTML name.
 
+**P2 (the run tells the operator).** Every `.json` carries `window` (ISO and epoch-ms start/end, the
+collector's edges) and, whenever server asserts are declared, `serverData` {state, series[]} — both
+from `ServerGateEvaluation.requiredSeries()`, which the console's `WEB-INSIGHT-REPORT: NEXT` line
+(`ReportArtifacts.nextStepsLine`, both paths, stdout and INFO) reads too. chartData carries
+`runWindow`; the interim Server tab's `finishHtml()` prints the window, the names table (with each
+tool's catalogue name) and a CSV template written by its own writer (`csvTemplateText`, never
+`csvQuote`, which corrupts `=`/`+`/`-`/`@` cells). Adding `window` moved every golden once.
+
 On the client side the `.json` carries `assertViolations[]` (every sampler that did not pass; the
 whole run's entry keeps `"sampler": "Whole run"` and adds `"scope": "overall"`, CORE-1, because a
 sampler can be called that — `SamplerVerdicts.Verdict.isWholeRun()`), `gate` and `assertions[]`,

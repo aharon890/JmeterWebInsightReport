@@ -172,6 +172,50 @@ public final class ReportArtifacts {
         return this;
     }
 
+    private long runStart = -1;
+    private long runEnd = -1;
+
+    /** The run's window in epoch ms, for the NEXT block. */
+    public ReportArtifacts recordRunWindow(long start, long end) {
+        this.runStart = start;
+        this.runEnd = end;
+        return this;
+    }
+
+    /**
+     * What to do next when the file declares server asserts and nothing was collected for this
+     * report (the interim report, or a -g run without server data), or null otherwise: the window
+     * to export, the series and the names a CSV must carry, and the command that adds it - the same
+     * values the interim Server tab shows and the CI/CD JSON's window and serverData carry.
+     *
+     * @param jtl the JTL's path when this path knows it (the exporter), or null (the listener)
+     */
+    public String nextStepsLine(String jtl) {
+        if (serverGates == null || !serverGates.declared() || serverGates.evaluated()
+                || serverGates.payloadRefusal() != null) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder("WEB-INSIGHT-REPORT: NEXT — ")
+                .append(serverGates.config().kpis().size()).append(" server assert(s) wait for server data.");
+        if (runStart >= 0 && runEnd >= 0) {
+            sb.append(" Export ").append(java.time.Instant.ofEpochMilli(runStart)).append(" .. ")
+                    .append(java.time.Instant.ofEpochMilli(runEnd)).append(" (epoch ms ").append(runStart)
+                    .append(" .. ").append(runEnd).append(", a minute either side is fine)");
+        }
+        List<String> names = new ArrayList<>();
+        for (String[] s : serverGates.requiredSeries()) {
+            names.add(s[0] + "/" + s[1]);
+        }
+        if (!names.isEmpty()) {
+            sb.append(" as a CSV (time,component,metric,instance,value) with these component/metric names: ")
+                    .append(String.join(", ", names));
+        }
+        sb.append(". Then rebuild: jmeter -g ").append(jtl != null ? jtl : "<the run's JTL>")
+                .append(" -o <a new folder> -q <a properties file naming webinsight.report.annotations and")
+                .append(" webinsight.report.servermetrics>");
+        return sb.toString();
+    }
+
     /** The server gates as recorded, or null. */
     public ServerGateEvaluation serverGates() {
         return serverGates;

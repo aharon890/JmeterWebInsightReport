@@ -76,6 +76,24 @@ class ReportArtifactsTest {
         assertTrue(a.hasConfigProblem());
     }
 
+    @Test
+    void anInterimRunSaysWhatToExportUnderWhichNamesAndHowToRebuild() throws Exception {
+        com.jmeterwebinsightreport.core.model.ReportData data = com.jmeterwebinsightreport.report.gate.ServerFixtures.run();
+        com.jmeterwebinsightreport.report.gate.ServerGateEvaluation declared =
+                com.jmeterwebinsightreport.report.gate.ServerFixtures.evaluate(
+                        com.jmeterwebinsightreport.report.gate.ServerFixtures.block(null,
+                                com.jmeterwebinsightreport.report.gate.ServerFixtures.kpi("lag", "lag", 500, null)),
+                        null, data);
+        ReportArtifacts a = inlineRun().recordServerGates(declared).recordRunWindow(1_700_000_000_000L, 1_700_000_060_000L);
+        String next = a.nextStepsLine("run/results.jtl");
+        assertTrue(next.startsWith("WEB-INSIGHT-REPORT: NEXT — 1 server assert(s) wait for server data. Export"
+                + " 2023-11-14T22:13:20Z .. 2023-11-14T22:14:20Z (epoch ms 1700000000000 .. 1700000060000"), next);
+        assertTrue(next.contains("/lag"), next);
+        assertTrue(next.contains("jmeter -g run/results.jtl -o <a new folder> -q "), next);
+        // Nothing to do on a report that judged them, or with no server block.
+        assertNull(inlineRun().nextStepsLine("x.jtl"));
+    }
+
     // ---- intent line ---------------------------------------------------------
 
     @Test

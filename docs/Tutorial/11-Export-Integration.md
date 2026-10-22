@@ -421,6 +421,19 @@ client side's rule too (a broken rule contributes nothing to `gate.status`), and
 server word carry config errors would make the two statuses mean different things. STRICT, above,
 is the jq line that refuses both.
 
+**`window`** is on every document: the run's exact start and end — `start` and `end` in ISO 8601 UTC,
+`startMillis` and `endMillis` in epoch milliseconds, and `rampUpEndMillis` when a ramp-up is set. It
+is the period a script exports server data for:
+
+```bash
+jq -r '.window | "(.startMillis) (.endMillis)"' report/web-insight-report.json
+```
+
+**`serverData`** is present whenever the annotations declare server asserts: `state` (`COLLECTED`,
+`NOT_COLLECTED` or `REFUSED`) and `series[]`, one `{component, metric, unit}` per enabled server
+assert, the names a CSV must carry. On the report written when the run ends it is the one place a
+script can read what to export and that it is still to do.
+
 **`serverComponents[]`** is one entry per declared component, in declaration order: the
 component's `id`, its `label` (the `description`, or the id), its `type` (a catalogue type —
 `postgres`, `kafka`, `redis`, `host-linux`, `aws-ec2`, `oracle`, `influxdb2`, `influxdb3`, `jvm`,
@@ -589,6 +602,7 @@ reading `jmeter.log`, which by default has no Console appender at all:
 | `WEB-INSIGHT-REPORT: INCOMPLETE — <reason>` | stderr | the report exists, a sibling does not; the reason names the artifact and why |
 | `WEB-INSIGHT-REPORT: FAILED <reason>` | stderr | nothing usable was produced; the exception class is named |
 | `WEB-INSIGHT-REPORT: CONFIG ERROR — <reason>` | stderr | the artifacts are all there, but the gate is not the one your file declared; the reason says how many checks never ran and why. Printed for the client side, and for the server side under `webinsight.report.server.failonerror=true`; it always means the run exits non-zero (unless `failonerror=false`) |
+| `WEB-INSIGHT-REPORT: NEXT — <what to do>` | stdout | server asserts are declared and no server data was given to this report: the window to export, the component/metric names, and the command that adds it |
 | `WEB-INSIGHT-REPORT: SERVER NOT JUDGED — <reason>` | stderr | server checks the file asked for never ran — a failed collection, coverage under the floor, a server assert that cannot run, a refused payload. The report and the client verdict are complete and the exit code is unchanged |
 | `WEB-INSIGHT-REPORT: WARNING — <reason>` | stderr | a `webinsight.*` property nothing reads (a typo, with the nearest name), or a path a properties file mangled (single backslashes) |
 | `WEB-INSIGHT-REPORT: ASSERT FAIL — <verdict line>` | stderr | `failonassert=true` and the client gate or a server component said FAIL. `-g -o` only; the listener writes the same fact to `jmeter.log` |
