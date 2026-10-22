@@ -4,6 +4,7 @@ import com.jmeterwebinsightreport.core.assertion.AssertionStatus;
 import com.jmeterwebinsightreport.core.assertion.GateSummary;
 import com.jmeterwebinsightreport.core.assertion.NotJudged;
 import com.jmeterwebinsightreport.core.servermetrics.ServerGate;
+import com.jmeterwebinsightreport.core.servermetrics.ServerKpi;
 import com.jmeterwebinsightreport.report.gate.ServerGateEvaluation;
 
 import java.io.File;
@@ -195,8 +196,19 @@ public final class ReportArtifacts {
                 || serverGates.payloadRefusal() != null) {
             return null;
         }
+        // The asserts requiredSeries() reads: a disabled one waits for nothing, so it is not counted,
+        // and a file whose every assert is disabled has no next step.
+        int waiting = 0;
+        for (ServerKpi kpi : serverGates.config().kpis()) {
+            if (kpi.enabled() && kpi.gate() != null) {
+                waiting++;
+            }
+        }
+        if (waiting == 0) {
+            return null;
+        }
         StringBuilder sb = new StringBuilder("WEB-INSIGHT-REPORT: NEXT — ")
-                .append(serverGates.config().kpis().size()).append(" server assert(s) wait for server data.");
+                .append(waiting).append(" server assert(s) wait for server data.");
         if (runStart >= 0 && runEnd >= 0) {
             sb.append(" Export ").append(java.time.Instant.ofEpochMilli(runStart)).append(" .. ")
                     .append(java.time.Instant.ofEpochMilli(runEnd)).append(" (epoch ms ").append(runStart)

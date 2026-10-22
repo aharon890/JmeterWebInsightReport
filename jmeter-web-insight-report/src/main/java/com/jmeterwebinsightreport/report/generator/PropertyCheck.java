@@ -54,8 +54,16 @@ public final class PropertyCheck {
         public String toString() { return severity + ": " + message; }
     }
 
-    /** Every name the plugin reads. A name outside this set (and its prefixes below) is unknown. */
-    static final Set<String> KNOWN = Collections.unmodifiableSet(new LinkedHashSet<>(Arrays.asList(
+    /**
+     * The server-data reader options, {@code webinsight.report.servermetrics.<option>} — the names
+     * {@code WebInsightDataExporter.CSV_OPTIONS} reads, each by its exact name, so a misspelt one is
+     * a WARNING like any other. {@code PropertyCheckTest} holds this list to that constant.
+     */
+    static final List<String> SERVER_DATA_OPTIONS = Collections.unmodifiableList(Arrays.asList(
+            "step", "clockoffset", "timezone", "from", "layout", "columns", "csvcolumns", "component", "env"));
+
+    /** Every name the plugin reads. A name outside this set is unknown. */
+    static final Set<String> KNOWN = Collections.unmodifiableSet(known(
             "webinsight.apdex.threshold",
             "webinsight.compare.errorrate.threshold",
             "webinsight.compare.mean.threshold",
@@ -78,11 +86,15 @@ public final class PropertyCheck {
             "webinsight.report.resolved.title",
             "webinsight.report.server.failonerror",
             "webinsight.report.servermetrics",
-            "webinsight.report.title")));
+            "webinsight.report.title"));
 
-    /** Families whose members are read by prefix: the server-data reader options. */
-    static final List<String> KNOWN_PREFIXES = Collections.unmodifiableList(Arrays.asList(
-            "webinsight.report.servermetrics."));
+    private static Set<String> known(String... names) {
+        Set<String> all = new LinkedHashSet<>(Arrays.asList(names));
+        for (String option : SERVER_DATA_OPTIONS) {
+            all.add("webinsight.report.servermetrics." + option);
+        }
+        return all;
+    }
 
     /** Properties whose value is a path, where backslash mangling shows. */
     static final Set<String> PATHS = Collections.unmodifiableSet(new LinkedHashSet<>(Arrays.asList(
@@ -124,7 +136,7 @@ public final class PropertyCheck {
             if (!name.startsWith("webinsight.")) {
                 continue;
             }
-            if (!isKnown(name)) {
+            if (!KNOWN.contains(name)) {
                 String near = nearest(name);
                 problems.add(new Problem(Severity.WARNING, "the JMeter property " + name + " is not one the "
                         + "Web Insight plugin reads, so it does nothing"
@@ -161,18 +173,6 @@ public final class PropertyCheck {
             }
         }
         return errors.length() == 0 ? null : errors.toString();
-    }
-
-    static boolean isKnown(String name) {
-        if (KNOWN.contains(name)) {
-            return true;
-        }
-        for (String prefix : KNOWN_PREFIXES) {
-            if (name.startsWith(prefix)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     /** The value's key part: ".report.annotations=a.json" → "annotations=…" for the sentence. */

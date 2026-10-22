@@ -1129,8 +1129,8 @@ The console prints one clause per server component after the client verdict, for
   surface writes it per minute: `fail > 1,048,576 B/min` on the board, `fail > 1048576 B/min` in
   JUnit.
 - **Coverage is of the collected window**, decided at collection time (above).
-- **Prometheus returns at most 11,000 points per series per query.** Keep the run's length divided
-  by `--step` under that. A ten-hour soak needs a step of 4 s or more. The collector checks it
+- **Prometheus answers a range query of at most 11,000 steps (11,001 points) per series.** Keep the
+  run's length divided by `--step` at or under 11,000. A ten-hour soak needs a step of 4 s or more. The collector checks it
   before asking and names the step that fits. A non-200 answer is reported with Prometheus's own
   error first (a 400 names the PromQL parse error), and a 401 or 403 points at
   `--prometheus-token-env`. A run whose window ends after the collecting machine's clock (the JMeter

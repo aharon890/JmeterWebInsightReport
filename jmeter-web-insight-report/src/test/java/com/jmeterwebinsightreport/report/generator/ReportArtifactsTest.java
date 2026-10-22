@@ -94,6 +94,29 @@ class ReportArtifactsTest {
         assertNull(inlineRun().nextStepsLine("x.jtl"));
     }
 
+    @Test
+    void theNextLineCountsTheEnabledAssertsItListsAndIsAbsentWhenNoneIs() throws Exception {
+        // A disabled assert waits for no data: it was counted while its name was left out of the list.
+        com.jmeterwebinsightreport.core.model.ReportData data = com.jmeterwebinsightreport.report.gate.ServerFixtures.run();
+        String on = com.jmeterwebinsightreport.report.gate.ServerFixtures.kpi("lag", "lag", 500, null);
+        String off = disabled(com.jmeterwebinsightreport.report.gate.ServerFixtures.kpi("cpu", "cpu", 90, null));
+        String offToo = disabled(com.jmeterwebinsightreport.report.gate.ServerFixtures.kpi("mem", "mem", 90, null));
+        ReportArtifacts mixed = inlineRun().recordServerGates(com.jmeterwebinsightreport.report.gate.ServerFixtures.evaluate(
+                com.jmeterwebinsightreport.report.gate.ServerFixtures.block(null, on, off, offToo), null, data));
+        String next = mixed.nextStepsLine("x.jtl");
+        assertTrue(next.startsWith("WEB-INSIGHT-REPORT: NEXT — 1 server assert(s) wait for server data."), next);
+        assertTrue(next.contains("/lag"), next);
+        assertFalse(next.contains("/cpu"), next);
+
+        ReportArtifacts allOff = inlineRun().recordServerGates(com.jmeterwebinsightreport.report.gate.ServerFixtures.evaluate(
+                com.jmeterwebinsightreport.report.gate.ServerFixtures.block(null, off, offToo), null, data));
+        assertNull(allOff.nextStepsLine("x.jtl"), "every assert disabled: nothing waits for server data");
+    }
+
+    private static String disabled(String kpiJson) {
+        return kpiJson.substring(0, kpiJson.length() - 1) + ",\"enabled\":false}";
+    }
+
     // ---- intent line ---------------------------------------------------------
 
     @Test

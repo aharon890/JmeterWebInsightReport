@@ -370,16 +370,39 @@ class SourcesAndCollectorTest {
 
     @Test
     void aRunLongerThanPrometheusAnswersAtTheStepIsRefusedBeforeAskingWithTheStepThatFits() {
-        // 4 h at --step 1s is 14,401 points; Prometheus refuses more than 11,000 per series with a
-        // 400 after the request. Said first, with the step that fits.
+        // 4 h at --step 1s is 14,400 steps; Prometheus refuses more than 11,000 with a 400 after the
+        // request. Said first, with the step that fits.
         ServerMetricsPayload.Window soak = new ServerMetricsPayload.Window(1_700_000_000_000L,
                 1_700_000_000_000L + 4 * 3_600_000L, null);
         String why = PrometheusSource.live(java.util.Collections.<String, String>emptyMap(), PrometheusSource.Settle.none())
                 .collect(ServerSource.prometheus(ServerSource.COLLECTION_ID, "http://127.0.0.1:9/api/v1", 1000, 0,
                         java.util.Collections.<String, String>emptyMap()),
                         new SeriesSource.Request("up", "c", null), soak).error();
-        assertEquals("the run is 14401 points long at --step 1s, and Prometheus answers at most 11000 points per"
-                + " series - collect with --step 2s or coarser", why);
+        assertEquals("the run is 14400 steps long at --step 1s, and Prometheus answers at most 11000 steps per"
+                + " range query - collect with --step 2s or coarser", why);
+    }
+
+    @Test
+    void elevenThousandStepsAreAskedForAndOneMoreIsRefusedAsPrometheusRefusesIt() {
+        // Prometheus refuses only when (end - start) / step > 11000, so 11,000 steps (11,001 points)
+        // is answered: the pre-check refused it, in a sentence saying Prometheus would answer it.
+        long start = 1_700_000_000_000L;
+        for (long steps : new long[] {11_000, 11_001}) {
+            ServerMetricsPayload.Window w = new ServerMetricsPayload.Window(start, start + steps * 1000, null);
+            FakeHttp http = new FakeHttp(EMPTY_MATRIX);
+            SeriesSource.Answer a = new PrometheusSource(http, new FakeTiming(w.getEnd() + 60_000),
+                    Collections.<String, String>emptyMap(), PrometheusSource.Settle.none())
+                    .collect(ServerSource.prometheus(ServerSource.COLLECTION_ID, "http://p/api/v1", 1000, 0,
+                            Collections.<String, String>emptyMap()), new SeriesSource.Request("up", "c", null), w);
+            if (steps == 11_000) {
+                assertFalse(a.failed(), a.error());
+                assertEquals(1, http.calls.size(), "asked");
+            } else {
+                assertEquals("the run is 11001 steps long at --step 1s, and Prometheus answers at most 11000 steps"
+                        + " per range query - collect with --step 2s or coarser", a.error());
+                assertTrue(http.calls.isEmpty(), "refused before asking");
+            }
+        }
     }
 
     @Test

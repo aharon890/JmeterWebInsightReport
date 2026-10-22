@@ -176,16 +176,18 @@ public final class PrometheusSource implements SeriesSource {
         } catch (IllegalArgumentException e) {
             return Answer.failed(e.getMessage());
         }
-        // Prometheus answers a range query of more than 11,000 points per series with a 400. Said
-        // before asking, with the step that fits: a long soak at --step 1s used to fail every series
-        // with the server's raw message after a URL three hundred characters long.
+        // Prometheus answers a range query whose (end - start) / step, in whole steps, exceeds 11,000
+        // with a 400. Said before asking, by the same rule, with the whole-second step that fits: a
+        // long soak at --step 1s used to fail every series with the server's raw message after a URL
+        // three hundred characters long.
         long step = Math.max(1, source.stepMillis());
-        long points = (window.getEnd() - window.getStart()) / step + 1;
-        if (points > MAX_POINTS_PER_SERIES) {
-            long fits = ((window.getEnd() - window.getStart()) / (MAX_POINTS_PER_SERIES - 1) / 1000 + 1) * 1000;
-            return Answer.failed("the run is " + points + " points long at --step " + Durations.format(step)
-                    + ", and Prometheus answers at most " + MAX_POINTS_PER_SERIES + " points per series - collect with"
-                    + " --step " + Durations.format(fits) + " or coarser");
+        long span = window.getEnd() - window.getStart();
+        long steps = span / step;
+        if (steps > MAX_STEPS_PER_QUERY) {
+            long fits = Math.max(1, (span + MAX_STEPS_PER_QUERY * 1000 - 1) / (MAX_STEPS_PER_QUERY * 1000)) * 1000;
+            return Answer.failed("the run is " + steps + " steps long at --step " + Durations.format(step)
+                    + ", and Prometheus answers at most " + MAX_STEPS_PER_QUERY + " steps per range query - collect"
+                    + " with --step " + Durations.format(fits) + " or coarser");
         }
         // A window that ends in this machine's future: the JMeter host's clock is ahead of this one,
         // and every query would wait out --max-wait and come back empty.
@@ -402,8 +404,11 @@ public final class PrometheusSource implements SeriesSource {
         return sb.toString();
     }
 
-    /** Prometheus's answer-size limit: points per series in one range query. */
-    static final long MAX_POINTS_PER_SERIES = 11_000;
+    /**
+     * Prometheus's answer-size limit: a range query is refused when {@code (end - start) / step},
+     * in whole steps, is more than this — so it answers up to 11,001 points per series.
+     */
+    static final long MAX_STEPS_PER_QUERY = 11_000;
 
     /**
      * A non-200 answer as a sentence: Prometheus's own error first when the body carries one (a 400

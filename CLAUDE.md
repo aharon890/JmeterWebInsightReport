@@ -976,10 +976,10 @@ the collector writes fails `mvn test` until the payload is re-collected (the com
 README) and committed with it. Re-collecting moves the E26 pins in `server-tab.spec.ts` (collectionId,
 collectedAt, the three per-zone times) and the goldens' `collectionId`.
 
-**Prometheus says what went wrong.** A run longer than 11,000 points at `--step` is refused before
+**Prometheus says what went wrong.** A run longer than 11,000 steps at `--step` (Prometheus's own rule) is refused before
 asking, naming the step that fits; a non-200 answer leads with Prometheus's own error (a 400's PromQL
 parse error); a 401/403 names `--prometheus-token-env`; a window that ends after the collecting
-machine's clock is refused rather than waited for (`PrometheusSource.httpFailure`, `MAX_POINTS_PER_SERIES`).
+machine's clock is refused rather than waited for (`PrometheusSource.httpFailure`, `MAX_STEPS_PER_QUERY`).
 
 **The CSV explains itself (P3, research H2-H4).** The silent cases the 2026-10 research found are all
 said now, in `CsvSource`: a series whose rows exist but all fall outside the window is FAILED with
