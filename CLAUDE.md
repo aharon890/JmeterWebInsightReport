@@ -954,13 +954,18 @@ up, plus `E28/interim/` and `E28/refused/` of the same file. E29 is generated at
 (`gen-soak.js`, a fixed seed, ~25 MB CSV): four hours, 24 instances at 1 s, so the page draws 20, thins
 to 4000 points and must still reach the 3-second spike the build judged, from a forced sidecar.
 
-**A CSV's step and wide layout are measured when not given (decision 12).** `collect/CsvShape.sniff`
-reads the file once: the step is the most frequent gap between a series' consecutive rows (blank values
-count), the wide layout only for Grafana's `Time,component/metric,...` header (not with `--csv-columns`
-or `--component`). `WirCollect.measureCsv` puts either into the options only when the flag was absent and
-prints `step 5s, measured from the file's rows` / `layout wide, read from the header`, naming the
-override. Both paths (`wir-collect`, `jmeter -g`) get it. Prometheus and `--recording` keep 15 s. E28
-sets 15 s explicitly to keep its H11 case.
+**A CSV's step and wide layout are measured when not given (decision 12).** The wide layout is read off
+the header alone (`collect/CsvShape.looksWide`: Grafana's `Time,component/metric,...`, not with
+`--csv-columns` or `--component`), because the layout is part of what the file reads as. The step is
+measured from the reader's own index, under every flag given (`CsvSource.measuredStepMillis`) — no second
+CSV grammar: each instance's `Coverage.mostCommonSpacing` over its rows with a value inside the run window
+(plus one step), taken when that gap repeats at least 3 times, then the widest over every instance, as
+`Coverage.spacingMillis` takes it. The index is keyed without the step, so `WirCollect.measureCsv` hands
+the collection the reader that measured, and the file is read once. A measured step coarser than 15 s that
+leaves fewer than 10 points in the run is not adopted, and said (F5). `measureCsv` puts either into the
+options only when the flag was absent and prints `step 5s, measured from the file's rows` / `layout wide,
+read from the header`, naming the override; nothing measured says nothing. Both paths (`wir-collect`,
+`jmeter -g`) get it. Prometheus and `--recording` keep 15 s. E28 sets 15 s explicitly to keep its H11 case.
 
 **The committed payloads cannot drift.** `WirCollectTest.theCommittedPayloadsAreWhatTodaysCollectorWritesFromTheirCsv`
 re-collects E26's, E27's and the goldens' CSVs with today's collector and compares every series and

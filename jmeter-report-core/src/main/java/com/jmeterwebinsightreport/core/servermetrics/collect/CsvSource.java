@@ -261,7 +261,18 @@ public final class CsvSource implements SeriesSource {
         }
         if (instances.isEmpty() && rowsRead > 0) {
             String file = new File(source.path()).getName();
-            if (window != null && (fileLast < window.getStart() - slack || fileFirst > window.getEnd() + slack)) {
+            // The rows inside the run, a blank value's included: none means a time problem, whatever
+            // the rows outside it carry.
+            int inside = 0;
+            for (TreeMap<Long, Double> rows : byInstance.values()) {
+                for (Long t : rows.keySet()) {
+                    long ts = t + source.clockOffsetMs();
+                    if (window == null || (ts >= window.getStart() - slack && ts <= window.getEnd() + slack)) {
+                        inside++;
+                    }
+                }
+            }
+            if (inside == 0) {
                 // Rows exist for exactly this series and every one fell outside the run. That is a
                 // time problem - a local time written with Z, a wrong --time-zone, an export of
                 // another range, a skewed server clock - and never "the query matched no series":
@@ -270,9 +281,9 @@ public final class CsvSource implements SeriesSource {
                         fileFirst, fileLast, window, slack));
             }
             // Rows inside the run, and not one value among them.
-            return Answer.failed(file + " has " + rowsRead + " row" + (rowsRead == 1 ? "" : "s") + " for "
-                    + request.component() + "/" + request.metricKey() + " and every value is empty or NaN"
-                    + " - the export carries the series' times and no numbers");
+            return Answer.failed(file + " has " + inside + " row" + (inside == 1 ? "" : "s") + " for "
+                    + request.component() + "/" + request.metricKey() + (inside < rowsRead ? " inside the run" : "")
+                    + " and every value is empty or NaN - the export carries the series' times and no numbers");
         }
         return Answer.of(instances, readAs);
     }
@@ -288,11 +299,17 @@ public final class CsvSource implements SeriesSource {
         // Start to start: a file shifted whole keeps its distance from the run at both ends.
         long shift = Math.round((first - window.getStart()) / 1000.0) * 1000L;
         boolean before = last < window.getStart();
+        // Rows on both sides and none inside: an export of other runs, the run falling between them.
+        // No shift lines that up.
+        boolean around = first < window.getStart() && last > window.getEnd();
         StringBuilder sb = new StringBuilder(file).append(" has ").append(rows).append(" row")
                 .append(rows == 1 ? "" : "s").append(" for ").append(component).append('/').append(metric)
                 .append(" and none inside the run: they run ").append(iso(first)).append(" .. ").append(iso(last))
-                .append(", ").append(before ? "before" : "after").append(" the run (").append(iso(window.getStart()))
-                .append(" .. ").append(iso(window.getEnd())).append(")");
+                .append(", ").append(around ? "before and after" : before ? "before" : "after").append(" the run (")
+                .append(iso(window.getStart())).append(" .. ").append(iso(window.getEnd())).append(")");
+        if (around) {
+            return sb.append(" - export the run's window").toString();
+        }
         long quarter = 15 * 60_000L;
         long rounded = Math.round((double) shift / quarter) * quarter;
         long tolerance = Math.max(2 * 60_000L, 2 * slack);
@@ -342,10 +359,74 @@ public final class CsvSource implements SeriesSource {
         return s.toLowerCase(Locale.ROOT).replace('_', '.').replace('-', '.');
     }
 
+    /** How many times a measured step's gap must repeat in one instance to be taken for its interval. */
+    static final int MIN_STEP_REPEATS = 3;
+
     /**
-     * One line per series of the file last read that repeats a time with another value - the later
-     * row is kept, and this says so (two hosts without an instance column, an export appended twice).
+     * The interval the CSV was exported at (decision 12), from the index this reader builds for
+     * {@code source} - the same rows, layout, column names and time rules {@link #collect} reads, and
+     * the index {@link #collect} then reuses, since a source's step is not part of what the file reads
+     * as. Each instance's {@linkplain Coverage#mostCommonSpacing most common spacing} between its rows
+     * with a value (a blank row is a gap, as {@link Coverage#spacingMillis} reads it), counting only
+     * rows within {@code window} and one {@code source} step of it (null: every row), taken when that
+     * spacing repeats at least {@value #MIN_STEP_REPEATS} times in the instance - a jittered or sparse
+     * export has no interval to measure; then the widest over every instance of every series, as
+     * {@link Coverage#spacingMillis} takes it, so a coarser series is never counted in slots finer than
+     * its rows. 0 when nothing was measured, a file the reader refuses included: its refusal follows.
      */
+    public long measuredStepMillis(ServerSource source, ServerMetricsPayload.Window window) {
+        Index idx = indexFor(source);
+        if (idx.fileError != null) {
+            return 0;
+        }
+        long slack = Math.max(0, source.stepMillis());
+        long widest = 0;
+        for (Map<String, TreeMap<Long, Double>> byInstance : idx.series.values()) {
+            for (TreeMap<Long, Double> rows : byInstance.values()) {
+                List<Long> times = new ArrayList<>();
+                for (Map.Entry<Long, Double> p : rows.entrySet()) {
+                    long ts = p.getKey() + source.clockOffsetMs();
+                    if (p.getValue() != null && (window == null
+                            || (ts >= window.getStart() - slack && ts <= window.getEnd() + slack))) {
+                        times.add(ts);
+                    }
+                }
+                long spacing = Coverage.mostCommonSpacing(times);
+                if (spacing > 0 && repeats(times, spacing) >= MIN_STEP_REPEATS) {
+                    widest = Math.max(widest, spacing);
+                }
+            }
+        }
+        return widest;
+    }
+
+    /** How many consecutive pairs of {@code ascending} are {@code spacing} apart. */
+    private static int repeats(List<Long> ascending, long spacing) {
+        int n = 0;
+        for (int i = 1; i < ascending.size(); i++) {
+            n += ascending.get(i) - ascending.get(i - 1) == spacing ? 1 : 0;
+        }
+        return n;
+    }
+
+    /**
+     * How far apart the rows of the file last read for this series are, a row with no value
+     * included: each instance's {@linkplain Coverage#mostCommonSpacing most common spacing}, the
+     * widest over the instances, 0 with none. Beside {@link Coverage#spacingMillis} over the points,
+     * it tells an export at a coarser interval from one at the step whose blank rows left the gaps.
+     */
+    public long rowSpacingMillis(String component, String metric) {
+        Map<String, TreeMap<Long, Double>> byInstance = index == null ? null
+                : index.series.get(seriesKey(component, metric));
+        long widest = 0;
+        if (byInstance != null) {
+            for (TreeMap<Long, Double> rows : byInstance.values()) {
+                widest = Math.max(widest, Coverage.mostCommonSpacing(rows.keySet()));
+            }
+        }
+        return widest;
+    }
+
     /**
      * How many rows of the file last read name this series and carry no value (an empty cell or
      * NaN): gaps the export wrote, not an interval coarser than the step - so the collector must not
@@ -365,6 +446,10 @@ public final class CsvSource implements SeriesSource {
         return blank;
     }
 
+    /**
+     * One line per series of the file last read that repeats a time with another value - the later
+     * row is kept, and this says so (two hosts without an instance column, an export appended twice).
+     */
     public List<String> duplicateNotes() {
         return index == null ? Collections.<String>emptyList()
                 : Collections.unmodifiableList(new ArrayList<>(index.duplicates.values()));

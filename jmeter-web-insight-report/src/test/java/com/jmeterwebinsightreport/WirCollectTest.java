@@ -988,6 +988,129 @@ class WirCollectTest {
         assertNull(WirCollect.spacingWarning("orders-db/up", s, 15_000), "no points, no spacing");
     }
 
+    @Test
+    void blankRowsAreSaidBesideTheSpacingWarningAndCalledTheGapsOnlyWhenTheyMadeThem() {
+        // F16. Points 60 s apart under --step 15s.
+        ServerMetricsPayload.SeriesRecord s = new ServerMetricsPayload.SeriesRecord();
+        s.setComponent("orders-db");
+        s.setMetric("up");
+        s.setStatus("OK");
+        ServerMetricsPayload.InstanceRecord inst = new ServerMetricsPayload.InstanceRecord();
+        List<ServerMetricsPayload.Point> pts = new java.util.ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            pts.add(new ServerMetricsPayload.Point(1_700_000_000_000L + i * 60_000L, 1));
+        }
+        inst.setPoints(pts);
+        s.setInstances(Collections.singletonList(inst));
+        // The rows are 60 s apart too, three of them blank: the interval and the blanks, both - the
+        // blanks are not called "not a coarser interval", which here it is.
+        assertEquals(java.util.Arrays.asList(
+                "orders-db/up points are 60s apart but --step is 15s - coverage counts 15s slots; pass --step 60s",
+                "orders-db/up has 3 rows with no value (an empty cell or NaN) - gaps in the export"),
+                WirCollect.spacingLines("orders-db/up", s, 3, 60_000, 15_000));
+        // The rows are at the step and the blanks left the points 60 s apart: the blanks only, as gaps.
+        assertEquals(Collections.singletonList("orders-db/up has 12 rows with no value (an empty cell or NaN) - gaps"
+                + " in the export, not a coarser interval"), WirCollect.spacingLines("orders-db/up", s, 12, 15_000, 15_000));
+        // No blank rows: the warning alone.
+        assertEquals(Collections.singletonList(
+                "orders-db/up points are 60s apart but --step is 15s - coverage counts 15s slots; pass --step 60s"),
+                WirCollect.spacingLines("orders-db/up", s, 0, 0, 15_000));
+        // No warning: nothing, blank rows or not.
+        assertTrue(WirCollect.spacingLines("orders-db/up", s, 3, 60_000, 60_000).isEmpty());
+    }
+
+    // ---- the measured step (decision 12) -----------------------------------------------------------
+
+    private Map<String, String> csvOpts(String name, String text) throws Exception {
+        Path csv = dir.resolve(name);
+        Files.write(csv, text.getBytes(StandardCharsets.UTF_8));
+        Map<String, String> opts = new java.util.LinkedHashMap<>();
+        opts.put("csv", csv.toString());
+        return opts;
+    }
+
+    @Test
+    void aMeasuredStepThatLeavesFewerThanTenPointsInTheRunIsNotTakenAndThatIsSaid() throws Exception {
+        // F5. A 10-minute rollup over a 35-minute run: four slots, and four points would judge the run.
+        StringBuilder rows = new StringBuilder("time,component,metric,value\n");
+        for (int i = 0; i < 6; i++) {
+            rows.append(1_700_000_000_000L + i * 600_000L).append(",app,cpu,1\n");
+        }
+        Map<String, String> opts = csvOpts("rollup.csv", rows.toString());
+        ServerMetricsPayload.Window run = new ServerMetricsPayload.Window(1_700_000_000_000L, 1_700_002_100_000L, null);
+        assertEquals(Collections.singletonList("step 10m measured from the file's rows is too coarse for this 35m run"
+                + " (fewer than 10 points) - collecting at 15s; pass --step to collect at another"),
+                WirCollect.measureCsv(opts, new com.jmeterwebinsightreport.core.servermetrics.collect.CsvSource(), run));
+        assertFalse(opts.containsKey("step"));
+        // The same rows over a 100-minute run leave eleven points: taken.
+        Map<String, String> longer = csvOpts("rollup.csv", rows.toString());
+        assertEquals(Collections.singletonList("step 10m, measured from the file's rows - pass --step to collect at another"),
+                WirCollect.measureCsv(longer, new com.jmeterwebinsightreport.core.servermetrics.collect.CsvSource(),
+                        new ServerMetricsPayload.Window(1_700_000_000_000L, 1_700_006_000_000L, null)));
+        assertEquals("10m", longer.get("step"));
+    }
+
+    @Test
+    void nothingMeasuredSaysNothing() throws Exception {
+        ServerMetricsPayload.Window run = new ServerMetricsPayload.Window(1_700_000_000_000L, 1_700_003_600_000L, null);
+        // Jittered timestamps: no gap repeats (F6).
+        Map<String, String> jitter = csvOpts("jitter.csv", "time,component,metric,value\n1700000000000,app,cpu,1\n"
+                + "1700000015001,app,cpu,1\n1700000029999,app,cpu,1\n1700000045002,app,cpu,1\n");
+        assertTrue(WirCollect.measureCsv(jitter, new com.jmeterwebinsightreport.core.servermetrics.collect.CsvSource(),
+                run).isEmpty());
+        assertFalse(jitter.containsKey("step"));
+        // Epoch microseconds: the reader refuses them, and nothing is measured first (F11).
+        StringBuilder micros = new StringBuilder("time,component,metric,value\n");
+        for (int i = 0; i < 6; i++) {
+            micros.append(1_700_000_000_000_000L + i * 15_000_000L).append(",app,cpu,1\n");
+        }
+        Map<String, String> us = csvOpts("micros.csv", micros.toString());
+        assertTrue(WirCollect.measureCsv(us, new com.jmeterwebinsightreport.core.servermetrics.collect.CsvSource(),
+                run).isEmpty());
+        assertFalse(us.containsKey("step"));
+    }
+
+    @Test
+    void theStepIsMeasuredUnderTheFlagsTheCollectionReadsTheFileWith() throws Exception {
+        ServerMetricsPayload.Window run = new ServerMetricsPayload.Window(1_700_000_000_000L, 1_700_003_600_000L, null);
+        // A descending export (F10), a capitalised --csv-columns key over a mapped value column (F8, F9).
+        StringBuilder rows = new StringBuilder("TS,name,reading\n");
+        for (int i = 9; i >= 0; i--) {
+            rows.append(1_700_000_000_000L + i * 30_000L).append(",cpu,").append(i).append('\n');
+        }
+        Map<String, String> opts = csvOpts("mapped.csv", rows.toString());
+        opts.put("csv-columns", "Time=ts,metric=name,value=reading");
+        opts.put("component", "app");
+        com.jmeterwebinsightreport.core.servermetrics.collect.CsvSource reader =
+                new com.jmeterwebinsightreport.core.servermetrics.collect.CsvSource();
+        assertEquals(Collections.singletonList("step 30s, measured from the file's rows - pass --step to collect at another"),
+                WirCollect.measureCsv(opts, reader, run));
+        assertEquals("30s", opts.get("step"));
+        // A file mixing a 1 s series and a 15 s one is collected at 15 s (F7).
+        StringBuilder mixed = new StringBuilder("time,component,metric,value\n");
+        for (int i = 0; i < 300; i++) {
+            mixed.append(1_700_000_000_000L + i * 1000L).append(",host,cpu,1\n");
+        }
+        for (int i = 0; i < 20; i++) {
+            mixed.append(1_700_000_000_000L + i * 15_000L).append(",db,conns,1\n");
+        }
+        Map<String, String> both = csvOpts("mixed.csv", mixed.toString());
+        WirCollect.measureCsv(both, new com.jmeterwebinsightreport.core.servermetrics.collect.CsvSource(), run);
+        assertEquals("15s", both.get("step"));
+        // A wide file read through --columns: each column a series, never rows paired by equal values (F8).
+        StringBuilder wide = new StringBuilder("Time,orders-db CPU\n");
+        for (int i = 0; i < 10; i++) {
+            wide.append(1_700_000_000_000L + i * 15_000L).append(',').append(i % 2 == 0 ? 12 : 15).append('\n');
+        }
+        Map<String, String> legend = csvOpts("legend.csv", wide.toString());
+        Path map = dir.resolve("legend-map.csv");
+        Files.write(map, "column,component,metric,instance\norders-db CPU,orders-db,cpu,\n".getBytes(StandardCharsets.UTF_8));
+        legend.put("layout", "wide");
+        legend.put("columns", map.toString());
+        assertEquals(Collections.singletonList("step 15s, measured from the file's rows - pass --step to collect at another"),
+                WirCollect.measureCsv(legend, new com.jmeterwebinsightreport.core.servermetrics.collect.CsvSource(), run));
+    }
+
     // ---- --csv-columns, --component: a long export another tool named -----------------------------
 
     @Test

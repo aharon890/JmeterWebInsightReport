@@ -244,8 +244,10 @@ public final class WirCollect {
         // 3. The source: one, from the flags (C8), under the id every assert names. For a CSV, what
         //    the flags left unsaid - the layout, the step - is read off the file (decision 12) and
         //    printed, so a measured value is never silent and the flag that overrides it is named.
+        //    The reader that measures is the one that collects, so the file is read once.
+        CsvSource csvReader = new CsvSource();
         if (opts.containsKey("csv") && new File(opts.get("csv")).isFile()) {
-            for (String line : measureCsv(opts)) {
+            for (String line : measureCsv(opts, csvReader, window)) {
                 println(out, "wir-collect: " + line);
             }
         }
@@ -267,7 +269,6 @@ public final class WirCollect {
         // the page).
         readers.put(ServerSource.Type.FILE, new FileSource());
         // Kept: a wide file's columns that named nothing are read off it after the collection.
-        CsvSource csvReader = new CsvSource();
         readers.put(ServerSource.Type.CSV, csvReader);
         readers.put(ServerSource.Type.PROMETHEUS, PrometheusSource.live(environment, settle));
 
@@ -349,16 +350,13 @@ public final class WirCollect {
                 println(out, "wir-collect: WARNING " + name + ": " + padded);
             }
             // A file's rows are at the interval it was exported at, which the step must match.
-            String spacing = csv ? spacingWarning(name, s, source.stepMillis()) : null;
-            int blank = csv && s.getComponent() != null ? csvReader.blankRows(s.getComponent(),
-                    s.getMetric() != null ? s.getMetric() : s.getResolvedQuery()) : 0;
-            if (spacing != null && blank > 0) {
-                // The rows are at the step; some carry no value. A coarser --step would read the
-                // gaps as covered, so say what they are instead.
-                println(out, "wir-collect: " + name + " has " + blank + " row" + (blank == 1 ? "" : "s")
-                        + " with no value (an empty cell or NaN) - gaps in the export, not a coarser interval");
-            } else if (spacing != null) {
-                println(out, "wir-collect: " + spacing);
+            if (csv) {
+                String key = s.getMetric() != null ? s.getMetric() : s.getResolvedQuery();
+                int blank = s.getComponent() != null ? csvReader.blankRows(s.getComponent(), key) : 0;
+                long rowSpacing = blank > 0 ? csvReader.rowSpacingMillis(s.getComponent(), key) : 0;
+                for (String line : spacingLines(name, s, blank, rowSpacing, source.stepMillis())) {
+                    println(out, "wir-collect: " + line);
+                }
             }
             if (!status.judgeable()) {
                 incomplete++;
@@ -479,8 +477,40 @@ public final class WirCollect {
         if (!coarse && !cost) {
             return null;
         }
+        return spacingSentence(name, spacing, stepMillis);
+    }
+
+    private static String spacingSentence(String name, long spacing, long stepMillis) {
         return name + " points are " + stepText(spacing) + " apart but --step is " + stepText(stepMillis)
                 + " - coverage counts " + stepText(stepMillis) + " slots; pass --step " + stepText(spacing);
+    }
+
+    /**
+     * The spacing lines for one CSV series: its {@link #spacingWarning}, and beside it a line for its
+     * rows with no value. A series with {@code blank} such rows has gaps the export wrote, which a
+     * coarser --step would read as covered; so where its rows - a blank one included,
+     * {@code rowSpacing} apart - are within 1.5 x the step, the blanks made the wide gaps and only
+     * they are said, as gaps and not a coarser interval. Where the rows themselves are further apart
+     * than that, both are said: the interval the rows are at, and the blanks beside it.
+     */
+    static List<String> spacingLines(String name, ServerMetricsPayload.SeriesRecord s, int blank, long rowSpacing,
+                                     long stepMillis) {
+        List<String> lines = new ArrayList<>();
+        String spacing = spacingWarning(name, s, stepMillis);
+        if (spacing == null) {
+            return lines;
+        }
+        boolean rowsCoarse = rowSpacing * 2 > stepMillis * 3;
+        if (blank == 0) {
+            lines.add(spacing);
+            return lines;
+        }
+        if (rowsCoarse) {
+            lines.add(spacingSentence(name, rowSpacing, stepMillis));
+        }
+        lines.add(name + " has " + blank + " row" + (blank == 1 ? "" : "s") + " with no value (an empty cell or NaN)"
+                + " - gaps in the export" + (rowsCoarse ? "" : ", not a coarser interval"));
+        return lines;
     }
 
     /** A duration as {@code --step} takes it, in seconds when it is whole ones: 60s, not 1m. */
@@ -804,32 +834,50 @@ public final class WirCollect {
         return new ObjectMapper().writer(pretty).writeValueAsString(payload);
     }
 
+    /** The fewest points a measured step may leave in the run's window to be adopted (F5). */
+    static final int MIN_MEASURED_POINTS = 10;
+
     /**
      * Decision 12, "measure, don't ask": a CSV's layout and step, when no flag gave them, from the
-     * file itself ({@link CsvShape}), put into {@code opts} as if they had been passed, and one line
-     * each saying so. The wide layout only where nothing else names columns (no --csv-columns, no
-     * --component); the step only when one was measured. An explicit flag is never overridden.
+     * file itself, put into {@code opts} as if they had been passed, and one line each saying so. The
+     * wide layout from the header ({@link CsvShape}), only where nothing else names columns (no
+     * --csv-columns, no --component); then the step from {@code reader}'s own index of the file under
+     * every flag given ({@link CsvSource#measuredStepMillis}), which the collection reuses. A step
+     * coarser than the default that would leave fewer than {@value #MIN_MEASURED_POINTS} points in
+     * {@code window} is not adopted - a few points would judge the whole run at full coverage - and
+     * that is said instead. Nothing measured, a file the reader refuses included, says nothing. An
+     * explicit flag is never overridden.
      */
-    static List<String> measureCsv(Map<String, String> opts) {
+    static List<String> measureCsv(Map<String, String> opts, CsvSource reader, ServerMetricsPayload.Window window) {
         List<String> lines = new ArrayList<>();
-        String spec = opts.get("csv-columns");
-        String timeColumn = null;
-        if (spec != null) {
-            java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?:^|,)\\s*time\\s*=\\s*([^,]+)").matcher(spec);
-            timeColumn = m.find() ? m.group(1).trim() : null;
-        }
-        CsvShape shape = CsvShape.sniff(new File(opts.get("csv")), timeColumn);
         if (!opts.containsKey("layout") && !opts.containsKey("csv-columns") && !opts.containsKey("component")
-                && shape.wide()) {
+                && CsvShape.looksWide(new File(opts.get("csv")))) {
             opts.put("layout", "wide");
             lines.add("layout wide, read from the header (Time, then component/metric columns) - pass --layout long"
                     + " to read it otherwise");
         }
-        if (!opts.containsKey("step") && shape.stepMillis() > 0) {
-            opts.put("step", Durations.format(shape.stepMillis()));
-            lines.add("step " + Durations.format(shape.stepMillis()) + ", measured from the file's rows - pass --step"
-                    + " to collect at another");
+        if (opts.containsKey("step")) {
+            return lines;
         }
+        long step;
+        try {
+            step = reader.measuredStepMillis(collectionSource(opts), window);
+        } catch (RuntimeException unmeasurable) {
+            return lines;   // the collection says what is wrong with the file
+        }
+        if (step <= 0) {
+            return lines;
+        }
+        long run = window.getEnd() - window.getStart();
+        if (step > ServerSource.DEFAULT_STEP_MILLIS && run / step + 1 < MIN_MEASURED_POINTS) {
+            lines.add("step " + Durations.format(step) + " measured from the file's rows is too coarse for this "
+                    + Durations.format(Math.round(run / 1000.0) * 1000) + " run (fewer than " + MIN_MEASURED_POINTS + " points) - collecting at "
+                    + Durations.format(ServerSource.DEFAULT_STEP_MILLIS) + "; pass --step to collect at another");
+            return lines;
+        }
+        opts.put("step", Durations.format(step));
+        lines.add("step " + Durations.format(step) + ", measured from the file's rows - pass --step"
+                + " to collect at another");
         return lines;
     }
 

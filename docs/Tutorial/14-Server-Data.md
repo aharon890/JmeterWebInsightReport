@@ -141,6 +141,7 @@ The run's window is from its earliest sample's start to its latest sample's end.
 | is entirely outside the run, by a whole number of hours | `SOURCE FAILED`: "…none inside the run … They start 3h late, which is usually a time zone" | write the zone (`Z` for UTC, or `+03:00`), or set `webinsight.report.servermetrics.timezone`, or move it with `.clockoffset` |
 | is entirely outside the run, by seconds | `SOURCE FAILED`, naming the shift as clock skew | `webinsight.report.servermetrics.clockoffset=-30s` |
 | is from another day | `SOURCE FAILED`: "The file covers another period" | export the run's window |
+| has rows before and after the run and none inside it | `SOURCE FAILED`: "…none inside the run … before and after the run" | export the run's window |
 | has times with no zone | `SOURCE FAILED` naming the line | add the zone, or `.timezone` |
 | has epoch seconds, microseconds or nanoseconds | `SOURCE FAILED` naming the unit | epoch **milliseconds** |
 
