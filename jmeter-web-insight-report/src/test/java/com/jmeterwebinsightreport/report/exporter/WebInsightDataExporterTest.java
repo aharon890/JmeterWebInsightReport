@@ -252,6 +252,51 @@ class WebInsightDataExporterTest {
         assertTrue(bare.getServerDataProblem().contains("no annotations file"), bare.getServerDataProblem());
     }
 
+    /**
+     * A CSV given beside an annotations file found only by auto-detection in the output directory
+     * is collected: the annotations are looked for before the CSV is read, not after it was
+     * refused as having none (PR #19 review F3).
+     */
+    @Test
+    void aCsvGivenBesideAutoDetectedAnnotationsIsCollected() throws Exception {
+        File jtl = new File("../test-plans/goldens/plain.jtl");
+        Files.copy(new File("../test-plans/goldens/gate-server.json").toPath(),
+                outputDir.resolve("report-annotations.json"));
+        ReportConfiguration config = new WebInsightDataExporter().buildConfiguration(outputDir.toFile());
+        config.setAnnotationsFile(null);
+        config.setServerMetricsFile(new File("../test-plans/goldens/server-metrics.csv"));
+
+        new WebInsightDataExporter().readCompanionFiles(config, outputDir.toFile(), jtl);
+
+        assertEquals(outputDir.resolve("report-annotations.json").toFile(), config.getAnnotationsFile());
+        assertNull(config.getServerDataProblem());
+        assertTrue(config.getServerMetricsFile().getName().startsWith("wir-server-metrics-"),
+                config.getServerMetricsFile().toString());
+    }
+
+    /**
+     * Only server data that is there, or a sentence about why it could not be read, keeps this run
+     * from being "already reported". A file one shared run.properties names before a later step
+     * writes it does not: the combined -n -t -e -o run keeps the listener's interim report and its
+     * NEXT line rather than replacing it with a refusal (PR #19 review F2).
+     */
+    @Test
+    void onlyServerDataThatIsThereBypassesTheSkip() throws IOException {
+        ReportConfiguration config = new WebInsightDataExporter().buildConfiguration(outputDir.toFile());
+        config.setServerMetricsFile(null);
+        assertFalse(WebInsightDataExporter.bringsServerData(config));
+
+        config.setServerMetricsFile(outputDir.resolve("server.csv").toFile());
+        assertFalse(WebInsightDataExporter.bringsServerData(config), "a configured file nobody has written yet");
+
+        touch("server.csv");
+        assertTrue(WebInsightDataExporter.bringsServerData(config));
+
+        config.setServerMetricsFile(null);
+        config.setServerDataProblem("the server data server.csv is a CSV, and no annotations file says what to read from it");
+        assertTrue(WebInsightDataExporter.bringsServerData(config), "a refusal is said in the report");
+    }
+
     @Test
     void anUnrecognisedBooleanIsReportedAndTreatedAsUnset() {
         String before = JMeterUtils.getProperty("webinsight.report.junit");

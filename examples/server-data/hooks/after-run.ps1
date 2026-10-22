@@ -5,7 +5,8 @@
 # <first-report.json> is the .json the run's own report wrote (web-insight-report.json): its
 # "window" is the span to export. $env:EXPORT_CMD is your tool's export, called as
 #   <EXPORT_CMD> <startMillis> <endMillis> server.csv
-# (default: this example's stand-in, "node fake-export.js"). JMeter is run as
+# (default: this example's stand-in, "node fake-export.js"). EXPORT_CMD is split on whitespace,
+# so a command or argument whose path contains spaces is not supported. JMeter is run as
 # java -jar $env:JMETER_HOME\bin\ApacheJMeter.jar, because jmeter.bat does not pass JMeter's exit code
 # back. Run it from the folder holding run.properties. Exits with JMeter's code, and server data
 # never changes that code (unless run.properties sets server.failonerror).
@@ -30,8 +31,9 @@ if ($null -eq $window -or $null -eq $window.startMillis) {
 $start = [long]$window.startMillis - 60000
 $end = [long]$window.endMillis + 60000
 $export = if ($env:EXPORT_CMD) { $env:EXPORT_CMD } else { 'node fake-export.js' }
-$parts = $export -split ' '
-& $parts[0] @($parts[1..($parts.Length - 1)] + @("$start", "$end", 'server.csv'))
+$parts = @($export.Trim() -split '\s+')
+$exportArgs = @($parts | Select-Object -Skip 1) + @("$start", "$end", 'server.csv')
+& $parts[0] @exportArgs
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 & java -jar (Join-Path $env:JMETER_HOME 'bin\ApacheJMeter.jar') -g $Jtl -o $Out -q run.properties

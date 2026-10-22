@@ -16968,10 +16968,15 @@ WIR.serverKpis = (function () {
      */
     function readDeclared(data) {
         var block = (data && data.annotationsDocument && data.annotationsDocument.serverMetrics) || null;
+        /* The block is kept as shipped, so a Download writes it back verbatim. One whose shape
+           does not bind (`"asserts": {}`) reaches the page because AnnotationLoader isolates it
+           from the client half, and is read as declaring nothing, as the restore and replace
+           paths read it (blockShapeProblem): parsed, it threw and stopped the page's init. */
+        var readable = block && !blockShapeProblem(block) ? block : null;
         state.block = block;
-        state.declaredKpis = block ? positionalKeys(kpisFromDocument(block)) : [];
-        state.loadedKpis = block ? positionalKeys(kpisFromDocument(block)) : [];
-        state.config = configFromJson(block);
+        state.declaredKpis = readable ? positionalKeys(kpisFromDocument(readable)) : [];
+        state.loadedKpis = readable ? positionalKeys(kpisFromDocument(readable)) : [];
+        state.config = configFromJson(readable);
     }
 
     /** Re-parse the declared half after the document was replaced. Never the baseline. */
@@ -23846,6 +23851,13 @@ WIR.serverKpis = (function () {
         if (loaded === null) return { serverMetrics: null };
         var block = {};
         Object.keys(loaded).forEach(function (k) { putOwn(block, k, loaded[k]); });
+        /* A block whose shape does not bind (`"asserts": {}`, isolated by AnnotationLoader) was
+           read as declaring nothing (readDeclared), so until an assert is declared here its
+           `asserts` is written as the file had it — rebuilt, `{}` became `[]` and a list beside a
+           malformed `components` became empty, a repair nobody asked for. */
+        if (kpis.length === 0 && isPlainObject(loaded) && blockShapeProblem(loaded)) {
+            return { serverMetrics: block };
+        }
         block.asserts = kpis.map(kpiToJson);
         return { serverMetrics: block };
     }

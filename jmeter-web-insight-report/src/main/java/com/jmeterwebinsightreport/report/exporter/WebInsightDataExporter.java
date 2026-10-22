@@ -163,14 +163,11 @@ public class WebInsightDataExporter extends AbstractDataExporter {
             // identity requires the parsed data, so the question has to be asked after the parse
             // rather than before it. Parsing a JTL we may not use costs a fraction of the render
             // it might save, and it buys an answer that is correct.
-            // Server data given to this -g run: a payload, or a CSV collected here and now (P4).
-            collectServerCsvIfGiven(config, jtlFile);
+            // The annotations and baseline found in the output directory, then the server data
+            // given to this -g run: a payload, or a CSV collected here and now (P4).
+            readCompanionFiles(config, outputDir, jtlFile);
 
-            // A run that brings server data is never "already reported": the report already here
-            // (the listener's interim one) was written without it, and skipping left the page
-            // saying NOT COLLECTED with exit 0 and no console line (research F2 T6b).
-            boolean bringsServerData = config.getServerMetricsFile() != null || config.getServerDataProblem() != null;
-            if (!bringsServerData && thisRunAlreadyReported(outputDir, configuredName, reportData)) {
+            if (!bringsServerData(config) && thisRunAlreadyReported(outputDir, configuredName, reportData)) {
                 System.out.println("WEB-INSIGHT-REPORT: SKIPPED — this run's report is already in "
                         + outputDir.getAbsolutePath() + " (the listener wrote it during the same execution)");
                 // At WARN, not INFO: this line is the ONLY explanation for a run that produces
@@ -187,10 +184,7 @@ public class WebInsightDataExporter extends AbstractDataExporter {
                 return;
             }
 
-            // 7. Auto-detect annotations and baseline in output directory
-            autoDetectCompanionFiles(config, outputDir);
-
-            // 8. Generate the report
+            // 7. Generate the report
             WebInsightReportGenerator generator = new WebInsightReportGenerator(config);
             ReportArtifacts artifacts = generator.generateReport(reportData);
 
@@ -293,6 +287,33 @@ public class WebInsightDataExporter extends AbstractDataExporter {
         }
         System.err.println("WEB-INSIGHT-REPORT: ASSERT FAIL — " + artifacts.verdictLine());
         NonZeroExit.arrange(NonZeroExit.FAIL_ON_ASSERT, artifacts.verdictLine());
+    }
+
+    /**
+     * The files this run reads beside its own settings, in the order one needs the other: the
+     * annotations and baseline auto-detected in the output directory first, then the server data,
+     * because collecting a CSV reads the annotations file to know what to collect. Collected first,
+     * a CSV given beside an auto-detected annotations file was refused as having none.
+     */
+    void readCompanionFiles(ReportConfiguration config, File outputDir, File jtlFile) {
+        autoDetectCompanionFiles(config, outputDir);
+        collectServerCsvIfGiven(config, jtlFile);
+    }
+
+    /**
+     * Does this run bring server data its report has to show? Then it is never "already reported":
+     * the report already here (the listener's interim one) was written without it, and skipping
+     * left the page saying NOT COLLECTED with exit 0 and no console line (research F2 T6b).
+     *
+     * <p>A file that is only <em>configured</em> brings nothing. One shared {@code run.properties}
+     * names the CSV a later step writes, so a combined {@code -n -t ... -e -o} run reaches here
+     * before it exists; regenerating then replaced the listener's interim report, with its NEXT
+     * line, by a refusal of a file nobody had written yet. A collection that was refused did bring
+     * something: the sentence saying why.
+     */
+    static boolean bringsServerData(ReportConfiguration config) {
+        File file = config.getServerMetricsFile();
+        return (file != null && file.exists()) || config.getServerDataProblem() != null;
     }
 
     /** The reader options for a CSV given as server data, as -J or -q properties, and wir-collect's flag for each. */
