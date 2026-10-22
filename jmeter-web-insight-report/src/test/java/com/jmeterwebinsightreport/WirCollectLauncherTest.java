@@ -61,4 +61,19 @@ class WirCollectLauncherTest {
                 () -> WirCollectLauncher.onePluginJar(empty.toFile(), new File("not-a-plugin.jar")));
         assertTrue(none.getMessage().startsWith("no jmeter-web-insight-report-*.jar in "), none.getMessage());
     }
+
+    @Test
+    void aPluginJarRunFromOutsideLibExtIsTheOneThatRunsWhateverLibExtHolds() throws Exception {
+        File installed = jar("jm", "jmeter-web-insight-report-4.0.15.jar");
+        File ext = installed.getParentFile();
+        Path release = dir.resolve("release");
+        Files.createDirectories(release);
+        File loose = Files.write(release.resolve("jmeter-web-insight-report-4.1.0.jar"), new byte[] {1}).toFile();
+        assertEquals(loose, WirCollectLauncher.onePluginJar(ext, loose));
+        jar("jm", "jmeter-web-insight-report-4.0.9.jar");   // two in lib/ext: not what is running
+        assertEquals(loose, WirCollectLauncher.onePluginJar(ext, loose));
+        Path empty = dir.resolve("bare").resolve("lib").resolve("ext");
+        Files.createDirectories(empty);
+        assertEquals(loose, WirCollectLauncher.onePluginJar(empty.toFile(), loose));
+    }
 }

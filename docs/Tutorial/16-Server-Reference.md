@@ -627,8 +627,9 @@ step 2 read has the same effect.
 
 Deploy the release's JAR to `$JMETER_HOME/lib/ext` as usual. The JAR runs the collector itself, with
 the same command on Windows (PowerShell or cmd), macOS and Linux; it finds JMeter from its place in
-`lib/ext`, and refuses a `lib/ext` that holds two plugin JARs. `--help` prints the line with your
-JAR's real name:
+`lib/ext`, and refuses a `lib/ext` that holds two plugin JARs. A plugin JAR run from anywhere else
+(a release folder) is the collector that runs, against the JMeter `JMETER_HOME` names, whatever
+version that JMeter's `lib/ext` holds. `--help` prints the line with your JAR's real name:
 
 ```
 java -jar <JMETER_HOME>/lib/ext/jmeter-web-insight-report-X.Y.Z.jar --jtl results.jtl ...
@@ -643,9 +644,12 @@ under `scripts/`:
   It finds JMeter from `JMETER_HOME`, then from `jmeter` on `PATH` (symlinks followed, so
   Homebrew's wrapper resolves), honours `JAVA_HOME`, refuses a `lib/ext` holding two plugin JARs,
   and builds the right classpath under Git Bash, MSYS2 and Cygwin as well.
-- **`wir-collect.bat`** is a thin wrapper that runs `wir-collect.sh` with `bash`. Use it only where
-  Git's (or MSYS2's) `bash` comes before `C:\Windows\System32` on `PATH`. Otherwise `bash` is the WSL
-  launcher. On a plain Windows machine, use the `cmd.exe` line above.
+- **`wir-collect.bat`** is one `java` line, no `bash`, for cmd and PowerShell. It runs the plugin
+  JAR it finds beside itself, else in `..\lib\ext` (the `.bat` copied into `$JMETER_HOME\bin`),
+  else in `%JMETER_HOME%\lib\ext`, so in `bin` or beside the JAR it needs no `JMETER_HOME`; a JAR
+  beside it that is not in a `lib\ext` still needs `JMETER_HOME` to find JMeter, and says so. With
+  no plugin JAR in any of the three, Java prints
+  `Could not find or load main class com.jmeterwebinsightreport.WirCollectLauncher`.
 
 **On a machine with more than one JMeter**, set `JMETER_HOME` to the one that holds the plugin JAR
 you mean to collect with. Without it the script takes the JMeter that `jmeter` on `PATH` belongs to,

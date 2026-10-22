@@ -575,8 +575,9 @@ jmeter -g results.jtl -o report \
 ```
 
 `wir-collect.sh` and `wir-collect.bat` are attached to every release beside the plugin JAR (in a
-checkout they are under `scripts/`); they find JMeter through `JMETER_HOME` or `jmeter` on the
-`PATH`.
+checkout they are under `scripts/`). `wir-collect.sh` finds JMeter through `JMETER_HOME` or
+`jmeter` on the `PATH`; `wir-collect.bat` runs the plugin JAR beside itself, else in `..\lib\ext`
+(the `.bat` in `$JMETER_HOME\bin`), else in `%JMETER_HOME%\lib\ext`.
 
 Step 3 is the report that judges the server asserts and decides the exit code. `wir-collect` is
 a class inside the plugin JAR, and the JAR runs it: the same command on every OS, no wrapper script

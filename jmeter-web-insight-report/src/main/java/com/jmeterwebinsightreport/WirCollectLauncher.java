@@ -16,8 +16,8 @@ import java.util.List;
  * shade, so it cannot be this JAR's {@code Main-Class} by itself - that was the reason for "never
  * java -jar". This class uses the JDK only: it finds JMeter from the JAR's own place in
  * {@code <JMETER_HOME>/lib/ext} (or from {@code JMETER_HOME} when the JAR is elsewhere), refuses a
- * {@code lib/ext} that holds no plugin JAR or more than one, and runs {@code WirCollect} in-process
- * through a class loader over this JAR and {@code <JMETER_HOME>/lib/*.jar} - the classpath
+ * {@code lib/ext} it runs from that holds no plugin JAR or more than one, and runs {@code WirCollect}
+ * in-process through a class loader over this JAR and {@code <JMETER_HOME>/lib/*.jar} - the classpath
  * {@code wir-collect.sh} builds, so nothing else in {@code lib/ext} is on it. Every refusal is one
  * {@code wir-collect:} sentence and exit 1, as the script's are.
  */
@@ -91,10 +91,8 @@ public final class WirCollectLauncher {
      * elsewhere - wir-collect.sh's rule.
      */
     static File jmeterHome(File jar, String env) throws Refusal {
-        File ext = jar.getAbsoluteFile().getParentFile();
-        if (ext != null && ext.getName().equals("ext") && ext.getParentFile() != null
-                && ext.getParentFile().getName().equals("lib")) {
-            return ext.getParentFile().getParentFile();
+        if (inLibExt(jar)) {
+            return jar.getAbsoluteFile().getParentFile().getParentFile().getParentFile();
         }
         if (env == null || env.trim().isEmpty()) {
             throw new Refusal("the plugin JAR is not in a JMeter lib/ext and JMETER_HOME is unset - run the JAR"
@@ -108,13 +106,26 @@ public final class WirCollectLauncher {
         return home;
     }
 
-    /** The one plugin JAR in lib/ext - refusing none (name the fix) and several (list them). */
+    /** Whether the file sits directly in a folder {@code lib/ext}. */
+    private static boolean inLibExt(File jar) {
+        File ext = jar.getAbsoluteFile().getParentFile();
+        return ext != null && ext.getName().equals("ext") && ext.getParentFile() != null
+                && ext.getParentFile().getName().equals("lib");
+    }
+
+    /**
+     * The plugin JAR to run. A plugin JAR run from outside a lib/ext (a release folder, or beside
+     * wir-collect.bat) is itself the plugin: lib/ext is then not what is running, so whatever version
+     * it holds, and how many, does not matter. Otherwise the one plugin JAR in lib/ext - refusing none
+     * (name the fix) and several (list them).
+     */
     static File onePluginJar(File ext, File self) throws Refusal {
+        if (self.isFile() && self.getName().startsWith("jmeter-web-insight-report-")
+                && self.getName().endsWith(".jar") && !inLibExt(self)) {
+            return self;
+        }
         File[] found = ext.listFiles((d, n) -> n.startsWith("jmeter-web-insight-report-") && n.endsWith(".jar"));
         if (found == null || found.length == 0) {
-            if (self.isFile() && self.getName().startsWith("jmeter-web-insight-report-")) {
-                return self;   // run from a release folder against JMETER_HOME: this JAR is the plugin
-            }
             throw new Refusal("no jmeter-web-insight-report-*.jar in " + ext + " - copy the plugin JAR there");
         }
         if (found.length > 1) {

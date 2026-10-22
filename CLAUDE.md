@@ -898,8 +898,10 @@ so it runs over the plugin JAR plus JMeter's `lib/*`. Since decision 13 the JAR'
 mangling). So `java -jar <JMETER_HOME>/lib/ext/jmeter-web-insight-report-X.Y.Z.jar ...` is the one
 command for every OS. `scripts/wir-collect.sh` stays the bash wrapper, self-contained (it does not
 source `common.sh`) and still what C35-C41 run; `wir-collect.bat` is one line,
-`java -cp "%JMETER_HOME%\lib\ext\*" com.jmeterwebinsightreport.WirCollectLauncher %*` — no bash,
-so no WSL trap, and no logic (the wildcard only finds the launcher, which re-checks the JAR count).
+`java -cp "%~dp0*;%~dp0..\lib\ext\*;%JMETER_HOME%\lib\ext\*" com.jmeterwebinsightreport.WirCollectLauncher %*`
+— beside the JAR or in `bin` it needs no `JMETER_HOME` — no bash, so no WSL trap, and no logic (the
+wildcards only find the launcher, which re-checks the JAR count when it runs from `lib/ext`; a plugin
+JAR run from anywhere else is the one that runs, F12).
 `--help` (or `-h`) prints the options, the exit codes and the `java -jar` line. A release attaches
 `wir-collect.sh` and `wir-collect.bat` beside the JAR (and the annotations JSON Schema) —
 `_perf_release`, step 6.
