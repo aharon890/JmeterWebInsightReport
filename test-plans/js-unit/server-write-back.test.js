@@ -69,7 +69,7 @@ function refusalOf(which, band) {
 }
 
 /* Every way ServerMetricsMapper.readBand refuses a band whose JSON is an object (any other shape
-   refuses the whole file), as documentOf ships it: a bare 1e400 is the text "Infinity" by then. The
+   costs the whole serverMetrics block), as documentOf ships it: a bare 1e400 is the text "Infinity" by then. The
    __proto__ key is built by JSON.parse, as a file read builds it. */
 const REFUSED = [
     ['an unknown operator', { gtt: 500 }],

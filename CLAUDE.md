@@ -892,7 +892,8 @@ the chart data. The merge is in `WebInsightReportGenerator`, so both ingestion p
 **The collector.** `WirCollect` is a `main` inside the shaded JAR. Jackson and slf4j are JMeter's,
 so it runs over the plugin JAR plus JMeter's `lib/*`. Since decision 13 the JAR's `Main-Class` is
 `WirCollectLauncher`, a JDK-only class that finds JMETER_HOME from the JAR's own place in `lib/ext`
-(else the `JMETER_HOME` variable; set-but-wrong is an error), refuses no or several plugin JARs in
+(else the `JMETER_HOME` variable, set-but-wrong an error; else `jmeter` on `PATH`, symlinks followed and
+`libexec` probed, as `wir-collect.sh` finds it), refuses no or several plugin JARs in
 `lib/ext` with a sentence, and invokes `WirCollect.main` through a `URLClassLoader` over plugin +
 `lib/*.jar` with the platform loader as parent (in-process: no second JVM, no Windows argument
 mangling). So `java -jar <JMETER_HOME>/lib/ext/jmeter-web-insight-report-X.Y.Z.jar ...` is the one
@@ -961,8 +962,10 @@ to 4000 points and must still reach the 3-second spike the build judged, from a 
 the header alone (`collect/CsvShape.looksWide`: Grafana's `Time,component/metric,...`, not with
 `--csv-columns` or `--component`), because the layout is part of what the file reads as. The step is
 measured from the reader's own index, under every flag given (`CsvSource.measuredStepMillis`) — no second
-CSV grammar: each instance's `Coverage.mostCommonSpacing` over its rows with a value inside the run window
-(plus one step), taken when that gap repeats at least 3 times, then the widest over every instance of the
+CSV grammar: each instance's `CsvSource.intervalOf` over its rows with a value inside the run window (plus
+one step) — the most common gap, taken when it repeats at least 3 times and is at least half the gaps
+(on repeats alone a millisecond-jittered hour adopted a 15001ms step, and every `sustainedFor 30s` was
+INVALID_RULE; a jittered export now measures nothing and keeps 15 s) — then the widest over every instance of the
 series the asserts read, as `Coverage.spacingMillis` takes it — asked as the collection asks
 (`Collector.assertRequests`: the same names, `--from` tool names and resolved queries), so a coarse series
 no assert reads sets nothing; a file with no assert yet is measured over its components' catalogue metrics

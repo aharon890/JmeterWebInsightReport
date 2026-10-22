@@ -196,11 +196,11 @@ public final class ReportArtifacts {
                 || serverGates.payloadRefusal() != null) {
             return null;
         }
-        // The asserts requiredSeries() reads: a disabled one waits for nothing, so it is not counted,
-        // and a file whose every assert is disabled has no next step.
+        // The asserts requiredSeries() reads: a disabled one, or one naming neither a metric nor a
+        // query, waits for nothing, so it is not counted, and a file of only those has no next step.
         int waiting = 0;
         for (ServerKpi kpi : serverGates.config().kpis()) {
-            if (kpi.enabled() && kpi.gate() != null) {
+            if (ServerGateEvaluation.waitsForServerData(kpi)) {
                 waiting++;
             }
         }

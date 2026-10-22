@@ -1017,6 +1017,42 @@ class WirCollectTest {
                 WirCollect.spacingLines("orders-db/up", s, 0, 0, 15_000));
         // No warning: nothing, blank rows or not.
         assertTrue(WirCollect.spacingLines("orders-db/up", s, 3, 60_000, 60_000).isEmpty());
+
+        // 20 s rows, one blank, in 15 s slots: within 1.5 x, but they left the series INSUFFICIENT, so
+        // they are a coarser interval - said, and the blank is not called "not a coarser interval".
+        ServerMetricsPayload.SeriesRecord twenty = new ServerMetricsPayload.SeriesRecord();
+        twenty.setComponent("orders-db");
+        twenty.setMetric("up");
+        twenty.setStatus("INSUFFICIENT");
+        ServerMetricsPayload.InstanceRecord at20 = new ServerMetricsPayload.InstanceRecord();
+        List<ServerMetricsPayload.Point> pts20 = new java.util.ArrayList<>();
+        for (int i = 0; i < 9; i++) {
+            if (i != 4) {
+                pts20.add(new ServerMetricsPayload.Point(1_700_000_000_000L + i * 20_000L, 1));
+            }
+        }
+        at20.setPoints(pts20);
+        twenty.setInstances(Collections.singletonList(at20));
+        assertEquals(java.util.Arrays.asList(
+                "orders-db/up points are 20s apart but --step is 15s - coverage counts 15s slots; pass --step 20s",
+                "orders-db/up has 1 row with no value (an empty cell or NaN) - gaps in the export"),
+                WirCollect.spacingLines("orders-db/up", twenty, 1, 20_000, 15_000));
+
+        // A raw 15 s export jittered by a few ms reads 15002ms apart: the step itself. An outage left it
+        // INSUFFICIENT, which is missing data - no "pass --step 15.002s", and its blanks are gaps.
+        ServerMetricsPayload.SeriesRecord jittered = new ServerMetricsPayload.SeriesRecord();
+        jittered.setComponent("orders-db");
+        jittered.setMetric("up");
+        jittered.setStatus("INSUFFICIENT");
+        ServerMetricsPayload.InstanceRecord atJitter = new ServerMetricsPayload.InstanceRecord();
+        List<ServerMetricsPayload.Point> ptsJitter = new java.util.ArrayList<>();
+        for (int i = 0; i < 9; i++) {
+            ptsJitter.add(new ServerMetricsPayload.Point(1_700_000_000_000L + i * 15_002L, 1));
+        }
+        atJitter.setPoints(ptsJitter);
+        jittered.setInstances(Collections.singletonList(atJitter));
+        assertNull(WirCollect.spacingWarning("orders-db/up", jittered, 15_000));
+        assertTrue(WirCollect.spacingLines("orders-db/up", jittered, 0, 0, 15_000).isEmpty());
     }
 
     // ---- the measured step (decision 12) -----------------------------------------------------------
@@ -1054,9 +1090,9 @@ class WirCollectTest {
     @Test
     void nothingMeasuredSaysNothing() throws Exception {
         ServerMetricsPayload.Window run = new ServerMetricsPayload.Window(1_700_000_000_000L, 1_700_003_600_000L, null);
-        // Jittered timestamps: no gap repeats (F6).
+        // Scattered timestamps, 10, 12 and 11 s apart: no gap repeats (F6).
         Map<String, String> jitter = csvOpts("jitter.csv", "time,component,metric,value\n1700000000000,app,cpu,1\n"
-                + "1700000015001,app,cpu,1\n1700000029999,app,cpu,1\n1700000045002,app,cpu,1\n");
+                + "1700000010000,app,cpu,1\n1700000022000,app,cpu,1\n1700000033000,app,cpu,1\n");
         assertTrue(WirCollect.measureCsv(jitter, new com.jmeterwebinsightreport.core.servermetrics.collect.CsvSource(),
                 run, null).isEmpty());
         assertFalse(jitter.containsKey("step"));

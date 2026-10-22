@@ -111,6 +111,16 @@ class ReportArtifactsTest {
         ReportArtifacts allOff = inlineRun().recordServerGates(com.jmeterwebinsightreport.report.gate.ServerFixtures.evaluate(
                 com.jmeterwebinsightreport.report.gate.ServerFixtures.block(null, off, offToo), null, data));
         assertNull(allOff.nextStepsLine("x.jtl"), "every assert disabled: nothing waits for server data");
+
+        // An assert naming neither a metric nor a query asks for no series either, and is not
+        // counted beside the names it is not among (it is reported as unrunnable instead).
+        String nameless = "{\"id\":\"nameless\",\"component\":\"" + com.jmeterwebinsightreport.report.gate.ServerFixtures.DEFAULT_COMPONENT
+                + "\",\"reduce\":{\"kind\":\"max\"},\"fail\":{\"gt\":1}}";
+        ReportArtifacts withNameless = inlineRun().recordServerGates(com.jmeterwebinsightreport.report.gate.ServerFixtures.evaluate(
+                com.jmeterwebinsightreport.report.gate.ServerFixtures.block(null, on, nameless), null, data));
+        String counted = withNameless.nextStepsLine("x.jtl");
+        assertTrue(counted.startsWith("WEB-INSIGHT-REPORT: NEXT — 1 server assert(s) wait for server data."), counted);
+        assertEquals(1, withNameless.serverGates().requiredSeries().size());
     }
 
     private static String disabled(String kpiJson) {
