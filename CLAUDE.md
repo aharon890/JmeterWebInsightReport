@@ -943,6 +943,18 @@ reverses "a report reads only the payload the collector wrote": for files it is 
 Golden G10 = G4's inputs given as the CSV; equal to G4 but for collectionId, which the canonicaliser
 drops for a CSV case (`--volatile-collection`). Prometheus and `--recording` keep wir-collect.
 
+**The committed payloads cannot drift.** `WirCollectTest.theCommittedPayloadsAreWhatTodaysCollectorWritesFromTheirCsv`
+re-collects E26's, E27's and the goldens' CSVs with today's collector and compares every series and
+source (only `collectionId`, `collectedAt` and the CSV's recorded path may differ): a change to what
+the collector writes fails `mvn test` until the payload is re-collected (the command is in each
+README) and committed with it. Re-collecting moves the E26 pins in `server-tab.spec.ts` (collectionId,
+collectedAt, the three per-zone times) and the goldens' `collectionId`.
+
+**Prometheus says what went wrong.** A run longer than 11,000 points at `--step` is refused before
+asking, naming the step that fits; a non-200 answer leads with Prometheus's own error (a 400's PromQL
+parse error); a 401/403 names `--prometheus-token-env`; a window that ends after the collecting
+machine's clock is refused rather than waited for (`PrometheusSource.httpFailure`, `MAX_POINTS_PER_SERIES`).
+
 **The CSV explains itself (P3, research H2-H4).** The silent cases the 2026-10 research found are all
 said now, in `CsvSource`: a series whose rows exist but all fall outside the window is FAILED with
 both spans and the shift (`outsideWindow`: a whole number of quarter hours within ±14 h is named as a

@@ -1,8 +1,8 @@
 {
   "schema" : "wir-server-metrics/1",
   "runId" : "967a1b397b7fb1d2",
-  "collectionId" : "499899a59a4d5e18",
-  "collectedAt" : "2026-10-03T09:35:40.994100500Z",
+  "collectionId" : "60a852d6637b30c5",
+  "collectedAt" : "2026-10-22T06:06:19.389630Z",
   "window" : {
     "start" : 1700000000026,
     "end" : 1700000048490
@@ -13,8 +13,8 @@
     "status" : "PARTIAL",
     "stepMillis" : 1000,
     "clockOffsetMs" : 0,
-    "resolvedUrl" : "test-plans/server-metrics/e26-metrics.csv",
-    "error" : "1 of 8 series failed - first: e26-metrics.csv line 1328: time \"2023-11-14 22:13:20\" has no time zone - add one (2026-10-02T14:02:15+03:00, or a Z for UTC), or write epoch milliseconds"
+    "resolvedUrl" : "e26-metrics.csv",
+    "error" : "1 of 8 series failed - first: e26-metrics.csv line 1328: time \"2023-11-14 22:13:20\" has no time zone - add one (2026-10-02T14:02:15+03:00, or a Z for UTC), write epoch milliseconds, or give the file's zone with --time-zone"
   } ],
   "series" : [ {
     "source" : "metrics",
@@ -218,7 +218,7 @@
     "query" : "up",
     "resolvedQuery" : "up",
     "status" : "FAILED",
-    "error" : "e26-metrics.csv line 1328: time \"2023-11-14 22:13:20\" has no time zone - add one (2026-10-02T14:02:15+03:00, or a Z for UTC), or write epoch milliseconds",
+    "error" : "e26-metrics.csv line 1328: time \"2023-11-14 22:13:20\" has no time zone - add one (2026-10-02T14:02:15+03:00, or a Z for UTC), write epoch milliseconds, or give the file's zone with --time-zone",
     "instances" : [ ]
   } ]
 }

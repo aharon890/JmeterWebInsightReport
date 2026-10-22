@@ -1,8 +1,8 @@
 {
   "schema" : "wir-server-metrics/1",
   "runId" : "967a1b397b7fb1d2",
-  "collectionId" : "eb9bc3823a9b1274",
-  "collectedAt" : "2026-10-08T17:04:47.523700700Z",
+  "collectionId" : "6e78f996c3a8bac4",
+  "collectedAt" : "2026-10-22T06:06:20.974463Z",
   "window" : {
     "start" : 1700000000026,
     "end" : 1700000048490
@@ -13,7 +13,7 @@
     "status" : "OK",
     "stepMillis" : 1000,
     "clockOffsetMs" : 0,
-    "resolvedUrl" : "test-plans/server-catalogue/e27-metrics.csv"
+    "resolvedUrl" : "e27-metrics.csv"
   } ],
   "series" : [ {
     "source" : "metrics",

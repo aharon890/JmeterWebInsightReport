@@ -1465,7 +1465,11 @@ The console prints one clause per server component after the client verdict, for
   JUnit.
 - **Coverage is of the collected window**, decided at collection time (above).
 - **Prometheus returns at most 11,000 points per series per query.** Keep the run's length divided
-  by `--step` under that. A ten-hour soak needs a step of 4 s or more.
+  by `--step` under that. A ten-hour soak needs a step of 4 s or more. The collector checks it
+  before asking and names the step that fits. A non-200 answer is reported with Prometheus's own
+  error first (a 400 names the PromQL parse error), and a 401 or 403 points at
+  `--prometheus-token-env`. A run whose window ends after the collecting machine's clock (the JMeter
+  host is ahead) is refused rather than waited for, naming the `--clock-offset` to pass.
 - **The page holds a capped copy.** Up to 20 instances per series and 4,000 points per instance,
   thinned rather than truncated, with the true counts stated. An instance is thinned by keeping each
   stretch's lowest and highest point, so its line still reaches the spike or the dip a `max` or a

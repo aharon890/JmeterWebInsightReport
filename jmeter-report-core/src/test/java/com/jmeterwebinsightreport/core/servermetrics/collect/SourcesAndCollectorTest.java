@@ -361,9 +361,37 @@ class SourcesAndCollectorTest {
         ServerMetricsPayload.SourceRecord rec = p.getSources().get(0);
         assertEquals("https://h/***/api/v1?t=***", rec.getResolvedUrl());
         assertEquals("FAILED", rec.getStatus());
-        assertTrue(rec.getError().contains("HTTP 500 from https://h/***/api/v1/query_range?t=***"), rec.getError());
+        // Prometheus's own error first, then the redacted URL it came from.
+        assertTrue(rec.getError().startsWith("HTTP 500: "), rec.getError());
+        assertTrue(rec.getError().contains("(https://h/***/api/v1/query_range?t=***"), rec.getError());
         assertTrue(rec.getError().contains("denied for ***"), "a body that echoes the secret is masked too: " + rec.getError());
         assertEquals(rec.getError(), p.find("prom", "up").getError());
+    }
+
+    @Test
+    void aRunLongerThanPrometheusAnswersAtTheStepIsRefusedBeforeAskingWithTheStepThatFits() {
+        // 4 h at --step 1s is 14,401 points; Prometheus refuses more than 11,000 per series with a
+        // 400 after the request. Said first, with the step that fits.
+        ServerMetricsPayload.Window soak = new ServerMetricsPayload.Window(1_700_000_000_000L,
+                1_700_000_000_000L + 4 * 3_600_000L, null);
+        String why = PrometheusSource.live(java.util.Collections.<String, String>emptyMap(), PrometheusSource.Settle.none())
+                .collect(ServerSource.prometheus(ServerSource.COLLECTION_ID, "http://127.0.0.1:9/api/v1", 1000, 0,
+                        java.util.Collections.<String, String>emptyMap()),
+                        new SeriesSource.Request("up", "c", null), soak).error();
+        assertEquals("the run is 14401 points long at --step 1s, and Prometheus answers at most 11000 points per"
+                + " series - collect with --step 2s or coarser", why);
+    }
+
+    @Test
+    void aNon200SaysPrometheussOwnErrorAndA401NamesTheTokenFlag() throws Exception {
+        java.net.URI uri = java.net.URI.create("http://p/api/v1/query_range?query=up");
+        String bad = PrometheusSource.httpFailure(new PrometheusSource.Response(400,
+                "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"1:5: parse error: unclosed left parenthesis\"}"), uri);
+        assertTrue(bad.startsWith("HTTP 400: "), bad);
+        assertTrue(bad.contains("unclosed left parenthesis"), bad);
+        String auth = PrometheusSource.httpFailure(new PrometheusSource.Response(401, "Unauthorized"), uri);
+        assertTrue(auth.contains("check the bearer token --prometheus-token-env names"), auth);
+        assertTrue(auth.endsWith(": Unauthorized"), auth);
     }
 
     @Test

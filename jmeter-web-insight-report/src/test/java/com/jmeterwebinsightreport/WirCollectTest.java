@@ -772,6 +772,50 @@ class WirCollectTest {
                 || longFile.out().contains("points are"), longFile.out());
     }
 
+    /**
+     * The committed payloads are the collector's output, frozen on the day they were collected, and
+     * every browser fixture and golden reads them. Without this, a change to what the collector
+     * writes - a reason's words, a status, a point - could never fail anything: the fixtures kept
+     * showing the old collector's work (research UI-10). Re-collected here with today's code and
+     * compared series by series; only the collection's identity (collectionId, collectedAt) and the
+     * CSV's recorded path may differ. When it fails, re-collect the file with the command in its
+     * README and commit it with the change that moved it.
+     */
+    @Test
+    void theCommittedPayloadsAreWhatTodaysCollectorWritesFromTheirCsv() throws Exception {
+        String[][] cases = {
+                {"../test-plans/server-metrics/e26-server.json", "../test-plans/server-metrics/e26-metrics.csv",
+                        "../test-plans/server-metrics/server-metrics.json"},
+                {"../test-plans/server-catalogue/e27-server.json", "../test-plans/server-catalogue/e27-metrics.csv",
+                        "../test-plans/server-catalogue/server-metrics.json"},
+                {"../test-plans/goldens/gate-server.json", "../test-plans/goldens/server-metrics.csv",
+                        "../test-plans/goldens/server-metrics.json"},
+        };
+        com.fasterxml.jackson.databind.ObjectMapper json = new com.fasterxml.jackson.databind.ObjectMapper();
+        for (String[] c : cases) {
+            Path out = dir.resolve(new File(c[2]).getParentFile().getName() + ".json");
+            Streams s = new Streams();
+            assertEquals(0, WirCollect.run(new String[] {"--jtl", PLAIN_JTL.getPath(), "--annotations", c[0],
+                    "--csv", c[1], "--step", "1s", "--out", out.toString(), "--no-wait"},
+                    s.outStream(), s.errStream(), Collections.<String, String>emptyMap()), s.out() + s.err());
+            com.fasterxml.jackson.databind.JsonNode now = json.readTree(out.toFile());
+            com.fasterxml.jackson.databind.JsonNode committed = json.readTree(new File(c[2]));
+            assertEquals(committed.get("runId"), now.get("runId"), c[2]);
+            assertEquals(committed.get("window"), now.get("window"), c[2]);
+            assertEquals(committed.get("series"), now.get("series"), c[2] + " is not what today's collector writes from "
+                    + c[1] + " - re-collect it with the command in its README and commit it with the change");
+            for (int i = 0; i < committed.get("sources").size(); i++) {
+                com.fasterxml.jackson.databind.node.ObjectNode a =
+                        ((com.fasterxml.jackson.databind.node.ObjectNode) committed.get("sources").get(i)).deepCopy();
+                com.fasterxml.jackson.databind.node.ObjectNode b =
+                        ((com.fasterxml.jackson.databind.node.ObjectNode) now.get("sources").get(i)).deepCopy();
+                a.remove("resolvedUrl");
+                b.remove("resolvedUrl");
+                assertEquals(a, b, c[2] + " sources[" + i + "]");
+            }
+        }
+    }
+
     @Test
     void aLongFileNamesItsUnaskedSeriesTheRunWindowAndRefusesAMissingFile() throws Exception {
         Path ann = dir.resolve("custom.json");
