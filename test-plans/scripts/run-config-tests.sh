@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  Configuration & Runtime Scenario Tests (C01-C41)
+#  Configuration & Runtime Scenario Tests (C01-C43)
 #  Defaults, paths, JUnit XML, Apdex, ramp-up, timestamp filenames, output logging
 #
 #  C01-C16 are the original configuration cases. C17-C31 cover output paths: every
@@ -2068,6 +2068,59 @@ if [[ -z "$C42_NOTES" ]]; then
         "two commands and a -q file: the CSV beside the JTL is collected in-process, its lines printed, its asserts judged"
 else
     record C42 "jmeter -g reads the server CSV itself" FAIL "$C42_NOTES"
+fi
+
+# -----------------------------------------------------------------------------
+# C43: the example's hooks (examples/server-data/hooks) against the stand-in export tool. A copy of
+#      the example over plain.jtl: the first report's .json gives the window, the hook calls
+#      EXPORT_CMD for it and runs jmeter -g with run.properties - app WARN, db FAIL, exit 0. The bash
+#      hook always; the PowerShell one where powershell or pwsh exists (Windows here, and
+#      cross-os.yml's windows runner). A hook pointed at an output folder that is not empty must
+#      pass JMeter's non-zero exit back - jmeter.bat is the one launcher that would not.
+# -----------------------------------------------------------------------------
+echo "[C43] the example's after-run hooks..."
+C43_DIR="$RESULTS/C43"
+rm -rf "$C43_DIR"
+mkdir -p "$C43_DIR"
+cp -r "$PROJECT_DIR/examples/server-data" "$C43_DIR/ex"
+cp "$TEST_PLANS/goldens/plain.jtl" "$C43_DIR/ex/results.jtl"
+C43_NOTES=""
+( cd "$C43_DIR/ex" && run_jmeter -g results.jtl -o first \
+      -Jwebinsight.report.annotations=report-annotations.json ) > "$C43_DIR/first.log" 2>&1
+c43_verdicts() {   # "<app status> <db status>" from a report's .json
+    local f=$1
+    command -v cygpath >/dev/null 2>&1 && f=$(cygpath -w "$f")
+    node -e "const j=require(process.argv[1]);const s={};for(const c of j.serverComponents||[])s[c.id]=c.status;console.log((s.app||'-')+' '+(s.db||'-'))" "$f" 2>/dev/null
+}
+( cd "$C43_DIR/ex" && JMETER="$JMETER" bash hooks/after-run.sh first/web-insight-report.json results.jtl report ) \
+    > "$C43_DIR/hook-sh.log" 2>&1
+C43_RC=$?
+assert_exit_code "$C43_RC" 0 || C43_NOTES="$(append_note "$C43_NOTES" "after-run.sh exited $C43_RC -- see $C43_DIR/hook-sh.log")"
+[[ "$(c43_verdicts "$C43_DIR/ex/report/web-insight-report.json")" == "WARN FAIL" ]] \
+    || C43_NOTES="$(append_note "$C43_NOTES" "after-run.sh: app/db were not WARN/FAIL")"
+( cd "$C43_DIR/ex" && JMETER="$JMETER" bash hooks/after-run.sh first/web-insight-report.json results.jtl report ) \
+    > "$C43_DIR/hook-sh-again.log" 2>&1
+[[ $? -ne 0 ]] || C43_NOTES="$(append_note "$C43_NOTES" "after-run.sh exited 0 over a folder that is not empty")"
+C43_PS=$(command -v powershell || command -v pwsh || true)
+if [[ -n "$C43_PS" ]]; then
+    ( cd "$C43_DIR/ex" && "$C43_PS" -NoProfile -ExecutionPolicy Bypass -File hooks/after-run.ps1 \
+          first/web-insight-report.json results.jtl report-ps ) > "$C43_DIR/hook-ps.log" 2>&1
+    C43_RC=$?
+    assert_exit_code "$C43_RC" 0 || C43_NOTES="$(append_note "$C43_NOTES" "after-run.ps1 exited $C43_RC -- see $C43_DIR/hook-ps.log")"
+    [[ "$(c43_verdicts "$C43_DIR/ex/report-ps/web-insight-report.json")" == "WARN FAIL" ]] \
+        || C43_NOTES="$(append_note "$C43_NOTES" "after-run.ps1: app/db were not WARN/FAIL")"
+    ( cd "$C43_DIR/ex" && "$C43_PS" -NoProfile -ExecutionPolicy Bypass -File hooks/after-run.ps1 \
+          first/web-insight-report.json results.jtl report-ps ) > "$C43_DIR/hook-ps-again.log" 2>&1
+    [[ $? -ne 0 ]] || C43_NOTES="$(append_note "$C43_NOTES" "after-run.ps1 exited 0 over a folder that is not empty")"
+    C43_WHICH="after-run.sh and after-run.ps1"
+else
+    C43_WHICH="after-run.sh (no PowerShell here: after-run.ps1 runs on cross-os.yml's windows runner)"
+fi
+if [[ -z "$C43_NOTES" ]]; then
+    record C43 "the example's after-run hooks" PASS \
+        "$C43_WHICH: window from the first report, the stand-in export, jmeter -g - app WARN, db FAIL, exit 0; a failing jmeter's exit passed back"
+else
+    record C43 "the example's after-run hooks" FAIL "$C43_NOTES"
 fi
 
 print_summary "CONFIGURATION TEST SUMMARY"

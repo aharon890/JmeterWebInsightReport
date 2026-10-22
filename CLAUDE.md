@@ -91,9 +91,13 @@ asserted against numbers from the previous build, green. Widening it also made t
 check ~29x faster, because the hashes are now computed in one pass and compared as
 whole listings instead of one `md5` process per file per fixture.
 
-When fixtures are current, regression still runs the live E24 smoke — otherwise a
-run that skips regeneration never launches JMeter at all, and could not notice that
-the plugin no longer loads in `lib/ext`.
+Regression always runs the live smoke suite, E24 and E30, whether or not it regenerates — otherwise
+a run that skips regeneration never launches JMeter at all, and could not notice that the plugin no
+longer loads in `lib/ext`. E30 is the live server-data flow: a `jmeter -n` run with the listener (its
+interim report must print NEXT and read NOT_COLLECTED), `scripts/lib/example-server-metrics.js` writing
+demo data for that run's own window, and `jmeter -g` reading the CSV; every component must be judged.
+C43 (config tier) runs the examples bundle's hooks, `examples/server-data/hooks/after-run.sh` and
+`.ps1`, against the stand-in export tool; cross-os.yml runs them on all three OSes.
 
 The suites cover the JMeter scenarios Playwright actually opens (E02, E05-E12, E19, E25-E29)
 plus CMP — the same list as `FIXTURE_IDS` in `common.sh`, which is where to check rather than
@@ -133,7 +137,7 @@ Run them before a release:
 
 ```bash
 ./test-plans/scripts/run-all-tests.sh      # E01-E13, E15, E19, E20, E22, E24-E29
-./test-plans/scripts/run-config-tests.sh   # C01-C41 plus C17b, C19 records once
+./test-plans/scripts/run-config-tests.sh   # C01-C43 plus C17b, C19 records once
 ./test-plans/scripts/run-error-tests.sh    # N01-N09
 ./test-plans/scripts/run-docker-tests.sh   # E16, E17
 ```
@@ -849,7 +853,7 @@ under `src/main/resources/com/jmeterwebinsightreport/core/servermetrics/catalogu
 `mysql.json`), and the page receives the same files as
 `chartData.serverCatalogue`, so the browser and the mapper resolve a catalogue metric from one copy.
 A Prometheus-backed type is a JSON file and a line in `index.json`, no Java and no `report.js`.
-Some `oracle` metrics read series only the custom metrics TOML in Tutorial 13 defines, and
+Some `oracle` metrics read series only the custom metrics TOML in Tutorial 15 (`15-Server-Catalogue.md`) defines, and
 `CatalogueTest` derives those series' names from that block by the exporter's naming rule, so the
 tutorial and the queries cannot drift apart — which is also why `mvn test` in `jmeter-report-core`
 needs the repository's `docs/` beside it.

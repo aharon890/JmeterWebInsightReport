@@ -77,7 +77,7 @@ esac
 
 # Which scenario IDs each suite runs. FIXTURE_IDS comes from common.sh and also
 # contains CMP, which this script does not produce — generate-cmp-fixture.sh does.
-SMOKE_IDS="E24"
+SMOKE_IDS="E24 E30"
 
 in_suite() {
     case "$SUITE" in
@@ -650,6 +650,68 @@ if should_run E29; then
 
     record E29 "Server data, a four-hour soak" "$e29_status" "$e29_note"
     echo "E29,Server data soak,server_metrics,local,soak.jtl,$e29_status,true,true,$e29_note,$(iso_timestamp)" >> "$CSV_REPORT"
+fi
+
+# -----------------------------------------------------------------------------
+#  E30 — Server data, live, end to end
+#
+#  The operator's two commands on a live run, which no committed fixture can be: a
+#  real `jmeter -n` with the listener (its interim report must say NOT COLLECTED
+#  and print the NEXT line), demo server data written for that run's own window
+#  by scripts/lib/example-server-metrics.js (the reportExample/ generator), and
+#  `jmeter -g` reading that CSV itself. Every declared component must be judged,
+#  from data whose times exist only for this run. In the smoke suite, so the
+#  regression runs it even when the fixtures are current.
+# -----------------------------------------------------------------------------
+if should_run E30; then
+    E30_DIR="$RESULTS_DIR/E30"
+    e30_status="PASS"; e30_note=""
+    e30_title="E30 live server data"
+    rm -rf "$E30_DIR"
+    if [[ -e "$E30_DIR" ]]; then
+        e30_status="FAIL"; e30_note="could not remove the previous run; not running over it"
+    elif ! run_test_jmeter "$E30_DIR" many-samplers-test.jmx E30-report "$e30_title" \
+            -Jthreads=2 -Jduration=12 -Jrampup=1 \
+            -Jwebinsight.report.annotations="$TEST_PLANS/annotations/example.json"; then
+        e30_status="FAIL"; e30_note="the live run wrote no report"
+    else
+        grep -a -q "WEB-INSIGHT-REPORT: NEXT" "$E30_DIR/jmeter.log" \
+            || e30_note="$(append_note "$e30_note" "the live run printed no NEXT line")"
+        grep -a -q '"state" : "NOT_COLLECTED"' "$E30_DIR/E30-report.json" \
+            || e30_note="$(append_note "$e30_note" "the interim report's serverData is not NOT_COLLECTED")"
+        if ! node "$PROJECT_DIR/scripts/lib/example-server-metrics.js" \
+                "$E30_DIR/results.jtl" "$E30_DIR/server.csv" 5 > "$E30_DIR/server-data.log" 2>&1; then
+            e30_note="$(append_note "$e30_note" "example-server-metrics.js failed")"
+        else
+            WIR_RUNTIME_LOG="$E30_DIR/judged-runtime.log" \
+            run_jmeter -g "$E30_DIR/results.jtl" -o "$E30_DIR/judged" \
+                -Jwebinsight.report.filename=E30-report.html \
+                -Jwebinsight.report.title="$e30_title" \
+                -Jwebinsight.report.annotations="$TEST_PLANS/annotations/example.json" \
+                -Jwebinsight.report.servermetrics="$E30_DIR/server.csv" \
+                -Jwebinsight.report.servermetrics.step=5s \
+                > "$E30_DIR/judged.log" 2>&1
+            e30_rc=$?
+            [[ $e30_rc -eq 0 ]] || e30_note="$(append_note "$e30_note" "jmeter -g exited $e30_rc")"
+            e30_json="$E30_DIR/judged/E30-report.json"
+            command -v cygpath >/dev/null 2>&1 && e30_json="$(cygpath -w "$e30_json")"
+            e30_judged=$(node -e "
+                const j = require(process.argv[1]);
+                const c = j.serverComponents || [];
+                const bad = c.filter(x => !['PASS', 'WARN', 'FAIL'].includes(x.status)).map(x => x.id + '=' + x.status);
+                console.log(c.length && !bad.length && j.serverData && j.serverData.state === 'COLLECTED'
+                    ? 'ok ' + c.map(x => x.id + '=' + x.status).join(' ') : 'no ' + bad.join(' '));" "$e30_json" 2>&1)
+            echo "[E30] $e30_judged"
+            [[ "$e30_judged" == ok* ]] \
+                || e30_note="$(append_note "$e30_note" "not every component was judged from the live CSV: $e30_judged")"
+        fi
+        [[ -z "$e30_note" ]] || e30_status="FAIL"
+    fi
+    if log_has_stacktrace "$E30_DIR/judged.log" 2>/dev/null; then
+        e30_status="FAIL"; e30_note="$(append_note "$e30_note" "Stack trace in log")"
+    fi
+    record E30 "Server data, live, end to end" "$e30_status" "$e30_note"
+    echo "E30,Server data live,server_metrics,live,many-samplers-test.jmx,$e30_status,true,true,$e30_note,$(iso_timestamp)" >> "$CSV_REPORT"
 fi
 
 for _id in $ONLY_IDS; do

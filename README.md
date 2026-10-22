@@ -447,7 +447,9 @@ jmeter -g results.jtl -o report \
   mismatch is a warning, and the payload's window is the one judged.
 
 The full walk-through — reading the Server tab, the editor, Validate query, the reference for
-every key — is [Tutorial 13 — Server tab](docs/Tutorial/13-Server-Tab.md).
+every key — is [Tutorial 13 — Server tab](docs/Tutorial/13-Server-Tab.md), with the catalogue in
+[Tutorial 15](docs/Tutorial/15-Server-Catalogue.md) and `wir-collect` and every key in
+[Tutorial 16](docs/Tutorial/16-Server-Reference.md).
 
 #### Running `wir-collect` from a release
 

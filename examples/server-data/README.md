@@ -9,6 +9,8 @@ the plugin JAR in JMeter's `lib/ext` and Node.js for the demo CSV.
 | `report-annotations.json` | the expected: components `app` and `db`, three server asserts |
 | `run.properties` | the settings for both commands |
 | `gen-csv.js` | stands in for your monitoring tool: writes `server.csv` covering the run's window |
+| `fake-export.js` | the same stand-in, called the way a tool's export is: `node fake-export.js <startMillis> <endMillis> server.csv` |
+| `hooks/after-run.sh`, `hooks/after-run.ps1` | after a run: read the window from the first report's `.json`, call your export, build the report with it |
 
 ```
 jmeter -n -t plan.jmx -l results.jtl -q run.properties
@@ -24,4 +26,22 @@ The report written by the first command opens on **Add the server data**: the wi
 the names to use. With your own servers, export that window from your monitoring tool as
 `server.csv` instead of running `gen-csv.js`.
 
-See [Getting Server Data In](../../docs/Tutorial/14-Server-Data.md) for the GUI and a script.
+## As a script
+
+After the first command, the hooks do the rest. Linux or macOS:
+
+```
+bash hooks/after-run.sh web-insight-report.json results.jtl report
+```
+
+Windows PowerShell (JMeter is run as `java -jar`, so the exit code is JMeter's):
+
+```
+$env:JMETER_HOME = 'C:/apache-jmeter-5.6.3'
+powershell -ExecutionPolicy Bypass -File hooks/after-run.ps1 web-insight-report.json results.jtl report
+```
+
+Point `EXPORT_CMD` at your tool's export, called as `<EXPORT_CMD> <startMillis> <endMillis>
+server.csv`; it defaults to `node fake-export.js`.
+
+See [Getting Server Data In](../../docs/Tutorial/14-Server-Data.md) for the GUI and more.

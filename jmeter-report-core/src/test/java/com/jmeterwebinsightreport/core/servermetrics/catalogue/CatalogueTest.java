@@ -611,7 +611,7 @@ class CatalogueTest {
                 refusal(noted("\"" + long161 + "\"")));
     }
 
-    // ---- each tool's naming convention (Catalogue's javadoc, index.json, Tutorial 13) ------------
+    // ---- each tool's naming convention (Catalogue's javadoc, index.json, Tutorial 15) ------------
 
     /** {@code <measurement>.<field>}: what {@code --csv-columns metric=_measurement+_field} joins. */
     private static final Pattern TELEGRAF_NAME = Pattern.compile("[a-z][a-z0-9_]*\\.[A-Za-z0-9_][A-Za-z0-9_.\\-]*");
@@ -870,7 +870,7 @@ class CatalogueTest {
         List<String> recommended = new ArrayList<>();
         for (CatalogueMetric m : ec2.metrics().values()) {
             if (m.recommended()) recommended.add(m.name());
-            // aws-ec2 names CloudWatch only (Tutorial 13): no other tool is declared, named or null.
+            // aws-ec2 names CloudWatch only (Tutorial 15): no other tool is declared, named or null.
             for (String tool : Catalogue.TOOLS) {
                 if (!tool.equals("cloudwatch")) assertFalse(m.declares(tool), m.qualifiedName() + " " + tool);
             }
@@ -1321,7 +1321,7 @@ class CatalogueTest {
 
     /**
      * Five Oracle KPIs read series the exporter's defaults lack: blocked sessions, DB CPU, log
-     * switches, hard parses and deadlocks. They come from the custom metrics file Tutorial 13 gives,
+     * switches, hard parses and deadlocks. They come from the custom metrics file Tutorial 15 gives,
      * so the queries and that file must name the same series: a context renamed in one would leave
      * the other reading nothing, in silence. The names are derived from the tutorial's TOML by the
      * exporter's own rule (collector.go): {@code oracledb_<context>_<field>}, or, with
@@ -1330,7 +1330,7 @@ class CatalogueTest {
      */
     @Test
     void theOracleQueriesReadEitherADefaultSeriesOrOneTheTutorialsCustomMetricsDefine() throws Exception {
-        java.util.Set<String> custom = customMetricNames(repoFile("docs/Tutorial/13-Server-Tab.md"));
+        java.util.Set<String> custom = customMetricNames(repoFile("docs/Tutorial/15-Server-Catalogue.md"));
         assertEquals(new java.util.TreeSet<>(Arrays.asList("oracledb_blocked_sessions_value",
                 "oracledb_sysstat_cpu_used_by_this_session", "oracledb_sysstat_parse_count_hard",
                 "oracledb_sysstat_enqueue_deadlocks", "oracledb_log_switches_last_minute")), custom);
@@ -1371,7 +1371,7 @@ class CatalogueTest {
      */
     @Test
     void theTutorialsOracleRequestsCountWhatTheirDescriptionsSay() throws Exception {
-        java.util.Map<String, String> requests = customRequests(repoFile("docs/Tutorial/13-Server-Tab.md"));
+        java.util.Map<String, String> requests = customRequests(repoFile("docs/Tutorial/15-Server-Catalogue.md"));
         String blocked = requests.get("blocked_sessions");
         assertTrue(blocked.contains("where blocking_session_status = 'VALID' and wait_class = 'Application'"), blocked);
         String switches = requests.get("log_switches");
@@ -1673,7 +1673,7 @@ class CatalogueTest {
 
     /**
      * A file of this repository, found above the module the test runs in. The Oracle queries are
-     * held to Tutorial 13's custom metrics TOML, so these tests need a full checkout.
+     * held to Tutorial 15's custom metrics TOML, so these tests need a full checkout.
      */
     static java.nio.file.Path repoFile(String relative) {
         java.nio.file.Path start = java.nio.file.Paths.get(System.getProperty("user.dir")).toAbsolutePath();

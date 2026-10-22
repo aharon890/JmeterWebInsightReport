@@ -15,6 +15,7 @@ on:
       - 'jmeter-web-insight-report/**'
       - 'scripts/wir-collect.*'
       - 'docs/**'
+      - 'examples/**'
       - '.github/workflows/cross-os.yml'
   workflow_dispatch:
 
@@ -119,10 +120,46 @@ jobs:
           grep -a "wir-collect: wrote " run/collect.log
           grep -q '"runId"' run/collected.json
 
+      - name: "wir-collect.sh, the bash wrapper (Linux and macOS: the branch nothing else runs)"
+        if: runner.os != 'Windows'
+        run: |
+          JMETER_HOME="$PWD/apache-jmeter-${JMETER_VERSION}" ./scripts/wir-collect.sh --jtl run/results.jtl \
+            --annotations run/report-annotations.json --csv run/server.csv --step 1s \
+            --out run/collected-sh.json --no-wait | tee run/collect-sh.log
+          grep -a "wir-collect: wrote " run/collect-sh.log
+
+      - name: The example's first report (the window the hooks read)
+        run: |
+          cp -r examples/server-data ex
+          cp test-plans/goldens/plain.jtl ex/results.jtl
+          cd ex
+          java -jar ../apache-jmeter-${JMETER_VERSION}/bin/ApacheJMeter.jar -g results.jtl -o first -q run.properties \
+            -Jwebinsight.report.servermetrics= | tail -3
+
+      - name: "The example's hook, bash (Linux/macOS)"
+        if: runner.os != 'Windows'
+        working-directory: ex
+        run: |
+          JMETER="java -jar ../apache-jmeter-${JMETER_VERSION}/bin/ApacheJMeter.jar" \
+            bash hooks/after-run.sh first/web-insight-report.json results.jtl report | tee hook.log
+          grep -q '"serverStatus" : "FAIL"' report/web-insight-report.json
+
+      - name: "The example's hook, PowerShell (Windows)"
+        if: runner.os == 'Windows'
+        working-directory: ex
+        shell: pwsh
+        run: |
+          $env:JMETER_HOME = Resolve-Path "..\apache-jmeter-$env:JMETER_VERSION"
+          ./hooks/after-run.ps1 first/web-insight-report.json results.jtl report
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Select-String -Quiet -Path report/web-insight-report.json -Pattern '"serverStatus" : "FAIL"')) { exit 1 }
+
       - name: Upload the run on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: cross-os-${{ matrix.os }}
-          path: run/
+          path: |
+            run/
+            ex/
           retention-days: 7

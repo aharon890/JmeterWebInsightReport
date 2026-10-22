@@ -662,7 +662,7 @@ when the two disagree.
   to, naming the line, and the collection reads `PARTIAL`. Full rules: [Server tab](Tutorial/13-Server-Tab.md).
 - **Keys this format does not take are refused, not ignored.** `sources`, `gates`, `kpis` and
   `packs` in the block, `source`, `gate`, `onMissing`, `required` and the rest of the
-  [refused assert keys](Tutorial/13-Server-Tab.md#retired-and-refused-keys) on an assert (and
+  [refused assert keys](Tutorial/16-Server-Reference.md#retired-and-refused-keys) on an assert (and
   `sustainedFor`, `breachBudget` or `over` written at its top level instead of under
   `reduce.over`), and `failsBuild` on a component are each refused with a sentence naming what to
   write instead, so a file carrying one cannot quietly judge less than it says.

@@ -466,7 +466,7 @@ it (the family runners reuse C01–C08 and E01–E07).
 C14 waits 61s for the `${timestamp}` placeholder to roll over to a new minute.
 Shorten that for a quick local run with `TIMESTAMP_WAIT=5`.
 
-**Config tests (C01-C41 plus C17b; C19 runs JMeter twice, once with `failonerror=false`, and
+**Config tests (C01-C43 plus C17b; C19 runs JMeter twice, once with `failonerror=false`, and
 records one stage):** defaults
 (output dir, filename, title, JSON), the `${timestamp}` placeholder, relative and auto-created
 paths, special characters, JUnit XML on and off, custom Apdex, ramp-up marking, and from C16 up

@@ -19,6 +19,8 @@
 - **Quality & Integration**
   - [Asserts & Apdex](/Tutorial/10-Asserts-Apdex.md)
   - [Export & CI/CD](/Tutorial/11-Export-Integration.md)
+  - [Server Asserts for Common Components](/Tutorial/15-Server-Catalogue.md)
+  - [Server Data Reference](/Tutorial/16-Server-Reference.md)
 
 - **Reference**
   - [Features](/FEATURES.md)

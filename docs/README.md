@@ -18,8 +18,10 @@ Complete documentation of the Web Insight Report features and behavior. Each pag
 | 10 | [Asserts & Apdex](Tutorial/10-Asserts-Apdex.md) | Assertion rules, targets, metrics, predicates, verdict logic, Apdex |
 | 11 | [Export & Integration](Tutorial/11-Export-Integration.md) | CSV export, Copy Summary, CI/CD JSON, JUnit XML, external data mode |
 | 12 | [Asserts Tab](Tutorial/12-Asserts-Tab.md) | The gate strip, the rules table, the assert editor, drafts, saving, seeding, Generate from run, cell verdicts, chart interactions |
-| 13 | [Server Tab](Tutorial/13-Server-Tab.md) | Server asserts (expected) against collected metrics (actual): `wir-collect`, the header chip, `serverStatus`, components and the catalogue, the editor, and the `serverMetrics` reference |
+| 13 | [Server Tab](Tutorial/13-Server-Tab.md) | Server asserts (expected) against collected metrics (actual): reading the tab, the header chip, `serverStatus`, components, the editor, gating a pipeline, limits |
 | 14 | [Getting Server Data In](Tutorial/14-Server-Data.md) | Step by step: a CSV from your monitoring tool into the report — in the JMeter GUI, from any terminal on Windows, macOS or Linux, and from a script; lining the data up with the run; troubleshooting by symptom |
+| 15 | [Server Asserts for Common Components](Tutorial/15-Server-Catalogue.md) | The metric catalogue: every component type, its metrics, queries and per-tool names |
+| 16 | [Server Data Reference](Tutorial/16-Server-Reference.md) | `wir-collect` for Prometheus and recordings, every option, and every key of the `serverMetrics` block and the payload |
 
 ## Screenshots
 

@@ -168,12 +168,13 @@ Never attach `original-jmeter-web-insight-report-*.jar` (pre-shading) or
 JMeter's flat `lib/ext` classpath and which copy wins is non-deterministic. Exactly one
 plugin JAR belongs in `lib/ext`.
 
-Three more assets go beside the JAR, each taken from the tagged tree as it is:
+Four more assets go beside the JAR, each taken from the tagged tree as it is:
 
 | Asset | Why |
 |---|---|
 | `scripts/wir-collect.sh` | The server-metrics collector's wrapper (step 2 of the three steps). It is self-contained on purpose — it must run as a lone copy beside a released JAR, sourcing nothing from this repository (CLAUDE.md, "The collector") — so a user should not need the source archive to get it |
-| `scripts/wir-collect.bat` | Its thin Windows wrapper. It runs `wir-collect.sh` with `bash`, so the two are always attached together |
+| `scripts/wir-collect.bat` | One `java` line running the JAR's `WirCollectLauncher`, for `cmd.exe` users; no bash. `java -jar <the JAR>` is the documented form on every OS, the two wrappers are conveniences |
+| `server-data-example-X.Y.Z.zip` | `examples/server-data` zipped (`cd examples && zip -r ../server-data-example-X.Y.Z.zip server-data`): plan, annotations, `run.properties`, the stand-in export tool and the `hooks/` (bash, PowerShell) - the two-command flow a user can run before pointing it at their own monitoring. C43 and cross-os.yml run exactly these files |
 | `jmeter-web-insight-report/src/main/resources/static/schema/report-annotations.schema.json` | The annotations file's JSON Schema: associated with an annotations file in an editor, it gives completion and typo squiggles for `assertions` and `serverMetrics`. It is in the JAR too, but nobody points an editor into a JAR |
 
 Attach the working-tree copies, never a `git show` of the blobs: the `.bat`'s blob is LF, and
@@ -186,14 +187,14 @@ Tag `vX.Y.Z` on the merge commit, push the tag, then:
 
 ```bash
 gh release create vX.Y.Z <shaded-jar> \
-  scripts/wir-collect.sh scripts/wir-collect.bat \
+  scripts/wir-collect.sh scripts/wir-collect.bat server-data-example-X.Y.Z.zip \
   jmeter-web-insight-report/src/main/resources/static/schema/report-annotations.schema.json \
   --title "vX.Y.Z — <one-line summary>" \
   --notes "<body>"
 ```
 
 Match the existing shape: `v1.1.0` is titled `v1.1.0 — audit bugfix release` with
-`jmeter-web-insight-report-1.1.0.jar` attached; a release now carries step 6's three assets beside
+`jmeter-web-insight-report-1.1.0.jar` attached; a release now carries step 6's four assets beside
 the JAR. Published, not draft, not prerelease
 (v1.0.0 is flagged prerelease; later ones are not).
 
@@ -202,11 +203,9 @@ what changed for a user (features, fixes, internals) rather than pasting the raw
 and include the install line:
 
 > Drop `jmeter-web-insight-report-X.Y.Z.jar` into `$JMETER_HOME/lib/ext/`, removing any
-> older copy first. To collect server metrics, put `wir-collect.sh` anywhere you like and run it
-> as `bash wir-collect.sh --jtl results.jtl ...` with `JMETER_HOME` set (a downloaded asset has no
-> executable bit); it needs nothing else from the repository. On Windows, use the `cmd.exe`
-> `java -cp` line in the README; `wir-collect.bat` works only where Git's or MSYS2's `bash` comes
-> before `System32` on `PATH`.
+> older copy first. Server data from a CSV needs nothing more: `jmeter -g results.jtl -o report -q
+> run.properties` reads it (see `server-data-example-X.Y.Z.zip`). To collect from Prometheus, run
+> `java -jar <JMETER_HOME>/lib/ext/jmeter-web-insight-report-X.Y.Z.jar --jtl results.jtl ...` on any OS.
 
 ### 8. Report
 

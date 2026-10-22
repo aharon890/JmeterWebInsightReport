@@ -42,7 +42,7 @@ time,component,metric,instance,value
 
 Grafana's "Series joined by time" download, InfluxDB 2's annotated CSV and exports in Datadog's,
 Telegraf's, OpenTelemetry's or CloudWatch's own metric names are read too: see
-[Where the metrics come from](13-Server-Tab.md#where-the-metrics-come-from) for the option each needs.
+[Where the metrics come from](16-Server-Reference.md#where-the-metrics-come-from) for the option each needs.
 
 ## By hand, in the JMeter GUI
 
@@ -66,6 +66,11 @@ Telegraf's, OpenTelemetry's or CloudWatch's own metric names are read too: see
 
 The dialog says "Report created !" whatever the server side found; the report's Server tab says the
 rest.
+
+Write the paths in `run.properties` in full. A relative path is read against JMeter's working folder,
+which under the GUI's dialog is JMeter's own `bin/`; a relative `webinsight.report.servermetrics` that
+is not found there is also looked for beside the results file. The output folder must be new or empty
+(JMeter refuses one that holds anything), so give each report its own.
 
 ## By hand, from a terminal (Windows, macOS, Linux)
 
@@ -115,9 +120,14 @@ flock "$RUN/.rebuild.lock" sh -c "jmeter -g '$RUN/results.jtl' -o '$RUN/report.n
   the data is added, then `COLLECTED`.
 - Re-running the last step (data landed late, export fixed) is safe, and keeps the Server tab's drafts
   when the CSV did not change.
+- A ready-made version of this script, for bash and for PowerShell, is in the examples bundle
+  (`examples/server-data/hooks/` in the repository, `server-data-example-X.Y.Z.zip` on a release):
+  `after-run.sh <first-report.json> <results.jtl> <new-output-folder>`, with your export command in
+  `EXPORT_CMD` (called as `EXPORT_CMD <startMillis> <endMillis> server.csv`). It needs no `jq`, and the
+  PowerShell one runs JMeter as `java -jar …/ApacheJMeter.jar`, so the exit code is JMeter's.
 - Gate with the DEFAULT or STRICT line of the [Server tab's gating section](13-Server-Tab.md#gating-a-pipeline).
 - Prometheus: run `wir-collect --prometheus-url …` in place of the export and name its
-  `server-metrics.json` in `webinsight.report.servermetrics` (see [wir-collect](13-Server-Tab.md#wir-collect)).
+  `server-metrics.json` in `webinsight.report.servermetrics` (see [wir-collect](16-Server-Reference.md#wir-collect)).
 
 ## Lining up the data with the run
 
