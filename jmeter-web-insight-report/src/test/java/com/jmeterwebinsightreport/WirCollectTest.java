@@ -817,6 +817,48 @@ class WirCollectTest {
     }
 
     @Test
+    void withoutStepOrLayoutACsvsOwnIntervalAndGrafanasWideHeaderAreUsedAndSaid() throws Exception {
+        // Decision 12. The goldens' CSV is one row a second: with no --step it is collected at 1s,
+        // as with --step 1s (the same series), and the line names the flag that overrides it.
+        Path measured = dir.resolve("measured.json");
+        Streams s = new Streams();
+        assertEquals(0, WirCollect.run(new String[] {"--jtl", PLAIN_JTL.getPath(), "--annotations",
+                "../test-plans/goldens/gate-server.json", "--csv", "../test-plans/goldens/server-metrics.csv",
+                "--out", measured.toString(), "--no-wait"},
+                s.outStream(), s.errStream(), Collections.<String, String>emptyMap()), s.out() + s.err());
+        assertTrue(s.out().contains("wir-collect: step 1s, measured from the file's rows - pass --step to collect at another"),
+                s.out());
+        com.fasterxml.jackson.databind.JsonNode got = new com.fasterxml.jackson.databind.ObjectMapper().readTree(measured.toFile());
+        com.fasterxml.jackson.databind.JsonNode committed = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readTree(new File("../test-plans/goldens/server-metrics.json"));
+        assertEquals(committed.get("series"), got.get("series"));
+        assertEquals(1000, got.get("sources").get(0).get("stepMillis").asLong());
+
+        // An explicit --step wins, and nothing is said.
+        Streams given = new Streams();
+        assertEquals(0, WirCollect.run(new String[] {"--jtl", PLAIN_JTL.getPath(), "--annotations",
+                "../test-plans/goldens/gate-server.json", "--csv", "../test-plans/goldens/server-metrics.csv",
+                "--step", "15s", "--out", dir.resolve("given.json").toString(), "--no-wait"},
+                given.outStream(), given.errStream(), Collections.<String, String>emptyMap()), given.out() + given.err());
+        assertFalse(given.out().contains("measured from the file"), given.out());
+
+        // A Grafana wide download, no --layout: read as wide, and said.
+        Path wide = dir.resolve("wide.csv");
+        StringBuilder rows = new StringBuilder("Time,kafka/up\n");
+        for (long t = 1700000000000L; t <= 1700000049000L; t += 1000) {
+            rows.append(t).append(",1\n");
+        }
+        Files.write(wide, rows.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        Streams w = new Streams();
+        assertEquals(0, WirCollect.run(new String[] {"--jtl", PLAIN_JTL.getPath(), "--annotations",
+                "../test-plans/goldens/gate-server.json", "--csv", wide.toString(),
+                "--out", dir.resolve("wide.json").toString(), "--no-wait"},
+                w.outStream(), w.errStream(), Collections.<String, String>emptyMap()), w.out() + w.err());
+        assertTrue(w.out().contains("wir-collect: layout wide, read from the header"), w.out());
+        assertTrue(w.out().contains("wir-collect: OK kafka/up"), w.out());
+    }
+
+    @Test
     void aComponentWhoseEveryCatalogueMetricCameBackEmptyIsSaidOnceAboutTheComponent() throws Exception {
         // Only events' rows: orders-db's one asserted metric comes back EMPTY, and the cause is the
         // component (its match, or an exporter nobody scrapes), so the collector says so about it.

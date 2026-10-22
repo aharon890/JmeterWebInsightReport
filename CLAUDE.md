@@ -954,6 +954,14 @@ up, plus `E28/interim/` and `E28/refused/` of the same file. E29 is generated at
 (`gen-soak.js`, a fixed seed, ~25 MB CSV): four hours, 24 instances at 1 s, so the page draws 20, thins
 to 4000 points and must still reach the 3-second spike the build judged, from a forced sidecar.
 
+**A CSV's step and wide layout are measured when not given (decision 12).** `collect/CsvShape.sniff`
+reads the file once: the step is the most frequent gap between a series' consecutive rows (blank values
+count), the wide layout only for Grafana's `Time,component/metric,...` header (not with `--csv-columns`
+or `--component`). `WirCollect.measureCsv` puts either into the options only when the flag was absent and
+prints `step 5s, measured from the file's rows` / `layout wide, read from the header`, naming the
+override. Both paths (`wir-collect`, `jmeter -g`) get it. Prometheus and `--recording` keep 15 s. E28
+sets 15 s explicitly to keep its H11 case.
+
 **The committed payloads cannot drift.** `WirCollectTest.theCommittedPayloadsAreWhatTodaysCollectorWritesFromTheirCsv`
 re-collects E26's, E27's and the goldens' CSVs with today's collector and compares every series and
 source (only `collectionId`, `collectedAt` and the CSV's recorded path may differ): a change to what

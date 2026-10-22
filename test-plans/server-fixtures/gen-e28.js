@@ -12,6 +12,7 @@
  *   heap_used the metric the file calls heap.used   -> SOURCE FAILED, both spellings named
  *   blank     rows inside the run with no value     -> SOURCE FAILED, no value
  *   spaced    every 4 s, under sustainedFor 30s     -> INVALID_RULE, the measured 4s spacing
+ *             (E28 collects at an explicit 15 s step; measured, the file's step is 1 s)
  *   split     one row split by an unquoted "90,9"   -> SOURCE FAILED, naming the line
  */
 const START = 1700000000000;

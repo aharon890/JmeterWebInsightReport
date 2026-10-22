@@ -548,7 +548,8 @@ fi
 #
 #  `jmeter -g` reading a committed CSV itself (P4), over the goldens' plain.jtl:
 #  one assert per way a real export goes wrong (a 3 h shift, a near-miss name,
-#  blank values, 4 s rows under sustainedFor 30s at the default 15 s step, an
+#  blank values, 4 s rows under sustainedFor 30s collected at an explicit 15 s
+#  step - measured, this file's step would be 1 s - an
 #  unquoted "90,9") beside one that lines up (test-plans/server-fixtures/,
 #  gen-e28.js says which is which). Beside it, under interim/ and refused/, the
 #  two pages a reader meets before the data is right: the step-1 report of the
@@ -570,6 +571,7 @@ if should_run E28; then
             -Jwebinsight.report.filename=E28-report.html \
             -Jwebinsight.report.annotations="$E28_INPUTS/e28-server.json" \
             -Jwebinsight.report.servermetrics="$E28_INPUTS/e28-metrics.csv" \
+            -Jwebinsight.report.servermetrics.step=15s \
             > "$RESULTS_DIR/E28-jmeter.log" 2>&1
         run_jmeter -g "$TEST_PLANS/goldens/plain.jtl" -o "$E28_DIR/interim" \
             -Jwebinsight.report.filename=E28-interim.html \

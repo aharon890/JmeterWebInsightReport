@@ -114,7 +114,8 @@ jmeter -g run/results.jtl -o run/report -q run/run.properties
 ```properties
 webinsight.report.annotations=C:/runs/checkout/report-annotations.json
 webinsight.report.servermetrics=server.csv
-# only when the file needs it - each is the collector's flag of the same name:
+# only when the file needs it - each is the collector's flag of the same name
+# (the step and a Grafana wide layout are read from the file when left out):
 # webinsight.report.servermetrics.step=1s
 # webinsight.report.servermetrics.timezone=Europe/Berlin
 # webinsight.report.servermetrics.clockoffset=-30s

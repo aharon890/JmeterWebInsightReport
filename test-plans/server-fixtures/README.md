@@ -11,7 +11,8 @@ itself. This directory is in the fixture stamp, so editing anything here regener
 | `e29-server.json` | E29's annotations: component `fleet`, a spike (FAIL), a sustained level (PASS), a slope (WARN) |
 | `gen-soak.js` | writes E29's `soak.jtl` and `soak.csv` (four hours, 24 instances at 1 s, a fixed seed) into `test-results/E29-inputs/` at fixture time; not committed, because the CSV is ~25 MB |
 
-E28 is three pages: `E28/E28-report.html` (the misaligned CSV, default 15 s step), and beside it
+E28 is three pages: `E28/E28-report.html` (the misaligned CSV, collected at an explicit 15 s step -
+the step measured from this file would be 1 s), and beside it
 `E28/interim/` (the same annotations, no server data) and `E28/refused/` (E26's payload under
 another title, so its run id differs). E29 is written with the sidecar forced, so its server data is
 read from `E29-report-data.js`. `server-fixtures.spec.ts` asserts on all four pages.

@@ -29,10 +29,11 @@ usage: wir-collect --jtl <results.jtl> --annotations <report-annotations.json> -
 | `--from TOOL` | With `--csv`: the file was exported from `telegraf`, `datadog`, `otel` or `cloudwatch`. Its `metric` column holds that tool's names, and a value read under one is converted to the catalogue's unit. See [Where the metrics come from](#where-the-metrics-come-from) |
 | `--layout long\|wide` | With `--csv`: `long` (the default) is one row per point; `wide` is a time column and one column per series, the shape of Grafana's CSV download. See [From Grafana](#from-grafana-the-wide-layout) |
 | `--columns MAP` | With `--layout wide`: a CSV of `column,component,metric,instance` naming each export column by its exact header |
+| (no `--layout`) | A header whose first column is `Time` and whose every other column is `component/metric` or `component/metric/instance` is read as wide, and the console says `layout wide, read from the header`; `--layout long` reads it otherwise. Any other header is long |
 | `--csv-columns SPEC` | With a long `--csv`: the file's names for the columns, as `key=column` pairs — `time`, `component`, `metric`, `instance`, `value`; a key not given keeps its own name. `metric=_measurement+_field` joins two columns as `<measurement>.<field>`. See [From InfluxDB 2](#from-influxdb-2-csv-columns-and-a-fixed-component) |
 | `--component ID` | With a long `--csv`: every row belongs to component `ID`, for an export with no component column whose asserts are all on `ID` — an assert on any other component finds no rows and reads `UNMATCHED`. Refused beside `--csv-columns component=` (exit 1). Beside a component column of the file's own, the file is refused and every series fails ([below](#from-influxdb-2-csv-columns-and-a-fixed-component)) |
 | `--time-zone ZONE` | With `--csv`: the zone of a time written with none — an IANA id (`Europe/Berlin`), `UTC`, or an offset (`+03:00`). Without it such a time is refused |
-| `--step DURATION` | The resolution asked for, and the coverage grid. Default `15s` |
+| `--step DURATION` | The resolution asked for, and the coverage grid. Default: with `--csv`, the interval measured from the file's rows (the most frequent gap within a series, blank values included), printed as `wir-collect: step 5s, measured from the file's rows`; with no measurable interval, and for Prometheus and `--recording`, `15s` |
 | `--clock-offset DURATION` | Added to every timestamp the source reports: `-30s` lines up servers whose clocks run 30 s ahead. Default `0` |
 | `--env NAME` | The `serverMetrics.environments` entry to resolve `${env.*}` from. Default: the file's `defaultEnv` |
 | `--test-name NAME` | The same text as `-Jwebinsight.report.title` when step 3 sets one. Default: `JMeter Web Insight Report` |
@@ -294,9 +295,10 @@ twice) is refused rather than resolved to one of its moments: give the offset th
 in instead (`+02:00`), or export epoch milliseconds.
 
 **`--step`: match the panel's interval.** Grafana exports the points the panel drew, at its
-interval (`$__interval`: typically 15 s to 60 s on a one-hour run), not the raw scrape. Coverage
-counts one slot per `--step`, so a 60 s export read at the default 15 s covers a quarter of the slots
-at most and reads `LOW_COVERAGE`. The collector says so for every CSV series whose points are more
+interval (`$__interval`: typically 15 s to 60 s on a one-hour run), not the raw scrape. Without
+`--step` the collector measures that interval from the file and uses it, and says so. Coverage
+counts one slot per `--step`, so a 60 s export read at an explicit `--step 15s` covers a quarter of
+the slots at most and reads `LOW_COVERAGE`. The collector says so for every CSV series whose points are more
 than 1.5 steps apart, and for one further apart than a step at all when that left it short of the
 coverage floor (20 s rows in 15 s slots cover three in four):
 

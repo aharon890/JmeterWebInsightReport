@@ -2042,7 +2042,11 @@ mkdir -p "$C42_DIR/run"
 cp "$TEST_PLANS/goldens/plain.jtl" "$C42_DIR/run/results.jtl"
 cp "$TEST_PLANS/goldens/gate-server.json" "$C42_DIR/run/report-annotations.json"
 cp "$TEST_PLANS/goldens/server-metrics.csv" "$C42_DIR/run/server.csv"
-printf '%s\n' "webinsight.report.annotations=$C42_DIR/run/report-annotations.json" \
+# The JVM's own spelling of the path, with forward slashes (the docs' rule for a properties file):
+# under Git Bash $C42_DIR is /d/..., which Java on Windows reads as D:\d\...
+C42_ANN="$C42_DIR/run/report-annotations.json"
+command -v cygpath >/dev/null 2>&1 && C42_ANN="$(cygpath -m "$C42_ANN")"
+printf '%s\n' "webinsight.report.annotations=$C42_ANN" \
     "webinsight.report.servermetrics=server.csv" \
     "webinsight.report.servermetrics.step=1s" > "$C42_DIR/run/run.properties"
 C42_NOTES=""

@@ -604,7 +604,9 @@ when the two disagree.
   column per series (`--columns` maps a column by its exact header), `--csv-columns` and
   `--component` read a long export whose columns have other names and no component — InfluxDB 2's
   annotated CSV, blocks and all, InfluxDB 3 and Dynatrace — and `--time-zone` names the zone of a
-  time written with none). `--step` sets the resolution and the coverage grid (default `15s`), and
+  time written with none). `--step` sets the resolution and the coverage grid (default: a CSV's own interval, measured from its
+  rows and printed; else `15s`; a Grafana `Time,component/metric,…` header is likewise read as wide
+  without `--layout`), and
   `--clock-offset` shifts every timestamp for servers whose clocks are known to be off. `--env NAME`
   picks the `serverMetrics.environments` entry `${env.*}` placeholders are resolved from (default:
   the file's `defaultEnv`), `--max-wait` sets how long a source may take to settle (default `10m`),

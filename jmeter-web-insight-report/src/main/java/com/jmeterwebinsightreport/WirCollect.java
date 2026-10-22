@@ -15,6 +15,7 @@ import com.jmeterwebinsightreport.core.servermetrics.catalogue.Catalogue;
 import com.jmeterwebinsightreport.core.servermetrics.collect.Collector;
 import com.jmeterwebinsightreport.core.servermetrics.collect.Coverage;
 import com.jmeterwebinsightreport.core.servermetrics.collect.CsvColumns;
+import com.jmeterwebinsightreport.core.servermetrics.collect.CsvShape;
 import com.jmeterwebinsightreport.core.servermetrics.collect.CsvSource;
 import com.jmeterwebinsightreport.core.servermetrics.collect.FileSource;
 import com.jmeterwebinsightreport.core.servermetrics.collect.PrometheusSource;
@@ -240,7 +241,14 @@ public final class WirCollect {
             return 1;
         }
 
-        // 3. The source: one, from the flags (C8), under the id every assert names.
+        // 3. The source: one, from the flags (C8), under the id every assert names. For a CSV, what
+        //    the flags left unsaid - the layout, the step - is read off the file (decision 12) and
+        //    printed, so a measured value is never silent and the flag that overrides it is named.
+        if (opts.containsKey("csv") && new File(opts.get("csv")).isFile()) {
+            for (String line : measureCsv(opts)) {
+                println(out, "wir-collect: " + line);
+            }
+        }
         ServerSource source = collectionSource(opts);
         if (source.type() == ServerSource.Type.CSV && !new File(source.path()).isFile()) {
             // As a missing --jtl is: a typo here used to write a payload of failed series and exit 0,
@@ -579,7 +587,9 @@ public final class WirCollect {
                 + "                        Inspect > Data > Download CSV with Series joined by time and\n"
                 + "                        Formatted data off. Name each column component/metric or\n"
                 + "                        component/metric/instance (the panel's legend), or map it with\n"
-                + "                        --columns; a column neither names is ignored and listed\n"
+                + "                        --columns; a column neither names is ignored and listed. Without\n"
+                + "                        --layout, a header of Time and component/metric columns is read\n"
+                + "                        as wide, and the console says so\n"
                 + "  --columns MAP         with --layout wide: a CSV of column,component,metric,instance that\n"
                 + "                        names each export column by its exact header\n"
                 + "  --csv-columns SPEC    with a long --csv: the file's names for the columns, as key=column\n"
@@ -594,7 +604,8 @@ public final class WirCollect {
                 + "  --time-zone ZONE      with --csv: the zone of a time written with none, e.g. Grafana's\n"
                 + "                        Formatted data - an IANA id (Europe/Berlin), UTC, or an offset\n"
                 + "                        (+03:00). Without it such a time is refused, never guessed\n"
-                + "  --step DURATION       the resolution asked for and the coverage grid (default 15s)\n"
+                + "  --step DURATION       the resolution asked for and the coverage grid (default: with --csv,\n"
+                + "                        the interval measured from the file's rows, printed; else 15s)\n"
                 + "  --clock-offset DURATION\n"
                 + "                        added to every timestamp, e.g. -30s when the servers' clocks run\n"
                 + "                        30 s ahead of the load generator (default 0)\n"
@@ -791,6 +802,35 @@ public final class WirCollect {
         // which is the layout every committed payload already has.
         pretty.indentObjectsWith(new com.fasterxml.jackson.core.util.DefaultIndenter("  ", "\n"));
         return new ObjectMapper().writer(pretty).writeValueAsString(payload);
+    }
+
+    /**
+     * Decision 12, "measure, don't ask": a CSV's layout and step, when no flag gave them, from the
+     * file itself ({@link CsvShape}), put into {@code opts} as if they had been passed, and one line
+     * each saying so. The wide layout only where nothing else names columns (no --csv-columns, no
+     * --component); the step only when one was measured. An explicit flag is never overridden.
+     */
+    static List<String> measureCsv(Map<String, String> opts) {
+        List<String> lines = new ArrayList<>();
+        String spec = opts.get("csv-columns");
+        String timeColumn = null;
+        if (spec != null) {
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?:^|,)\\s*time\\s*=\\s*([^,]+)").matcher(spec);
+            timeColumn = m.find() ? m.group(1).trim() : null;
+        }
+        CsvShape shape = CsvShape.sniff(new File(opts.get("csv")), timeColumn);
+        if (!opts.containsKey("layout") && !opts.containsKey("csv-columns") && !opts.containsKey("component")
+                && shape.wide()) {
+            opts.put("layout", "wide");
+            lines.add("layout wide, read from the header (Time, then component/metric columns) - pass --layout long"
+                    + " to read it otherwise");
+        }
+        if (!opts.containsKey("step") && shape.stepMillis() > 0) {
+            opts.put("step", Durations.format(shape.stepMillis()));
+            lines.add("step " + Durations.format(shape.stepMillis()) + ", measured from the file's rows - pass --step"
+                    + " to collect at another");
+        }
+        return lines;
     }
 
     /** The collection's one source, from the flags parseArgs has already checked. */
