@@ -9,6 +9,7 @@ import com.jmeterwebinsightreport.report.generator.ExitPolicy;
 import com.jmeterwebinsightreport.report.generator.NonZeroExit;
 import com.jmeterwebinsightreport.report.generator.BooleanSetting;
 import com.jmeterwebinsightreport.report.generator.OutputDirectories;
+import com.jmeterwebinsightreport.report.generator.PropertyCheck;
 import com.jmeterwebinsightreport.report.generator.ReportArtifacts;
 import com.jmeterwebinsightreport.report.generator.ReportConfiguration;
 import com.jmeterwebinsightreport.report.generator.WebInsightReportGenerator;
@@ -189,15 +190,15 @@ public class WebInsightReportListener extends ResultCollector {
             config.setAnnotationsFile(new File(annotations));
         }
 
-        // The server-metrics payload wir-collect wrote. -J only, no GUI field and no
-        // auto-detection. Read here too so that no path can silently ignore a property (the
-        // failonassert lesson behind ExitPolicy) — not because it can ever succeed here: a
-        // listener run is new by definition, RunIdentity hashes its start time, so a payload
-        // named on this path is always another run's and is refused loudly. Which is the point.
-        // Do not set this property globally; pass it to the -g -o step only.
+        // The server data is for the -g step, and only for it: the listener writes its report when
+        // the run ends, before any server data for this run can exist. It used to read the
+        // property and refuse what it named as another run's - so one run.properties shared by
+        // both commands (the documented way: no -J to survive a shell) made every interim report
+        // read REFUSED instead of "Add the server data", with no NEXT line. Ignored here, and said.
         String serverMetrics = getJMeterProperty("webinsight.report.servermetrics");
         if (serverMetrics != null && !serverMetrics.isEmpty()) {
-            config.setServerMetricsFile(new File(serverMetrics));
+            log.info("webinsight.report.servermetrics ({}) is for the jmeter -g step: this report is written"
+                    + " when the run ends, before the server data exists", serverMetrics);
         }
 
         // Ramp-up overlay. The engine owns this in listener mode — the exporter's
@@ -445,6 +446,14 @@ public class WebInsightReportListener extends ResultCollector {
         }
         log.info("Web Insight Report Listener: test ended, generating report");
 
+        // Same check as the exporter's: a setting under a name nothing reads is said, and the
+        // PowerShell -J split is a config error like any other.
+        String propertyError = PropertyCheck.emit(
+                PropertyCheck.check(JMeterUtils.getJMeterProperties()), log::warn);
+        if (propertyError != null && failOnError()) {
+            failTheRun(NonZeroExit.FAIL_ON_ERROR, new IllegalStateException(propertyError));
+        }
+
         if (statsEngine == null) {
             log.warn("Statistics engine is null, skipping report generation");
             return;
@@ -542,14 +551,27 @@ public class WebInsightReportListener extends ResultCollector {
                 // path and the precedent C19 sets for artifact failures: failonerror=false buys
                 // back the EXIT CODE and nothing else. Silencing the marker too would make the
                 // opt-out mean "and never tell me", which is not what anyone opts into.
-                System.err.println("WEB-INSIGHT-REPORT: CONFIG ERROR — "
-                        + artifacts.configProblemReason());
-                // Reportable is wider than fatal: D4 lets an observe gate's failed collection be
-                // named here and cost no exit code. failTheRun is guarded so the two branches
-                // above can both run and still arrange at most one non-zero exit.
-                if (artifacts.hasConfigProblem() && failOnError()) {
-                    failTheRun(NonZeroExit.FAIL_ON_ERROR,
-                            new IllegalStateException(artifacts.configProblemReason()));
+                // Two sides, two flags: the client's problems are fatal under failonerror, the
+                // server's only under webinsight.report.server.failonerror (default off) — server
+                // data is a bonus on the client report. failTheRun is guarded so every branch can
+                // run and still arrange at most one non-zero exit.
+                String client = artifacts.clientConfigMarker();
+                if (client != null) {
+                    System.err.println(client);
+                    if (failOnError()) {
+                        failTheRun(NonZeroExit.FAIL_ON_ERROR,
+                                new IllegalStateException(artifacts.clientConfigProblemReason()));
+                    }
+                }
+                boolean serverFatal = ExitPolicy.failOnServerError(
+                        getJMeterProperty(NonZeroExit.FAIL_ON_SERVER_ERROR), log::warn);
+                String server = artifacts.serverConfigMarker(serverFatal);
+                if (server != null) {
+                    System.err.println(server);
+                    if (serverFatal) {
+                        failTheRun(NonZeroExit.FAIL_ON_SERVER_ERROR,
+                                new IllegalStateException(artifacts.serverConfigProblemReason()));
+                    }
                 }
             }
 
@@ -709,6 +731,15 @@ public class WebInsightReportListener extends ResultCollector {
         // One line, fixed prefix, absolute path: this is what a pipeline greps rather than
         // parsing a block or reading jmeter.log.
         System.out.println(artifacts.successMarker());
+        // The listener cannot see -l's path; it names its own Results file when one is set, and the
+        // JTL generically otherwise. Logged too, so the GUI's log viewer shows it.
+        String ownJtl = getFilename();
+        String next = artifacts.nextStepsLine(ownJtl == null || ownJtl.trim().isEmpty() ? null
+                : ownJtl.trim().replace(java.io.File.separatorChar, '/'));
+        if (next != null) {
+            System.out.println(next);
+            log.info("{}", next);
+        }
         if (artifacts.anyFailed()) {
             // The HTML may well exist — but a CI job that gates on the .json or the .xml has to
             // be able to see that its file is missing without reading a log file it was never

@@ -43,7 +43,7 @@ const RESULTS_DIR = path.join(PROJECT_ROOT, 'test-results');
  * missing from this list is simply unchecked, not an error.
  */
 const REQUIRED_FIXTURES = [
-  'E02', 'E05', 'E06', 'E07', 'E08', 'E09', 'E10', 'E11', 'E12', 'E19', 'E25', 'E26', 'E27', 'CMP',
+  'E02', 'E05', 'E06', 'E07', 'E08', 'E09', 'E10', 'E11', 'E12', 'E19', 'E25', 'E26', 'E27', 'E28', 'E29', 'CMP',
 ];
 
 const REGENERATE_HINT = [

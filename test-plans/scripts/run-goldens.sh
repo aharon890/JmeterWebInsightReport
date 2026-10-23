@@ -44,7 +44,7 @@ require_deployed_plugin
 require_python || { echo "[GOLDEN] FAIL: the goldens could not be compared" >&2; exit 1; }
 PY="$PYTHON"
 
-# id | annotations file (or -) | baseline jtl (or -) | server-metrics payload (or -)
+# id | annotations file (or -) | baseline jtl (or -) | server-metrics payload or CSV (or -) | extra -J (or none)
 CASES=(
     "G1|-|-|-"
     "G2|gate-mixed.json|-|-"
@@ -54,7 +54,11 @@ CASES=(
     "G7|gate-server-coverage.json|-|server-metrics.json"
     "G8|gate-server-fail.json|-|server-metrics-that-does-not-exist.json"
     "G9|gate-digits.json|-|-"
+    "G10|gate-server.json|-|server-metrics.csv|-Jwebinsight.report.servermetrics.step=1s"
 )
+# G10 is G4 with the CSV given straight to -g (P4): the exporter collects it in-process with the
+# collector's own code, at the step G4's payload was collected at. Its server results must read as
+# G4's - only the collection's identity (collectionId, collectedAt) may differ.
 # The first G4 -- gate-mixed against a baseline JTL -- was removed after its first generation,
 # because its artifacts differed from G2's only by the output path. The CI/CD JSON and the JUnit
 # XML carry no comparison block at all; the comparison lives in the HTML, which this stage
@@ -96,7 +100,7 @@ fail=0
 accepted=0
 
 for case in "${CASES[@]}"; do
-    IFS='|' read -r id ann base payload <<< "$case"
+    IFS='|' read -r id ann base payload extra <<< "$case"
     out="$WORK_DIR/$id"
     # NOT created here, and nothing is written into it before JMeter runs: `-g -o` refuses a
     # directory that is not empty, so even the log has to live outside it. CLAUDE.md documents
@@ -110,6 +114,7 @@ for case in "${CASES[@]}"; do
     [[ "$ann"  != "-" ]] && args+=(-Jwebinsight.report.annotations="$GOLDEN_DIR/$ann")
     [[ "$base" != "-" ]] && args+=(-Jwebinsight.report.baseline="$GOLDEN_DIR/$base")
     [[ "$payload" != "-" ]] && args+=(-Jwebinsight.report.servermetrics="$GOLDEN_DIR/$payload")
+    [[ -n "$extra" ]] && args+=("$extra")
 
     echo "[GOLDEN] $id ..."
     "$JMETER" "${args[@]}" > "$log" 2>&1
@@ -124,7 +129,9 @@ for case in "${CASES[@]}"; do
         fi
         expected="$EXPECTED_DIR/$id.$ext"
         actual="$WORK_DIR/$id.canonical.$ext"
-        "$PY" "$CANON" "$produced" "$actual" || { echo "[GOLDEN] $id: canonicalise failed" >&2; fail=1; continue; }
+        volatile=()
+        [[ "$payload" == *.csv ]] && volatile=(--volatile-collection)
+        "$PY" "$CANON" "$produced" "$actual" "${volatile[@]}" || { echo "[GOLDEN] $id: canonicalise failed" >&2; fail=1; continue; }
 
         if [[ $ACCEPT -eq 1 ]]; then
             cp "$actual" "$expected"

@@ -77,9 +77,9 @@ Only needed when `e26-server.json`'s `serverMetrics` block or `e26-metrics.csv` 
 A re-collection moves pins in `test-plans/playwright/tests/server-tab.spec.ts` beside the payload:
 the `collectionId` and the raw `collectedAt` title (both hashed from or stamped at collection time),
 the three per-zone collected-at strings in the "judged window in <zone>" table, and the SOURCE_FAILED
-sentence of line 1328's zone-less time. That sentence was reworded in 3.1.54 to name
-`--time-zone` ("... or write epoch milliseconds, or give the file's zone with --time-zone"); the
-committed payload still carries the older wording, which the spec pins as it is.
+sentence of line 1328's zone-less time. `WirCollectTest.theCommittedPayloadsAreWhatTodaysCollectorWritesFromTheirCsv`
+re-collects this file with today's collector and fails when the committed payload no longer matches,
+so a change to the collector's words is caught and the payload is re-collected with the change.
 
 Set `JMETER_HOME` to the JMeter that `build-and-deploy.sh` deployed this tree's JAR into (it prints
 the path). `wir-collect.sh` tries `$JMETER_HOME`, then `jmeter` on `PATH`, and the checkout's

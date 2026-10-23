@@ -1,0 +1,39 @@
+{
+  "serverMetrics": {
+    "components": {
+      "app": { "type": "custom", "description": "App server" },
+      "db": { "type": "custom", "description": "Database" }
+    },
+    "asserts": [
+      {
+        "id": "app-cpu-max",
+        "description": "stays under its bands, so PASS",
+        "component": "app",
+        "query": "cpu.pct",
+        "unit": "%",
+        "reduce": { "kind": "max" },
+        "warn": { "gt": 70 },
+        "fail": { "gt": 90 }
+      },
+      {
+        "id": "app-mem-max",
+        "description": "crosses 50 part way through, so WARN",
+        "component": "app",
+        "query": "mem.pct",
+        "unit": "%",
+        "reduce": { "kind": "max" },
+        "warn": { "gt": 50 },
+        "fail": { "gt": 95 }
+      },
+      {
+        "id": "db-connections-p95",
+        "description": "climbs past 60, so FAIL",
+        "component": "db",
+        "query": "connections",
+        "reduce": { "kind": "p95" },
+        "warn": { "gt": 40 },
+        "fail": { "gt": 60 }
+      }
+    ]
+  }
+}

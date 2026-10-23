@@ -3,6 +3,25 @@
   "status": "UNKNOWN",
   "assertsEvaluated": false,
   "duration": 48464,
+  "window": {
+    "start": "2023-11-14T22:13:20.026Z",
+    "end": "2023-11-14T22:14:08.490Z",
+    "startMillis": 1700000000026,
+    "endMillis": 1700000048490
+  },
+  "serverData": {
+    "state": "REFUSED",
+    "series": [
+      {
+        "component": "kafka",
+        "metric": "up"
+      },
+      {
+        "component": "db",
+        "metric": "up"
+      }
+    ]
+  },
   "totalSamples": 1200,
   "totalErrors": 25,
   "errorRate": 2.08,
@@ -42,7 +61,7 @@
     {
       "severity": "error",
       "ruleId": "serverMetrics.payload",
-      "message": "the server-metrics payload does not exist: 'server-metrics-that-does-not-exist.json' — no server assert was judged. The server asserts this run declares depend on it, so this is a configuration error"
+      "message": "the server-metrics payload does not exist: 'server-metrics-that-does-not-exist.json' — no server assert was judged. The server asserts this run declares depend on it. The client report and verdict are unaffected; this fails the build only under webinsight.report.server.failonerror=true"
     }
   ],
   "artifacts": {

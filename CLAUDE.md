@@ -83,19 +83,23 @@ Regression regenerates the report fixtures only when their provenance stamps no
 longer match the tree, so a change that touched no plugin source costs the same as
 sanity. Force it with `--force-fixtures`.
 
-The stamp hashes **every file under both modules' `src/main`**, plus `test-plans/server-metrics`
-and `test-plans/server-catalogue` (E26's and E27's committed inputs), not a hand-picked
+The stamp hashes **every file under both modules' `src/main`**, plus `test-plans/server-metrics`,
+`test-plans/server-catalogue` and `test-plans/server-fixtures` (E26's, E27's, E28's and E29's inputs), not a hand-picked
 list. It used to name five rendering files, which meant a change to `core/stats`
 left every stamp matching — regeneration was skipped and every browser test
 asserted against numbers from the previous build, green. Widening it also made the
 check ~29x faster, because the hashes are now computed in one pass and compared as
 whole listings instead of one `md5` process per file per fixture.
 
-When fixtures are current, regression still runs the live E24 smoke — otherwise a
-run that skips regeneration never launches JMeter at all, and could not notice that
-the plugin no longer loads in `lib/ext`.
+Regression always runs the live smoke suite, E24 and E30, whether or not it regenerates — otherwise
+a run that skips regeneration never launches JMeter at all, and could not notice that the plugin no
+longer loads in `lib/ext`. E30 is the live server-data flow: a `jmeter -n` run with the listener (its
+interim report must print NEXT and read NOT_COLLECTED), `scripts/lib/example-server-metrics.js` writing
+demo data for that run's own window, and `jmeter -g` reading the CSV; every component must be judged.
+C43 (config tier) runs the examples bundle's hooks, `examples/server-data/hooks/after-run.sh` and
+`.ps1`, against the stand-in export tool; cross-os.yml runs them on all three OSes.
 
-The suites cover the JMeter scenarios Playwright actually opens (E02, E05-E12, E19, E25, E26, E27)
+The suites cover the JMeter scenarios Playwright actually opens (E02, E05-E12, E19, E25-E29)
 plus CMP — the same list as `FIXTURE_IDS` in `common.sh`, which is where to check rather than
 here. E19 is easy to forget: `external-data.spec.ts` opens it to assert the payload was written
 to a sibling `.js` and referenced by `<script src>`, which is the one product promise no
@@ -132,8 +136,8 @@ referenced — so they are manual-tier.
 Run them before a release:
 
 ```bash
-./test-plans/scripts/run-all-tests.sh      # E01-E13, E15, E19, E20, E22, E24, E25, E26, E27
-./test-plans/scripts/run-config-tests.sh   # C01-C41 plus C17b, C19 records once
+./test-plans/scripts/run-all-tests.sh      # E01-E13, E15, E19, E20, E22, E24-E29
+./test-plans/scripts/run-config-tests.sh   # C01-C43 plus C17b, C19 records once
 ./test-plans/scripts/run-error-tests.sh    # N01-N09
 ./test-plans/scripts/run-docker-tests.sh   # E16, E17
 ```
@@ -240,6 +244,7 @@ The division of labour:
 | `explore-report` skill (`.claude/skills/explore-report/`) | drive a browser session against a generated report, then turn findings into specs |
 | `prune-actions` skill (`.claude/skills/prune-actions/`) | delete old Actions runs, keeping the newest 10, and clear Actions caches. Dry run unless `--yes`. Written when this project's private predecessor was the account's entire Actions storage bill (Aug 2026); Actions on a public repository are free, so it is housekeeping now |
 | `.github/workflows/ci.yml` | on every push and PR: `mvn verify`, the `report.js` unit tests, and the static checks (`verify_shaded_jar`, `bash -n`, `verify_script_modes`, `verify_line_endings`, `verify_no_nul_bytes`, `verify_report_js_rules`, `verify_fixture_lists`, `verify_jq_idioms`, the `selftest_*` guards). About a minute. Never launches JMeter, a fixture or a browser |
+| `.github/workflows/cross-os.yml` | on pull requests touching the plugin or the docs (and by hand): the operator's two commands with a `-q` file over the goldens' CSV, on **Windows, macOS and Linux**, plus the `java -jar ApacheJMeter.jar` form. **Not a required check** — it downloads JMeter on three runners, so it must never be something people wait on |
 | `pre-commit` hook | **refuse** a commit *on* the primary branch; it runs no tests |
 | `pre-push` hook | **refuse** any push that touches the primary branch; it runs no tests |
 | `Stop` hook → `scripts/check-deploy-freshness.sh` | **warn** when the JAR in `lib/ext` is not the code in the tree. Never blocks |
@@ -848,7 +853,7 @@ under `src/main/resources/com/jmeterwebinsightreport/core/servermetrics/catalogu
 `mysql.json`), and the page receives the same files as
 `chartData.serverCatalogue`, so the browser and the mapper resolve a catalogue metric from one copy.
 A Prometheus-backed type is a JSON file and a line in `index.json`, no Java and no `report.js`.
-Some `oracle` metrics read series only the custom metrics TOML in Tutorial 13 defines, and
+Some `oracle` metrics read series only the custom metrics TOML in Tutorial 15 (`15-Server-Catalogue.md`) defines, and
 `CatalogueTest` derives those series' names from that block by the exporter's naming rule, so the
 tutorial and the queries cannot drift apart — which is also why `mvn test` in `jmeter-report-core`
 needs the repository's `docs/` beside it.
@@ -885,22 +890,21 @@ reads the block, `servermetrics/ServerMetricsPayloadLoader` reads the payload,
 the chart data. The merge is in `WebInsightReportGenerator`, so both ingestion paths have it.
 
 **The collector.** `WirCollect` is a `main` inside the shaded JAR. Jackson and slf4j are JMeter's,
-so it runs with `java -cp` over the plugin JAR plus JMeter's `lib/*` — **never `java -jar`**.
-`scripts/wir-collect.sh` builds that classpath from `JMETER_HOME` (the variable, then `jmeter` on
-`PATH` with symlinks followed, then a checkout's `apache-jmeter-*`) and is deliberately
-**self-contained**: it does not source `common.sh`, because it has to run with nothing else from
-this repository beside it. `wir-collect.bat` is its thin wrapper. `--help` (or `-h`, in option
-position only) prints the options, the exit codes and the plain line for a machine that has only
-the released JAR. A release attaches `wir-collect.sh` and `wir-collect.bat` beside the JAR (and the
-annotations JSON Schema, `static/schema/report-annotations.schema.json`), so the wrapper does not
-have to come from a checkout (`_perf_release`, step 6); the plain line is:
-
-```
-# Linux, macOS
-java -cp "$JMETER_HOME/lib/ext/jmeter-web-insight-report-X.Y.Z.jar:$JMETER_HOME/lib/*" com.jmeterwebinsightreport.WirCollect --jtl results.jtl ...
-# Windows cmd.exe (the separator is ';')
-java -cp "%JMETER_HOME%\lib\ext\jmeter-web-insight-report-X.Y.Z.jar;%JMETER_HOME%\lib\*" com.jmeterwebinsightreport.WirCollect --jtl results.jtl ...
-```
+so it runs over the plugin JAR plus JMeter's `lib/*`. Since decision 13 the JAR's `Main-Class` is
+`WirCollectLauncher`, a JDK-only class that finds JMETER_HOME from the JAR's own place in `lib/ext`
+(else the `JMETER_HOME` variable; set-but-wrong is an error), refuses no or several plugin JARs in
+`lib/ext` with a sentence, and invokes `WirCollect.main` through a `URLClassLoader` over plugin +
+`lib/*.jar` with the platform loader as parent (in-process: no second JVM, no Windows argument
+mangling). So `java -jar <JMETER_HOME>/lib/ext/jmeter-web-insight-report-X.Y.Z.jar ...` is the one
+command for every OS. `scripts/wir-collect.sh` stays the bash wrapper, self-contained (it does not
+source `common.sh`) and still what C35-C41 run; `wir-collect.bat` is one line,
+`java -cp "%~dp0*;%~dp0..\lib\ext\*;%JMETER_HOME%\lib\ext\*" com.jmeterwebinsightreport.WirCollectLauncher %*`
+— beside the JAR or in `bin` it needs no `JMETER_HOME` — no bash, so no WSL trap, and no logic (the
+wildcards only find the launcher, which re-checks the JAR count when it runs from `lib/ext`; a plugin
+JAR run from anywhere else is the one that runs, F12).
+`--help` (or `-h`) prints the options, the exit codes and the `java -jar` line. A release attaches
+`wir-collect.sh` and `wir-collect.bat` beside the JAR (and the annotations JSON Schema) —
+`_perf_release`, step 6.
 
 It exits **0 whenever it wrote the payload**, whatever each series' status, and **1** when nothing
 was written — a usage, input or environment fault. There is no other code (D27). It used to exit
@@ -927,6 +931,76 @@ padded with an invisible character `String.trim` leaves (a no-break, zero-width 
 `KpiUsability`'s INVISIBLE_PADDING class) is such a bad row of the series that name asks for: it
 used to be read as a series nobody asked for, and the one asked for came back empty, naming no
 line (F8-residual). A component's `match` with such an end is a WARNING under the component.
+
+**`jmeter -g` reads a CSV itself (P4, decision C).** When `webinsight.report.servermetrics` names a file
+whose first character is not `{`, `WebInsightDataExporter.collectServerCsvIfGiven` runs
+`WirCollect.run` in-process — the collector's own validation, refusals and console lines, no second
+grammar, handed the report's own parse of the JTL so it is read once (F22; the payload is the one
+`wir-collect` writes from the file, `WebInsightDataExporterTest` compares them whole) — into a temp payload, with `--test-name` = the report title, `--rampup` = the configured
+ramp-up and `--collected-at` = the CSV's mtime (so a rebuild keeps the collectionId and the drafts).
+Reader options are `webinsight.report.servermetrics.<step|clockoffset|timezone|from|layout|columns|
+csvcolumns|component|env>`. A collection the collector refuses becomes `ReportConfiguration
+.serverDataProblem` → a refused (UNREADABLE) payload, never an ExportException (decision B). A relative
+path missing in the cwd is looked up beside the JTL. Exporter only: the listener runs before the data
+exists, and ignores `webinsight.report.servermetrics` altogether (an INFO line), so one `run.properties`
+serves both commands — it used to read it and refuse it as another run's, so a shared file made every
+interim report read REFUSED, with no NEXT line. A -g run that brings server data that exists, or a recorded refusal of it, is never skipped by `thisRunAlreadyReported` (it used to be,
+silently, over the listener's interim report); any skip prints `WEB-INSIGHT-REPORT: SKIPPED`. This
+reverses "a report reads only the payload the collector wrote": for files it is two steps, not three.
+Golden G10 = G4's inputs given as the CSV; equal to G4 but for collectionId, which the canonicaliser
+drops for a CSV case (`--volatile-collection`). Prometheus and `--recording` keep wir-collect.
+
+**E28 and E29 are real pages in the shapes the in-page fakes imitated** (`server-fixtures.spec.ts`). E28 is
+`jmeter -g` reading a committed CSV over `plain.jtl` with one assert per misalignment (a 3 h shift, a
+near-miss name, blank values, 4 s rows under `sustainedFor 30s`, an unquoted `90,9`) beside one that lines
+up, plus `E28/interim/` and `E28/refused/` of the same file. E29 is generated at fixture time
+(`gen-soak.js`, a fixed seed, ~25 MB CSV): four hours, 24 instances at 1 s, so the page draws 20, thins
+to 4000 points and must still reach the 3-second spike the build judged, from a forced sidecar.
+
+**A CSV's step and wide layout are measured when not given (decision 12).** The wide layout is read off
+the header alone (`collect/CsvShape.looksWide`: Grafana's `Time,component/metric,...`, not with
+`--csv-columns` or `--component`), because the layout is part of what the file reads as. The step is
+measured from the reader's own index, under every flag given (`CsvSource.measuredStepMillis`) — no second
+CSV grammar: each instance's `Coverage.mostCommonSpacing` over its rows with a value inside the run window
+(plus one step), taken when that gap repeats at least 3 times, then the widest over every instance of the
+series the asserts read, as `Coverage.spacingMillis` takes it — asked as the collection asks
+(`Collector.assertRequests`: the same names, `--from` tool names and resolved queries), so a coarse series
+no assert reads sets nothing; a file with no assert yet is measured over its components' catalogue metrics
+(`Collector.catalogueRequests`). Blank-row and row-spacing lines count the same rows. The index is keyed without the step, so `WirCollect.measureCsv` hands
+the collection the reader that measured, and the file is read once. A measured step coarser than 15 s that
+leaves fewer than 10 points in the run is not adopted, and said (F5). `measureCsv` puts either into the
+options only when the flag was absent and prints `step 5s, measured from the file's rows` / `layout wide,
+read from the header`, naming the override; nothing measured says nothing. Both paths (`wir-collect`,
+`jmeter -g`) get it. Prometheus and `--recording` keep 15 s. E28 sets 15 s explicitly to keep its H11 case.
+
+**The committed payloads cannot drift.** `WirCollectTest.theCommittedPayloadsAreWhatTodaysCollectorWritesFromTheirCsv`
+re-collects E26's, E27's and the goldens' CSVs with today's collector and compares every series and
+source (only `collectionId`, `collectedAt` and the CSV's recorded path may differ): a change to what
+the collector writes fails `mvn test` until the payload is re-collected (the command is in each
+README) and committed with it. Re-collecting moves the E26 pins in `server-tab.spec.ts` (collectionId,
+collectedAt, the three per-zone times) and the goldens' `collectionId`.
+
+**Prometheus says what went wrong.** A run longer than 11,000 steps at `--step` (Prometheus's own rule) is refused before
+asking, naming the step that fits; a non-200 answer leads with Prometheus's own error (a 400's PromQL
+parse error); a 401/403 names `--prometheus-token-env`; a window that ends after the collecting
+machine's clock is refused rather than waited for (`PrometheusSource.httpFailure`, `MAX_STEPS_PER_QUERY`).
+
+**The CSV explains itself (P3, research H2-H4).** The silent cases the 2026-10 research found are all
+said now, in `CsvSource`: a series whose rows exist but all fall outside the window is FAILED with
+both spans and the shift (`outsideWindow`: a whole number of quarter hours within ±14 h is named as a
+time zone with `--time-zone`/`--clock-offset`, seconds as clock skew, anything larger as another
+period) — it used to be EMPTY → NO_MATCH "the query matched no series" and pass every gate; a name
+that differs only by case or `.`/`_`/`-` is FAILED naming both spellings (`nearMiss`); rows inside the
+run with no value are FAILED as such; a row with more cells than the header (an unquoted `90,9`), one
+that stops before the value, an unclosed quote, a 15+-digit epoch (µs/ns), a `;`/tab delimiter and a
+UTF-16 long file are refused by line or by name; a repeated time with another value is a console
+WARNING (`duplicateNotes`). `wir-collect` prints the run window, the long file's unasked series
+(`seriesNotAskedFor`), blank-cell gaps instead of advising a coarser `--step`, refuses a missing
+`--csv` with exit 1, and turns an OutOfMemoryError into a sentence. A CSV source's `resolvedUrl` is its
+file name only, and its NO_MATCH reason reads "no row of the CSV names component X, metric Y" on both
+sides (`ServerKpiEvaluator.collectionDetail`, report.js `collectionDetail`). The Collection panel opens
+on any EMPTY/INSUFFICIENT/FAILED series and lists them. The tests that used to pin the silence
+(`CsvSourceTest` out-of-window, the DST case) now pin the sentence.
 
 `--from TOOL` (telegraf, datadog, otel, cloudwatch; `--csv` only) reads a file exported from that
 tool: a catalogue metric is looked up under the tool's name first and converted by the catalogue's
@@ -1026,12 +1100,28 @@ states, not verdicts — `serverStatus` stays absent on both — and the chip is
 server assert is declared. It used to be absent on both, by a decision `headerChip`'s javadoc
 recorded, and was then silent about the one CONFIG ERROR a refused run exits 1 over.
 
+**Server data never changes the exit code by default (decision B, 2026-10-21).** Aaron: "the server
+tab is a bonus, not the basic jmeter report". `ReportArtifacts.hasConfigProblem()` is split into
+`hasClientConfigProblem()` (a client rule that cannot run, an unreadable annotations file — what
+`failonerror` acts on) and `hasServerConfigProblem()` (`fatalConfigErrors` and a refused payload —
+what `webinsight.report.server.failonerror`, default **false**, acts on; `ExitPolicy.failOnServerError`,
+`NonZeroExit.FAIL_ON_SERVER_ERROR`). With the flag off a server problem prints
+`WEB-INSIGHT-REPORT: SERVER NOT JUDGED`, never `CONFIG ERROR` — that word keeps meaning "this exits
+non-zero"; with it on, the 4.0.x fold comes back exactly, which is how C35 and C37 keep their exit-1
+assertions as `-strict` sub-runs. JUnit is unchanged (Aaron, decision 3): server collection and config
+faults stay `<failure>`. A `serverMetrics` block whose shape does not bind (`"asserts": {}`) costs the
+server side only: `AnnotationLoader` re-reads the file without it and carries it, keys verbatim, as
+`ServerMetricsJson.unreadable`, which the mapper refuses as one block problem. A JSON *syntax* error
+still loses both sides. `PropertyCheck` (both paths) makes a property named exactly `webinsight` —
+PowerShell's split of an unquoted `-Jwebinsight.report.x=y` — a client CONFIG ERROR, and warns on an
+unknown `webinsight.*` name and on a path a properties file mangled.
+
 One thing that looks like a bug and is not. A component whose judged asserts PASS beside a
-SOURCE_FAILED or LOW_COVERAGE one reads PASS — and so do `serverStatus` and the chip — on a run
-that exits 1 under `failonerror` (G7 pins exactly this). The status is the verdict; a
-configuration or collection error is the exit code, exactly as a broken client rule contributes
-nothing to `gate.status`, and making only the server side differ would give the two statuses
-different meanings. In JUnit a server FAIL, and a SOURCE_FAILED, LOW_COVERAGE or `INVALID_RULE`
+SOURCE_FAILED or LOW_COVERAGE one reads PASS — and so do `serverStatus` and the chip (G7 pins
+exactly this). The status is the verdict; a configuration or collection error is reported beside it
+(SERVER NOT JUDGED, the Server tab's not-judged box, JUnit, STRICT), exactly as a broken client rule
+contributes nothing to `gate.status`, and making only the server side differ would give the two
+statuses different meanings. In JUnit a server FAIL, and a SOURCE_FAILED, LOW_COVERAGE or `INVALID_RULE`
 (D4), is a `<failure>`; the other NOT_JUDGED reasons are `<skipped>`, and WARN is `<system-out>`.
 (D29 — an observe-only gate's FAIL and collection failures as `<skipped>`, so Jenkins' `junit`
 step would not mark the build UNSTABLE — is retired with observe-only, C6.) With server asserts
@@ -1046,7 +1136,7 @@ type included, which the CONFIG ERROR count takes once, at the component). G8 pi
 **The jq a pipeline gates with lives in one file**, `test-plans/goldens/jq-gate.txt`, and
 documentation copies a line from it verbatim — never a line retyped. DEFAULT is the verdicts: the
 client half passes a run that declared no client rule, the server half fails only on
-`serverStatus` FAIL; pair it with `failonerror`. STRICT is DEFAULT plus every check the file asked
+`serverStatus` FAIL; pair it with `failonerror` and `server.failonerror`. STRICT is DEFAULT plus every check the file asked
 for that never ran, as far as the JSON can show it — `INVALID_RULE` anywhere, SOURCE_FAILED or
 LOW_COVERAGE in any component (every one builds, so there is nothing to exempt), and any ERROR
 finding — and is meant for
@@ -1152,6 +1242,14 @@ reads as its default on every comparison, the blocks no slice owns included — 
 `<name>.html`, `<name>.json` (CI/CD summary with the assert verdict), `<name>.xml` (JUnit, when
 `-Jwebinsight.report.junit=true`), and `web-insight-data.js` for large runs. The `.json`
 and `.xml` names are derived from the resolved HTML name.
+
+**P2 (the run tells the operator).** Every `.json` carries `window` (ISO and epoch-ms start/end, the
+collector's edges) and, whenever server asserts are declared, `serverData` {state, series[]} — both
+from `ServerGateEvaluation.requiredSeries()`, which the console's `WEB-INSIGHT-REPORT: NEXT` line
+(`ReportArtifacts.nextStepsLine`, both paths, stdout and INFO) reads too. chartData carries
+`runWindow`; the interim Server tab's `finishHtml()` prints the window, the names table (with each
+tool's catalogue name) and a CSV template written by its own writer (`csvTemplateText`, never
+`csvQuote`, which corrupts `=`/`+`/`-`/`@` cells). Adding `window` moved every golden once.
 
 On the client side the `.json` carries `assertViolations[]` (every sampler that did not pass; the
 whole run's entry keeps `"sampler": "Whole run"` and adds `"scope": "overall"`, CORE-1, because a
@@ -1262,7 +1360,9 @@ been warned about: `failonassert` was read on the listener path and **not read a
 `-g -o` exporter, so one annotations file and one FAIL verdict exited 1 under `-n -t` and 0
 under `-g -o`, and nothing noticed because the scenario covering the flag only runs the
 listener. A path can no longer forget a flag without deleting a call. Spell the properties as
-`NonZeroExit.FAIL_ON_ERROR` / `FAIL_ON_ASSERT`, never as literals at a call site.
+`NonZeroExit.FAIL_ON_ERROR` / `FAIL_ON_SERVER_ERROR` / `FAIL_ON_ASSERT`, never as literals at a call
+site. `failOnServerError` (default **false**) is the third: it alone decides whether a server-side
+config problem exits non-zero.
 
 Only `true` and `false` are accepted, so `failonerror=0` is read as saying nothing and the
 default applies — which for this one property is the *failing* direction, unlike `junit` and
@@ -1349,9 +1449,10 @@ docs/FEATURES.md             Feature list (E-numbered, referenced by tests)
 docs/TEST-COVERAGE-GAPS.md   Coverage tracker
 test-plans/*.jmx             Scenario test plans
 test-plans/annotations/      Assert/annotation fixtures used by E10-E13
-test-plans/goldens/          R06: plain.jtl, the G1-G9 annotation cases (no G6), server-metrics.csv, expected/, jq-gate.txt
+test-plans/goldens/          R06: plain.jtl, the G1-G10 annotation cases (no G6; G10 = G4 through the in-process CSV route), server-metrics.csv, expected/, jq-gate.txt
 test-plans/server-metrics/   E26's committed annotations, CSV server data and payload
 test-plans/server-catalogue/ E27's: two catalogue components (postgres, kafka) with D1 data, the picker's fixture
+test-plans/server-fixtures/  E28 (a CSV that does not line up, plus real interim and refused pages) and E29 (a generated 4 h soak)
 test-plans/playwright/tests/ Browser specs; helpers.ts resolves fixture paths
 test-plans/scripts/          Runners (.sh = logic, .bat = wrapper) + Python verifiers
 test-plans/js-unit/          report.js unit tests in node — harness.js + *.test.js, no browser

@@ -8,6 +8,7 @@ import com.jmeterwebinsightreport.report.generator.ExitPolicy;
 import com.jmeterwebinsightreport.report.generator.NonZeroExit;
 import com.jmeterwebinsightreport.report.generator.BooleanSetting;
 import com.jmeterwebinsightreport.report.generator.OutputDirectories;
+import com.jmeterwebinsightreport.report.generator.PropertyCheck;
 import com.jmeterwebinsightreport.report.generator.ReportArtifacts;
 import com.jmeterwebinsightreport.report.generator.ReportConfiguration;
 import com.jmeterwebinsightreport.report.generator.WebInsightReportGenerator;
@@ -20,6 +21,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import com.jmeterwebinsightreport.WirCollect;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -88,6 +91,15 @@ public class WebInsightDataExporter extends AbstractDataExporter {
             throws ExportException {
         log.info("Web Insight Data Exporter: starting report generation from JTL: {}", jtlFile);
 
+        // A setting that arrived under a name nothing reads (the PowerShell -J split, a typo) is
+        // said before anything is generated, and the split is a config error like any other.
+        String propertyError = PropertyCheck.emit(
+                PropertyCheck.check(JMeterUtils.getJMeterProperties()), log::warn);
+        if (propertyError != null && failOnError()) {
+            NonZeroExit.arrange(NonZeroExit.FAIL_ON_ERROR, propertyError
+                    + " (set -Jwebinsight.report.failonerror=false to exit 0 anyway)");
+        }
+
         try {
             // 1. Resolve output directory from exporter properties or JMeter properties
             File outputDir = resolveOutputDirectory(reportGeneratorConfiguration, jtlFile);
@@ -151,7 +163,13 @@ public class WebInsightDataExporter extends AbstractDataExporter {
             // identity requires the parsed data, so the question has to be asked after the parse
             // rather than before it. Parsing a JTL we may not use costs a fraction of the render
             // it might save, and it buys an answer that is correct.
-            if (thisRunAlreadyReported(outputDir, configuredName, reportData)) {
+            // The annotations and baseline found in the output directory, then the server data
+            // given to this -g run: a payload, or a CSV collected here and now (P4).
+            readCompanionFiles(config, outputDir, jtlFile, reportData);
+
+            if (!bringsServerData(config) && thisRunAlreadyReported(outputDir, configuredName, reportData)) {
+                System.out.println("WEB-INSIGHT-REPORT: SKIPPED — this run's report is already in "
+                        + outputDir.getAbsolutePath() + " (the listener wrote it during the same execution)");
                 // At WARN, not INFO: this line is the ONLY explanation for a run that produces
                 // no Web Insight report from the CLI exporter. It now fires only when the
                 // existing report is provably this same run's, so it is no longer the report
@@ -166,10 +184,7 @@ public class WebInsightDataExporter extends AbstractDataExporter {
                 return;
             }
 
-            // 7. Auto-detect annotations and baseline in output directory
-            autoDetectCompanionFiles(config, outputDir);
-
-            // 8. Generate the report
+            // 7. Generate the report
             WebInsightReportGenerator generator = new WebInsightReportGenerator(config);
             ReportArtifacts artifacts = generator.generateReport(reportData);
 
@@ -179,6 +194,11 @@ public class WebInsightDataExporter extends AbstractDataExporter {
             log.info("{}", artifacts.successMarker());
             System.out.println(artifacts.consoleSummary());
             System.out.println(artifacts.successMarker());
+            String next = artifacts.nextStepsLine(jtlFile == null ? null : jtlFile.getPath().replace(File.separatorChar, '/'));
+            if (next != null) {
+                System.out.println(next);
+                log.info("{}", next);
+            }
             // Both markers, independently. They used to be an if/else chain, so a run that lost
             // an artifact AND could not build its gate printed only the first — and the one CI
             // is told to grep for a broken gate definition was the one withheld, on exactly the
@@ -220,12 +240,32 @@ public class WebInsightDataExporter extends AbstractDataExporter {
      * tell me", which is not what anyone opts into.
      */
     private static void configError(ReportArtifacts artifacts) {
-        System.err.println("WEB-INSIGHT-REPORT: CONFIG ERROR — " + artifacts.configProblemReason());
-        // Printed for every reportable problem, and fatal under failonerror.
-        if (artifacts.hasConfigProblem() && failOnError()) {
-            NonZeroExit.arrange(NonZeroExit.FAIL_ON_ERROR, artifacts.configProblemReason()
-                    + " (set -Jwebinsight.report.failonerror=false to exit 0 anyway)");
+        // Two sides, two flags. The client's problems are fatal under failonerror (default true);
+        // the server's only under webinsight.report.server.failonerror (default false), because the
+        // server tab is a bonus on the client report. Each side prints its own marker.
+        String client = artifacts.clientConfigMarker();
+        if (client != null) {
+            System.err.println(client);
+            if (failOnError()) {
+                NonZeroExit.arrange(NonZeroExit.FAIL_ON_ERROR, artifacts.clientConfigProblemReason()
+                        + " (set -Jwebinsight.report.failonerror=false to exit 0 anyway)");
+            }
         }
+        boolean serverFatal = failOnServerError();
+        String server = artifacts.serverConfigMarker(serverFatal);
+        if (server != null) {
+            System.err.println(server);
+            if (serverFatal) {
+                NonZeroExit.arrange(NonZeroExit.FAIL_ON_SERVER_ERROR, artifacts.serverConfigProblemReason()
+                        + " (" + NonZeroExit.FAIL_ON_SERVER_ERROR + "=true)");
+            }
+        }
+    }
+
+    private static boolean failOnServerError() {
+        return ExitPolicy.failOnServerError(
+                JMeterUtils.getProperty(NonZeroExit.FAIL_ON_SERVER_ERROR),
+                WebInsightDataExporter::warn);
     }
 
     /**
@@ -247,6 +287,141 @@ public class WebInsightDataExporter extends AbstractDataExporter {
         }
         System.err.println("WEB-INSIGHT-REPORT: ASSERT FAIL — " + artifacts.verdictLine());
         NonZeroExit.arrange(NonZeroExit.FAIL_ON_ASSERT, artifacts.verdictLine());
+    }
+
+    /**
+     * The files this run reads beside its own settings, in the order one needs the other: the
+     * annotations and baseline auto-detected in the output directory first, then the server data,
+     * because collecting a CSV reads the annotations file to know what to collect. Collected first,
+     * a CSV given beside an auto-detected annotations file was refused as having none.
+     * {@code reportData} is this run's parse of {@code jtlFile}, which the collection reuses.
+     */
+    void readCompanionFiles(ReportConfiguration config, File outputDir, File jtlFile, ReportData reportData) {
+        autoDetectCompanionFiles(config, outputDir);
+        collectServerCsvIfGiven(config, jtlFile, reportData);
+    }
+
+    /**
+     * Does this run bring server data its report has to show? Then it is never "already reported":
+     * the report already here (the listener's interim one) was written without it, and skipping
+     * left the page saying NOT COLLECTED with exit 0 and no console line (research F2 T6b).
+     *
+     * <p>A file that is only <em>configured</em> brings nothing. One shared {@code run.properties}
+     * names the CSV a later step writes, so a combined {@code -n -t ... -e -o} run reaches here
+     * before it exists; regenerating then replaced the listener's interim report, with its NEXT
+     * line, by a refusal of a file nobody had written yet. A collection that was refused did bring
+     * something: the sentence saying why.
+     */
+    static boolean bringsServerData(ReportConfiguration config) {
+        File file = config.getServerMetricsFile();
+        return (file != null && file.exists()) || config.getServerDataProblem() != null;
+    }
+
+    /** The reader options for a CSV given as server data, as -J or -q properties, and wir-collect's flag for each. */
+    static final String[][] CSV_OPTIONS = {
+            {"step", "--step"}, {"clockoffset", "--clock-offset"}, {"timezone", "--time-zone"}, {"from", "--from"},
+            {"layout", "--layout"}, {"columns", "--columns"}, {"csvcolumns", "--csv-columns"},
+            {"component", "--component"}, {"env", "--env"}};
+
+    /**
+     * When {@code webinsight.report.servermetrics} names a CSV rather than a wir-collect payload,
+     * collect it here, in-process, with the collector's own code ({@link WirCollect#run}): every
+     * check, refusal and console line the collector has, no second grammar. The run's window,
+     * identity and ramp-up come from this very JTL and title, so there is no --test-name or second
+     * --rampup to get wrong. The JTL is not read again: {@code parsed}, this report's own parse of it
+     * under its title, is handed to the collector ({@link WirCollect#run(String[], ReportData,
+     * java.io.PrintStream, java.io.PrintStream, java.util.Map)}), whose window and runId derive from exactly the
+     * fields its own parse would give (null: the collector parses the file). The payload goes to a
+     * temporary file that this report then reads; a CSV the collector refuses becomes a refused
+     * payload - said, never fatal by default (decision B).
+     *
+     * <p>A relative path that does not exist where JMeter runs is looked up beside the JTL, so a
+     * properties file with relative names works from JMeter's own Generate HTML report dialog too.
+     */
+    void collectServerCsvIfGiven(ReportConfiguration config, File jtlFile, ReportData parsed) {
+        File given = config.getServerMetricsFile();
+        if (given == null) {
+            return;
+        }
+        if (!given.exists() && !given.isAbsolute() && jtlFile != null && jtlFile.getAbsoluteFile().getParentFile() != null) {
+            File besideJtl = new File(jtlFile.getAbsoluteFile().getParentFile(), given.getPath());
+            if (besideJtl.exists()) {
+                given = besideJtl;
+                config.setServerMetricsFile(given);
+            }
+        }
+        if (!given.isFile() || looksLikeJson(given)) {
+            return;   // a payload, or a missing file: the loader says which, as it always has
+        }
+        if (config.getAnnotationsFile() == null) {
+            config.setServerMetricsFile(null);
+            config.setServerDataProblem("the server data " + given.getName() + " is a CSV, and no annotations file"
+                    + " says what to read from it - give webinsight.report.annotations too");
+            return;
+        }
+        List<String> args = new ArrayList<>(java.util.Arrays.asList(
+                "--jtl", jtlFile.getAbsolutePath(), "--annotations", config.getAnnotationsFile().getPath(),
+                "--csv", given.getPath(), "--no-wait",
+                "--collected-at", java.time.Instant.ofEpochMilli(given.lastModified()).toString()));
+        File out;
+        try {
+            out = File.createTempFile("wir-server-metrics-", ".json");
+            out.deleteOnExit();
+        } catch (java.io.IOException e) {
+            config.setServerMetricsFile(null);
+            config.setServerDataProblem("the server CSV " + given.getName() + " could not be collected: "
+                    + ReportArtifacts.describe(e));
+            return;
+        }
+        args.add("--out");
+        args.add(out.getPath());
+        if (config.getReportTitle() != null && !config.getReportTitle().isEmpty()) {
+            args.add("--test-name");
+            args.add(config.getReportTitle());
+        }
+        if (config.getRampUpDurationMillis() > 0) {
+            args.add("--rampup");
+            args.add(String.valueOf(config.getRampUpDurationMillis()));
+        }
+        for (String[] option : CSV_OPTIONS) {
+            String value = JMeterUtils.getProperty("webinsight.report.servermetrics." + option[0]);
+            if (value != null && !value.trim().isEmpty()) {
+                args.add(option[1]);
+                args.add(value.trim());
+            }
+        }
+        int code;
+        try {
+            code = WirCollect.run(args.toArray(new String[0]), parsed, System.out, System.err, System.getenv());
+        } catch (OutOfMemoryError e) {
+            System.err.println("wir-collect: ran out of memory reading " + given.getName()
+                    + " - give JMeter more heap (JVM_ARGS=-Xmx2g) or export a narrower window");
+            code = 1;
+        }
+        if (code == 0) {
+            config.setServerMetricsFile(out);
+        } else {
+            config.setServerMetricsFile(null);
+            config.setServerDataProblem("the server CSV " + given.getName() + " could not be collected - the"
+                    + " wir-collect lines on the console say why");
+        }
+    }
+
+    /** True when the file's first non-blank character (after a BOM) opens a JSON object. */
+    static boolean looksLikeJson(File file) {
+        try (java.io.Reader in = new java.io.InputStreamReader(new java.io.FileInputStream(file),
+                java.nio.charset.StandardCharsets.UTF_8)) {
+            int c;
+            while ((c = in.read()) != -1) {
+                if (c == 0xFEFF || Character.isWhitespace(c)) {
+                    continue;
+                }
+                return c == '{';
+            }
+        } catch (java.io.IOException e) {
+            return true;   // unreadable: let the loader say so, in its words
+        }
+        return true;
     }
 
     /**

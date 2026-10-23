@@ -283,9 +283,10 @@ report's tables, chips and filters show for it.
 
 The three server-only reasons are counted on every gate and are always zero on a client rule; they
 are in the vocabulary so a server assert and a client rule that matched nothing say the same word.
-`SOURCE_FAILED` and `LOW_COVERAGE` are configuration errors like `INVALID_RULE` — they exit the run
-non-zero under `failonerror`, on every server component, since every component can fail the
-build. `LOAD_NOT_ACHIEVED` is neither: what went wrong is the load rule's to report. Its FAIL is
+`SOURCE_FAILED` and `LOW_COVERAGE` are configuration errors like `INVALID_RULE` — checks the file
+asked for that never ran. On the server side none of the three changes the exit code by default
+(the server tab is a bonus on the client report); `webinsight.report.server.failonerror=true` makes
+them fatal, on every server component. `LOAD_NOT_ACHIEVED` is neither: what went wrong is the load rule's to report. Its FAIL is
 the client verdict; an `INVALID_RULE` load rule is a configuration error of its own; a disabled,
 unmatched or unmeasurable one reports nothing, and the server asserts that depend on it stand down
 without failing the build. Server asserts have their own tab and are grouped by component:

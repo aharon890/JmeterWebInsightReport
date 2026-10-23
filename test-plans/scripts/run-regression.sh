@@ -133,7 +133,7 @@ if [[ $FORCE_FIXTURES -eq 0 ]] && fixtures_current; then
         record R04 "Report fixtures + live JMeter smoke" PASS "fixtures already current"
     else
         record R04 "Report fixtures + live JMeter smoke" FAIL \
-            "plugin produced no report in a live JMeter — see $RESULTS_DIR/E24/jmeter.log"
+            "the live smoke failed (E24 or E30) — see $RESULTS_DIR/E24/jmeter.log, $RESULTS_DIR/E30/"
     fi
 else
     if [[ $FORCE_FIXTURES -eq 1 ]]; then
@@ -148,7 +148,13 @@ else
     SKIP_BUILD=1 bash "$TEST_PLANS/scripts/run-all-tests.sh" --suite fixtures || fixture_fail=1
     SKIP_BUILD=1 bash "$TEST_PLANS/scripts/generate-cmp-fixture.sh"           || fixture_fail=1
 
-    if [[ $fixture_fail -eq 0 ]] && fixtures_current; then
+    # The smoke suite as well (E24, and E30's live server-data flow): the fixture suite holds
+    # neither, so a regeneration alone would never run the live flow on exactly the change that
+    # needed it.
+    if ! run_live_smoke; then
+        record R04 "Report fixtures regenerated + live smoke" FAIL \
+            "the live smoke failed (E24 or E30) — see $RESULTS_DIR/E24/jmeter.log, $RESULTS_DIR/E30/"
+    elif [[ $fixture_fail -eq 0 ]] && fixtures_current; then
         record R04 "Report fixtures regenerated" PASS
     else
         # A scenario that produced nothing is a recorded FAIL now, not a silent one: every

@@ -51,6 +51,7 @@ const STAMP_ROOTS = [
   'jmeter-web-insight-report/src/main',
   'test-plans/server-metrics',
   'test-plans/server-catalogue',
+  'test-plans/server-fixtures',
 ];
 
 const SENTENCE = {

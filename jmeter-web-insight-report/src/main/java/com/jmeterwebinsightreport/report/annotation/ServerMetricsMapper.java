@@ -107,6 +107,16 @@ public final class ServerMetricsMapper {
         }
         ServerMetricsConfig.Builder config = ServerMetricsConfig.builder();
 
+        if (json.getUnreadable() != null) {
+            // The block could not be bound; the rest of the file was. One block problem, and
+            // nothing under it is read — guessing at a half-bound block would judge something the
+            // file did not say.
+            AssertionValidator.Finding f = error(BLOCK_ID, json.getUnreadable());
+            findings.add(f);
+            config.problem(f);
+            return new Result(config.build(), findings);
+        }
+
         retiredBlockKeys(json, config, findings);
         retiredSources(json, config, findings);
         readComponents(json, config, findings);

@@ -38,7 +38,7 @@ stage S05 and points at regression rather than testing an old build.
 ### What the automated suites leave out
 
 They run the JMeter scenarios the Playwright specs actually open (E02, E05-E12, E19, E25,
-E26, E27) plus CMP — the authoritative list is `FIXTURE_IDS` in `scripts/lib/common.sh`, which
+E26-E29) plus CMP — the authoritative list is `FIXTURE_IDS` in `scripts/lib/common.sh`, which
 is where to check rather than here. The remaining scenarios in `run-all-tests.sh` are
 validated only by "an HTML and a JSON file appeared" — except E20, which asserts the
 external-data payload was written and referenced. Run the full set, plus the config, error,
@@ -466,7 +466,7 @@ it (the family runners reuse C01–C08 and E01–E07).
 C14 waits 61s for the `${timestamp}` placeholder to roll over to a new minute.
 Shorten that for a quick local run with `TIMESTAMP_WAIT=5`.
 
-**Config tests (C01-C41 plus C17b; C19 runs JMeter twice, once with `failonerror=false`, and
+**Config tests (C01-C43 plus C17b; C19 runs JMeter twice, once with `failonerror=false`, and
 records one stage):** defaults
 (output dir, filename, title, JSON), the `${timestamp}` placeholder, relative and auto-created
 paths, special characters, JUnit XML on and off, custom Apdex, ramp-up marking, and from C16 up
@@ -484,14 +484,16 @@ three server-metrics steps through real processes — `wir-collect.sh --recordin
 Prometheus response, then `jmeter -g -o` with `-Jwebinsight.report.servermetrics` — and proves a
 collected `server-metrics.json` is embedded for the run it was collected against and refused for
 any other: the payload carries the run identity, so a stale one cannot quietly become this run's
-evidence. The refusal is a CONFIG ERROR, a non-zero exit and an ERROR finding in the CI/CD JSON,
-because a declared server assert needed the payload. It also asserts the collector's console said
+evidence. The refusal is an ERROR finding in the CI/CD JSON and a `SERVER NOT JUDGED` line with
+exit 0 by default; under `webinsight.report.server.failonerror=true` it is a CONFIG ERROR and a
+non-zero exit, and C35 pins both. It also asserts the collector's console said
 the recording was read (`wir-collect: OK app/up coverage=`): the collector exits 0 for an empty
 series too, so the exit code alone does not prove it. **C36** collects through the CSV backend
 (`--csv`) and pins the `failonassert` fold: a component's FAIL exits 0 by default and 1 under the
 flag, and is a JUnit `<failure>` in that component's suite. **C37** pins a collection failure —
 `--prometheus-url` on a dead port: the collector exits 0 because it wrote the payload, the
-payload records the source `FAILED`, and step 3 is a CONFIG ERROR with the assert counted as
+payload records the source `FAILED`, and step 3 says `SERVER NOT JUDGED` with exit 0 (a CONFIG ERROR
+and exit 1 under `webinsight.report.server.failonerror=true`), with the assert counted as
 `sourceFailed` and written as a JUnit `<failure>`. C37 also runs the three documented steps as one
 `set -e` script, with `jmeter` on `PATH`, `JMETER_HOME` unset and a lone copy of
 `wir-collect.sh`; the script must reach step 3's report (a collector that exited non-zero would
@@ -651,6 +653,7 @@ without either — a golden check that cannot run must not look like one that pa
 | G7 | `gate-server-coverage.json` + payload | no client rule; one `db` component reads PASS over a `LOW_COVERAGE` assert — `serverStatus` PASS over a config error |
 | G8 | `gate-server-fail.json`, payload missing | refused where a server assert needed it: no server block, one ERROR finding |
 | G9 | `gate-digits.json` | client rules only, each band within a hundredth of plain.jtl's measured value: every client `actual` and JUnit number stays on its own side of every band its rule declares (`119.361` beside `"threshold": 119.36`, not `119.36`) |
+| G10 | `gate-server.json` + `server-metrics.csv` | G4's inputs with the CSV given straight to `jmeter -g` (`webinsight.report.servermetrics.step=1s`): collected in-process, the results read as G4's; `collectionId` is not compared (it is the CSV's file time) |
 
 There is no G6, and case ids are not reused.
 

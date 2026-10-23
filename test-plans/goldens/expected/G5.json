@@ -4,6 +4,25 @@
   "serverStatus": "FAIL",
   "assertsEvaluated": true,
   "duration": 48464,
+  "window": {
+    "start": "2023-11-14T22:13:20.026Z",
+    "end": "2023-11-14T22:14:08.490Z",
+    "startMillis": 1700000000026,
+    "endMillis": 1700000048490
+  },
+  "serverData": {
+    "state": "COLLECTED",
+    "series": [
+      {
+        "component": "kafka",
+        "metric": "up"
+      },
+      {
+        "component": "db",
+        "metric": "up"
+      }
+    ]
+  },
   "totalSamples": 1200,
   "totalErrors": 25,
   "errorRate": 2.08,
@@ -44,7 +63,7 @@
       "id": "kafka",
       "label": "Kafka",
       "type": "custom",
-      "collectionId": "df8778b7fa474d95",
+      "collectionId": "b089f81bf6c5aa7e",
       "status": "FAIL",
       "declared": 2,
       "evaluated": 2,
@@ -66,7 +85,7 @@
       "id": "db",
       "label": "DB",
       "type": "custom",
-      "collectionId": "df8778b7fa474d95",
+      "collectionId": "b089f81bf6c5aa7e",
       "status": "WARN",
       "declared": 1,
       "evaluated": 1,

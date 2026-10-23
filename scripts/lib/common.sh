@@ -641,6 +641,7 @@ _fixture_stamp_files() {
         jmeter-web-insight-report/src/main \
         test-plans/server-metrics \
         test-plans/server-catalogue \
+        test-plans/server-fixtures \
         -type f 2>/dev/null | sort )
 }
 
@@ -862,7 +863,7 @@ _several_plugin_jars_sentence() {
 # much JMeter work an automated cycle has to do — every other scenario in
 # run-all-tests.sh validates only "a report was produced" and is manual-tier.
 # Keep in step with REQUIRED_FIXTURES in test-plans/playwright/global-setup.ts.
-FIXTURE_IDS="E02 E05 E06 E07 E08 E09 E10 E11 E12 E19 E25 E26 E27 CMP"
+FIXTURE_IDS="E02 E05 E06 E07 E08 E09 E10 E11 E12 E19 E25 E26 E27 E28 E29 CMP"
 
 # Every tracked .sh and git hook must be committed 100755.
 #
@@ -1339,11 +1340,15 @@ selftest_fixture_stamps() (
 # never started still leaves a passing assertion behind. Both callers used to do exactly
 # that and also discarded the smoke's exit status, which is two independent ways for this
 # check to report success without having checked anything.
+#
+# E30 runs beside it: the live server-data flow (a run, demo data for its own window, jmeter -g
+# reading the CSV), which no committed fixture can exercise. The suite's exit status is its count
+# of failed scenarios, so E30's own checks count here, not only whether a file appeared.
 run_live_smoke() {
     local report="$RESULTS_DIR/E24/E24-report.html"
-    rm -f "$report"
-    SKIP_BUILD=1 bash "$TEST_PLANS/scripts/run-all-tests.sh" --suite smoke >/dev/null 2>&1
-    file_exists "$report"
+    rm -f "$report" "$RESULTS_DIR/E30/judged/E30-report.html"
+    SKIP_BUILD=1 bash "$TEST_PLANS/scripts/run-all-tests.sh" --suite smoke >/dev/null 2>&1 || return 1
+    file_exists "$report" && file_exists "$RESULTS_DIR/E30/judged/E30-report.html"
 }
 
 # Java unit tests. Fast enough (~5s for 224) that every tier runs them.

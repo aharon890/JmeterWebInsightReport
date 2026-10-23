@@ -41,6 +41,82 @@ class ReportArtifactsTest {
                 "r-data.js", true, 10_000_000L);
     }
 
+    // ---- client and server config problems, two flags -------------------------
+
+    @Test
+    void aServerProblemIsReportedApartFromTheClientAndSaysTheExitCodeIsUnchanged() {
+        ReportArtifacts a = inlineRun().recordServerMetricsProblem("the payload was refused");
+        assertTrue(a.hasServerConfigProblem());
+        assertFalse(a.hasClientConfigProblem());
+        assertNull(a.clientConfigMarker(), "no CONFIG ERROR for a side that cannot exit non-zero");
+        String lenient = a.serverConfigMarker(false);
+        assertTrue(lenient.startsWith("WEB-INSIGHT-REPORT: SERVER NOT JUDGED — the payload was refused"), lenient);
+        assertTrue(lenient.contains("exit code is unchanged"), lenient);
+        assertTrue(lenient.contains(NonZeroExit.FAIL_ON_SERVER_ERROR + "=true"), lenient);
+        // Under the opt-in it exits non-zero, so it is a CONFIG ERROR like the client's.
+        assertEquals("WEB-INSIGHT-REPORT: CONFIG ERROR — the payload was refused", a.serverConfigMarker(true));
+    }
+
+    @Test
+    void aClientProblemKeepsItsConfigErrorAndCarriesNoServerClause() {
+        ReportArtifacts a = inlineRun().recordConfigProblem(2, null);
+        assertTrue(a.hasClientConfigProblem());
+        assertFalse(a.hasServerConfigProblem());
+        assertTrue(a.clientConfigMarker().startsWith("WEB-INSIGHT-REPORT: CONFIG ERROR — 2 declared check(s) never ran"));
+        assertNull(a.serverConfigMarker(false));
+        assertEquals(a.clientConfigProblemReason(), a.configProblemReason());
+    }
+
+    @Test
+    void bothSidesWrongNameBothInTheCombinedReason() {
+        ReportArtifacts a = inlineRun().recordConfigProblem(0, "the annotations file does not exist")
+                .recordServerMetricsProblem("the payload was refused");
+        assertEquals("the annotations file does not exist — no gate ran; the payload was refused",
+                a.configProblemReason());
+        assertTrue(a.hasConfigProblem());
+    }
+
+    @Test
+    void anInterimRunSaysWhatToExportUnderWhichNamesAndHowToRebuild() throws Exception {
+        com.jmeterwebinsightreport.core.model.ReportData data = com.jmeterwebinsightreport.report.gate.ServerFixtures.run();
+        com.jmeterwebinsightreport.report.gate.ServerGateEvaluation declared =
+                com.jmeterwebinsightreport.report.gate.ServerFixtures.evaluate(
+                        com.jmeterwebinsightreport.report.gate.ServerFixtures.block(null,
+                                com.jmeterwebinsightreport.report.gate.ServerFixtures.kpi("lag", "lag", 500, null)),
+                        null, data);
+        ReportArtifacts a = inlineRun().recordServerGates(declared).recordRunWindow(1_700_000_000_000L, 1_700_000_060_000L);
+        String next = a.nextStepsLine("run/results.jtl");
+        assertTrue(next.startsWith("WEB-INSIGHT-REPORT: NEXT — 1 server assert(s) wait for server data. Export"
+                + " 2023-11-14T22:13:20Z .. 2023-11-14T22:14:20Z (epoch ms 1700000000000 .. 1700000060000"), next);
+        assertTrue(next.contains("/lag"), next);
+        assertTrue(next.contains("jmeter -g run/results.jtl -o <a new folder> -q "), next);
+        // Nothing to do on a report that judged them, or with no server block.
+        assertNull(inlineRun().nextStepsLine("x.jtl"));
+    }
+
+    @Test
+    void theNextLineCountsTheEnabledAssertsItListsAndIsAbsentWhenNoneIs() throws Exception {
+        // A disabled assert waits for no data: it was counted while its name was left out of the list.
+        com.jmeterwebinsightreport.core.model.ReportData data = com.jmeterwebinsightreport.report.gate.ServerFixtures.run();
+        String on = com.jmeterwebinsightreport.report.gate.ServerFixtures.kpi("lag", "lag", 500, null);
+        String off = disabled(com.jmeterwebinsightreport.report.gate.ServerFixtures.kpi("cpu", "cpu", 90, null));
+        String offToo = disabled(com.jmeterwebinsightreport.report.gate.ServerFixtures.kpi("mem", "mem", 90, null));
+        ReportArtifacts mixed = inlineRun().recordServerGates(com.jmeterwebinsightreport.report.gate.ServerFixtures.evaluate(
+                com.jmeterwebinsightreport.report.gate.ServerFixtures.block(null, on, off, offToo), null, data));
+        String next = mixed.nextStepsLine("x.jtl");
+        assertTrue(next.startsWith("WEB-INSIGHT-REPORT: NEXT — 1 server assert(s) wait for server data."), next);
+        assertTrue(next.contains("/lag"), next);
+        assertFalse(next.contains("/cpu"), next);
+
+        ReportArtifacts allOff = inlineRun().recordServerGates(com.jmeterwebinsightreport.report.gate.ServerFixtures.evaluate(
+                com.jmeterwebinsightreport.report.gate.ServerFixtures.block(null, off, offToo), null, data));
+        assertNull(allOff.nextStepsLine("x.jtl"), "every assert disabled: nothing waits for server data");
+    }
+
+    private static String disabled(String kpiJson) {
+        return kpiJson.substring(0, kpiJson.length() - 1) + ",\"enabled\":false}";
+    }
+
     // ---- intent line ---------------------------------------------------------
 
     @Test

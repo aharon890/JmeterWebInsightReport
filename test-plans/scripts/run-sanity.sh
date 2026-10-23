@@ -87,12 +87,12 @@ fi
 # assertion cannot be satisfied by the previous cycle's output.
 if deploy_plugin >/dev/null; then
     if run_live_smoke; then
-        record S04 "JMeter listener smoke (E24)" PASS
+        record S04 "JMeter listener smoke (E24, E30)" PASS
     else
-        record S04 "JMeter listener smoke (E24)" FAIL "no report generated — see $RESULTS_DIR/E24/jmeter.log"
+        record S04 "JMeter listener smoke (E24, E30)" FAIL "no report generated — see $RESULTS_DIR/E24/jmeter.log"
     fi
 else
-    record S04 "JMeter listener smoke (E24)" FAIL "deploy failed"
+    record S04 "JMeter listener smoke (E24, E30)" FAIL "deploy failed"
 fi
 
 # --- 5. Browser tests, only if the fixtures still mean something --------------

@@ -505,7 +505,7 @@ test.describe('Server tab — the board', () => {
       expect(await page.locator('.wir-collection thead th').allTextContents())
         .toEqual(['Source', 'Status', 'Step', 'Clock offset']);
       await expect(page.locator('.wir-collection tbody tr:not(.wir-reason-row) td').first())
-        .toHaveAttribute('title', 'csv · test-plans/server-metrics/e26-metrics.csv');
+        .toHaveAttribute('title', 'csv · e26-metrics.csv');   // P3: a CSV source records its file name only
       // Why, under its own row, in the collector's words: on one line, without the parser's
       // location block.
       const error = await page.evaluate(() => {
@@ -513,15 +513,15 @@ test.describe('Server tab — the board', () => {
         const next = row.nextElementSibling as HTMLElement;
         return next && next.classList.contains('wir-reason-row') ? next.textContent!.trim() : null;
       });
-      expect(error).toBe("1 of 8 series failed - first: e26-metrics.csv line 1328: time \"2023-11-14 22:13:20\" has no time zone - add one (2026-10-02T14:02:15+03:00, or a Z for UTC), or write epoch milliseconds");
+      expect(error).toBe("1 of 8 series failed - first: e26-metrics.csv line 1328: time \"2023-11-14 22:13:20\" has no time zone - add one (2026-10-02T14:02:15+03:00, or a Z for UTC), write epoch milliseconds, or give the file's zone with --time-zone");
       // F16 (orchestrator call, 2026-10-02): the collected-at time is shown as the window lines
       // are, in the reader's zone, and the collector's own UTC nanosecond stamp stays reachable in
       // the title. The literal local text is pinned per zone in "the judged window in <zone>" below.
       // SF38: once, on the line a closed panel shows, with its zone; the footer keeps the id alone.
       const stamp = page.locator('.wir-collection-line .wir-collected-at');
       await expect(stamp).toHaveText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC[+-]\d{2}:\d{2}$/);
-      await expect(stamp).toHaveAttribute('title', '2026-10-03T09:35:40.994100500Z');
-      await expect(page.locator('.wir-collection .wir-collection-id')).toHaveText('Collection 499899a59a4d5e18');
+      await expect(stamp).toHaveAttribute('title', '2026-10-22T06:06:19.389630Z');
+      await expect(page.locator('.wir-collection .wir-collection-id')).toHaveText('Collection 60a852d6637b30c5');
 
       // An offset is signed and in the step's units: an unnoticed one is how a series lines up
       // against the wrong part of the run. E26 collected with none, so two are given here.
@@ -750,14 +750,14 @@ test.describe('Server tab — the board', () => {
 /* The window line, as literal text (review:F). The test above builds its expectation with
    formatTimeZoned, the function the board uses — so it pins how the line is put together and
    cannot catch a wrong or locale-dependent timestamp. E26's payload is committed, so its window
-   is a constant: 1700000000026 .. 1700000048490 ms, and its collection 2026-10-03T09:35:40Z. Shown
+   is a constant: 1700000000026 .. 1700000048490 ms, and its collection 2026-10-22T06:06:19Z. Shown
    in the reader's zone, each stamp with its own offset (SF38), pinned here. Jerusalem is the case a
    single label for the tab would get wrong: the window is from November 2023 (+02:00) and the
    collection from October 2026 (+03:00, summer time). */
 for (const [zone, start, end, collected] of [
-  ['UTC', '2023-11-14 22:13:20 UTC+00:00', '2023-11-14 22:14:08 UTC+00:00', '2026-10-03 09:35:40 UTC+00:00'],
-  ['Asia/Kolkata', '2023-11-15 03:43:20 UTC+05:30', '2023-11-15 03:44:08 UTC+05:30', '2026-10-03 15:05:40 UTC+05:30'],
-  ['Asia/Jerusalem', '2023-11-15 00:13:20 UTC+02:00', '2023-11-15 00:14:08 UTC+02:00', '2026-10-03 12:35:40 UTC+03:00'],
+  ['UTC', '2023-11-14 22:13:20 UTC+00:00', '2023-11-14 22:14:08 UTC+00:00', '2026-10-22 06:06:19 UTC+00:00'],
+  ['Asia/Kolkata', '2023-11-15 03:43:20 UTC+05:30', '2023-11-15 03:44:08 UTC+05:30', '2026-10-22 11:36:19 UTC+05:30'],
+  ['Asia/Jerusalem', '2023-11-15 00:13:20 UTC+02:00', '2023-11-15 00:14:08 UTC+02:00', '2026-10-22 09:06:19 UTC+03:00'],
 ]) {
   test.describe(`Server tab — the judged window in ${zone}`, () => {
     test.use({ timezoneId: zone });

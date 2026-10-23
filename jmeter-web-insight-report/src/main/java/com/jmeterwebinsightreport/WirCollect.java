@@ -15,6 +15,7 @@ import com.jmeterwebinsightreport.core.servermetrics.catalogue.Catalogue;
 import com.jmeterwebinsightreport.core.servermetrics.collect.Collector;
 import com.jmeterwebinsightreport.core.servermetrics.collect.Coverage;
 import com.jmeterwebinsightreport.core.servermetrics.collect.CsvColumns;
+import com.jmeterwebinsightreport.core.servermetrics.collect.CsvShape;
 import com.jmeterwebinsightreport.core.servermetrics.collect.CsvSource;
 import com.jmeterwebinsightreport.core.servermetrics.collect.FileSource;
 import com.jmeterwebinsightreport.core.servermetrics.collect.PrometheusSource;
@@ -41,6 +42,7 @@ import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 
 /**
  * {@code wir-collect}: the CI step between the JMeter run and the report.
@@ -88,11 +90,12 @@ import java.util.Set;
  * stays inside D27's rule (0 whenever the payload was written). A custom component alone still
  * exits 1: it has no catalogue, so there is nothing to ask a source for.
  *
- * <p>Runs inside the shaded plugin JAR with JMeter's {@code lib/} on the classpath. Jackson
- * and slf4j are JMeter's, so it is {@code java -cp}, never {@code java -jar}. The wrappers
- * {@code scripts/wir-collect.sh} and {@code .bat} build that classpath from {@code JMETER_HOME}
- * and need nothing else from this repository. {@code --help} prints the plain {@code java -cp}
- * line for a machine that has only the released JAR.
+ * <p>Runs inside the shaded plugin JAR with JMeter's {@code lib/} on the classpath - Jackson and
+ * slf4j are JMeter's. {@code java -jar <the plugin JAR>} gets there through
+ * {@link WirCollectLauncher}, which finds JMeter from the JAR's place in {@code lib/ext} and runs
+ * this class over the plugin JAR plus {@code lib/*}: the same command on every OS. The wrappers
+ * {@code scripts/wir-collect.sh} (bash) and {@code .bat} (one {@code java} line) need nothing else
+ * from this repository. {@code --help} prints the plain {@code java -jar} line.
  *
  * <p>Console lines are ASCII. They are for {@code grep} in a CI log, and the JVM writes
  * {@code System.out} in the platform charset — an em dash became U+FFFD in every log captured
@@ -114,7 +117,7 @@ public final class WirCollect {
     static final int LISTED = 10;
 
     /** Printed under {@link #USAGE} after a usage error, so the long text is one flag away. */
-    static final String MORE = "wir-collect --help lists the options, the exit codes and the plain java -cp command";
+    static final String MORE = "wir-collect --help lists the options, the exit codes and the plain java -jar command";
 
     static final String MAIN_CLASS = "com.jmeterwebinsightreport.WirCollect";
 
@@ -125,17 +128,43 @@ public final class WirCollect {
     static final Set<String> OPTIONS = new LinkedHashSet<>(Arrays.asList(
             "jtl", "annotations", "out", "prometheus-url", "prometheus-token-env", "recording", "csv", "from",
             "layout", "columns", "csv-columns", "component", "time-zone", "step", "clock-offset", "env", "test-name",
-            "rampup", "max-wait", "no-wait"));
+            "rampup", "max-wait", "no-wait", "collected-at"));
 
     private WirCollect() {
     }
 
     public static void main(String[] args) {
-        System.exit(run(args, System.out, System.err, System.getenv()));
+        int code;
+        try {
+            code = run(args, System.out, System.err, System.getenv());
+        } catch (OutOfMemoryError e) {
+            // The CSV is held in memory while it is indexed - about ten times its size. A raw stack
+            // trace said nothing a CI log reader could act on.
+            System.err.println("wir-collect: ran out of memory reading the server data (" + e.getMessage()
+                    + "). Give the JVM more heap, e.g. JAVA_TOOL_OPTIONS=-Xmx2g, or export a narrower window"
+                    + " - the rows outside the run are not used");
+            code = 1;
+        }
+        System.exit(code);
     }
 
     /** The whole program, testable: returns the exit code instead of calling {@code System.exit}. */
     public static int run(String[] args, PrintStream out, PrintStream err, Map<String, String> environment) {
+        return run(args, null, out, err, environment);
+    }
+
+    /**
+     * The same program over a run its caller has already parsed: {@code jmeter -g}, which collects a
+     * CSV in-process right after parsing {@code --jtl} for its report (P4), so the JTL is read once.
+     * {@code parsed} must be that file's parse under the report's title - the test name the report
+     * hashes into its {@code runId} - with or without the report's ramp-up and Apdex settings, which
+     * change neither the window nor the identity; the window, the {@code runId}, the {@code --rampup}
+     * check, every refusal, every console line and the payload are this collector's own, exactly as
+     * from the file. {@code --jtl} is still required and checked, and names the run in the sentences.
+     * Null parses {@code --jtl} here, as {@code wir-collect} always does.
+     */
+    public static int run(String[] args, ReportData parsed, PrintStream out, PrintStream err,
+                          Map<String, String> environment) {
         if (asksForHelp(args)) {
             for (String line : help(pluginJarName()).split("\n")) {
                 println(out, line);
@@ -163,11 +192,19 @@ public final class WirCollect {
         // 1. The run, through the same core the generator uses.
         String testName = opts.containsKey("test-name") ? opts.get("test-name") : DEFAULT_TEST_NAME;
         ReportData data;
-        try {
-            data = new JtlParser().parse(jtl, testName);
-        } catch (Exception e) {
-            println(err, "wir-collect: the JTL could not be parsed: " + jtl.getAbsolutePath() + " - " + e.getMessage());
-            return 1;
+        if (parsed != null) {
+            // The caller's parse names the run as its report does: that name is the one hashed.
+            data = parsed;
+            if (parsed.getMetadata() != null && parsed.getMetadata().getTestName() != null) {
+                testName = parsed.getMetadata().getTestName();
+            }
+        } else {
+            try {
+                data = new JtlParser().parse(jtl, testName);
+            } catch (Exception e) {
+                println(err, "wir-collect: the JTL could not be parsed: " + jtl.getAbsolutePath() + " - " + e.getMessage());
+                return 1;
+            }
         }
         TestMetadata meta = data.getMetadata();
         if (meta == null || meta.getStartTime() == null || meta.getEndTime() == null) {
@@ -228,8 +265,29 @@ public final class WirCollect {
             return 1;
         }
 
-        // 3. The source: one, from the flags (C8), under the id every assert names.
+        // 3. The source: one, from the flags (C8), under the id every assert names. For a CSV, what
+        //    the flags left unsaid - the layout, the step - is read off the file (decision 12) and
+        //    printed, so a measured value is never silent and the flag that overrides it is named.
+        //    The reader that measures is the one that collects, so the file is read once; and it
+        //    measures only the series the collection will read, asked as the collection asks.
+        CsvSource csvReader = new CsvSource();
+        Collector.Run run = new Collector.Run(runId, testName, window);
+        if (opts.containsKey("csv") && new File(opts.get("csv")).isFile()) {
+            Collector planner = new Collector(Collections.<ServerSource.Type, SeriesSource>emptyMap(), environment);
+            ServerMetricsConfig declaration = config;
+            String env = opts.get("env");
+            for (String line : measureCsv(opts, csvReader, window,
+                    s -> seriesMeasured(planner, declaration, env, run, s))) {
+                println(out, "wir-collect: " + line);
+            }
+        }
         ServerSource source = collectionSource(opts);
+        if (source.type() == ServerSource.Type.CSV && !new File(source.path()).isFile()) {
+            // As a missing --jtl is: a typo here used to write a payload of failed series and exit 0,
+            // to be found only at step 3.
+            println(err, "wir-collect: CSV file does not exist: " + new File(source.path()).getAbsolutePath());
+            return 1;
+        }
         config = config.withSource(source);
         PrometheusSource.Settle settle = opts.containsKey("no-wait")
                 ? PrometheusSource.Settle.none()
@@ -241,15 +299,17 @@ public final class WirCollect {
         // the page).
         readers.put(ServerSource.Type.FILE, new FileSource());
         // Kept: a wide file's columns that named nothing are read off it after the collection.
-        CsvSource csvReader = new CsvSource();
         readers.put(ServerSource.Type.CSV, csvReader);
         readers.put(ServerSource.Type.PROMETHEUS, PrometheusSource.live(environment, settle));
 
         // 4. The collection.
         ServerMetricsPayload payload;
         try {
-            payload = new Collector(readers, environment).collect(config, opts.get("env"),
-                    new Collector.Run(runId, testName, window), Instant.now().toString());
+            payload = new Collector(readers, environment).collect(config, opts.get("env"), run,
+                    // --collected-at: the time to stamp, for jmeter -g collecting in-process (the CSV's
+                    // own time), so a rebuild from the same file keeps its collectionId - and the
+                    // reader's server drafts. Not in --help: the report passes it, a person does not.
+                    opts.containsKey("collected-at") ? opts.get("collected-at") : Instant.now().toString());
         } catch (Collector.CollectionException e) {
             println(err, "wir-collect: " + e.getMessage());
             return 1;
@@ -281,6 +341,22 @@ public final class WirCollect {
         if (unasked != null) {
             println(out, "wir-collect: " + unasked);
         }
+        // The same for a long file: rows under a component and metric nothing asked for are a name
+        // the annotations spell otherwise ("App" for "app", cpu_pct for cpu.pct), or an export that
+        // carries more than is asserted on - listed, so the first is seen.
+        String unaskedSeries = unaskedSeriesLine(csvReader.seriesNotAskedFor());
+        if (unaskedSeries != null) {
+            println(out, "wir-collect: " + unaskedSeries);
+        }
+        for (String duplicate : csvReader.duplicateNotes()) {
+            println(out, "wir-collect: WARNING " + duplicate);
+        }
+        // The window the rows were matched against, so a file of another range or zone can be seen
+        // for what it is next to the lines below.
+        println(out, "wir-collect: run window " + java.time.Instant.ofEpochMilli(window.getStart()) + " .. "
+                + java.time.Instant.ofEpochMilli(window.getEnd()) + " (" + data.getTopLevelSampleCount()
+                + " samples" + (source.clockOffsetMs() != 0 ? ", rows moved by --clock-offset "
+                        + Durations.format(source.clockOffsetMs()) : "") + ")");
         boolean csv = source.type() == ServerSource.Type.CSV;
         int incomplete = 0;
         for (ServerMetricsPayload.SeriesRecord s : payload.getSeries()) {
@@ -303,13 +379,20 @@ public final class WirCollect {
                 println(out, "wir-collect: WARNING " + name + ": " + padded);
             }
             // A file's rows are at the interval it was exported at, which the step must match.
-            String spacing = csv ? spacingWarning(name, s, source.stepMillis()) : null;
-            if (spacing != null) {
-                println(out, "wir-collect: " + spacing);
+            if (csv) {
+                String key = s.getMetric() != null ? s.getMetric() : s.getResolvedQuery();
+                int blank = s.getComponent() != null ? csvReader.blankRows(source, window, s.getComponent(), key) : 0;
+                long rowSpacing = blank > 0 ? csvReader.rowSpacingMillis(source, window, s.getComponent(), key) : 0;
+                for (String line : spacingLines(name, s, blank, rowSpacing, source.stepMillis())) {
+                    println(out, "wir-collect: " + line);
+                }
             }
             if (!status.judgeable()) {
                 incomplete++;
             }
+        }
+        for (String line : allEmptyComponentLines(config, payload)) {
+            println(out, "wir-collect: WARNING " + line);
         }
         println(out, "wir-collect: wrote " + outFile.getAbsolutePath() + " - run " + runId + ", collection "
                 + payload.getCollectionId() + ", " + payload.getSeries().size() + " series, "
@@ -317,6 +400,41 @@ public final class WirCollect {
                 + (incomplete > 0 ? " (recorded in the payload; the report decides what they mean)" : "")
                 + (payload.getSeries().isEmpty() ? emptyPayloadClause(config) : ""));
         return 0;
+    }
+
+    /**
+     * One line per catalogue component every one of whose series came back EMPTY. Each series
+     * already says EMPTY on its own line; when all of a component's do, the cause is almost never
+     * the metrics - it is the component: a {@code match} that selects nothing in this source, or an
+     * exporter nobody scrapes. Said once, about the component, so it is not read as N unrelated gaps.
+     */
+    static List<String> allEmptyComponentLines(ServerMetricsConfig config, ServerMetricsPayload payload) {
+        Map<String, int[]> byComponent = new LinkedHashMap<>();   // {series, empty}
+        for (ServerMetricsPayload.SeriesRecord s : payload.getSeries()) {
+            if (s.getComponent() == null || s.getMetric() == null) {
+                continue;   // a custom query says its own; only catalogue metrics share a cause
+            }
+            int[] n = byComponent.computeIfAbsent(s.getComponent(), k -> new int[2]);
+            n[0]++;
+            if (s.collectionStatus() == CollectionStatus.EMPTY) {
+                n[1]++;
+            }
+        }
+        List<String> lines = new ArrayList<>();
+        for (Map.Entry<String, int[]> e : byComponent.entrySet()) {
+            int[] n = e.getValue();
+            if (n[0] == 0 || n[1] != n[0]) {
+                continue;
+            }
+            ServerGate gate = config.gate(e.getKey());
+            String match = gate == null ? null : gate.match();
+            lines.add("component " + e.getKey() + ": every catalogue metric it asks for (" + n[0] + ") came back empty - "
+                    + (match != null && !match.trim().isEmpty()
+                            ? "its match (" + match + ") selects nothing in this source"
+                            : "this source has none of its " + (gate == null ? "" : gate.type() + " ") + "series")
+                    + ", or its exporter is not collected");
+        }
+        return lines;
     }
 
     /**
@@ -388,8 +506,40 @@ public final class WirCollect {
         if (!coarse && !cost) {
             return null;
         }
+        return spacingSentence(name, spacing, stepMillis);
+    }
+
+    private static String spacingSentence(String name, long spacing, long stepMillis) {
         return name + " points are " + stepText(spacing) + " apart but --step is " + stepText(stepMillis)
                 + " - coverage counts " + stepText(stepMillis) + " slots; pass --step " + stepText(spacing);
+    }
+
+    /**
+     * The spacing lines for one CSV series: its {@link #spacingWarning}, and beside it a line for its
+     * rows with no value. A series with {@code blank} such rows has gaps the export wrote, which a
+     * coarser --step would read as covered; so where its rows - a blank one included,
+     * {@code rowSpacing} apart - are within 1.5 x the step, the blanks made the wide gaps and only
+     * they are said, as gaps and not a coarser interval. Where the rows themselves are further apart
+     * than that, both are said: the interval the rows are at, and the blanks beside it.
+     */
+    static List<String> spacingLines(String name, ServerMetricsPayload.SeriesRecord s, int blank, long rowSpacing,
+                                     long stepMillis) {
+        List<String> lines = new ArrayList<>();
+        String spacing = spacingWarning(name, s, stepMillis);
+        if (spacing == null) {
+            return lines;
+        }
+        boolean rowsCoarse = rowSpacing * 2 > stepMillis * 3;
+        if (blank == 0) {
+            lines.add(spacing);
+            return lines;
+        }
+        if (rowsCoarse) {
+            lines.add(spacingSentence(name, rowSpacing, stepMillis));
+        }
+        lines.add(name + " has " + blank + " row" + (blank == 1 ? "" : "s") + " with no value (an empty cell or NaN)"
+                + " - gaps in the export" + (rowsCoarse ? "" : ", not a coarser interval"));
+        return lines;
     }
 
     /** A duration as {@code --step} takes it, in seconds when it is whole ones: 60s, not 1m. */
@@ -425,6 +575,19 @@ public final class WirCollect {
                 + " a component and metric the annotations do not ask for: " + quotedList(headers);
     }
 
+    /**
+     * "N series in the file are not asked for by the annotations: ..." for a long file's
+     * component/metric pairs nothing asked for ({@link CsvSource#seriesNotAskedFor}), or null.
+     */
+    static String unaskedSeriesLine(List<String> series) {
+        if (series == null || series.isEmpty()) {
+            return null;
+        }
+        return series.size() + (series.size() == 1 ? " series" : " series") + " in the file "
+                + (series.size() == 1 ? "is" : "are") + " not asked for by the annotations (component/metric"
+                + " must match exactly): " + quotedList(series);
+    }
+
     /** The line for {@code --columns} entries naming a column the export does not have: they map nothing. */
     static String mapColumnsLine(String mapName, String csvName, List<String> columns) {
         boolean one = columns.size() == 1;
@@ -457,8 +620,9 @@ public final class WirCollect {
                 + "the finished run in --jtl, into one payload file. It is step 2 of 3:\n"
                 + "  1. jmeter -n -t plan.jmx -l results.jtl\n"
                 + "  2. wir-collect --jtl results.jtl --annotations report-annotations.json --out server-metrics.json\n"
-                + "  3. jmeter -g results.jtl -o report -Jwebinsight.report.annotations=report-annotations.json\n"
-                + "        -Jwebinsight.report.servermetrics=server-metrics.json\n"
+                + "  3. jmeter -g results.jtl -o report -q run.properties\n"
+                + "        where run.properties holds webinsight.report.annotations=report-annotations.json\n"
+                + "        and webinsight.report.servermetrics=server-metrics.json (forward slashes in paths)\n"
                 + "Step 3 is the report that judges the server asserts and decides the exit code.\n"
                 + "\n"
                 + "Options:\n"
@@ -482,7 +646,9 @@ public final class WirCollect {
                 + "                        Inspect > Data > Download CSV with Series joined by time and\n"
                 + "                        Formatted data off. Name each column component/metric or\n"
                 + "                        component/metric/instance (the panel's legend), or map it with\n"
-                + "                        --columns; a column neither names is ignored and listed\n"
+                + "                        --columns; a column neither names is ignored and listed. Without\n"
+                + "                        --layout, a header of Time and component/metric columns is read\n"
+                + "                        as wide, and the console says so\n"
                 + "  --columns MAP         with --layout wide: a CSV of column,component,metric,instance that\n"
                 + "                        names each export column by its exact header\n"
                 + "  --csv-columns SPEC    with a long --csv: the file's names for the columns, as key=column\n"
@@ -497,7 +663,8 @@ public final class WirCollect {
                 + "  --time-zone ZONE      with --csv: the zone of a time written with none, e.g. Grafana's\n"
                 + "                        Formatted data - an IANA id (Europe/Berlin), UTC, or an offset\n"
                 + "                        (+03:00). Without it such a time is refused, never guessed\n"
-                + "  --step DURATION       the resolution asked for and the coverage grid (default 15s)\n"
+                + "  --step DURATION       the resolution asked for and the coverage grid (default: with --csv,\n"
+                + "                        the interval measured from the file's rows, printed; else 15s)\n"
                 + "  --clock-offset DURATION\n"
                 + "                        added to every timestamp, e.g. -30s when the servers' clocks run\n"
                 + "                        30 s ahead of the load generator (default 0)\n"
@@ -510,6 +677,8 @@ public final class WirCollect {
                 + "                        the same number as -Jwebinsight.report.rampup\n"
                 + "  --max-wait DURATION   how long a source may take to settle (default 10m)\n"
                 + "  --no-wait             take what the sources hold now, without waiting\n"
+                + "  --collected-at TIME   the time to stamp the collection with (ISO 8601); jmeter -g\n"
+                + "                        passes the CSV's own time, so a rebuild keeps its collectionId\n"
                 + "  --help, -h            this text\n"
                 + "\n"
                 + "Exit codes:\n"
@@ -520,14 +689,9 @@ public final class WirCollect {
                 + "     to collect (no server assert, and no component of type "
                 + String.join(" or ", Catalogue.builtIn().types().keySet()) + ").\n"
                 + "\n"
-                + "Without the wrapper scripts (wir-collect.sh, wir-collect.bat). It is not java -jar:\n"
-                + "Jackson and slf4j come from JMeter, so the classpath is the plugin JAR plus JMeter's lib/*.\n"
-                + "  Linux, macOS:\n"
-                + "    java -cp \"$JMETER_HOME/lib/ext/" + jarName + ":$JMETER_HOME/lib/*\" "
-                + MAIN_CLASS + " --jtl results.jtl ...\n"
-                + "  Windows cmd.exe (the separator is ';'):\n"
-                + "    java -cp \"%JMETER_HOME%\\lib\\ext\\" + jarName + ";%JMETER_HOME%\\lib\\*\" "
-                + MAIN_CLASS + " --jtl results.jtl ...\n";
+                + "Without the wrapper scripts, the same on Windows, macOS and Linux - the plugin JAR runs\n"
+                + "the collector, finding JMeter from its place in <JMETER_HOME>/lib/ext:\n"
+                + "    java -jar <JMETER_HOME>/lib/ext/" + jarName + " --jtl results.jtl ...\n";
     }
 
     /** Whether any declared component has a type from the built-in catalogue. */
@@ -697,6 +861,70 @@ public final class WirCollect {
         // which is the layout every committed payload already has.
         pretty.indentObjectsWith(new com.fasterxml.jackson.core.util.DefaultIndenter("  ", "\n"));
         return new ObjectMapper().writer(pretty).writeValueAsString(payload);
+    }
+
+    /** The fewest points a measured step may leave in the run's window to be adopted (F5). */
+    static final int MIN_MEASURED_POINTS = 10;
+
+    /**
+     * Decision 12, "measure, don't ask": a CSV's layout and step, when no flag gave them, from the
+     * file itself, put into {@code opts} as if they had been passed, and one line each saying so. The
+     * wide layout from the header ({@link CsvShape}), only where nothing else names columns (no
+     * --csv-columns, no --component); then the step from {@code reader}'s own index of the file under
+     * every flag given ({@link CsvSource#measuredStepMillis}), which the collection reuses, over the
+     * series {@code asked} says the collection will read from the source those flags make
+     * ({@link #seriesMeasured}; null: every series in the file). A step
+     * coarser than the default that would leave fewer than {@value #MIN_MEASURED_POINTS} points in
+     * {@code window} is not adopted - a few points would judge the whole run at full coverage - and
+     * that is said instead. Nothing measured, a file the reader refuses included, says nothing. An
+     * explicit flag is never overridden.
+     */
+    static List<String> measureCsv(Map<String, String> opts, CsvSource reader, ServerMetricsPayload.Window window,
+                                   Function<ServerSource, List<SeriesSource.Request>> asked) {
+        List<String> lines = new ArrayList<>();
+        if (!opts.containsKey("layout") && !opts.containsKey("csv-columns") && !opts.containsKey("component")
+                && CsvShape.looksWide(new File(opts.get("csv")))) {
+            opts.put("layout", "wide");
+            lines.add("layout wide, read from the header (Time, then component/metric columns) - pass --layout long"
+                    + " to read it otherwise");
+        }
+        if (opts.containsKey("step")) {
+            return lines;
+        }
+        long step;
+        try {
+            ServerSource source = collectionSource(opts);
+            step = reader.measuredStepMillis(source, window, asked == null ? null : asked.apply(source));
+        } catch (RuntimeException unmeasurable) {
+            return lines;   // the collection says what is wrong with the file
+        }
+        if (step <= 0) {
+            return lines;
+        }
+        long run = window.getEnd() - window.getStart();
+        if (step > ServerSource.DEFAULT_STEP_MILLIS && run / step + 1 < MIN_MEASURED_POINTS) {
+            lines.add("step " + Durations.format(step) + " measured from the file's rows is too coarse for this "
+                    + Durations.format(Math.round(run / 1000.0) * 1000) + " run (fewer than " + MIN_MEASURED_POINTS + " points) - collecting at "
+                    + Durations.format(ServerSource.DEFAULT_STEP_MILLIS) + "; pass --step to collect at another");
+            return lines;
+        }
+        opts.put("step", Durations.format(step));
+        lines.add("step " + Durations.format(step) + ", measured from the file's rows - pass --step"
+                + " to collect at another");
+        return lines;
+    }
+
+    /**
+     * The series a measured step is taken over: those the enabled server asserts read, asked of
+     * {@code source} as the collection asks ({@link Collector#assertRequests}) - so a coarse series
+     * in the file that no assert reads cannot set the step every assert is counted in. A file with
+     * no assert yet, only catalogue components, is measured over their catalogue metrics, the only
+     * series its collection reads ({@link Collector#catalogueRequests}).
+     */
+    static List<SeriesSource.Request> seriesMeasured(Collector planner, ServerMetricsConfig config, String env,
+                                                     Collector.Run run, ServerSource source) {
+        List<SeriesSource.Request> asserts = planner.assertRequests(config, env, run, source);
+        return asserts.isEmpty() ? planner.catalogueRequests(config, env, run, source) : asserts;
     }
 
     /** The collection's one source, from the flags parseArgs has already checked. */

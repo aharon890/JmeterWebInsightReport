@@ -81,6 +81,117 @@ class CsvSourceTest {
         assertTrue(none.instances().isEmpty());
     }
 
+    // ---- the silent cases the research found (P3): each is now said, by line or by span ----------
+
+    @Test
+    void aFileWhollyOutsideTheRunSaysSoWithBothSpansAndAZoneHint() throws IOException {
+        // Local +03:00 wall-clock written with a Z: every row 3 h after the run. It used to come back
+        // EMPTY, reported as "the query matched no series", and pass the build.
+        ServerSource s = csv("time,component,metric,instance,value\n"
+                + "2023-11-15T01:13:20Z,app,cpu,,40\n"
+                + "2023-11-15T01:13:35Z,app,cpu,,41\n"
+                + "2023-11-15T01:14:20Z,app,cpu,,42\n");
+        String e = ask(new CsvSource(), s, "app", "cpu").error();
+        assertEquals("m.csv has 3 rows for app/cpu and none inside the run: they run 2023-11-15T01:13:20Z .."
+                + " 2023-11-15T01:14:20Z, after the run (2023-11-14T22:13:20Z .. 2023-11-14T22:14:20Z). They start"
+                + " 3h late, which is usually a time zone: were local times written with Z? Give the file's zone"
+                + " with --time-zone, or move the rows with --clock-offset -3h", e);
+    }
+
+    @Test
+    void aSkewOfSecondsIsNamedAsClockSkewWithTheOffsetThatMovesIt() throws IOException {
+        ServerSource s = csv("time,component,metric,instance,value\n"
+                + "1700000100000,app,cpu,,40\n1700000115000,app,cpu,,41\n");
+        String e = ask(new CsvSource(), s, "app", "cpu").error();
+        assertTrue(e.endsWith("if the server's clock is off, move the rows with --clock-offset -100s"), e);
+    }
+
+    @Test
+    void aNameThatDiffersOnlyByCaseOrPunctuationIsSaidNotEmpty() throws IOException {
+        ServerSource s = csv("time,component,metric,instance,value\n"
+                + "1700000000000,App,cpu_pct,,40\n1700000015000,App,cpu_pct,,41\n");
+        CsvSource reader = new CsvSource();
+        assertEquals("no row names component app, metric cpu.pct; 2 rows name App/cpu_pct - component and metric"
+                + " must be written exactly as the annotations file writes them", ask(reader, s, "app", "cpu.pct").error());
+        // And a name nothing resembles is still an empty answer: NO_MATCH.
+        assertNull(ask(reader, s, "db", "connections").error());
+        assertTrue(ask(reader, s, "db", "connections").instances().isEmpty());
+    }
+
+    @Test
+    void theLongFilesSeriesNothingAskedForAreListed() throws IOException {
+        ServerSource s = csv("time,component,metric,instance,value\n"
+                + "1700000000000,app,cpu,,40\n1700000000000,cache,hits,,7\n");
+        CsvSource reader = new CsvSource();
+        ask(reader, s, "app", "cpu");
+        assertEquals(Collections.singletonList("cache/hits"), reader.seriesNotAskedFor());
+    }
+
+    @Test
+    void anUnquotedDecimalCommaIsRefusedByLineNeverReadAsAWrongNumber() throws IOException {
+        // "90,9" unquoted is two cells: it used to read as 90, and a FAIL over a 90 band became a WARN.
+        ServerSource s = csv("time,component,metric,instance,value\n"
+                + "1700000000000,app,cpu,,40\n1700000015000,app,cpu,,90,9\n");
+        assertEquals("m.csv line 3: has 6 cells where the header has 5 - an unquoted ',' inside a value? Write"
+                + " numbers with a '.' decimal point and no thousands separator, or quote the cell",
+                ask(new CsvSource(), s, "app", "cpu").error());
+        // A trailing comma is not another cell.
+        ServerSource trailing = csv("time,component,metric,instance,value\n1700000000000,app,cpu,,40,\n");
+        assertNull(ask(new CsvSource(), trailing, "app", "cpu").error());
+    }
+
+    @Test
+    void aRowThatStopsBeforeTheValueIsRefusedByLine() throws IOException {
+        ServerSource s = csv("time,component,metric,instance,value\n1700000000000,app,cpu\n");
+        assertEquals("m.csv line 2: has 3 cells and stops before the value column - a truncated or hand-edited row",
+                ask(new CsvSource(), s, "app", "cpu").error());
+    }
+
+    @Test
+    void anUnclosedQuoteIsRefusedNamingItsLine() throws IOException {
+        ServerSource s = csv("time,component,metric,instance,value\n"
+                + "1700000000000,app,cpu,\"pod-1,40\n1700000015000,app,cpu,,41\n");
+        assertEquals("m.csv line 2: a quoted cell opens here and never closes, so every line after it reads as one"
+                + " cell - close the quote or remove it", ask(new CsvSource(), s, "app", "cpu").error());
+    }
+
+    @Test
+    void epochMicrosecondsAreRefusedByName() throws IOException {
+        ServerSource s = csv("time,component,metric,instance,value\n1700000000000000,app,cpu,,40\n");
+        assertEquals("m.csv line 2: time \"1700000000000000\" looks like epoch microseconds or nanoseconds - this"
+                + " reader takes epoch milliseconds", ask(new CsvSource(), s, "app", "cpu").error());
+    }
+
+    @Test
+    void aRepeatedTimeWithAnotherValueKeepsTheLastAndSaysSo() throws IOException {
+        ServerSource s = csv("time,component,metric,instance,value\n"
+                + "1700000000000,app,cpu,,40\n1700000000000,app,cpu,,95\n");
+        CsvSource reader = new CsvSource();
+        assertEquals(95.0, points(ask(reader, s, "app", "cpu"), 0).get(0).getValue());
+        assertEquals(Collections.singletonList("m.csv line 3: repeats time \"1700000000000\" with another value (40,"
+                + " then 95) - the later row is kept; two hosts without an instance column, or an export appended"
+                + " twice?"), reader.duplicateNotes());
+    }
+
+    @Test
+    void anotherDelimiterOrUtf16IsNamedOnTheLongPathToo() throws IOException {
+        ServerSource semi = csv("time;component;metric;instance;value\n1700000000000;app;cpu;;40\n");
+        assertEquals("m.csv line 1: the delimiter is ';' and only ',' is read - export with commas (a"
+                + " spreadsheet's 'CSV UTF-8, comma delimited')", ask(new CsvSource(), semi, "app", "cpu").error());
+        Path file = dir.resolve("u.csv");
+        Files.write(file, ("﻿time,component,metric,instance,value\n").getBytes(StandardCharsets.UTF_16LE));
+        ServerSource utf16 = ServerSource.csv(ServerSource.COLLECTION_ID, file.toString(), 15_000, 0);
+        assertTrue(ask(new CsvSource(), utf16, "app", "cpu").error().startsWith("u.csv is UTF-16"));
+    }
+
+    @Test
+    void rowsInsideTheRunWithNoValueAreSaidNotEmpty() throws IOException {
+        ServerSource s = csv("time,component,metric,instance,value\n"
+                + "1700000000000,app,cpu,,\n1700000015000,app,cpu,,NaN\n");
+        assertEquals("m.csv has 2 rows for app/cpu and every value is empty or NaN - the export carries the"
+                + " series' times and no numbers", ask(new CsvSource(), s, "app", "cpu").error());
+    }
+
     @Test
     void columnsAreFoundByNameAndTheRestIsTolerated() throws IOException {
         ServerSource s = csv("﻿Value,Metric,note,Component,TIME\r\n"
@@ -833,11 +944,13 @@ class CsvSourceTest {
         assertEquals("m.csv line 4: time \"2023-03-26 02:30:00\" is not one moment in Europe/Berlin, whose clocks"
                 + " change then - give --time-zone as the offset the file was written in (such as +01:00), or write"
                 + " epoch milliseconds", ask(reader, s, "c", "y").error());
-        // Either side of the change the zone reads as ever (outside this test's window, so no points).
-        assertNull(ask(reader, s, "c", "z").error());
-        // An offset has no such hour.
+        // Either side of the change the zone reads as ever. This row is outside the test's window,
+        // and a series whose every row is outside the run is said, with both spans - never EMPTY.
+        assertTrue(ask(reader, s, "c", "z").error().startsWith("m.csv has 1 row for c/z and none inside the run:"
+                + " they run 2023-10-29T02:30:00Z .. 2023-10-29T02:30:00Z, before the run"), ask(reader, s, "c", "z").error());
+        // An offset has no such hour: the row is read (and, outside the window, said as such).
         ServerSource offset = csv("time,component,metric,instance,value\n2023-10-29 02:30:00,c,x,,1\n", "+01:00");
-        assertNull(ask(new CsvSource(), offset, "c", "x").error());
+        assertTrue(ask(new CsvSource(), offset, "c", "x").error().contains("none inside the run"));
     }
 
     // ---- --layout wide: Grafana's export ------------------------------------------------------
@@ -1225,7 +1338,7 @@ class CsvSourceTest {
         for (ServerMetricsPayload.SeriesRecord series : wide.getSeries()) {
             material.add(series.getSource() + "|" + series.getComponent() + "|" + series.getResolvedQuery());
         }
-        material.add(ServerSource.COLLECTION_ID + "|csv|" + wideFile + "|layout=wide|timeZone=UTC");
+        material.add(ServerSource.COLLECTION_ID + "|csv|" + wideFile.getFileName() + "|layout=wide|timeZone=UTC");
         material.add(WINDOW.getStart() + "-" + WINDOW.getEnd());
         material.add("now");
         assertEquals(com.jmeterwebinsightreport.core.util.RunIdentity.digest(String.join("\n", material)),
@@ -1600,7 +1713,7 @@ class CsvSourceTest {
         for (ServerMetricsPayload.SeriesRecord series : mappedP.getSeries()) {
             material.add(series.getSource() + "|" + series.getComponent() + "|" + series.getResolvedQuery());
         }
-        material.add(ServerSource.COLLECTION_ID + "|csv|" + influx + "|columns=time=_time,metric=_field,instance=host,"
+        material.add(ServerSource.COLLECTION_ID + "|csv|" + influx.getFileName() + "|columns=time=_time,metric=_field,instance=host,"
                 + "value=_value|component=web");
         material.add(WINDOW.getStart() + "-" + WINDOW.getEnd());
         material.add("now");
@@ -1643,7 +1756,10 @@ class CsvSourceTest {
         for (ServerMetricsPayload.SeriesRecord series : payload.getSeries()) {
             material.add(series.getSource() + "|" + series.getComponent() + "|" + series.getResolvedQuery());
         }
-        material.add(ServerSource.COLLECTION_ID + "|csv|" + pathAndKeys);
+        // The source is recorded by its file name (no local directory on the page).
+        String[] parts = pathAndKeys.split("[|]", 2);
+        String name = java.nio.file.Paths.get(parts[0]).getFileName().toString();
+        material.add(ServerSource.COLLECTION_ID + "|csv|" + name + (parts.length > 1 ? "|" + parts[1] : ""));
         material.add(WINDOW.getStart() + "-" + WINDOW.getEnd());
         material.add("now");
         return material;
@@ -1664,5 +1780,199 @@ class CsvSourceTest {
         p.getSeries().add(tagged);
         assertNull(p.findByQuery("metrics", "lag", "kafka"), "another component's series is not this one's");
         assertEquals(tagged, p.findByQuery("metrics", "lag", "db"));
+    }
+
+    // ---- rows on both sides of the run (F15) ------------------------------------------------------
+
+    @Test
+    void rowsBeforeAndAfterTheRunWithNoneInsideAreATimeProblemNotValueless() throws IOException {
+        // An export of two other runs, this one falling between them: every row has a number.
+        ServerSource s = csv("time,component,metric,instance,value\n"
+                + "1699999900000,app,cpu,,40\n1699999915000,app,cpu,,41\n"
+                + "1700000160000,app,cpu,,42\n1700000175000,app,cpu,,43\n");
+        assertEquals("m.csv has 4 rows for app/cpu and none inside the run: they run 2023-11-14T22:11:40Z .."
+                + " 2023-11-14T22:16:15Z, before and after the run (2023-11-14T22:13:20Z .. 2023-11-14T22:14:20Z)"
+                + " - export the run's window", ask(new CsvSource(), s, "app", "cpu").error());
+    }
+
+    @Test
+    void blankRowsInsideTheRunBesideNumberedOnesOutsideItAreCountedInside() throws IOException {
+        ServerSource s = csv("time,component,metric,instance,value\n"
+                + "1699999900000,app,cpu,,40\n1700000000000,app,cpu,,\n1700000015000,app,cpu,,NaN\n");
+        assertEquals("m.csv has 2 rows for app/cpu inside the run and every value is empty or NaN - the export"
+                + " carries the series' times and no numbers", ask(new CsvSource(), s, "app", "cpu").error());
+    }
+
+    // ---- the measured step (decision 12): the reader's own index, the reader's own rules ----------
+
+    /** An hour from 1700000000000: long enough that no measured step here is cut by the window. */
+    private static final ServerMetricsPayload.Window HOUR =
+            new ServerMetricsPayload.Window(1_700_000_000_000L, 1_700_003_600_000L, null);
+
+    private static String rows(String series, long from, long every, int n, boolean descending) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < n; i++) {
+            long t = from + every * (descending ? n - 1 - i : i);
+            sb.append(t).append(',').append(series).append(",1\n");
+        }
+        return sb.toString();
+    }
+
+    @Test
+    void theStepIsAnInstancesMostCommonSpacingBetweenRowsWithAValue() throws IOException {
+        // Instance a every 5 s; instance b's rows are blank but for every third, which would read
+        // 15 s - a blank row is a gap, not the export's interval, so b measures 15 s and is the widest.
+        StringBuilder sb = new StringBuilder("time,component,metric,instance,value\n");
+        for (int i = 0; i < 30; i++) {
+            long t = 1_700_000_000_000L + i * 5000L;
+            sb.append(t).append(",app,cpu,a,50\n");
+            sb.append(t).append(",app,cpu,b,").append(i % 3 == 0 ? "7" : "").append('\n');
+        }
+        assertEquals(15_000, new CsvSource().measuredStepMillis(csv(sb.toString()), HOUR));
+        // Without b, a's 5 s.
+        assertEquals(5_000, new CsvSource().measuredStepMillis(csv("time,component,metric,instance,value\n"
+                + rows("app,cpu,a", 1_700_000_000_000L, 5000, 10, false)), HOUR));
+    }
+
+    @Test
+    void jitteredTimestampsMeasureNoStep() throws IOException {
+        // Every gap seen once: no interval repeats, so none is taken (F6).
+        ServerSource s = csv("time,component,metric,value\n1700000000000,app,cpu,1\n1700000015001,app,cpu,1\n"
+                + "1700000029999,app,cpu,1\n1700000045002,app,cpu,1\n1700000060000,app,cpu,1\n");
+        assertEquals(0, new CsvSource().measuredStepMillis(s, HOUR));
+        // Two repeats are not enough either.
+        assertEquals(0, new CsvSource().measuredStepMillis(csv("time,component,metric,value\n"
+                + rows("app,cpu", 1_700_000_000_000L, 10_000, 3, false)), HOUR));
+    }
+
+    @Test
+    void aDescendingExportMeasuresItsInterval() throws IOException {
+        assertEquals(10_000, new CsvSource().measuredStepMillis(csv("time,component,metric,value\n"
+                + rows("app,cpu", 1_700_000_000_000L, 10_000, 8, true)), HOUR));
+    }
+
+    @Test
+    void aFileMixingIntervalsMeasuresItsWidestSoNoSeriesIsCountedInFinerSlots() throws IOException {
+        // One host series at 1 s and a DB series at 15 s: 15 s, which costs the 1 s series nothing (F7).
+        ServerSource s = csv("time,component,metric,value\n"
+                + rows("host,cpu", 1_700_000_000_000L, 1000, 600, false)
+                + rows("db,conns", 1_700_000_000_000L, 15_000, 40, false));
+        assertEquals(15_000, new CsvSource().measuredStepMillis(s, HOUR));
+    }
+
+    @Test
+    void onlyRowsInTheRunAndOneStepOfItAreMeasured() throws IOException {
+        // An hour of 1 s rows the day before, then 10 s rows over the run.
+        ServerSource s = csv("time,component,metric,value\n"
+                + rows("app,cpu", 1_700_000_000_000L - 86_400_000L, 1000, 3600, false)
+                + rows("app,cpu", 1_700_000_000_000L, 10_000, 30, false));
+        assertEquals(10_000, new CsvSource().measuredStepMillis(s, HOUR));
+    }
+
+    @Test
+    void aCsvColumnsMapIsHonouredAsTheReaderHonoursIt() throws IOException {
+        // A capitalised key and a column named in another case: the reader's rules, so measured (F9);
+        // the mapped value column is never part of a series' key, so a changing value is no new series (F8).
+        StringBuilder sb = new StringBuilder("ts,name,reading\n");
+        for (int i = 0; i < 10; i++) {
+            sb.append(1_700_000_000_000L + i * 30_000L).append(",cpu,").append(i).append('\n');
+        }
+        Path file = dir.resolve("mapped.csv");
+        Files.write(file, sb.toString().getBytes(StandardCharsets.UTF_8));
+        ServerSource s = ServerSource.csv(ServerSource.COLLECTION_ID, file.toString(), 15_000, 0, null,
+                ServerSource.CsvLayout.LONG, null, null,
+                CsvColumns.parse("Time=TS,metric=name,value=reading").normalised(), "app");
+        assertEquals(30_000, new CsvSource().measuredStepMillis(s, HOUR));
+    }
+
+    @Test
+    void aWideFileReadThroughAColumnsMapMeasuresEachColumnAsASeries() throws IOException {
+        // Legend headers a --columns map names; a gauge alternating 12,15 must not pair equal values (F8).
+        StringBuilder sb = new StringBuilder("Time,orders-db CPU,orders-db Mem\n");
+        for (int i = 0; i < 10; i++) {
+            sb.append(1_700_000_000_000L + i * 15_000L).append(',').append(i % 2 == 0 ? 12 : 15).append(",3\n");
+        }
+        Path file = dir.resolve("wide.csv");
+        Files.write(file, sb.toString().getBytes(StandardCharsets.UTF_8));
+        Path map = dir.resolve("map.csv");
+        Files.write(map, ("column,component,metric,instance\norders-db CPU,orders-db,cpu,\norders-db Mem,orders-db,mem,\n")
+                .getBytes(StandardCharsets.UTF_8));
+        ServerSource s = ServerSource.csv(ServerSource.COLLECTION_ID, file.toString(), 15_000, 0, null,
+                ServerSource.CsvLayout.WIDE, map.toString(), null);
+        assertEquals(15_000, new CsvSource().measuredStepMillis(s, HOUR));
+    }
+
+    @Test
+    void epochMicrosecondsMeasureNothingAndTheReaderRefusesThem() throws IOException {
+        // Read as milliseconds they were 1000 x the interval (F11): the reader's ceiling applies.
+        StringBuilder sb = new StringBuilder("time,component,metric,value\n");
+        for (int i = 0; i < 6; i++) {
+            sb.append(1_700_000_000_000_000L + i * 15_000_000L).append(",app,cpu,1\n");
+        }
+        ServerSource s = csv(sb.toString());
+        CsvSource reader = new CsvSource();
+        assertEquals(0, reader.measuredStepMillis(s, HOUR));
+        assertTrue(ask(reader, s, "app", "cpu").error().contains("looks like epoch microseconds"));
+    }
+
+    @Test
+    void aFileTheReaderRefusesMeasuresNothing() throws IOException {
+        assertEquals(0, new CsvSource().measuredStepMillis(csv("when,component,metric,value\n1,a,b,1\n"), HOUR));
+        assertEquals(0, new CsvSource().measuredStepMillis(ServerSource.csv(ServerSource.COLLECTION_ID,
+                dir.resolve("missing.csv").toString(), 15_000, 0), HOUR));
+    }
+
+    @Test
+    void theRowsSpacingCountsABlankRow() throws IOException {
+        // 15 s rows, two in three blank: the points are 45 s apart, the rows 15 s.
+        StringBuilder sb = new StringBuilder("time,component,metric,value\n");
+        for (int i = 0; i < 12; i++) {
+            sb.append(1_700_000_000_000L + i * 15_000L).append(",app,cpu,").append(i % 3 == 0 ? "1" : "").append('\n');
+        }
+        CsvSource reader = new CsvSource();
+        ServerSource s = csv(sb.toString());
+        ask(reader, s, "app", "cpu");
+        assertEquals(15_000, reader.rowSpacingMillis(s, HOUR, "app", "cpu"));
+        assertEquals(8, reader.blankRows(s, HOUR, "app", "cpu"));
+    }
+
+    @Test
+    void theRowsSpacingAndBlankRowsCountOnlyTheRowsTheCollectionKeeps() throws IOException {
+        // A day-old hour of 1 s rows, every other one blank, then 15 s rows over the run, one in three
+        // blank: the run's rows are 15 s apart with 8 blanks, whatever the file held before it.
+        StringBuilder sb = new StringBuilder("time,component,metric,value\n");
+        for (int i = 0; i < 3600; i++) {
+            sb.append(1_700_000_000_000L - 86_400_000L + i * 1000L).append(",app,cpu,").append(i % 2 == 0 ? "1" : "")
+                    .append('\n');
+        }
+        for (int i = 0; i < 12; i++) {
+            sb.append(1_700_000_000_000L + i * 15_000L).append(",app,cpu,").append(i % 3 == 0 ? "1" : "").append('\n');
+        }
+        CsvSource reader = new CsvSource();
+        ServerSource s = csv(sb.toString());
+        ask(reader, s, "app", "cpu");
+        assertEquals(15_000, reader.rowSpacingMillis(s, HOUR, "app", "cpu"));
+        assertEquals(8, reader.blankRows(s, HOUR, "app", "cpu"));
+        // The clock offset moves the rows as the collection moves them: a day later, the old hour is the run's.
+        ServerSource moved = ServerSource.csv(ServerSource.COLLECTION_ID, s.path(), 15_000, 86_400_000L);
+        assertEquals(1_000, reader.rowSpacingMillis(moved, HOUR, "app", "cpu"));
+        assertEquals(1800, reader.blankRows(moved, HOUR, "app", "cpu"));
+    }
+
+    @Test
+    void theMeasuredStepIsTheAskedSeriesOnesAndACoarseSeriesNobodyReadsSetsNothing() throws IOException {
+        // 1 s host rows an assert reads, beside a 60 s series no assert names: 1 s.
+        ServerSource s = csv("time,component,metric,value\n"
+                + rows("host,cpu", 1_700_000_000_000L, 1000, 600, false)
+                + rows("db,conns", 1_700_000_000_000L, 60_000, 40, false));
+        List<SeriesSource.Request> asked = Collections.singletonList(new SeriesSource.Request("q", "host", "cpu"));
+        assertEquals(1_000, new CsvSource().measuredStepMillis(s, HOUR, asked));
+        // Asked for both, the widest: the coarse one is now read, and must not be counted in 1 s slots.
+        List<SeriesSource.Request> both = java.util.Arrays.asList(new SeriesSource.Request("q", "host", "cpu"),
+                new SeriesSource.Request("q", "db", "conns"));
+        assertEquals(60_000, new CsvSource().measuredStepMillis(s, HOUR, both));
+        // Asked for nothing the file has: nothing measured.
+        assertEquals(0, new CsvSource().measuredStepMillis(s, HOUR,
+                Collections.singletonList(new SeriesSource.Request("q", "app", "mem"))));
     }
 }

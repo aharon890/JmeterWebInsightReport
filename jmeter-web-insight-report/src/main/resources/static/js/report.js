@@ -16931,6 +16931,8 @@ WIR.serverKpis = (function () {
            asserts yet is where authoring starts (R1-6). */
         /* Before anything is parsed: a catalogue metric resolves through it. */
         setCatalogue(data && data.serverCatalogue);
+        /* The run's exact window, for the "how to finish" panel (P2). */
+        state.runWindow = (data && data.runWindow) || null;
         state.evaluated = !!(data && data.serverEvaluated);
         state.gates = (data && data.serverGates) || [];
         /* THE fold's word, as Java chose it (SF22): {status, component, label, others, reserved?}.
@@ -16966,10 +16968,15 @@ WIR.serverKpis = (function () {
      */
     function readDeclared(data) {
         var block = (data && data.annotationsDocument && data.annotationsDocument.serverMetrics) || null;
+        /* The block is kept as shipped, so a Download writes it back verbatim. One whose shape
+           does not bind (`"asserts": {}`) reaches the page because AnnotationLoader isolates it
+           from the client half, and is read as declaring nothing, as the restore and replace
+           paths read it (blockShapeProblem): parsed, it threw and stopped the page's init. */
+        var readable = block && !blockShapeProblem(block) ? block : null;
         state.block = block;
-        state.declaredKpis = block ? positionalKeys(kpisFromDocument(block)) : [];
-        state.loadedKpis = block ? positionalKeys(kpisFromDocument(block)) : [];
-        state.config = configFromJson(block);
+        state.declaredKpis = readable ? positionalKeys(kpisFromDocument(readable)) : [];
+        state.loadedKpis = readable ? positionalKeys(kpisFromDocument(readable)) : [];
+        state.config = configFromJson(readable);
     }
 
     /** Re-parse the declared half after the document was replaced. Never the baseline. */
@@ -17599,8 +17606,8 @@ WIR.serverKpis = (function () {
             return { cls: 'wir-uncollected-row', text: state.refused
                 ? 'Not judged — the server-metrics payload given to this report was refused, '
                     + 'so nothing collected answers for this server assert.'
-                : 'Not collected yet — run wir-collect with this file against this run’s '
-                    + 'results, then regenerate the report to judge this server assert.' };
+                : 'Not collected yet — add this run’s server data (below) and regenerate the '
+                    + 'report to judge this server assert.' };
         }
         /* The reason gets its own full-width row rather than a cell: it is a sentence
            written for a human by the evaluator, and the one thing a reader needs when
@@ -17821,9 +17828,12 @@ WIR.serverKpis = (function () {
             return reserved && reserved.label ? reserved.label : NO_COMPONENT_LABEL;
         };
         /* The three that most need looking at: breaches and checks that never ran, worst first —
-           the Asserts card's rule. From the baked entries: this is the run as judged. */
+           the Asserts card's rule. From the baked entries: this is the run as judged. An assert
+           that matched nothing is among them: server data problems never change the exit code,
+           so the page is where "this was never judged" has to be said (decision B). */
         var worstRows = state.kpis.filter(function (k) {
-            return k.status === 'FAIL' || k.status === 'WARN' || S.isConfigErrorReason(k.notJudged);
+            return k.status === 'FAIL' || k.status === 'WARN' || S.isConfigErrorReason(k.notJudged)
+                || k.notJudged === 'NO_MATCH';
         }).sort(function (a, b) {
             /* FAIL ranks 0, so `rank || 99` would sort it LAST — explicit undefined only. */
             var rank = function (k) {
@@ -17918,7 +17928,8 @@ WIR.serverKpis = (function () {
        written only once a payload is judged, so counting them said "0 declared" on every interim
        report (C-9). */
     function notCollectedHtml() {
-        var regenerate = '-Jwebinsight.report.servermetrics=<server-metrics.json>';
+        /* Quoted: Windows PowerShell splits an unquoted -Jwebinsight.report.x=y at the first dot. */
+        var regenerate = '"-Jwebinsight.report.servermetrics=<server-metrics.json>"';
         if (!state.declaredKpis.length) {
             /* A block holding nothing but a retired key (`kpis`, `packs`) reaches here with no
                component at all: the findings below say what is wrong, and a sentence claiming
@@ -17952,9 +17963,88 @@ WIR.serverKpis = (function () {
         }
         return '<p class="wir-empty">'
             + state.declaredKpis.length + esc(' server assert(s) were declared and none was judged — '
-            + 'no collected payload was given to this report. Run wir-collect against this '
-            + 'run’s results, then regenerate with ' + regenerate + '.')
-            + '</p>';
+            + 'no server data was given to this report. Add it as below: a CSV goes straight to '
+            + 'jmeter -g, Prometheus through wir-collect.')
+            + '</p>' + finishHtml();
+    }
+
+    /* The series a CSV must carry, as it must name them: {component, metric, unit, tools} per enabled
+       declared assert, deduplicated — ServerGateEvaluation.requiredSeries, which the CI/CD JSON's
+       serverData and the console's NEXT block list too. tools: each tool's own name for a catalogue
+       metric, from the catalogue's names (null = "no single metric there"). */
+    function requiredSeries() {
+        var seen = Object.create(null);
+        var table = declaredComponents();
+        var out = [];
+        state.declaredKpis.forEach(function (k) {
+            if (k.enabled === false || !k.gate) return;
+            var metric = k.metric != null && k.metric !== '' ? k.metric : k.query;
+            if (!metric || seen[k.gate + '|' + metric]) return;
+            seen[k.gate + '|' + metric] = true;
+            var c = hasOwn(table.byId, k.gate) ? table.byId[k.gate] : null;
+            var type = c ? catalogueType(c.type) : null;
+            var m = type && k.metric && hasOwn(type.metrics, k.metric) ? type.metrics[k.metric] : null;
+            out.push({ component: k.gate, metric: metric, unit: k.unit || '', tools: m && m.names ? m.names : null });
+        });
+        return out;
+    }
+
+    /* The interim report's "how to finish" panel (P2): the window to export, the names the file
+       must use, a CSV template, and how to add it. The two things an operator otherwise has to
+       work out — the exact window and the exact names — the report already knows. */
+    function finishHtml() {
+        var w = state.runWindow;
+        var series = requiredSeries();
+        var html = '<div class="wir-finish" id="serverFinish"><div class="wir-section-label">Add the server data</div><ol>';
+        if (w && typeof w.start === 'number' && typeof w.end === 'number') {
+            var from = new Date(w.start).toISOString();
+            var to = new Date(w.end).toISOString();
+            html += '<li><strong>Export this window</strong> from your monitoring tool: '
+                + esc(from + ' → ' + to)
+                + ' <span class="wir-dim">(' + esc(collectedAtText(from) + ' → ' + collectedAtText(to))
+                + ' your time; epoch ms ' + esc(String(w.start) + ' → ' + String(w.end)) + ')</span>.'
+                + ' A minute either side is fine: rows outside the run are counted and ignored.</li>';
+        }
+        if (series.length) {
+            html += '<li><strong>Name each series exactly like this</strong> (CSV columns'
+                + ' <code>time,component,metric,instance,value</code>; times need a zone, such as'
+                + ' 2026-10-20T20:21:44Z, or epoch ms):'
+                + '<div class="table-wrapper"><table class="data-table"><thead><tr><th>component</th><th>metric</th>'
+                + '<th>unit</th><th>In a tool’s export</th></tr></thead><tbody>'
+                + series.map(function (row) {
+                    var tools = row.tools ? Object.keys(row.tools).map(function (t) {
+                        var n = row.tools[t];
+                        return t + ': ' + (n && n.metric ? n.metric : '(computed)');
+                    }).join(' · ') : '';
+                    return '<tr><td>' + esc(row.component) + '</td><td><code>' + esc(row.metric) + '</code></td><td>'
+                        + esc(row.unit) + '</td><td class="wir-dim">' + esc(tools) + '</td></tr>';
+                }).join('') + '</tbody></table></div>'
+                + '<button type="button" class="wir-btn"'
+                + '\n                    onclick="WIR.serverKpis.downloadCsvTemplate()">Download a CSV template</button>'
+                + ' <span class="wir-dim">Grafana: set each series’ legend to component/metric and use'
+                + ' Download CSV with “Series joined by time”.</span></li>';
+        }
+        html += '<li><strong>Add it to this run</strong>: in JMeter, Tools › Generate HTML report with the'
+            + ' run’s results file, a properties file naming <code>webinsight.report.annotations</code> and'
+            + ' <code>webinsight.report.servermetrics</code> (forward slashes in paths) and a new output'
+            + ' folder; or from any shell: <code>jmeter -g &lt;results.jtl&gt; -o &lt;new folder&gt; -q'
+            + ' run.properties</code>. Server data never changes the build’s exit code.</li></ol></div>';
+        return html;
+    }
+
+    /* The template: the header and one row per required series at the run's start, with no value.
+       Its own writer: csvQuote would put a ' before a cell starting with = + - @, which corrupts a
+       custom query or a negative value. */
+    function csvTemplateText() {
+        var w = state.runWindow;
+        var at = w && typeof w.start === 'number' ? new Date(w.start).toISOString() : '';
+        var cell = function (v) {
+            v = String(v == null ? '' : v);
+            return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+        };
+        return ['time,component,metric,instance,value'].concat(requiredSeries().map(function (row) {
+            return [at, row.component, row.metric, '', ''].map(cell).join(',');
+        })).join('\n') + '\n';
     }
 
     /**
@@ -18779,7 +18869,27 @@ WIR.serverKpis = (function () {
      * selector however many components there are.
      */
     function boardHtml() {
-        return '<div id="serverKpiTable" class="wir-component-cards">' + cardsHtml() + '</div>';
+        return problemsHtml()
+            + '<div id="serverKpiTable" class="wir-component-cards">' + cardsHtml() + '</div>';
+    }
+
+    /* Server data problems never change the exit code (decision B: the server tab is a bonus on
+       the client report), so a check that never ran must be said here instead, above the board,
+       where nobody can read a quiet PASS beside it as "everything was judged". From the baked
+       entries: this is the run as judged. */
+    function problemsHtml() {
+        if (!state.evaluated) return '';
+        var unjudged = state.kpis.filter(function (k) {
+            return S.isConfigErrorReason(k.notJudged) || k.notJudged === 'NO_MATCH';
+        });
+        if (!unjudged.length) return '';
+        return '<div class="wir-server-problems" id="serverProblems" role="note">'
+            + '<strong>' + esc(unjudged.length + ' server assert' + (unjudged.length === 1 ? ' was' : 's were')
+                + ' not judged') + '</strong> '
+            + esc(EM_DASH + ' each row below says why. Server data problems do not fail the build: the '
+                + 'client report and its verdict are complete. '
+                + 'webinsight.report.server.failonerror=true makes them fatal.')
+            + '</div>';
     }
 
     function cardsHtml() {
@@ -19479,7 +19589,14 @@ WIR.serverKpis = (function () {
     function collectionHtml() {
         var sources = (state.metrics && state.metrics.sources) || [];
         if (!sources.length) return '';
-        var failing = sources.some(function (s) { return s.status !== 'OK'; });
+        /* A series that came back with nothing usable opens the panel too: a source reads OK while one
+           of its series was EMPTY (a name or a time window that did not match), and that series is
+           the one a reader needs to see (research H2). Server data never changes the exit code, so
+           the page is where it has to be said. */
+        var unusable = ((state.metrics && state.metrics.series) || []).filter(function (s) {
+            return s.status === 'EMPTY' || s.status === 'INSUFFICIENT' || s.status === 'FAILED';
+        });
+        var failing = unusable.length > 0 || sources.some(function (s) { return s.status !== 'OK'; });
         var summary = sources.map(function (s) {
             return s.id + ' ' + s.status;
         }).join(' · ');
@@ -19524,6 +19641,13 @@ WIR.serverKpis = (function () {
             }
         });
         html += '</tbody></table></div>';
+        if (unusable.length) {
+            html += '<ul class="wir-unusable-series">' + unusable.map(function (s) {
+                var name = (s.component ? s.component + '/' : '') + (s.metric != null ? s.metric : s.resolvedQuery);
+                return '<li><strong>' + esc(name) + '</strong> ' + esc(s.status)
+                    + (s.error ? ' ' + EM_DASH + ' ' + esc(s.error) : '') + '</li>';
+            }).join('') + '</ul>';
+        }
         /* The collection's id, stamped into serverComponents[] — the time is on the line above. */
         if (state.metrics && state.metrics.collectionId) {
             html += '<p class="wir-dim wir-collection-id">Collection '
@@ -21948,7 +22072,15 @@ WIR.serverKpis = (function () {
                a claim about the wrong thing. With no error on either, the status is all there is. */
             return source && source.error ? source.error : 'the payload marks it FAILED and records no reason';
         }
-        if (status === 'EMPTY') return 'the query matched no series';
+        if (status === 'EMPTY') {
+            /* ServerKpiEvaluator's words: a CSV is searched by component and metric, never by query. */
+            var src = sourceById(payload, series.source);
+            if (src && src.type === 'csv' && series.component != null) {
+                return 'no row of the CSV names component ' + series.component + ', metric '
+                    + (series.metric != null ? series.metric : series.resolvedQuery);
+            }
+            return 'the query matched no series';
+        }
         if (status === 'INSUFFICIENT') {
             var got = series.coverage;
             /* The floor was applied at COLLECT time. This file may declare a different one now,
@@ -22045,6 +22177,41 @@ WIR.serverKpis = (function () {
     }
 
     /**
+     * ServerKpiEvaluator.sustainedNeedsWholeSpacing: the step test for the spacing the data really
+     * has, asked only once the reduction found no complete window (H11) — 4 s CSV rows collected at
+     * --step 15s under a sustainedFor 30s. measuredSpacing is the most frequent in-window gap over
+     * every instance, the smaller on a tie.
+     */
+    function measuredSpacing(series, window) {
+        var counts = {};
+        (series.instances || []).forEach(function (inst) {
+            var points = inWindow(inst.points, window);
+            for (var i = 1; i < points.length; i++) {
+                var gap = points[i][0] - points[i - 1][0];
+                if (gap > 0) counts[gap] = (counts[gap] || 0) + 1;
+            }
+        });
+        var best = 0, most = 0;
+        Object.keys(counts).map(Number).sort(function (a, b) { return a - b; }).forEach(function (gap) {
+            if (counts[gap] > most) { best = gap; most = counts[gap]; }
+        });
+        return best;
+    }
+
+    function sustainedNeedsWholeSpacing(kpi, series, window, step, coverage, instances) {
+        var reducer = kpi.reducer;
+        if (!reducer || !reducer.over || !(reducer.over.sustainedForMillis > 0)) return null;
+        var spacing = measuredSpacing(series, window);
+        var d = reducer.over.sustainedForMillis;
+        if (spacing <= 0 || spacing === step || d <= spacing || d % spacing === 0) return null;
+        return notJudged(kpi, 'INVALID_RULE', 'reduce.over sustainedFor ' + formatDuration(d)
+            + " is not a whole number of the data's measured " + formatDuration(spacing)
+            + ' spacing (collected at --step ' + formatDuration(step) + '), so no window can ever span it'
+            + ' - use a multiple of ' + formatDuration(spacing)
+            + ', or export the data at the --step it is collected with', coverage, instances);
+    }
+
+    /**
      * Judge one KPI. The order is the Java evaluator's, and every early return is a reason.
      */
     /**
@@ -22127,6 +22294,8 @@ WIR.serverKpis = (function () {
 
         var reduced = reduceAcross(kpi, series, window, step);
         if (reduced === null) {
+            var spacing = sustainedNeedsWholeSpacing(kpi, series, window, step, coverage, instances);
+            if (spacing) return spacing;
             return notJudged(kpi, 'NO_VALUE', 'no value: ' + describeReducer(kpi)
                 + ' over the judged window [' + window[0] + ', ' + window[1] + '] has nothing to '
                 + 'reduce - the series carries no complete window there', coverage, instances);
@@ -23682,6 +23851,13 @@ WIR.serverKpis = (function () {
         if (loaded === null) return { serverMetrics: null };
         var block = {};
         Object.keys(loaded).forEach(function (k) { putOwn(block, k, loaded[k]); });
+        /* A block whose shape does not bind (`"asserts": {}`, isolated by AnnotationLoader) was
+           read as declaring nothing (readDeclared), so until an assert is declared here its
+           `asserts` is written as the file had it — rebuilt, `{}` became `[]` and a list beside a
+           malformed `components` became empty, a repair nobody asked for. */
+        if (kpis.length === 0 && isPlainObject(loaded) && blockShapeProblem(loaded)) {
+            return { serverMetrics: block };
+        }
         block.asserts = kpis.map(kpiToJson);
         return { serverMetrics: block };
     }
@@ -25463,6 +25639,17 @@ WIR.serverKpis = (function () {
            not see. verify_report_js_rules refuses an oninput/onchange handler in this module. ---- */
 
         addKpi: function () { openEditor(null); },
+
+        /* "Download a CSV template" on the interim panel (P2). */
+        downloadCsvTemplate: function () {
+            var blob = new Blob([csvTemplateText()], { type: 'text/csv;charset=utf-8' });
+            var a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'server-metrics-template.csv';
+            a.click();
+            URL.revokeObjectURL(a.href);
+        },
+        _csvTemplateText: function () { return csvTemplateText(); },
 
         /* Every collected series nothing declares, as a KPI seeded from what it actually did.
            A seeded KPI PASSes on this run by construction — that is what a threshold derived

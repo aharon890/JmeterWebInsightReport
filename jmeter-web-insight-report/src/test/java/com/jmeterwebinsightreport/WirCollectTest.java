@@ -194,11 +194,9 @@ class WirCollectTest {
             assertEquals("", s.err(), "help is an answer, not an error");
             String help = s.out();
             assertTrue(help.startsWith(WirCollect.USAGE), help);
-            assertTrue(help.contains("java -cp \"$JMETER_HOME/lib/ext/" + WirCollect.JAR_PLACEHOLDER
-                    + ":$JMETER_HOME/lib/*\" com.jmeterwebinsightreport.WirCollect --jtl"), help);
-            assertTrue(help.contains("java -cp \"%JMETER_HOME%\\lib\\ext\\" + WirCollect.JAR_PLACEHOLDER
-                    + ";%JMETER_HOME%\\lib\\*\" com.jmeterwebinsightreport.WirCollect --jtl"), help);
-            assertTrue(help.contains("not java -jar"), help);
+            // Decision 13: one line for every OS - the JAR's launcher finds JMeter's lib/ itself.
+            assertTrue(help.contains("java -jar <JMETER_HOME>/lib/ext/" + WirCollect.JAR_PLACEHOLDER
+                    + " --jtl results.jtl"), help);
             assertTrue(help.contains("0  the payload was written, whatever each series' status"), help);
             assertTrue(help.contains("1  nothing was written"), help);
             // The help cannot drift from the parser: every option it accepts is listed.
@@ -215,7 +213,7 @@ class WirCollectTest {
         // Loaded from target/classes here, so the placeholder; from lib/ext, the JAR's own name.
         assertEquals(WirCollect.JAR_PLACEHOLDER, WirCollect.pluginJarName());
         assertTrue(WirCollect.help("jmeter-web-insight-report-3.1.17.jar")
-                .contains("lib/ext/jmeter-web-insight-report-3.1.17.jar:$JMETER_HOME/lib/*"));
+                .contains("java -jar <JMETER_HOME>/lib/ext/jmeter-web-insight-report-3.1.17.jar --jtl"));
 
         // A usage error points at it.
         Streams s = new Streams();
@@ -774,6 +772,148 @@ class WirCollectTest {
                 || longFile.out().contains("points are"), longFile.out());
     }
 
+    /**
+     * The committed payloads are the collector's output, frozen on the day they were collected, and
+     * every browser fixture and golden reads them. Without this, a change to what the collector
+     * writes - a reason's words, a status, a point - could never fail anything: the fixtures kept
+     * showing the old collector's work (research UI-10). Re-collected here with today's code and
+     * compared series by series; only the collection's identity (collectionId, collectedAt) and the
+     * CSV's recorded path may differ. When it fails, re-collect the file with the command in its
+     * README and commit it with the change that moved it.
+     */
+    @Test
+    void theCommittedPayloadsAreWhatTodaysCollectorWritesFromTheirCsv() throws Exception {
+        String[][] cases = {
+                {"../test-plans/server-metrics/e26-server.json", "../test-plans/server-metrics/e26-metrics.csv",
+                        "../test-plans/server-metrics/server-metrics.json"},
+                {"../test-plans/server-catalogue/e27-server.json", "../test-plans/server-catalogue/e27-metrics.csv",
+                        "../test-plans/server-catalogue/server-metrics.json"},
+                {"../test-plans/goldens/gate-server.json", "../test-plans/goldens/server-metrics.csv",
+                        "../test-plans/goldens/server-metrics.json"},
+        };
+        com.fasterxml.jackson.databind.ObjectMapper json = new com.fasterxml.jackson.databind.ObjectMapper();
+        for (String[] c : cases) {
+            Path out = dir.resolve(new File(c[2]).getParentFile().getName() + ".json");
+            Streams s = new Streams();
+            assertEquals(0, WirCollect.run(new String[] {"--jtl", PLAIN_JTL.getPath(), "--annotations", c[0],
+                    "--csv", c[1], "--step", "1s", "--out", out.toString(), "--no-wait"},
+                    s.outStream(), s.errStream(), Collections.<String, String>emptyMap()), s.out() + s.err());
+            com.fasterxml.jackson.databind.JsonNode now = json.readTree(out.toFile());
+            com.fasterxml.jackson.databind.JsonNode committed = json.readTree(new File(c[2]));
+            assertEquals(committed.get("runId"), now.get("runId"), c[2]);
+            assertEquals(committed.get("window"), now.get("window"), c[2]);
+            assertEquals(committed.get("series"), now.get("series"), c[2] + " is not what today's collector writes from "
+                    + c[1] + " - re-collect it with the command in its README and commit it with the change");
+            for (int i = 0; i < committed.get("sources").size(); i++) {
+                com.fasterxml.jackson.databind.node.ObjectNode a =
+                        ((com.fasterxml.jackson.databind.node.ObjectNode) committed.get("sources").get(i)).deepCopy();
+                com.fasterxml.jackson.databind.node.ObjectNode b =
+                        ((com.fasterxml.jackson.databind.node.ObjectNode) now.get("sources").get(i)).deepCopy();
+                a.remove("resolvedUrl");
+                b.remove("resolvedUrl");
+                assertEquals(a, b, c[2] + " sources[" + i + "]");
+            }
+        }
+    }
+
+    @Test
+    void withoutStepOrLayoutACsvsOwnIntervalAndGrafanasWideHeaderAreUsedAndSaid() throws Exception {
+        // Decision 12. The goldens' CSV is one row a second: with no --step it is collected at 1s,
+        // as with --step 1s (the same series), and the line names the flag that overrides it.
+        Path measured = dir.resolve("measured.json");
+        Streams s = new Streams();
+        assertEquals(0, WirCollect.run(new String[] {"--jtl", PLAIN_JTL.getPath(), "--annotations",
+                "../test-plans/goldens/gate-server.json", "--csv", "../test-plans/goldens/server-metrics.csv",
+                "--out", measured.toString(), "--no-wait"},
+                s.outStream(), s.errStream(), Collections.<String, String>emptyMap()), s.out() + s.err());
+        assertTrue(s.out().contains("wir-collect: step 1s, measured from the file's rows - pass --step to collect at another"),
+                s.out());
+        com.fasterxml.jackson.databind.JsonNode got = new com.fasterxml.jackson.databind.ObjectMapper().readTree(measured.toFile());
+        com.fasterxml.jackson.databind.JsonNode committed = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readTree(new File("../test-plans/goldens/server-metrics.json"));
+        assertEquals(committed.get("series"), got.get("series"));
+        assertEquals(1000, got.get("sources").get(0).get("stepMillis").asLong());
+
+        // An explicit --step wins, and nothing is said.
+        Streams given = new Streams();
+        assertEquals(0, WirCollect.run(new String[] {"--jtl", PLAIN_JTL.getPath(), "--annotations",
+                "../test-plans/goldens/gate-server.json", "--csv", "../test-plans/goldens/server-metrics.csv",
+                "--step", "15s", "--out", dir.resolve("given.json").toString(), "--no-wait"},
+                given.outStream(), given.errStream(), Collections.<String, String>emptyMap()), given.out() + given.err());
+        assertFalse(given.out().contains("measured from the file"), given.out());
+
+        // A Grafana wide download, no --layout: read as wide, and said.
+        Path wide = dir.resolve("wide.csv");
+        StringBuilder rows = new StringBuilder("Time,kafka/up\n");
+        for (long t = 1700000000000L; t <= 1700000049000L; t += 1000) {
+            rows.append(t).append(",1\n");
+        }
+        Files.write(wide, rows.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        Streams w = new Streams();
+        assertEquals(0, WirCollect.run(new String[] {"--jtl", PLAIN_JTL.getPath(), "--annotations",
+                "../test-plans/goldens/gate-server.json", "--csv", wide.toString(),
+                "--out", dir.resolve("wide.json").toString(), "--no-wait"},
+                w.outStream(), w.errStream(), Collections.<String, String>emptyMap()), w.out() + w.err());
+        assertTrue(w.out().contains("wir-collect: layout wide, read from the header"), w.out());
+        assertTrue(w.out().contains("wir-collect: OK kafka/up"), w.out());
+    }
+
+    @Test
+    void aComponentWhoseEveryCatalogueMetricCameBackEmptyIsSaidOnceAboutTheComponent() throws Exception {
+        // Only events' rows: orders-db's one asserted metric comes back EMPTY, and the cause is the
+        // component (its match, or an exporter nobody scrapes), so the collector says so about it.
+        Path csv = dir.resolve("only-events.csv");
+        StringBuilder rows = new StringBuilder("time,component,metric,instance,value\n");
+        for (String line : Files.readAllLines(new File("../test-plans/server-catalogue/e27-metrics.csv").toPath())) {
+            if (line.contains(",events,")) {
+                rows.append(line).append('\n');
+            }
+        }
+        Files.write(csv, rows.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        Streams s = new Streams();
+        assertEquals(0, WirCollect.run(new String[] {"--jtl", PLAIN_JTL.getPath(), "--annotations",
+                "../test-plans/server-catalogue/e27-server.json", "--csv", csv.toString(), "--step", "1s",
+                "--out", dir.resolve("p.json").toString(), "--no-wait"},
+                s.outStream(), s.errStream(), Collections.<String, String>emptyMap()), s.out() + s.err());
+        assertTrue(s.out().contains("wir-collect: WARNING component orders-db: every catalogue metric it asks for (1)"
+                + " came back empty - this source has none of its postgres series, or its exporter is not collected"),
+                s.out());
+        assertFalse(s.out().contains("component events:"), s.out());
+    }
+
+    @Test
+    void aLongFileNamesItsUnaskedSeriesTheRunWindowAndRefusesAMissingFile() throws Exception {
+        Path ann = dir.resolve("custom.json");
+        Files.write(ann, ("{\"serverMetrics\":{\"components\":{\"app\":{\"type\":\"custom\"}},"
+                + "\"asserts\":[{\"id\":\"cpu\",\"component\":\"app\",\"query\":\"cpu.pct\",\"fail\":{\"gt\":90}}]}}")
+                .getBytes(StandardCharsets.UTF_8));
+        StringBuilder sb = new StringBuilder("time,component,metric,instance,value\n");
+        for (int t = 0; t <= 48; t++) {
+            sb.append(1_700_000_000_000L + t * 1000L).append(",App,cpu.pct,,41\n");
+        }
+        Path csv = dir.resolve("case.csv");
+        Files.write(csv, sb.toString().getBytes(StandardCharsets.UTF_8));
+        Streams s = new Streams();
+        assertEquals(0, WirCollect.run(new String[] {"--jtl", PLAIN_JTL.getPath(), "--annotations", ann.toString(),
+                "--out", dir.resolve("case.json").toString(), "--csv", csv.toString(), "--step", "1s", "--no-wait"},
+                s.outStream(), s.errStream(), Collections.<String, String>emptyMap()), s.out() + s.err());
+        // The near-miss fails the asked series by name, and the rows' own name is listed.
+        assertTrue(s.out().contains("wir-collect: FAILED app/cpu.pct - no row names component app, metric cpu.pct;"
+                + " 49 rows name App/cpu.pct"), s.out());
+        assertTrue(s.out().contains("wir-collect: 1 series in the file is not asked for by the annotations"
+                + " (component/metric must match exactly): \"App/cpu.pct\""), s.out());
+        assertTrue(s.out().contains("wir-collect: run window 2023-11-14T22:13:20.026Z .. 2023-11-14T22:14:08.490Z ("),
+                s.out());
+
+        // A --csv that does not exist is a usage fault, as a missing --jtl is: nothing written, exit 1.
+        Streams missing = new Streams();
+        assertEquals(1, WirCollect.run(new String[] {"--jtl", PLAIN_JTL.getPath(), "--annotations", ann.toString(),
+                "--out", dir.resolve("missing.json").toString(), "--csv", dir.resolve("nope.csv").toString(),
+                "--no-wait"}, missing.outStream(), missing.errStream(), Collections.<String, String>emptyMap()));
+        assertTrue(missing.err().contains("wir-collect: CSV file does not exist: "), missing.err());
+        assertFalse(Files.exists(dir.resolve("missing.json")));
+    }
+
     @Test
     void aWideColumnNamingASeriesTheAnnotationsDoNotAskForIsSaid() throws Exception {
         // A legend with a typo in the component is component/metric/instance to the convention, so it
@@ -846,6 +986,172 @@ class WirCollectTest {
         assertNull(WirCollect.spacingWarning("orders-db/up", every.apply(1_000), 15_000));
         s.setInstances(Collections.<ServerMetricsPayload.InstanceRecord>emptyList());
         assertNull(WirCollect.spacingWarning("orders-db/up", s, 15_000), "no points, no spacing");
+    }
+
+    @Test
+    void blankRowsAreSaidBesideTheSpacingWarningAndCalledTheGapsOnlyWhenTheyMadeThem() {
+        // F16. Points 60 s apart under --step 15s.
+        ServerMetricsPayload.SeriesRecord s = new ServerMetricsPayload.SeriesRecord();
+        s.setComponent("orders-db");
+        s.setMetric("up");
+        s.setStatus("OK");
+        ServerMetricsPayload.InstanceRecord inst = new ServerMetricsPayload.InstanceRecord();
+        List<ServerMetricsPayload.Point> pts = new java.util.ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            pts.add(new ServerMetricsPayload.Point(1_700_000_000_000L + i * 60_000L, 1));
+        }
+        inst.setPoints(pts);
+        s.setInstances(Collections.singletonList(inst));
+        // The rows are 60 s apart too, three of them blank: the interval and the blanks, both - the
+        // blanks are not called "not a coarser interval", which here it is.
+        assertEquals(java.util.Arrays.asList(
+                "orders-db/up points are 60s apart but --step is 15s - coverage counts 15s slots; pass --step 60s",
+                "orders-db/up has 3 rows with no value (an empty cell or NaN) - gaps in the export"),
+                WirCollect.spacingLines("orders-db/up", s, 3, 60_000, 15_000));
+        // The rows are at the step and the blanks left the points 60 s apart: the blanks only, as gaps.
+        assertEquals(Collections.singletonList("orders-db/up has 12 rows with no value (an empty cell or NaN) - gaps"
+                + " in the export, not a coarser interval"), WirCollect.spacingLines("orders-db/up", s, 12, 15_000, 15_000));
+        // No blank rows: the warning alone.
+        assertEquals(Collections.singletonList(
+                "orders-db/up points are 60s apart but --step is 15s - coverage counts 15s slots; pass --step 60s"),
+                WirCollect.spacingLines("orders-db/up", s, 0, 0, 15_000));
+        // No warning: nothing, blank rows or not.
+        assertTrue(WirCollect.spacingLines("orders-db/up", s, 3, 60_000, 60_000).isEmpty());
+    }
+
+    // ---- the measured step (decision 12) -----------------------------------------------------------
+
+    private Map<String, String> csvOpts(String name, String text) throws Exception {
+        Path csv = dir.resolve(name);
+        Files.write(csv, text.getBytes(StandardCharsets.UTF_8));
+        Map<String, String> opts = new java.util.LinkedHashMap<>();
+        opts.put("csv", csv.toString());
+        return opts;
+    }
+
+    @Test
+    void aMeasuredStepThatLeavesFewerThanTenPointsInTheRunIsNotTakenAndThatIsSaid() throws Exception {
+        // F5. A 10-minute rollup over a 35-minute run: four slots, and four points would judge the run.
+        StringBuilder rows = new StringBuilder("time,component,metric,value\n");
+        for (int i = 0; i < 6; i++) {
+            rows.append(1_700_000_000_000L + i * 600_000L).append(",app,cpu,1\n");
+        }
+        Map<String, String> opts = csvOpts("rollup.csv", rows.toString());
+        ServerMetricsPayload.Window run = new ServerMetricsPayload.Window(1_700_000_000_000L, 1_700_002_100_000L, null);
+        assertEquals(Collections.singletonList("step 10m measured from the file's rows is too coarse for this 35m run"
+                + " (fewer than 10 points) - collecting at 15s; pass --step to collect at another"),
+                WirCollect.measureCsv(opts, new com.jmeterwebinsightreport.core.servermetrics.collect.CsvSource(), run,
+                        null));
+        assertFalse(opts.containsKey("step"));
+        // The same rows over a 100-minute run leave eleven points: taken.
+        Map<String, String> longer = csvOpts("rollup.csv", rows.toString());
+        assertEquals(Collections.singletonList("step 10m, measured from the file's rows - pass --step to collect at another"),
+                WirCollect.measureCsv(longer, new com.jmeterwebinsightreport.core.servermetrics.collect.CsvSource(),
+                        new ServerMetricsPayload.Window(1_700_000_000_000L, 1_700_006_000_000L, null), null));
+        assertEquals("10m", longer.get("step"));
+    }
+
+    @Test
+    void nothingMeasuredSaysNothing() throws Exception {
+        ServerMetricsPayload.Window run = new ServerMetricsPayload.Window(1_700_000_000_000L, 1_700_003_600_000L, null);
+        // Jittered timestamps: no gap repeats (F6).
+        Map<String, String> jitter = csvOpts("jitter.csv", "time,component,metric,value\n1700000000000,app,cpu,1\n"
+                + "1700000015001,app,cpu,1\n1700000029999,app,cpu,1\n1700000045002,app,cpu,1\n");
+        assertTrue(WirCollect.measureCsv(jitter, new com.jmeterwebinsightreport.core.servermetrics.collect.CsvSource(),
+                run, null).isEmpty());
+        assertFalse(jitter.containsKey("step"));
+        // Epoch microseconds: the reader refuses them, and nothing is measured first (F11).
+        StringBuilder micros = new StringBuilder("time,component,metric,value\n");
+        for (int i = 0; i < 6; i++) {
+            micros.append(1_700_000_000_000_000L + i * 15_000_000L).append(",app,cpu,1\n");
+        }
+        Map<String, String> us = csvOpts("micros.csv", micros.toString());
+        assertTrue(WirCollect.measureCsv(us, new com.jmeterwebinsightreport.core.servermetrics.collect.CsvSource(),
+                run, null).isEmpty());
+        assertFalse(us.containsKey("step"));
+    }
+
+    @Test
+    void theStepIsMeasuredUnderTheFlagsTheCollectionReadsTheFileWith() throws Exception {
+        ServerMetricsPayload.Window run = new ServerMetricsPayload.Window(1_700_000_000_000L, 1_700_003_600_000L, null);
+        // A descending export (F10), a capitalised --csv-columns key over a mapped value column (F8, F9).
+        StringBuilder rows = new StringBuilder("TS,name,reading\n");
+        for (int i = 9; i >= 0; i--) {
+            rows.append(1_700_000_000_000L + i * 30_000L).append(",cpu,").append(i).append('\n');
+        }
+        Map<String, String> opts = csvOpts("mapped.csv", rows.toString());
+        opts.put("csv-columns", "Time=ts,metric=name,value=reading");
+        opts.put("component", "app");
+        com.jmeterwebinsightreport.core.servermetrics.collect.CsvSource reader =
+                new com.jmeterwebinsightreport.core.servermetrics.collect.CsvSource();
+        assertEquals(Collections.singletonList("step 30s, measured from the file's rows - pass --step to collect at another"),
+                WirCollect.measureCsv(opts, reader, run, null));
+        assertEquals("30s", opts.get("step"));
+        // A file mixing a 1 s series and a 15 s one is collected at 15 s (F7).
+        StringBuilder mixed = new StringBuilder("time,component,metric,value\n");
+        for (int i = 0; i < 300; i++) {
+            mixed.append(1_700_000_000_000L + i * 1000L).append(",host,cpu,1\n");
+        }
+        for (int i = 0; i < 20; i++) {
+            mixed.append(1_700_000_000_000L + i * 15_000L).append(",db,conns,1\n");
+        }
+        Map<String, String> both = csvOpts("mixed.csv", mixed.toString());
+        WirCollect.measureCsv(both, new com.jmeterwebinsightreport.core.servermetrics.collect.CsvSource(), run, null);
+        assertEquals("15s", both.get("step"));
+        // A wide file read through --columns: each column a series, never rows paired by equal values (F8).
+        StringBuilder wide = new StringBuilder("Time,orders-db CPU\n");
+        for (int i = 0; i < 10; i++) {
+            wide.append(1_700_000_000_000L + i * 15_000L).append(',').append(i % 2 == 0 ? 12 : 15).append('\n');
+        }
+        Map<String, String> legend = csvOpts("legend.csv", wide.toString());
+        Path map = dir.resolve("legend-map.csv");
+        Files.write(map, "column,component,metric,instance\norders-db CPU,orders-db,cpu,\n".getBytes(StandardCharsets.UTF_8));
+        legend.put("layout", "wide");
+        legend.put("columns", map.toString());
+        assertEquals(Collections.singletonList("step 15s, measured from the file's rows - pass --step to collect at another"),
+                WirCollect.measureCsv(legend, new com.jmeterwebinsightreport.core.servermetrics.collect.CsvSource(), run,
+                        null));
+    }
+
+    @Test
+    void theStepIsMeasuredOverTheSeriesTheAssertsReadAndACoarseSeriesNoAssertNamesSetsNothing() throws Exception {
+        // 1 s rows of app/cpu, which an assert reads, beside 10 s rows of app/mem, which none does, over
+        // plain.jtl's 48 s window. Measured over the whole file the step was 10 s, and cpu's gaps were
+        // counted in 10 s slots.
+        StringBuilder rows = new StringBuilder("time,component,metric,value\n");
+        for (int t = -5; t <= 55; t++) {
+            rows.append(1_700_000_000_000L + t * 1000L).append(",app,cpu,1\n");
+        }
+        for (int t = -20; t <= 70; t += 10) {
+            rows.append(1_700_000_000_000L + t * 1000L).append(",app,mem,1\n");
+        }
+        Path csv = dir.resolve("mixed-asked.csv");
+        Files.write(csv, rows.toString().getBytes(StandardCharsets.UTF_8));
+        String assertOn = "{\"id\":\"%s\",\"component\":\"app\",\"query\":\"%s\",\"reduce\":{\"kind\":\"max\"},\"fail\":{\"gt\":100}}";
+        Path cpuOnly = dir.resolve("cpu-only.json");
+        Files.write(cpuOnly, ("{\"serverMetrics\":{\"components\":{\"app\":{\"type\":\"custom\"}},\"asserts\":["
+                + String.format(assertOn, "cpu", "cpu") + "]}}").getBytes(StandardCharsets.UTF_8));
+        File out = dir.resolve("asked.json").toFile();
+        Streams s = new Streams();
+        assertEquals(0, WirCollect.run(new String[] {"--jtl", PLAIN_JTL.getPath(), "--annotations", cpuOnly.toString(),
+                "--out", out.getPath(), "--csv", csv.toString(), "--no-wait"}, s.outStream(), s.errStream(),
+                Collections.<String, String>emptyMap()), s.out() + s.err());
+        assertTrue(s.out().contains("wir-collect: step 1s, measured from the file's rows - pass --step to collect at another"),
+                s.out());
+        ServerMetricsPayload p = new ServerMetricsPayloadLoader()
+                .read(out, RunIdentity.of(new JtlParser().parse(PLAIN_JTL, WirCollect.DEFAULT_TEST_NAME))).payload();
+        assertEquals(1000L, p.getSources().get(0).getStepMillis());
+
+        // Asserted on too, the 10 s series is read, and the step is measured over it as well.
+        Path both = dir.resolve("both.json");
+        Files.write(both, ("{\"serverMetrics\":{\"components\":{\"app\":{\"type\":\"custom\"}},\"asserts\":["
+                + String.format(assertOn, "cpu", "cpu") + "," + String.format(assertOn, "mem", "mem") + "]}}")
+                .getBytes(StandardCharsets.UTF_8));
+        Streams b = new Streams();
+        assertEquals(0, WirCollect.run(new String[] {"--jtl", PLAIN_JTL.getPath(), "--annotations", both.toString(),
+                "--out", dir.resolve("both-out.json").toString(), "--csv", csv.toString(), "--no-wait"}, b.outStream(),
+                b.errStream(), Collections.<String, String>emptyMap()), b.out() + b.err());
+        assertTrue(b.out().contains("wir-collect: step 10s, measured from the file's rows"), b.out());
     }
 
     // ---- --csv-columns, --component: a long export another tool named -----------------------------

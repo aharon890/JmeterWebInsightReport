@@ -1,8 +1,8 @@
 {
   "schema" : "wir-server-metrics/1",
   "runId" : "967a1b397b7fb1d2",
-  "collectionId" : "df8778b7fa474d95",
-  "collectedAt" : "2026-10-03T09:35:39.595004900Z",
+  "collectionId" : "b089f81bf6c5aa7e",
+  "collectedAt" : "2026-10-22T06:06:22.545783400Z",
   "window" : {
     "start" : 1700000000026,
     "end" : 1700000048490
@@ -13,7 +13,7 @@
     "status" : "OK",
     "stepMillis" : 1000,
     "clockOffsetMs" : 0,
-    "resolvedUrl" : "test-plans/goldens/server-metrics.csv"
+    "resolvedUrl" : "server-metrics.csv"
   } ],
   "series" : [ {
     "source" : "metrics",

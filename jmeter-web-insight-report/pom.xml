@@ -160,6 +160,9 @@
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <manifestEntries>
                                         <JMeter-Skip-Class-Scanning>true</JMeter-Skip-Class-Scanning>
+                                        <!-- java -jar <plugin jar> runs the collector (decision 13): a JDK-only
+                                             launcher that loads JMeter's lib/ beside it. -->
+                                        <Main-Class>com.jmeterwebinsightreport.WirCollectLauncher</Main-Class>
                                     </manifestEntries>
                                 </transformer>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>

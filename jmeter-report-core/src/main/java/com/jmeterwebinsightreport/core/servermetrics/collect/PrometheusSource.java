@@ -1,5 +1,7 @@
 package com.jmeterwebinsightreport.core.servermetrics.collect;
 
+import com.jmeterwebinsightreport.core.servermetrics.Durations;
+
 import com.jmeterwebinsightreport.core.servermetrics.ServerSource;
 
 import java.io.IOException;
@@ -174,6 +176,27 @@ public final class PrometheusSource implements SeriesSource {
         } catch (IllegalArgumentException e) {
             return Answer.failed(e.getMessage());
         }
+        // Prometheus answers a range query whose (end - start) / step, in whole steps, exceeds 11,000
+        // with a 400. Said before asking, by the same rule, with the whole-second step that fits: a
+        // long soak at --step 1s used to fail every series with the server's raw message after a URL
+        // three hundred characters long.
+        long step = Math.max(1, source.stepMillis());
+        long span = window.getEnd() - window.getStart();
+        long steps = span / step;
+        if (steps > MAX_STEPS_PER_QUERY) {
+            long fits = Math.max(1, (span + MAX_STEPS_PER_QUERY * 1000 - 1) / (MAX_STEPS_PER_QUERY * 1000)) * 1000;
+            return Answer.failed("the run is " + steps + " steps long at --step " + Durations.format(step)
+                    + ", and Prometheus answers at most " + MAX_STEPS_PER_QUERY + " steps per range query - collect"
+                    + " with --step " + Durations.format(fits) + " or coarser");
+        }
+        // A window that ends in this machine's future: the JMeter host's clock is ahead of this one,
+        // and every query would wait out --max-wait and come back empty.
+        long ahead = window.getEnd() - source.clockOffsetMs() - timing.nowMillis();
+        if (ahead > 60_000L) {
+            return Answer.failed("the run's window ends " + Durations.format(ahead / 1000 * 1000) + " after this"
+                    + " machine's clock - the JMeter host's clock is ahead; pass --clock-offset "
+                    + Durations.format(ahead / 1000 * 1000) + " or collect after the window has passed");
+        }
         URI uri;
         try {
             // In the source's clock: JTL time = source time + offset, so the request subtracts it.
@@ -204,8 +227,7 @@ public final class PrometheusSource implements SeriesSource {
                     if (last != null) {
                         return Answer.of(last);   // what arrived; the floor decides what it is worth
                     }
-                    return Answer.failed("HTTP " + r.status() + " from " + Redaction.url(uri.toString())
-                            + snippet(r.body()));
+                    return Answer.failed(httpFailure(r, uri));
                 }
                 PrometheusResponse.Parsed parsed = PrometheusResponse.parse(r.body(), source.clockOffsetMs());
                 if (parsed.failed()) {
@@ -378,6 +400,40 @@ public final class PrometheusSource implements SeriesSource {
                 }
             }
             sb.append(';');
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Prometheus's answer-size limit: a range query is refused when {@code (end - start) / step},
+     * in whole steps, is more than this — so it answers up to 11,001 points per series.
+     */
+    static final long MAX_STEPS_PER_QUERY = 11_000;
+
+    /**
+     * A non-200 answer as a sentence: Prometheus's own error first when the body carries one (a 400
+     * bad_data names the parse error), and for 401/403 what to check - then the status and URL.
+     */
+    static String httpFailure(Response r, URI uri) {
+        String reason = null;
+        try {
+            PrometheusResponse.Parsed parsed = PrometheusResponse.parse(r.body(), 0);
+            if (parsed.failed() && !parsed.error().startsWith("response is not JSON")) {
+                reason = parsed.error();
+            }
+        } catch (RuntimeException notJson) {
+            // a proxy's HTML page, say: the snippet below is all there is
+        }
+        StringBuilder sb = new StringBuilder("HTTP ").append(r.status());
+        if (reason != null) {
+            sb.append(": ").append(reason);
+        }
+        if (r.status() == 401 || r.status() == 403) {
+            sb.append(" - check the bearer token --prometheus-token-env names");
+        }
+        sb.append(" (").append(Redaction.url(uri.toString())).append(')');
+        if (reason == null) {
+            sb.append(snippet(r.body()));
         }
         return sb.toString();
     }

@@ -109,23 +109,7 @@ public final class Collector {
     public ServerMetricsPayload collect(ServerMetricsConfig config, String environment, Run run,
                                         String collectedAt) throws CollectionException {
         String envName = environment != null ? environment : config.defaultEnv();
-        Map<String, String> envVars = new LinkedHashMap<>();
-        if (envName != null) {
-            Map<String, String> declared = config.environments().get(envName);
-            if (declared == null) {
-                throw new CollectionException("environment '" + envName + "' is not declared under "
-                        + "serverMetrics.environments" + (config.environments().isEmpty()
-                        ? " (none are)" : " (declared: " + String.join(", ", config.environments().keySet()) + ")"));
-            }
-            envVars.putAll(declared);
-            envVars.put("name", envVars.containsKey("name") ? envVars.get("name") : envName);
-        }
-        Map<String, String> runVars = new LinkedHashMap<>();
-        runVars.put("startTs", String.valueOf(run.window().getStart()));
-        runVars.put("endTs", String.valueOf(run.window().getEnd()));
-        runVars.put("runId", run.runId());
-        runVars.put("testName", run.testName() == null ? "" : run.testName());
-        Interpolation.Scope scope = new Interpolation.Scope(envVars, runVars, secrets);
+        Interpolation.Scope scope = scope(config, environment, run);
 
         ServerMetricsPayload payload = new ServerMetricsPayload();
         payload.setRunId(run.runId());
@@ -179,7 +163,10 @@ public final class Collector {
                 }
             } else {
                 rec.setStatus("OK");
-                rec.setResolvedUrl(s.path());
+                // A CSV is recorded by its file name: the payload reaches the published page, and a
+                // path given absolute (as a -q properties file usually does) would carry a local
+                // directory into it. The name is all a reader needs to find the file.
+                rec.setResolvedUrl(s.type() == ServerSource.Type.CSV ? new java.io.File(s.path()).getName() : s.path());
                 resolved.put(s.id(), s);
             }
             records.put(s.id(), rec);
@@ -201,10 +188,7 @@ public final class Collector {
                 continue;   // unknown source: the KPI is INVALID_RULE already; nothing to ask
             }
             Interpolation.Result q = Interpolation.resolve(kpi.query(), scope, Interpolation.Site.QUERY);
-            // The query itself is trimmed (ServerKpi, U7), but an ${env.*} value is taken as
-            // written, so "${env.q}" with q = " lag " would still ask for padded text. Trimmed
-            // here too: no backend gives surrounding whitespace a meaning, and a CSV trims its cells.
-            String resolvedText = q.failed() ? kpi.query() : q.text().trim();
+            String resolvedText = resolvedText(kpi, q);
             // A series is its component and its query (plans/server-metrics-backends.md §8b): two
             // components of one type with no match resolve to one query, and only the component
             // tells their CSV rows apart.
@@ -230,24 +214,7 @@ public final class Collector {
                 if (reader == null) {
                     throw new CollectionException("no reader for source type " + source.type());
                 }
-                // A catalogue metric's rows are named by the metric; a custom assert's by its
-                // query, which is the series' identity on every backend (§8b).
-                String metricKey = kpi.metric() != null ? kpi.metric() : resolvedText;
-                SeriesSource.Request request = new SeriesSource.Request(resolvedText, kpi.gate(), metricKey);
-                // A metric with no prometheus query has only its neutral identity to ask by: a
-                // source that fetches by query says it cannot answer, and the assert is FAILED in
-                // those words - SOURCE_FAILED, never a NO_MATCH nobody can explain.
-                CatalogueMetric neutral = neutralMetricOf(config, kpi);
-                if (neutral != null) {
-                    request = request.asNeutral(neutral.qualifiedName());
-                }
-                // A file exported from another tool (--from): the catalogue's name for the metric in
-                // that tool's export, which only a catalogue metric has. A custom query is read as
-                // it always was.
-                CatalogueMetric named = source.fromTool() == null ? null : catalogueMetricOf(config, kpi);
-                if (named != null) {
-                    request = request.fromTool(source.fromTool(), named);
-                }
+                SeriesSource.Request request = assertRequest(config, kpi, resolvedText, source);
                 SeriesSource.Answer answer = reader.collect(source, request, run.window());
                 if (answer.failed()) {
                     // The reader quotes the URL it used and the body it got; neither may carry a
@@ -309,6 +276,148 @@ public final class Collector {
         material.add(collectedAt == null ? "" : collectedAt);
         payload.setCollectionId(RunIdentity.digest(String.join("\n", material)));
         return payload;
+    }
+
+    /**
+     * What {@link #collect} asks {@code source} for on behalf of the enabled asserts, as it asks for
+     * it - one request per distinct component and resolved query, by the same name, neutral identity
+     * and {@code --from} tool name - and nothing is fetched. A query that does not resolve asks for
+     * nothing, and so does an environment the file does not declare, which {@link #collect} refuses.
+     * So a reader can measure the series the asserts will read before the collection reads them
+     * ({@link CsvSource#measuredStepMillis}).
+     */
+    public List<SeriesSource.Request> assertRequests(ServerMetricsConfig config, String environment, Run run,
+                                                     ServerSource source) {
+        List<SeriesSource.Request> requests = new ArrayList<>();
+        Interpolation.Scope scope;
+        try {
+            scope = scope(config, environment, run);
+        } catch (CollectionException refused) {
+            return requests;
+        }
+        Set<String> seen = new LinkedHashSet<>();
+        for (ServerKpi kpi : config.kpis()) {
+            if (!kpi.enabled() || kpi.query() == null || kpi.query().trim().isEmpty()
+                    || !source.id().equals(kpi.source())) {
+                continue;
+            }
+            Interpolation.Result q = Interpolation.resolve(kpi.query(), scope, Interpolation.Site.QUERY);
+            if (q.failed()) {
+                continue;
+            }
+            String resolvedText = resolvedText(kpi, q);
+            if (seen.add(kpi.gate() + "\u0000" + resolvedText)) {
+                requests.add(assertRequest(config, kpi, resolvedText, source));
+            }
+        }
+        return requests;
+    }
+
+    /**
+     * What {@link #collect} asks {@code source} for on behalf of the declared components' catalogue
+     * metrics (D1), as it asks for it; nothing is fetched. With an undeclared environment, nothing.
+     */
+    public List<SeriesSource.Request> catalogueRequests(ServerMetricsConfig config, String environment, Run run,
+                                                        ServerSource source) {
+        List<SeriesSource.Request> requests = new ArrayList<>();
+        Interpolation.Scope scope;
+        try {
+            scope = scope(config, environment, run);
+        } catch (CollectionException refused) {
+            return requests;
+        }
+        if (catalogue == null) {
+            return requests;
+        }
+        for (ServerGate component : config.gates().values()) {
+            CatalogueType type = component.type() == null ? null : catalogue.type(component.type());
+            if (type == null) {
+                continue;
+            }
+            for (CatalogueMetric metric : type.metrics().values()) {
+                Interpolation.Result q = Interpolation.resolve(metric.identity(component.match()), scope,
+                        Interpolation.Site.QUERY);
+                if (!q.failed()) {
+                    requests.add(catalogueRequest(component, metric, q.text().trim(), source));
+                }
+            }
+        }
+        return requests;
+    }
+
+    /**
+     * What a query may interpolate: the selected environment's variables (refused when the file
+     * does not declare it), the run's, and the secrets.
+     */
+    private Interpolation.Scope scope(ServerMetricsConfig config, String environment, Run run)
+            throws CollectionException {
+        String envName = environment != null ? environment : config.defaultEnv();
+        Map<String, String> envVars = new LinkedHashMap<>();
+        if (envName != null) {
+            Map<String, String> declared = config.environments().get(envName);
+            if (declared == null) {
+                throw new CollectionException("environment '" + envName + "' is not declared under "
+                        + "serverMetrics.environments" + (config.environments().isEmpty()
+                        ? " (none are)" : " (declared: " + String.join(", ", config.environments().keySet()) + ")"));
+            }
+            envVars.putAll(declared);
+            envVars.put("name", envVars.containsKey("name") ? envVars.get("name") : envName);
+        }
+        Map<String, String> runVars = new LinkedHashMap<>();
+        runVars.put("startTs", String.valueOf(run.window().getStart()));
+        runVars.put("endTs", String.valueOf(run.window().getEnd()));
+        runVars.put("runId", run.runId());
+        runVars.put("testName", run.testName() == null ? "" : run.testName());
+        return new Interpolation.Scope(envVars, runVars, secrets);
+    }
+
+    /**
+     * An assert's query as it is asked: the query itself is trimmed (ServerKpi, U7), but an
+     * ${env.*} value is taken as written, so "${env.q}" with q = " lag " would still ask for padded
+     * text. Trimmed here too: no backend gives surrounding whitespace a meaning, and a CSV trims its
+     * cells. A query that did not resolve is kept as written.
+     */
+    private static String resolvedText(ServerKpi kpi, Interpolation.Result q) {
+        return q.failed() ? kpi.query() : q.text().trim();
+    }
+
+    /** How an assert's series is asked of {@code source}. */
+    private SeriesSource.Request assertRequest(ServerMetricsConfig config, ServerKpi kpi, String resolvedText,
+                                               ServerSource source) {
+        // A catalogue metric's rows are named by the metric; a custom assert's by its
+        // query, which is the series' identity on every backend (§8b).
+        String metricKey = kpi.metric() != null ? kpi.metric() : resolvedText;
+        SeriesSource.Request request = new SeriesSource.Request(resolvedText, kpi.gate(), metricKey);
+        // A metric with no prometheus query has only its neutral identity to ask by: a
+        // source that fetches by query says it cannot answer, and the assert is FAILED in
+        // those words - SOURCE_FAILED, never a NO_MATCH nobody can explain.
+        CatalogueMetric neutral = neutralMetricOf(config, kpi);
+        if (neutral != null) {
+            request = request.asNeutral(neutral.qualifiedName());
+        }
+        // A file exported from another tool (--from): the catalogue's name for the metric in
+        // that tool's export, which only a catalogue metric has. A custom query is read as
+        // it always was.
+        CatalogueMetric named = source.fromTool() == null ? null : catalogueMetricOf(config, kpi);
+        if (named != null) {
+            request = request.fromTool(source.fromTool(), named);
+        }
+        return request;
+    }
+
+    /** How a component's catalogue metric is asked of {@code source} (D1): once, never settled. */
+    private static SeriesSource.Request catalogueRequest(ServerGate component, CatalogueMetric metric, String text,
+                                                         ServerSource source) {
+        SeriesSource.Request request = new SeriesSource.Request(text, component.id(), metric.name(), true);
+        if (metric.neutral()) {
+            request = request.asNeutral(metric.qualifiedName());
+        }
+        // Read as the tool's export too, under --from: a metric it does not name and the
+        // file does not carry fails, and is skipped like any other.
+        if (source.fromTool() != null) {
+            request = request.fromTool(source.fromTool(), metric);
+        }
+        return request;
     }
 
     /**
@@ -387,15 +496,7 @@ public final class Collector {
                 if (!seen.add(source.id() + "\u0000" + component.id() + "\u0000" + text)) {
                     continue;   // an assert names it: collected above, settled, with its status
                 }
-                SeriesSource.Request request = new SeriesSource.Request(text, component.id(), metric.name(), true);
-                if (metric.neutral()) {
-                    request = request.asNeutral(metric.qualifiedName());
-                }
-                // Read as the tool's export too, under --from: a metric it does not name and the
-                // file does not carry fails, and is skipped like any other.
-                if (source.fromTool() != null) {
-                    request = request.fromTool(source.fromTool(), metric);
-                }
+                SeriesSource.Request request = catalogueRequest(component, metric, text, source);
                 SeriesSource.Answer answer = reader.collect(source, request, run.window());
                 if (answer.failed() || answer.instances().isEmpty()) {
                     continue;

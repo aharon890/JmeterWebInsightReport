@@ -3600,6 +3600,15 @@ body.dark-mode .wir-status-menu { box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5); }
     height: 260px;
 }
 
+/* Server asserts that were never judged: said above the board, since they never change the exit code. */
+.wir-server-problems {
+    margin: 4px 0 10px;
+    padding: 8px 12px;
+    border-left: 3px solid var(--color-warning, #d97706);
+    background: var(--color-surface-alt, rgba(217, 119, 6, 0.08));
+    font-size: 0.85rem;
+}
+
 /* The collection, one line that opens (design §3). */
 .wir-collection {
     margin: 4px 0 10px;

@@ -210,8 +210,9 @@ a server component FAILed. It passes a run that declared no client rule (`gate` 
 and a run with no server block (`serverStatus` is absent). It does **not** refuse a
 server component that judged nothing (`NOT_EVALUATED`). When that is because a check could not run
 — `INVALID_RULE`, `SOURCE_FAILED`, `LOW_COVERAGE`, or a refused payload an enabled server assert
-needed — it is a configuration error, not a verdict, and the run exits 1 through `failonerror`.
-Pair DEFAULT with `failonerror` — the default — or use STRICT. A query that matched nothing
+needed — it is a server data problem, not a verdict. It is said on the console as `SERVER NOT JUDGED`
+and does not change the exit code unless `webinsight.report.server.failonerror=true` is set. Pair
+DEFAULT with that flag, or use STRICT. A query that matched nothing
 (`NO_MATCH`), a parked assert (`DISABLED`), a value that could not be measured (`NO_VALUE`), a load
 that was not established (`LOAD_NOT_ACHIEVED`) and a component with no asserts are not configuration
 errors: they exit 0 and neither line refuses them. The four not-judged reasons are counted in
@@ -413,10 +414,25 @@ same fold.
 
 **The status is the verdict; a configuration or collection error is the exit code.** A
 component whose judged asserts PASS while another of its asserts is `SOURCE_FAILED` or `LOW_COVERAGE`
-reads `PASS` — and so does `serverStatus` — on a run that exits 1 under `failonerror`. That is the
+reads `PASS` — and so does `serverStatus` — and the check that never ran is reported beside it
+(`SERVER NOT JUDGED`, the Server tab, JUnit, STRICT); it exits 1 only under
+`webinsight.report.server.failonerror=true`. That is the
 client side's rule too (a broken rule contributes nothing to `gate.status`), and making only the
 server word carry config errors would make the two statuses mean different things. STRICT, above,
 is the jq line that refuses both.
+
+**`window`** is on every document: the run's exact start and end — `start` and `end` in ISO 8601 UTC,
+`startMillis` and `endMillis` in epoch milliseconds, and `rampUpEndMillis` when a ramp-up is set. It
+is the period a script exports server data for:
+
+```bash
+jq -r '.window | "(.startMillis) (.endMillis)"' report/web-insight-report.json
+```
+
+**`serverData`** is present whenever the annotations declare server asserts: `state` (`COLLECTED`,
+`NOT_COLLECTED` or `REFUSED`) and `series[]`, one `{component, metric, unit}` per enabled server
+assert, the names a CSV must carry. On the report written when the run ends it is the one place a
+script can read what to export and that it is still to do.
 
 **`serverComponents[]`** is one entry per declared component, in declaration order: the
 component's `id`, its `label` (the `description`, or the id), its `type` (a catalogue type —
@@ -427,8 +443,8 @@ client `gate` carries** — so one arithmetic and one idiom read both sides.
 
 Asserts that name no declared component are reported in one more entry, **`"(no gate)"`**, which
 has no `type`. Its `id` is that reserved word, and its `label` is `"(no component)"`, the name the
-header chip, the console and the Server tab give it. Such an assert, unless parked, is a defect in the file (`INVALID_RULE`) and
-exits 1 by default, so it must be counted somewhere a pipeline sums
+header chip, the console and the Server tab give it. Such an assert, unless parked, is a defect in the file (`INVALID_RULE`),
+fatal only under `webinsight.report.server.failonerror=true`, so it must be counted somewhere a pipeline sums
 `serverComponents[].notJudged.invalidRule`; the JUnit XML carries the same entry as a suite.
 `(no gate)` and `assertions` are reserved, so no declared component can take either id.
 
@@ -547,11 +563,17 @@ and JMeter exits 1 on its own. On that path a missing `.json` or `.xml` beside a
 (`INCOMPLETE`) and a configuration error (`CONFIG ERROR`) honour the flag. On the listener path
 every case above honours it.
 
-**Server-side, it is lenient on missing data, by decision.** What does *not* exit non-zero:
+**Server data never changes the exit code by default.** The server tab is a bonus on the client
+report: a server assert the file got wrong, a series that could not be collected, coverage under
+the floor and a refused payload are said on stderr as `WEB-INSIGHT-REPORT: SERVER NOT JUDGED — …`,
+at the top of the Server tab, in the CI/CD JSON and in JUnit, and the exit code is the client
+side's. `webinsight.report.server.failonerror=true` makes them fatal (exit 1, marked `CONFIG
+ERROR`). A `serverMetrics` block whose shape does not read (`"asserts": {}`) costs the server side
+only: the client rules in the same file are read and judged as usual. An annotations file that is
+not JSON at all loses both sides, and is a client `CONFIG ERROR`. Also never fatal:
 
 - **No payload at all.** The interim `-n -t` report, before `wir-collect` has run, judges the
-  client rules only; the server asserts are simply not evaluated. The file's own faults (the second
-  row above) are still fatal there, so step 1 and step 3 agree about the file.
+  client rules only; the server asserts are simply not evaluated.
 - **A query that matched no series** (`NO_MATCH`) — on either side, a skip and never fatal.
 - **A refused payload when nothing needed it** — no enabled server assert declared. It is a
   WARNING finding, and the exit is unaffected.
@@ -579,9 +601,12 @@ reading `jmeter.log`, which by default has no Console appender at all:
 | `WEB-INSIGHT-REPORT: OK <path>` | stdout | the report was published |
 | `WEB-INSIGHT-REPORT: INCOMPLETE — <reason>` | stderr | the report exists, a sibling does not; the reason names the artifact and why |
 | `WEB-INSIGHT-REPORT: FAILED <reason>` | stderr | nothing usable was produced; the exception class is named |
-| `WEB-INSIGHT-REPORT: CONFIG ERROR — <reason>` | stderr | the artifacts are all there, but the gate is not the one your file declared; the reason says how many checks never ran and why, a refused payload included |
+| `WEB-INSIGHT-REPORT: CONFIG ERROR — <reason>` | stderr | the artifacts are all there, but the gate is not the one your file declared; the reason says how many checks never ran and why. Printed for the client side, and for the server side under `webinsight.report.server.failonerror=true`; it always means the run exits non-zero (unless `failonerror=false`) |
+| `WEB-INSIGHT-REPORT: NEXT — <what to do>` | stdout | enabled server asserts are declared and no server data was given to this report: the window to export, the component/metric names, and the command that adds it |
+| `WEB-INSIGHT-REPORT: SERVER NOT JUDGED — <reason>` | stderr | server checks the file asked for never ran — a failed collection, coverage under the floor, a server assert that cannot run, a refused payload. The report and the client verdict are complete and the exit code is unchanged |
+| `WEB-INSIGHT-REPORT: WARNING — <reason>` | stderr | a `webinsight.*` property nothing reads (a typo, with the nearest name), or a path a properties file mangled (single backslashes) |
 | `WEB-INSIGHT-REPORT: ASSERT FAIL — <verdict line>` | stderr | `failonassert=true` and the client gate or a server component said FAIL. `-g -o` only; the listener writes the same fact to `jmeter.log` |
-| `WEB-INSIGHT-REPORT: exiting 1 because <flag>=true` | stderr | printed as the process exits, naming the flag that turned this run into exit 1: `webinsight.report.failonerror` or `webinsight.report.failonassert`. Printed only when the plugin arranges the exit itself — on the listener path, for every case; on `-g -o`, for a configuration error and for `failonassert`. An artifact failure on `-g -o` (`FAILED`, or `INCOMPLETE` under `failonerror`) reaches JMeter as an export error, and JMeter exits 1 without this line |
+| `WEB-INSIGHT-REPORT: exiting 1 because <flag>=true` | stderr | printed as the process exits, naming the flag that turned this run into exit 1: `webinsight.report.failonerror`, `webinsight.report.server.failonerror` or `webinsight.report.failonassert`. Printed only when the plugin arranges the exit itself — on the listener path, for every case; on `-g -o`, for a configuration error and for `failonassert`. An artifact failure on `-g -o` (`FAILED`, or `INCOMPLETE` under `failonerror`) reaches JMeter as an export error, and JMeter exits 1 without this line |
 
 `CONFIG ERROR` is the one that comes with a complete, readable report. That is deliberate: the
 report is the artifact you debug the configuration *from*: the Asserts tab opens on a red banner
@@ -825,8 +850,8 @@ They get one suite instead, `<testName> - serverMetrics`, that says why:
 
 - **`serverMetrics.payload`**, the payload's state. A refused payload that the declared asserts
   depended on is a `<failure>` whose message is the CI/CD JSON's `serverMetrics.payload` ERROR
-  finding, word for word: the run exits 1 under `failonerror` for it, and the `junit` step sees
-  it too. On the interim report it is a `<skipped>` that says to run `wir-collect`: no payload is
+  finding, word for word, so the `junit` step sees it; the run exits 1 for it only under
+  `webinsight.report.server.failonerror=true`. On the interim report it is a `<skipped>` that says to run `wir-collect`: no payload is
   not an error, and a `<failure>` there would mark every step-1 build unstable. A refused payload
   nothing depended on (every assert disabled) is `<skipped>` with its WARNING.
 - **One `<failure>` per server assert the file makes unrunnable whatever is collected** (an

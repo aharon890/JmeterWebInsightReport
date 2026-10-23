@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  Configuration & Runtime Scenario Tests (C01-C41)
+#  Configuration & Runtime Scenario Tests (C01-C43)
 #  Defaults, paths, JUnit XML, Apdex, ramp-up, timestamp filenames, output logging
 #
 #  C01-C16 are the original configuration cases. C17-C31 cover output paths: every
@@ -1290,12 +1290,13 @@ assert_contains "$C35_DIR/collect.log" "wir-collect: OK app/up coverage=" \
 C35_COLLECTION="$(grep -o '"collectionId" *: *"[0-9a-f]*"' "$C35_DIR/server-metrics.json" 2>/dev/null | grep -o '[0-9a-f]\{16\}')"
 [[ -n "$C35_COLLECTION" ]] || C35_NOTES="$(append_note "$C35_NOTES" "no collectionId in the payload")"
 
-c35_generate() {   # <subdir> <payload> [annotations]
+c35_generate() {   # <subdir> <payload> [annotations] [extra -J...]
     local sub="$1" payload="$2" ann="${3:-$C35_DIR/annotations.json}"
+    if (( $# >= 3 )); then shift 3; else shift $#; fi
     WIR_RUNTIME_LOG="$C35_DIR/$sub-runtime.log" \
     run_jmeter -g "$C35_DIR/current.jtl" -o "$C35_DIR/$sub" \
         -Jwebinsight.report.annotations="$ann" \
-        -Jwebinsight.report.servermetrics="$payload" > "$C35_DIR/$sub.log" 2>&1
+        -Jwebinsight.report.servermetrics="$payload" "$@" > "$C35_DIR/$sub.log" 2>&1
     echo $? > "$C35_DIR/$sub.exit"
 }
 
@@ -1304,6 +1305,9 @@ c35_generate mine "$C35_DIR/server-metrics.json"
 sed 's/"runId" *: *"[0-9a-f]*"/"runId" : "0123456789abcdef"/' "$C35_DIR/server-metrics.json" \
     > "$C35_DIR/foreign.json"
 c35_generate foreign "$C35_DIR/foreign.json"
+# The same refusal under the server opt-in, which restores the 4.0.x fold: fatal, CONFIG ERROR.
+c35_generate foreign-strict "$C35_DIR/foreign.json" "$C35_DIR/annotations.json" \
+    -Jwebinsight.report.server.failonerror=true
 
 C35_MINE="$C35_DIR/mine/web-insight-report.html"
 C35_FOREIGN="$C35_DIR/foreign/web-insight-report.html"
@@ -1321,10 +1325,19 @@ else
     if assert_contains "$C35_FOREIGN" "\\\"collectionId\\\":\\\"$C35_COLLECTION\\\""; then
         C35_NOTES="$(append_note "$C35_NOTES" "another run's payload was drawn under this run's report")"
     fi
-    grep -q "CONFIG ERROR" "$C35_DIR/foreign.log" "$C35_DIR/foreign-runtime.log" 2>/dev/null \
-        || C35_NOTES="$(append_note "$C35_NOTES" "no CONFIG ERROR marker for a foreign payload")"
-    [[ "$(cat "$C35_DIR/foreign.exit")" != "0" ]] \
-        || C35_NOTES="$(append_note "$C35_NOTES" "a foreign payload exited 0 under the default failonerror")"
+    # Decision B: a server-data problem never changes the exit code by default. It is said as
+    # SERVER NOT JUDGED, never as CONFIG ERROR (which keeps meaning "this exits non-zero").
+    grep -q "SERVER NOT JUDGED" "$C35_DIR/foreign.log" 2>/dev/null \
+        || C35_NOTES="$(append_note "$C35_NOTES" "no SERVER NOT JUDGED marker for a foreign payload")"
+    if grep -q "CONFIG ERROR" "$C35_DIR/foreign.log" 2>/dev/null; then
+        C35_NOTES="$(append_note "$C35_NOTES" "a foreign payload printed CONFIG ERROR although it does not exit non-zero")"
+    fi
+    [[ "$(cat "$C35_DIR/foreign.exit")" == "0" ]] \
+        || C35_NOTES="$(append_note "$C35_NOTES" "a foreign payload exited $(cat "$C35_DIR/foreign.exit") by default, expected 0 (server data never fails the build unless asked)")"
+    grep -q "CONFIG ERROR" "$C35_DIR/foreign-strict.log" 2>/dev/null \
+        || C35_NOTES="$(append_note "$C35_NOTES" "no CONFIG ERROR marker for a foreign payload under server.failonerror=true")"
+    [[ "$(cat "$C35_DIR/foreign-strict.exit")" != "0" ]] \
+        || C35_NOTES="$(append_note "$C35_NOTES" "a foreign payload exited 0 under webinsight.report.server.failonerror=true")"
     # ...and the CI/CD JSON says so: a refused payload leaves no serverStatus or serverGates to
     # read, so the ERROR finding is the only trace a pipeline on failonerror=false can see (the
     # STRICT line of test-plans/goldens/jq-gate.txt reads it). It used to leave none.
@@ -1340,7 +1353,7 @@ fi
 
 if [[ -z "$C35_NOTES" ]]; then
     record C35 "Server-metrics payload property" PASS \
-        "collected $C35_COLLECTION, embedded for this run, refused (and fatal) for another"
+        "collected $C35_COLLECTION, embedded for this run, refused for another (fatal only under server.failonerror)"
 else
     record C35 "Server-metrics payload property" FAIL "$C35_NOTES"
 fi
@@ -1491,23 +1504,31 @@ assert_contains "$C37_DIR/server-metrics.json" '"status" : "FAILED"' \
 assert_contains "$C37_DIR/collect.log" "wir-collect: FAILED kafka/up" \
     || C37_NOTES="$(append_note "$C37_NOTES" "the collector's console does not name the failed series")"
 
-c37_generate() {   # <subdir> <annotations>
+c37_generate() {   # <subdir> <annotations> [extra -J...]
     local sub="$1" ann="$2"
+    shift 2
     WIR_RUNTIME_LOG="$C37_DIR/$sub-runtime.log" \
     run_jmeter -g "$C37_DIR/current.jtl" -o "$C37_DIR/$sub" \
         -Jwebinsight.report.annotations="$ann" \
         -Jwebinsight.report.servermetrics="$C37_DIR/server-metrics.json" \
-        -Jwebinsight.report.junit=true > "$C37_DIR/$sub.log" 2>&1
+        -Jwebinsight.report.junit=true "$@" > "$C37_DIR/$sub.log" 2>&1
     echo $? > "$C37_DIR/$sub.exit"
 }
 
+# Decision B: by default a dead source is said (SERVER NOT JUDGED) and never changes the exit code;
+# under webinsight.report.server.failonerror=true it is the 4.0.x CONFIG ERROR, exit 1.
 c37_generate building "$C37_DIR/building.json"
-[[ "$(cat "$C37_DIR/building.exit")" != "0" ]] \
-    || C37_NOTES="$(append_note "$C37_NOTES" "a source failure on a building gate left the exit code at 0")"
-grep -q "WEB-INSIGHT-REPORT: CONFIG ERROR" "$C37_DIR/building.log" "$C37_DIR/building-runtime.log" 2>/dev/null \
-    || C37_NOTES="$(append_note "$C37_NOTES" "no CONFIG ERROR marker for the failed source")"
+c37_generate building-strict "$C37_DIR/building.json" -Jwebinsight.report.server.failonerror=true
+[[ "$(cat "$C37_DIR/building.exit")" == "0" ]] \
+    || C37_NOTES="$(append_note "$C37_NOTES" "a source failure exited $(cat "$C37_DIR/building.exit") by default, expected 0 (server data never fails the build unless asked)")"
+grep -q "WEB-INSIGHT-REPORT: SERVER NOT JUDGED" "$C37_DIR/building.log" 2>/dev/null \
+    || C37_NOTES="$(append_note "$C37_NOTES" "no SERVER NOT JUDGED marker for the failed source")"
 grep -q "kafka: 1 source failed" "$C37_DIR/building.log" "$C37_DIR/building-runtime.log" 2>/dev/null \
-    || C37_NOTES="$(append_note "$C37_NOTES" "the CONFIG ERROR line does not name the gate and the reason")"
+    || C37_NOTES="$(append_note "$C37_NOTES" "the SERVER NOT JUDGED line does not name the gate and the reason")"
+[[ "$(cat "$C37_DIR/building-strict.exit")" != "0" ]] \
+    || C37_NOTES="$(append_note "$C37_NOTES" "a source failure left the exit code at 0 under server.failonerror=true")"
+grep -q "WEB-INSIGHT-REPORT: CONFIG ERROR" "$C37_DIR/building-strict.log" 2>/dev/null \
+    || C37_NOTES="$(append_note "$C37_NOTES" "no CONFIG ERROR marker for the failed source under server.failonerror=true")"
 assert_contains "$C37_DIR/building/web-insight-report.json" '"sourceFailed" : 1' \
     || C37_NOTES="$(append_note "$C37_NOTES" "serverComponents does not count the source failure")"
 file_exists "$C37_DIR/building/web-insight-report.html" \
@@ -1586,7 +1607,7 @@ fi
 
 if [[ -z "$C37_NOTES" ]]; then
     record C37 "A source that never answered" PASS \
-        "SOURCE_FAILED exits 1 under the default failonerror, is marked and is a JUnit failure; the collector exits 0, and the three steps under set -e reach step 3; a missing java is exit 1, not 127"
+        "SOURCE_FAILED is said and exits 0 by default (1 under server.failonerror), and is a JUnit failure; the collector exits 0, and the three steps under set -e reach step 3; a missing java is exit 1, not 127"
 else
     record C37 "A source that never answered" FAIL "$C37_NOTES"
 fi
@@ -2006,6 +2027,104 @@ if [[ -z "$C41_NOTES" ]]; then
         "a 0-1 gauge read x100, a per-second rate read x60 and a gauge read as it is, each recorded as read under Datadog's name with its kind and scale and back to E27's own values, and a KPI Datadog has none for read under the catalogue's name"
 else
     record C41 "A Datadog export read by Datadog's names" FAIL "$C41_NOTES"
+fi
+
+# -----------------------------------------------------------------------------
+# C42: jmeter -g reads a CSV itself (P4). Two commands, no wir-collect: the server data and the
+#      annotations are named in a -q properties file - relative names, found beside the JTL - so no
+#      -J has to survive a shell's quoting. The collector's own lines are printed and the asserts
+#      are judged.
+# -----------------------------------------------------------------------------
+echo "[C42] jmeter -g reads the server CSV itself..."
+C42_DIR="$RESULTS/C42"
+rm -rf "$C42_DIR"
+mkdir -p "$C42_DIR/run"
+cp "$TEST_PLANS/goldens/plain.jtl" "$C42_DIR/run/results.jtl"
+cp "$TEST_PLANS/goldens/gate-server.json" "$C42_DIR/run/report-annotations.json"
+cp "$TEST_PLANS/goldens/server-metrics.csv" "$C42_DIR/run/server.csv"
+# The JVM's own spelling of the path, with forward slashes (the docs' rule for a properties file):
+# under Git Bash $C42_DIR is /d/..., which Java on Windows reads as D:\d\...
+C42_ANN="$C42_DIR/run/report-annotations.json"
+command -v cygpath >/dev/null 2>&1 && C42_ANN="$(cygpath -m "$C42_ANN")"
+printf '%s\n' "webinsight.report.annotations=$C42_ANN" \
+    "webinsight.report.servermetrics=server.csv" \
+    "webinsight.report.servermetrics.step=1s" > "$C42_DIR/run/run.properties"
+C42_NOTES=""
+WIR_RUNTIME_LOG="$C42_DIR/runtime.log" \
+run_jmeter -g "$C42_DIR/run/results.jtl" -o "$C42_DIR/run/report" -q "$C42_DIR/run/run.properties" \
+    > "$C42_DIR/report.log" 2>&1
+C42_RC=$?
+assert_exit_code "$C42_RC" 0 \
+    || C42_NOTES="$(append_note "$C42_NOTES" "jmeter -g over a CSV exited $C42_RC -- see $C42_DIR/report.log")"
+grep -a -q "wir-collect: OK kafka/up" "$C42_DIR/report.log" \
+    || C42_NOTES="$(append_note "$C42_NOTES" "the collector's lines were not printed by jmeter -g")"
+grep -a -q "wir-collect: run window " "$C42_DIR/report.log" \
+    || C42_NOTES="$(append_note "$C42_NOTES" "no run window line")"
+assert_contains "$C42_DIR/run/report/web-insight-report.json" '"serverStatus"' \
+    || C42_NOTES="$(append_note "$C42_NOTES" "the server asserts were not judged from the CSV")"
+assert_contains "$C42_DIR/run/report/web-insight-report.json" '"state" : "COLLECTED"' \
+    || C42_NOTES="$(append_note "$C42_NOTES" "serverData does not say COLLECTED")"
+if grep -a -q "resolvedUrl\" *: *\"[A-Za-z]:" "$C42_DIR/run/report/web-insight-report.html" 2>/dev/null; then
+    C42_NOTES="$(append_note "$C42_NOTES" "a local path reached the page")"
+fi
+if [[ -z "$C42_NOTES" ]]; then
+    record C42 "jmeter -g reads the server CSV itself" PASS \
+        "two commands and a -q file: the CSV beside the JTL is collected in-process, its lines printed, its asserts judged"
+else
+    record C42 "jmeter -g reads the server CSV itself" FAIL "$C42_NOTES"
+fi
+
+# -----------------------------------------------------------------------------
+# C43: the example's hooks (examples/server-data/hooks) against the stand-in export tool. A copy of
+#      the example over plain.jtl: the first report's .json gives the window, the hook calls
+#      EXPORT_CMD for it and runs jmeter -g with run.properties - app WARN, db FAIL, exit 0. The bash
+#      hook always; the PowerShell one where powershell or pwsh exists (Windows here, and
+#      cross-os.yml's windows runner). A hook pointed at an output folder that is not empty must
+#      pass JMeter's non-zero exit back - jmeter.bat is the one launcher that would not.
+# -----------------------------------------------------------------------------
+echo "[C43] the example's after-run hooks..."
+C43_DIR="$RESULTS/C43"
+rm -rf "$C43_DIR"
+mkdir -p "$C43_DIR"
+cp -r "$PROJECT_DIR/examples/server-data" "$C43_DIR/ex"
+cp "$TEST_PLANS/goldens/plain.jtl" "$C43_DIR/ex/results.jtl"
+C43_NOTES=""
+( cd "$C43_DIR/ex" && run_jmeter -g results.jtl -o first \
+      -Jwebinsight.report.annotations=report-annotations.json ) > "$C43_DIR/first.log" 2>&1
+c43_verdicts() {   # "<app status> <db status>" from a report's .json
+    local f=$1
+    command -v cygpath >/dev/null 2>&1 && f=$(cygpath -w "$f")
+    node -e "const j=require(process.argv[1]);const s={};for(const c of j.serverComponents||[])s[c.id]=c.status;console.log((s.app||'-')+' '+(s.db||'-'))" "$f" 2>/dev/null
+}
+( cd "$C43_DIR/ex" && JMETER="$JMETER" bash hooks/after-run.sh first/web-insight-report.json results.jtl report ) \
+    > "$C43_DIR/hook-sh.log" 2>&1
+C43_RC=$?
+assert_exit_code "$C43_RC" 0 || C43_NOTES="$(append_note "$C43_NOTES" "after-run.sh exited $C43_RC -- see $C43_DIR/hook-sh.log")"
+[[ "$(c43_verdicts "$C43_DIR/ex/report/web-insight-report.json")" == "WARN FAIL" ]] \
+    || C43_NOTES="$(append_note "$C43_NOTES" "after-run.sh: app/db were not WARN/FAIL")"
+( cd "$C43_DIR/ex" && JMETER="$JMETER" bash hooks/after-run.sh first/web-insight-report.json results.jtl report ) \
+    > "$C43_DIR/hook-sh-again.log" 2>&1
+[[ $? -ne 0 ]] || C43_NOTES="$(append_note "$C43_NOTES" "after-run.sh exited 0 over a folder that is not empty")"
+C43_PS=$(command -v powershell || command -v pwsh || true)
+if [[ -n "$C43_PS" ]]; then
+    ( cd "$C43_DIR/ex" && "$C43_PS" -NoProfile -ExecutionPolicy Bypass -File hooks/after-run.ps1 \
+          first/web-insight-report.json results.jtl report-ps ) > "$C43_DIR/hook-ps.log" 2>&1
+    C43_RC=$?
+    assert_exit_code "$C43_RC" 0 || C43_NOTES="$(append_note "$C43_NOTES" "after-run.ps1 exited $C43_RC -- see $C43_DIR/hook-ps.log")"
+    [[ "$(c43_verdicts "$C43_DIR/ex/report-ps/web-insight-report.json")" == "WARN FAIL" ]] \
+        || C43_NOTES="$(append_note "$C43_NOTES" "after-run.ps1: app/db were not WARN/FAIL")"
+    ( cd "$C43_DIR/ex" && "$C43_PS" -NoProfile -ExecutionPolicy Bypass -File hooks/after-run.ps1 \
+          first/web-insight-report.json results.jtl report-ps ) > "$C43_DIR/hook-ps-again.log" 2>&1
+    [[ $? -ne 0 ]] || C43_NOTES="$(append_note "$C43_NOTES" "after-run.ps1 exited 0 over a folder that is not empty")"
+    C43_WHICH="after-run.sh and after-run.ps1"
+else
+    C43_WHICH="after-run.sh (no PowerShell here: after-run.ps1 runs on cross-os.yml's windows runner)"
+fi
+if [[ -z "$C43_NOTES" ]]; then
+    record C43 "the example's after-run hooks" PASS \
+        "$C43_WHICH: window from the first report, the stand-in export, jmeter -g - app WARN, db FAIL, exit 0; a failing jmeter's exit passed back"
+else
+    record C43 "the example's after-run hooks" FAIL "$C43_NOTES"
 fi
 
 print_summary "CONFIGURATION TEST SUMMARY"

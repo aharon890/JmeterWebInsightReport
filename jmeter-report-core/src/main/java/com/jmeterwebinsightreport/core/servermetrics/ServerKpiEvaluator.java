@@ -172,6 +172,10 @@ public final class ServerKpiEvaluator {
         }
         Double reduced = reduce(kpi, series, window, step);
         if (reduced == null) {
+            KpiResult spacing = sustainedNeedsWholeSpacing(kpi, series, window, step, coverage, instances);
+            if (spacing != null) {
+                return spacing;
+            }
             return KpiResult.notJudged(kpi, NotJudged.NO_VALUE, "no value: " + kpi.reducer().describe()
                     + " over " + describeWindow(window) + " has nothing to reduce - the series carries no "
                     + "complete window there", coverage, instances);
@@ -317,6 +321,58 @@ public final class ServerKpiEvaluator {
                 + Durations.format(d) + " is not a whole number of the collection's " + Durations.format(step)
                 + " steps, so no window can ever span it - use a multiple of "
                 + Durations.format(step) + ", or collect with a finer wir-collect --step");
+    }
+
+    /**
+     * {@link #sustainedNeedsWholeSteps} for the spacing the data actually has, asked only when the
+     * reduction found no complete window (research H11). A CSV keeps its own spacing whatever
+     * {@code --step} says: 4 s data collected at the default 15 s step passed the step test for a
+     * {@code sustainedFor 30s}, and no window could span 30 s of 4 s points - NO_VALUE, a silent
+     * nothing beside a chart showing the breach. Asked after the reduction, so no verdict the
+     * points could reach is moved; mirrored by report.js's function of the same name.
+     */
+    private static KpiResult sustainedNeedsWholeSpacing(ServerKpi kpi, ServerMetricsPayload.SeriesRecord series,
+                                                        long[] window, long step, double coverage, int instances) {
+        Reducer reducer = kpi.reducer();
+        if (reducer == null || reducer.over() == null || !reducer.over().isSustainedFor()) {
+            return null;
+        }
+        long spacing = measuredSpacing(series, window);
+        long d = reducer.over().sustainedForMillis();
+        if (spacing <= 0 || spacing == step || d <= spacing || d % spacing == 0) {
+            return null;
+        }
+        return KpiResult.notJudged(kpi, NotJudged.INVALID_RULE, "reduce.over sustainedFor " + Durations.format(d)
+                + " is not a whole number of the data's measured " + Durations.format(spacing) + " spacing (collected at --step "
+                + Durations.format(step) + "), so no window can ever span it - use a multiple of "
+                + Durations.format(spacing) + ", or export the data at the --step it is collected with",
+                coverage, instances);
+    }
+
+    /**
+     * The most frequent gap between consecutive points inside the window, over every instance;
+     * the smaller on a tie; 0 when no instance has two points there.
+     */
+    static long measuredSpacing(ServerMetricsPayload.SeriesRecord series, long[] window) {
+        Map<Long, Integer> counts = new java.util.TreeMap<>();
+        for (ServerMetricsPayload.InstanceRecord inst : series.getInstances()) {
+            List<ServerMetricsPayload.Point> points = inWindow(inst.getPoints(), window);
+            for (int i = 1; i < points.size(); i++) {
+                long gap = points.get(i).getTs() - points.get(i - 1).getTs();
+                if (gap > 0) {
+                    counts.merge(gap, 1, Integer::sum);
+                }
+            }
+        }
+        long best = 0;
+        int most = 0;
+        for (Map.Entry<Long, Integer> e : counts.entrySet()) {   // ascending, so a tie keeps the smaller
+            if (e.getValue() > most) {
+                best = e.getKey();
+                most = e.getValue();
+            }
+        }
+        return best;
     }
 
     /**
@@ -736,8 +792,17 @@ public final class ServerKpiEvaluator {
                 return source != null && source.getError() != null ? source.getError()
                         : "the payload marks it FAILED and records no reason";
             }
-            case EMPTY:
+            case EMPTY: {
+                // A CSV is searched by component and metric, never by a query: "the query matched no
+                // series" sent its reader looking for PromQL the file never held. The page's
+                // collectionDetail says the same words.
+                ServerMetricsPayload.SourceRecord source = payload.source(series.getSource());
+                if (source != null && "csv".equals(source.getType()) && series.getComponent() != null) {
+                    return "no row of the CSV names component " + series.getComponent() + ", metric "
+                            + (series.getMetric() != null ? series.getMetric() : series.getResolvedQuery());
+                }
                 return "the query matched no series";
+            }
             case INSUFFICIENT: {
                 // The floor was applied at COLLECT time (Collector.statusFor), against whatever
                 // the annotations file declared then. This file may declare a different one now,

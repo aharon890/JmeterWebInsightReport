@@ -575,25 +575,19 @@ jmeter -g results.jtl -o report \
 ```
 
 `wir-collect.sh` and `wir-collect.bat` are attached to every release beside the plugin JAR (in a
-checkout they are under `scripts/`); they find JMeter through `JMETER_HOME` or `jmeter` on the
-`PATH`.
+checkout they are under `scripts/`). `wir-collect.sh` finds JMeter through `JMETER_HOME` or
+`jmeter` on the `PATH`; `wir-collect.bat` runs the plugin JAR beside itself, else in `..\lib\ext`
+(the `.bat` in `$JMETER_HOME\bin`), else in `%JMETER_HOME%\lib\ext`.
 
 Step 3 is the report that judges the server asserts and decides the exit code. `wir-collect` is
-a class inside the plugin JAR, run with `java -cp`, never `java -jar` — Jackson and slf4j come
-from JMeter, so the classpath is the plugin JAR plus JMeter's `lib/*`. Without the wrapper scripts
-(`wir-collect.sh`, `wir-collect.bat`):
+a class inside the plugin JAR, and the JAR runs it: the same command on every OS, no wrapper script
+needed:
 
-```bash
-# Linux, macOS
-java -cp "$JMETER_HOME/lib/ext/jmeter-web-insight-report-X.Y.Z.jar:$JMETER_HOME/lib/*" com.jmeterwebinsightreport.WirCollect --jtl results.jtl ...
+```
+java -jar <JMETER_HOME>/lib/ext/jmeter-web-insight-report-X.Y.Z.jar --jtl results.jtl ...
 ```
 
-```bat
-rem Windows cmd.exe (the separator is ';')
-java -cp "%JMETER_HOME%\lib\ext\jmeter-web-insight-report-X.Y.Z.jar;%JMETER_HOME%\lib\*" com.jmeterwebinsightreport.WirCollect --jtl results.jtl ...
-```
-
-`wir-collect --help` prints both lines with the real JAR name, the options and the exit codes. If
+`wir-collect --help` prints the line with the real JAR name, the options and the exit codes. If
 step 3 sets `-Jwebinsight.report.title`, step 2 must pass the same text as `--test-name`: the
 title is hashed into the run's identity, and a payload collected for another identity is refused.
 A ramp-up is given to both the same way, in milliseconds: `--rampup` and
@@ -611,7 +605,10 @@ when the two disagree.
   column per series (`--columns` maps a column by its exact header), `--csv-columns` and
   `--component` read a long export whose columns have other names and no component — InfluxDB 2's
   annotated CSV, blocks and all, InfluxDB 3 and Dynatrace — and `--time-zone` names the zone of a
-  time written with none). `--step` sets the resolution and the coverage grid (default `15s`), and
+  time written with none). `--step` sets the resolution and the coverage grid (default: a CSV's own interval, measured from its
+  rows as the collector reads them and printed, unless it would leave fewer than 10 points in the
+  run; else `15s`; a Grafana `Time,component/metric,…` header is likewise read as wide
+  without `--layout`), and
   `--clock-offset` shifts every timestamp for servers whose clocks are known to be off. `--env NAME`
   picks the `serverMetrics.environments` entry `${env.*}` placeholders are resolved from (default:
   the file's `defaultEnv`), `--max-wait` sets how long a source may take to settle (default `10m`),
@@ -669,7 +666,7 @@ when the two disagree.
   to, naming the line, and the collection reads `PARTIAL`. Full rules: [Server tab](Tutorial/13-Server-Tab.md).
 - **Keys this format does not take are refused, not ignored.** `sources`, `gates`, `kpis` and
   `packs` in the block, `source`, `gate`, `onMissing`, `required` and the rest of the
-  [refused assert keys](Tutorial/13-Server-Tab.md#retired-and-refused-keys) on an assert (and
+  [refused assert keys](Tutorial/16-Server-Reference.md#retired-and-refused-keys) on an assert (and
   `sustainedFor`, `breachBudget` or `over` written at its top level instead of under
   `reduce.over`), and `failsBuild` on a component are each refused with a sentence naming what to
   write instead, so a file carrying one cannot quietly judge less than it says.
@@ -974,8 +971,9 @@ asked" and "the plugin checked, and here is the answer".
 |---|---|---|
 | Client gate FAIL, or FAIL on any server component | 0 | `failonassert=true` → 1 |
 | WARN, or `NOT_JUDGED` as `DISABLED`, `NO_MATCH`, `NO_VALUE` or `LOAD_NOT_ACHIEVED` | 0 | none |
-| `INVALID_RULE` — a client rule or a server assert | 1 | `failonerror=false` → 0 |
-| `SOURCE_FAILED` / `LOW_COVERAGE`, or a missing or refused payload while a server assert is declared | 1 | `failonerror=false` → 0 |
+| `INVALID_RULE` on a client rule, or an annotations file that is not JSON | 1 | `failonerror=false` → 0 |
+| `INVALID_RULE` on a server assert, `SOURCE_FAILED` / `LOW_COVERAGE`, a `serverMetrics` block that does not read, or a missing or refused payload while a server assert is declared | 0, said as `SERVER NOT JUDGED` | `webinsight.report.server.failonerror=true` → 1 |
+| An unquoted `-Jwebinsight.report.x=y` split by PowerShell into a property named `webinsight` | 1 | `failonerror=false` → 0 |
 | A refused payload with no enabled server assert declared | 0 (a WARNING finding) | none |
 | The report written but its `.json` or `.xml` not | 1 | `failonerror=false` → 0 |
 | No report written at all | 1 | listener run: `failonerror=false` → 0; `-g -o`: none |
@@ -997,9 +995,12 @@ Six greppable markers, one line each:
 | `WEB-INSIGHT-REPORT: OK <path>` | stdout | the report was published |
 | `WEB-INSIGHT-REPORT: INCOMPLETE — <reason>` | stderr | the report exists, a sibling does not; the reason names the artifact |
 | `WEB-INSIGHT-REPORT: FAILED <reason>` | stderr | nothing usable was produced; the exception class is named |
-| `WEB-INSIGHT-REPORT: CONFIG ERROR — <reason>` | stderr | every artifact is there, but a gate is not the one the file declared — client or server |
+| `WEB-INSIGHT-REPORT: CONFIG ERROR — <reason>` | stderr | every artifact is there, but the client gate is not the one the file declared (or, under `webinsight.report.server.failonerror=true`, a server check never ran); always an exit 1 unless `failonerror=false` |
+| `WEB-INSIGHT-REPORT: NEXT — <what to do>` | stdout | enabled server asserts are declared and no server data was given: the window to export, the names, the command that adds it. The Server tab shows the same, with a CSV template, and the CI/CD JSON carries `window` and `serverData` |
+| `WEB-INSIGHT-REPORT: SERVER NOT JUDGED — <reason>` | stderr | server checks the file asked for never ran (a failed collection, coverage under the floor, a server assert that cannot run, a refused payload). The report and the client verdict are complete; the exit code is unchanged unless `webinsight.report.server.failonerror=true`, which prints this as `CONFIG ERROR` instead |
+| `WEB-INSIGHT-REPORT: WARNING — <reason>` | stderr | a `webinsight.*` property nothing reads (with the nearest known name), or a path mangled by single backslashes in a properties file |
 | `WEB-INSIGHT-REPORT: ASSERT FAIL — <verdict line>` | stderr | `failonassert=true` and a gate said FAIL; `-g -o` only (a listener run logs `webinsight.report.failonassert=true and a gate said FAIL — this run will exit 1` to `jmeter.log` instead) |
-| `WEB-INSIGHT-REPORT: exiting 1 because <flag>=true` | stderr | printed as the process exits 1 over a flag, naming `webinsight.report.failonerror` or `webinsight.report.failonassert`. Not printed when a `-g -o` run exits 1 over an artifact that was not written: JMeter reports that step's failure itself |
+| `WEB-INSIGHT-REPORT: exiting 1 because <flag>=true` | stderr | printed as the process exits 1 over a flag, naming `webinsight.report.failonerror`, `webinsight.report.server.failonerror` or `webinsight.report.failonassert`. Not printed when a `-g -o` run exits 1 over an artifact that was not written: JMeter reports that step's failure itself |
 
 `CONFIG ERROR` deliberately arrives with a complete report rather than instead of one — the
 report is where you diagnose the config, and its Asserts tab opens on a banner naming each rule
@@ -1205,11 +1206,15 @@ Add **Web Insight Report** listener to your test plan (GUI or non-GUI mode). Aut
 
 ### GUI Configuration
 
+**Results file (JTL) field:** where the run's samples are written, through JMeter's own results
+writer (the listener is one), so a GUI run leaves the JTL that adding server data needs. Empty
+writes none. When the file exists, JMeter asks to append, overwrite or not start.
+
 **Output Directory field:**
 
 | Value | Resolves to |
 |-------|-------------|
-| *(empty)* | The first of these it can actually write to (each is probed with a real write, and the log names the one chosen): the directory of the listener's own results file — the `filename` property in the `.jmx`, which this listener's GUI does not show and `-l` does not set, so it is normally empty — then the working directory, then the test plan's directory, then `~/.jmeter-web-insight-report`, then a `web-insight-report` folder in the system temp directory |
+| *(empty)* | The first of these it can actually write to (each is probed with a real write, and the log names the one chosen): the directory of the listener's own results file — its **Results file (JTL)** field, which `-l` does not set — then the working directory, then the test plan's directory, then `~/.jmeter-web-insight-report`, then a `web-insight-report` folder in the system temp directory |
 | `/var/reports` or `D:\reports` | That path (absolute) |
 | `reports` | `{working dir}/reports` (relative) |
 | `../reports` | `{working dir}/../reports` (relative) |
@@ -1272,7 +1277,8 @@ All settings can be overridden via JMeter `-J` properties. CLI properties take p
 | `webinsight.report.junit` | `false` |
 | `webinsight.report.failonerror` | `true` — an incomplete artifact set, or a gate that could not be built from the file, exits non-zero |
 | `webinsight.report.failonassert` | `false` — `true` exits non-zero on a client FAIL or a FAIL on any server component |
-| `webinsight.report.servermetrics` | none, never auto-detected — the `server-metrics.json` payload `wir-collect` wrote for this run. Pass it to the `-g -o` step only: a listener run is always a new run, so a payload named there is always another run's and is refused (a CONFIG ERROR when a server assert is declared) |
+| `webinsight.report.servermetrics.*` | none — for a CSV given to `-g`: `step`, `clockoffset`, `timezone`, `from`, `layout`, `columns`, `csvcolumns`, `component`, `env`, each the collector's flag of the same name |
+| `webinsight.report.servermetrics` | none, never auto-detected — a CSV exported from a monitoring tool, which `jmeter -g` collects in-process, or the `server-metrics.json` payload `wir-collect` wrote for this run. Read by the `-g -o` step only: the listener writes its report before the server data exists and ignores the property, so one `run.properties` serves both commands |
 | `webinsight.report.externaldata` | `false` — `true` always writes the chart data to a sibling `-data.js` (see [External Data Mode](#external-data-mode)) |
 | `webinsight.report.externaldata.threshold` | `10000000` (characters) — the size above which the chart data goes to the sibling file |
 

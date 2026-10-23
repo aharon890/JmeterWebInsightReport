@@ -314,6 +314,21 @@ public class ReportDataSerializer {
     /**
      * Build chart data as a Map — core logic shared by the inline and the sidecar form.
      */
+    /** {start, end, rampUpMillis?} in epoch ms, or null when the run has no samples. */
+    static Map<String, Object> runWindowOf(ReportData reportData) {
+        com.jmeterwebinsightreport.core.model.TestMetadata meta = reportData.getMetadata();
+        if (meta == null || meta.getStartTime() == null || meta.getEndTime() == null) {
+            return null;
+        }
+        Map<String, Object> w = new LinkedHashMap<>();
+        w.put("start", meta.getStartTime().toEpochMilli());
+        w.put("end", meta.getEndTime().toEpochMilli());
+        if (meta.getRampUpDurationMillis() > 0) {
+            w.put("rampUpMillis", meta.getRampUpDurationMillis());
+        }
+        return w;
+    }
+
     private Map<String, Object> buildChartDataMap(ReportData reportData) {
         Map<String, Object> chartData = new LinkedHashMap<>();
 
@@ -323,6 +338,13 @@ public class ReportDataSerializer {
         chartData.put("runId", com.jmeterwebinsightreport.core.util.RunIdentity.of(reportData));
         chartData.put("runTestName", reportData.getMetadata() != null
                 ? reportData.getMetadata().getTestName() : null);
+        // The run's exact window, as the collector computes it (earliest sample start .. latest
+        // start + elapsed): what an operator exports server data for. The interim report's "how to
+        // finish" panel prints it in UTC, local time and epoch ms.
+        Map<String, Object> runWindow = runWindowOf(reportData);
+        if (runWindow != null) {
+            chartData.put("runWindow", runWindow);
+        }
 
         // Time-series arrays (parallel arrays for efficient JS consumption)
         List<TimeSeriesBucket> timeSeries = reportData.getTimeSeries();

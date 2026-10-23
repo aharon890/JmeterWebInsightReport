@@ -173,8 +173,12 @@ public class WebInsightReportGenerator {
         // generation: the exists-policy below keys on the same string.
         String runId = com.jmeterwebinsightreport.core.util.RunIdentity.of(reportData);
         com.jmeterwebinsightreport.report.servermetrics.ServerMetricsPayloadLoader.Result collected =
-                new com.jmeterwebinsightreport.report.servermetrics.ServerMetricsPayloadLoader()
-                        .read(configuration.getServerMetricsFile(), runId);
+                configuration.getServerDataProblem() != null
+                        ? com.jmeterwebinsightreport.report.servermetrics.ServerMetricsPayloadLoader.Result.refused(
+                                com.jmeterwebinsightreport.report.servermetrics.ServerMetricsPayloadLoader.Refusal.UNREADABLE,
+                                configuration.getServerDataProblem(), configuration.getServerDataProblem())
+                        : new com.jmeterwebinsightreport.report.servermetrics.ServerMetricsPayloadLoader()
+                                .read(configuration.getServerMetricsFile(), runId);
         com.jmeterwebinsightreport.core.servermetrics.collect.ServerMetricsPayload serverMetrics =
                 collected.payload();
 
@@ -282,6 +286,11 @@ public class WebInsightReportGenerator {
                 com.jmeterwebinsightreport.report.gate.ServerGateEvaluation.of(annotations, collected,
                         evaluation.gate(), reportData);
         artifacts.recordServerGates(serverGates);
+        if (reportData.getMetadata() != null && reportData.getMetadata().getStartTime() != null
+                && reportData.getMetadata().getEndTime() != null) {
+            artifacts.recordRunWindow(reportData.getMetadata().getStartTime().toEpochMilli(),
+                    reportData.getMetadata().getEndTime().toEpochMilli());
+        }
         // And what the PAYLOAD got wrong, the same way — when it matters to the build. A payload
         // that could not be used is a config error only when an enabled assert sits in a gate that
         // builds (A1-7), and the evaluation then carries it as an ERROR finding too; otherwise it

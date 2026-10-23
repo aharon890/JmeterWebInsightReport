@@ -116,7 +116,7 @@ test.describe('+ Add component', () => {
     // A type with no prometheus query names where its metrics come from: CloudWatch's namespaces,
     // and the CloudWatch agent, which alone publishes the ENA driver's allowance counters.
     await expect(exporter('AWS EC2')).toHaveText('Needs CloudWatch AWS/EC2 and AWS/EBS + the agent for ENA');
-    // Five Oracle metrics need a custom metrics file (Tutorial 13 gives it); InfluxDB serves its own.
+    // Five Oracle metrics need a custom metrics file (Tutorial 15 gives it); InfluxDB serves its own.
     await expect(exporter('Oracle Database')).toHaveText('Needs Oracle Database Metrics Exporter 2.x + a TOML for 5 metrics');
     await expect(exporter('InfluxDB 2')).toHaveText("Needs InfluxDB's own /metrics (v2)");
     await expect(exporter('InfluxDB 3')).toHaveText("Needs InfluxDB's own /metrics (v3 Core)");

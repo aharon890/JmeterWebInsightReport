@@ -62,10 +62,14 @@ def canonical_xml(text):
 
 
 def main():
-    if len(sys.argv) != 3:
-        print('usage: canonicalise-artifact.py <in.json|in.xml> <out>', file=sys.stderr)
+    if len(sys.argv) not in (3, 4):
+        print('usage: canonicalise-artifact.py <in.json|in.xml> <out> [--volatile-collection]', file=sys.stderr)
         return 2
     src, dst = sys.argv[1], sys.argv[2]
+    # A collection made in-process from a CSV (G10) is stamped with the file's own time, which a
+    # fresh clone does not keep: its collectionId is then the invocation, not the contract.
+    if len(sys.argv) == 4 and sys.argv[3] == '--volatile-collection':
+        DROP_KEYS.add('collectionId')
     with open(src, encoding='utf-8') as fh:
         text = fh.read()
     out = canonical_json(text) if src.endswith('.json') else canonical_xml(text)

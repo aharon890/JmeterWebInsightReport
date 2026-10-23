@@ -194,8 +194,9 @@ public final class ServerGateEvaluation {
         }
         if (payloadRequired(config)) {
             findings.add(AssertionValidator.finding(AssertionValidator.Severity.ERROR, PAYLOAD_FINDING_ID,
-                    sentence(collected.detail()) + " The server asserts this run declares depend on it, so "
-                            + "this is a configuration error"));
+                    sentence(collected.detail()) + " The server asserts this run declares depend on it. "
+                            + "The client report and verdict are unaffected; this fails the build only "
+                            + "under webinsight.report.server.failonerror=true"));
             return;
         }
         String why = config.declaresAnything()
@@ -285,7 +286,8 @@ public final class ServerGateEvaluation {
                             config.kpis().size(), collected.refusal(), collected.problem());
                 } else {
                     log.info("Server: {} - {} server assert(s) declared, no payload given. Run "
-                            + "wir-collect and regenerate with -Jwebinsight.report.servermetrics=<server-metrics.json>",
+                            + "wir-collect and regenerate with webinsight.report.servermetrics in a -q "
+                            + "properties file (or a quoted \"-Jwebinsight.report.servermetrics=<server-metrics.json>\")",
                             Chip.unjudged(Chip.NOT_COLLECTED).getStatusLabel(), config.kpis().size());
                 }
             }
@@ -444,6 +446,29 @@ public final class ServerGateEvaluation {
 
     public ServerMetricsConfig config() {
         return config;
+    }
+
+    /**
+     * The server data the file asks for, as a CSV must name it: one entry per enabled server assert
+     * on a component, deduplicated, in declaration order - {component, metric, unit-or-null}, where
+     * metric is the catalogue metric's name or the custom assert's query text. What the CI/CD JSON's
+     * serverData block and the console's NEXT block both list, so the two cannot disagree.
+     */
+    public List<String[]> requiredSeries() {
+        List<String[]> out = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.LinkedHashSet<>();
+        for (ServerKpi kpi : config.kpis()) {
+            if (!kpi.enabled() || kpi.gate() == null) {
+                continue;
+            }
+            String metric = kpi.metric() != null ? kpi.metric() : kpi.query();
+            if (metric == null || metric.isEmpty() || !seen.add(kpi.gate() + "|" + metric)) {
+                continue;
+            }
+            String unit = kpi.unit() == null || kpi.unit().isEmpty() ? null : kpi.unit();
+            out.add(new String[] {kpi.gate(), metric, unit});
+        }
+        return out;
     }
 
     /** The accepted payload's {@code collectionId}, or null when not evaluated. */

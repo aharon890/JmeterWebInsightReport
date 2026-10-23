@@ -727,8 +727,9 @@ class CiCdJsonSerializerTest {
     }
 
     @Test
-    void anUnevaluatedServerBlockAddsNothing() throws Exception {
-        // The interim report: declared, no payload. No serverGates, no serverAsserts, and the
+    void anUnevaluatedServerBlockAddsOnlyWhatToCollect() throws Exception {
+        // The interim report: declared, no payload. No serverStatus, no serverComponents, no
+        // serverAsserts - only serverData, which tells a hook what to export (P2). Without it the
         // document is byte-identical to one with no block at all.
         com.jmeterwebinsightreport.core.model.ReportData data = com.jmeterwebinsightreport.report.gate.ServerFixtures.run();
         com.jmeterwebinsightreport.report.gate.ServerGateEvaluation declared =
@@ -740,8 +741,17 @@ class CiCdJsonSerializerTest {
                 Collections.<com.jmeterwebinsightreport.core.assertion.AssertionValidator.Finding>emptyList(), declared);
         String without = serializer.serialize(data, null, null, null, null,
                 Collections.<com.jmeterwebinsightreport.core.assertion.AssertionValidator.Finding>emptyList(), null);
-        assertEquals(without, with);
-        assertFalse(objectMapper.readTree(with).get("assertsEvaluated").asBoolean());
+        com.fasterxml.jackson.databind.JsonNode tree = objectMapper.readTree(with);
+        com.fasterxml.jackson.databind.JsonNode serverData = tree.get("serverData");
+        assertEquals("NOT_COLLECTED", serverData.get("state").asText());
+        assertEquals(1, serverData.get("series").size());
+        assertEquals("lag", serverData.get("series").get(0).get("metric").asText());
+        ((com.fasterxml.jackson.databind.node.ObjectNode) tree).remove("serverData");
+        assertEquals(objectMapper.readTree(without), tree);
+        assertFalse(tree.get("assertsEvaluated").asBoolean());
+        assertNull(tree.get("serverStatus"));
+        // ...and every document carries the run's window.
+        assertTrue(tree.get("window").get("startMillis").isNumber(), tree.toString());
     }
 
     // --- N4: the wire writes what was measured ---
