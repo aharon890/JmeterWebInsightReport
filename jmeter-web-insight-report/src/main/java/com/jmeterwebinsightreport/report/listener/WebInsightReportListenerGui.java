@@ -132,6 +132,7 @@ public class WebInsightReportListenerGui extends AbstractListenerGui {
 
     /** Refreshes the status line shortly after the last keystroke. */
     private transient Timer refreshSoon;
+    private transient Timer whileShown;
 
     public WebInsightReportListenerGui() {
         this(STATUS_CHECKS);
@@ -321,13 +322,33 @@ public class WebInsightReportListenerGui extends AbstractListenerGui {
                 reportTitleField, reportFilenameField, outputDirectoryField}) {
             field.getDocument().addDocumentListener(edited);
         }
-        Timer whileShown = new Timer(STATUS_TICK_MILLIS, e -> {
+        // Started by addNotify and stopped by removeNotify, as JMeter puts the panel in its window
+        // and takes it out: started here, it ticked for the JVM's life and nothing could stop it.
+        whileShown = new Timer(STATUS_TICK_MILLIS, e -> {
             if (isShowing()) {
                 refreshServerDataStatus();
             }
         });
+        refreshServerDataStatus();
+    }
+
+    @Override
+    public void addNotify() {
+        super.addNotify();
         whileShown.start();
         refreshServerDataStatus();
+    }
+
+    @Override
+    public void removeNotify() {
+        whileShown.stop();
+        refreshSoon.stop();
+        super.removeNotify();
+    }
+
+    /** Whether the every-two-seconds check is running: only while the panel is in a window. */
+    boolean ticking() {
+        return whileShown.isRunning();
     }
 
     private void browseAnnotationsFile() {

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  Family I & J — the rows run-title-junit-tests.sh cannot reach (I34-I36, J30-J34)
+#  Family I & J — the rows run-title-junit-tests.sh cannot reach (I34-I37, J30-J34)
 #
 #  T01-T29 cover the title and the JUnit flag on ONE entry point: the listener,
 #  under `-n -t`, into a directory that starts empty. Eight rows of the matrix ask
@@ -13,6 +13,8 @@
 #    I36      both paths in one JVM (`-n -t … -e -o`). The listener evaluates its
 #             JMX field (F15) and writes; the exporter must then find that report
 #             and skip (F8). The surviving artifact must carry the EVALUATED title.
+#    I37      I36 with an older server data file configured: still a skip, nothing
+#             collected, the file named as not read.
 #    J30-J34  JUnit XML beyond "was a file written": a shared folder reused across
 #             runs, a ${timestamp} name shared with the HTML, a run with no samples,
 #             an .xml path that cannot be written, and a gate that actually FAILS.
@@ -65,7 +67,7 @@ NO_THREADS=(-Jthreads=0 -Jduration=4 -Jrampup=1)
 
 DEFAULT_BASE="web-insight-report"
 
-print_banner "Family I & J — Exporter Title & JUnit XML Scenarios (I34-I36, J30-J34)"
+print_banner "Family I & J — Exporter Title & JUnit XML Scenarios (I34-I37, J30-J34)"
 
 rm -rf "$RESULTS_ROOT"
 mkdir -p "$RESULTS_ROOT"
@@ -185,7 +187,7 @@ assert_title() {
 }
 
 # =============================================================================
-#  I34-I36 — the title on the entry points T01-T29 cannot reach
+#  I34-I37 — the title on the entry points T01-T29 cannot reach
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -279,6 +281,49 @@ else
             "dashboard generated, exporter skipped, one report carrying the evaluated title"
     else
         record I36 "Both paths: evaluated title survives" FAIL "$I36_NOTES"
+    fi
+fi
+
+# -----------------------------------------------------------------------------
+# I37: I36 with a server data file configured that already exists — one run.properties
+#      for both commands, on day 2, with day 1's server.csv still in the folder.
+#
+#      No export of this run's server data can exist while the run's own JVM is still
+#      generating, so the file is an older run's. It used to be collected, bypass the
+#      skip, and have the generator write the listener's path a second time ("has already
+#      been written in this JVM", the two-listeners diagnosis) with a -g report that read
+#      SERVER NOT JUDGED. The exporter must skip, and say the file was not read.
+# -----------------------------------------------------------------------------
+echo "[I37] -n -t with -e -o and an old server CSV configured: the exporter still skips..."
+I37_DIR="$RESULTS_ROOT/I37"
+I37_DASH="$I37_DIR/dash"
+if ! clean_dir I37 "$I37_DIR"; then
+    record I37 "Both paths: an old server file does not replace the listener's report" FAIL \
+        "precondition: could not establish a clean directory"
+else
+    printf 'time,component,metric,instance,value\n2020-01-01T00:00:00Z,db,cpu,,1\n' > "$I37_DIR/server.csv"
+    LISTENER_OUT="$I37_DASH" listener_run "$I37_DIR" "$FN_JMX" "${SHORT[@]}" \
+        -Jwir.jmx.title="Day Two" \
+        -Jwebinsight.report.servermetrics="$I37_DIR/server.csv" \
+        -e -o "$I37_DASH"
+
+    I37_NOTES=""
+    file_exists "$I37_DASH/index.html" \
+        || I37_NOTES="$(append_note "$I37_NOTES" "JMeter's own dashboard is absent — the report generator never ran, so a skip cannot be claimed")"
+    assert_log_contains "$I37_DIR/jmeter-runtime.log" "skipping CLI generation" \
+        || I37_NOTES="$(append_note "$I37_NOTES" "no 'skipping CLI generation' WARN — the old server file bypassed the skip")"
+    assert_log_lacks "$I37_DIR/jmeter-runtime.log" "has already been written in this JVM" \
+        || I37_NOTES="$(append_note "$I37_NOTES" "the generator wrote the listener's report path a second time")"
+    assert_log_contains "$I37_DIR/jmeter.log" "was not read: it cannot be this run's yet" \
+        || I37_NOTES="$(append_note "$I37_NOTES" "the SKIPPED line does not say the server file was not read")"
+    file_exists "$I37_DASH/$DEFAULT_BASE.html" \
+        || I37_NOTES="$(append_note "$I37_NOTES" "no Web Insight report in the dashboard directory")"
+
+    if [[ -z "$I37_NOTES" ]]; then
+        record I37 "Both paths: an old server file does not replace the listener's report" PASS \
+            "dashboard generated, exporter skipped without collecting, the file named as not read"
+    else
+        record I37 "Both paths: an old server file does not replace the listener's report" FAIL "$I37_NOTES"
     fi
 fi
 
@@ -546,6 +591,6 @@ else
     fi
 fi
 
-print_summary "FAMILY I & J EXTRA TEST SUMMARY (I34-I36, J30-J34)"
+print_summary "FAMILY I & J EXTRA TEST SUMMARY (I34-I37, J30-J34)"
 
 exit $FAIL

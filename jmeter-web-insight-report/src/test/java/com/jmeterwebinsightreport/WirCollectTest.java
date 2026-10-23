@@ -630,6 +630,36 @@ class WirCollectTest {
         assertFalse(new String(Files.readAllBytes(plain.toPath()), StandardCharsets.UTF_8).contains("\"from\""));
     }
 
+    @Test
+    void underFromTheBlankRowsAreCountedUnderTheToolsNameAndNotAdvisedAsACoarserStep() throws Exception {
+        // A --from series is read under the tool's name; the blank-row count asked our name, found
+        // no rows, and a half-blank 15 s export was told "pass --step 30s" - a coarser step reads
+        // half-missing data as covered, the advice the blank-row line exists to replace.
+        ReportData run = new JtlParser().parse(PLAIN_JTL, WirCollect.DEFAULT_TEST_NAME);
+        long start = run.getMetadata().getStartTime().toEpochMilli();
+        long end = run.getMetadata().getEndTime().toEpochMilli();
+        StringBuilder csv = new StringBuilder("time,component,metric,instance,value\n");
+        int i = 0;
+        for (long t = start - 15_000; t <= end + 15_000; t += 15_000, i++) {
+            csv.append(t).append(",cache,redis.blocked_clients,,").append(i % 2 == 0 ? "3" : "").append('\n');
+        }
+        Path file = dir.resolve("telegraf.csv");
+        Files.write(file, csv.toString().getBytes(StandardCharsets.UTF_8));
+        Path annotations = dir.resolve("redis.json");
+        Files.write(annotations, ("{\"serverMetrics\":{\"components\":{\"cache\":{\"type\":\"redis\"}},\"asserts\":["
+                + "{\"id\":\"blocked\",\"component\":\"cache\",\"metric\":\"clients.blocked\",\"fail\":{\"gt\":100}}]}}")
+                .getBytes(StandardCharsets.UTF_8));
+        File out = dir.resolve("telegraf.json").toFile();
+        Streams s = new Streams();
+        assertEquals(0, WirCollect.run(new String[] {"--jtl", PLAIN_JTL.getPath(), "--annotations", annotations.toString(),
+                "--out", out.getPath(), "--csv", file.toString(), "--from", "telegraf", "--step", "15s", "--no-wait"},
+                s.outStream(), s.errStream(), Collections.<String, String>emptyMap()), s.out() + s.err());
+        String console = s.out() + s.err();
+        assertTrue(console.contains("cache/clients.blocked has ") && console.contains("with no value (an empty cell or NaN)"
+                + " - gaps in the export, not a coarser interval"), console);
+        assertFalse(console.contains("pass --step 30s"), console);
+    }
+
     // ---- --layout wide, --columns, --time-zone: Grafana's export --------------------------------
 
     @Test

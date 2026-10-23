@@ -145,11 +145,27 @@ public class WebInsightDataExporter extends AbstractDataExporter {
             // it might save, and it buys an answer that is correct.
             // The annotations and baseline found in the output directory, then the server data
             // given to this -g run: a payload, or a CSV collected here and now (P4).
-            readCompanionFiles(config, outputDir, jtlFile, reportData);
+            //
+            // Under -n -t ... -e the exporter runs in the listener's own JVM, straight after it:
+            // no export of this run's server data can exist yet, so a server file configured beside
+            // it (one run.properties for both commands) is an older run's. It used to be collected,
+            // bypass the skip, and replace the listener's report with a -g one reading SERVER NOT
+            // JUDGED. In that JVM the listener's report is decided on identity alone, before
+            // anything is collected; a separate jmeter -g process keeps the bypass (P4).
+            boolean sameExecution = resolvedName != null && !resolvedName.isEmpty() && nonGui();
+            boolean alreadyReported = sameExecution && thisRunAlreadyReported(outputDir, configuredName, reportData);
+            if (!alreadyReported) {
+                readCompanionFiles(config, outputDir, jtlFile, reportData);
+            }
 
-            if (!bringsServerData(config) && thisRunAlreadyReported(outputDir, configuredName, reportData)) {
+            if (alreadyReported
+                    || !bringsServerData(config) && thisRunAlreadyReported(outputDir, configuredName, reportData)) {
                 System.out.println("WEB-INSIGHT-REPORT: SKIPPED — this run's report is already in "
-                        + outputDir.getAbsolutePath() + " (the listener wrote it during the same execution)");
+                        + outputDir.getAbsolutePath() + " (the listener wrote it during the same execution)"
+                        + (alreadyReported && config.getServerMetricsFile() != null
+                            ? "; the server data " + config.getServerMetricsFile().getName() + " was not read: it"
+                                + " cannot be this run's yet - export the run's window, then add it with jmeter -g"
+                            : ""));
                 // At WARN, not INFO: this line is the ONLY explanation for a run that produces
                 // no Web Insight report from the CLI exporter. It now fires only when the
                 // existing report is provably this same run's, so it is no longer the report
@@ -281,31 +297,30 @@ public class WebInsightDataExporter extends AbstractDataExporter {
      * line, by a refusal of a file nobody had written yet. A collection that was refused did bring
      * something: the sentence saying why.
      */
+    /** JMeter's own -n flag: false in a GUI JMeter, whose Tools › Generate HTML report runs this exporter too. */
+    private static boolean nonGui() {
+        try {
+            return org.apache.jmeter.JMeter.isNonGUI();
+        } catch (Throwable e) {   // JMeter's launcher classes absent (an embedding): not an -e run
+            return false;
+        }
+    }
+
     static boolean bringsServerData(ReportConfiguration config) {
         File file = config.getServerMetricsFile();
         return (file != null && file.exists()) || config.getServerDataProblem() != null;
     }
 
     /**
-     * The reader options for a CSV given as server data. They live with the collection in
-     * {@link ReportRebuild}; this alias stays because {@code PropertyCheckTest} reads it here, by
-     * reflection, to hold {@code PropertyCheck}'s list to the one the {@code -g} path reads.
-     */
-    static final String[][] CSV_OPTIONS = ReportRebuild.CSV_OPTIONS;
-
-    /**
-     * {@link ReportRebuild#collectServerCsvIfGiven} with this process's properties, console and
-     * environment: when {@code webinsight.report.servermetrics} names a CSV rather than a wir-collect
-     * payload, collect it in-process into a temporary payload this report then reads.
+     * {@link ReportRebuild#collectServerCsvIfGiven} as the {@code -g} path calls it - this process's
+     * properties, console and environment: when {@code webinsight.report.servermetrics} names a CSV
+     * rather than a wir-collect payload, collect it in-process into a temporary payload this report
+     * then reads. {@code export()} reaches it through {@code ReportRebuild.readCompanionFiles}; the
+     * tests that hold the service to "the -g route, from the exporter's own pieces" call it here.
      */
     void collectServerCsvIfGiven(ReportConfiguration config, File jtlFile, ReportData parsed) {
         ReportRebuild.collectServerCsvIfGiven(config, jtlFile, parsed,
                 JMeterUtils::getProperty, System.out, System.err, System.getenv(), ReportRebuild.Route.COMMAND_LINE);
-    }
-
-    /** @see ReportRebuild#looksLikeJson */
-    static boolean looksLikeJson(File file) {
-        return ReportRebuild.looksLikeJson(file);
     }
 
     /**

@@ -163,6 +163,56 @@ class AnnotationLoaderTest {
     }
 
     @Test
+    void aNullServerAssertIsolatesTheBlockAndTheReportSurvives(@TempDir Path dir) throws Exception {
+        // Bound as a Java null, the entry reached ServerMetricsMapper and its NullPointerException
+        // lost the whole report. It is a shape the page refuses (blockShapeProblem), so the run
+        // isolates the block as it isolates "asserts": {}.
+        Path file = dir.resolve("a.json");
+        Files.write(file, ("{\"assertions\":[{\"id\":\"p95\",\"target\":{\"scope\":\"overall\"},\"metric\":\"p95\","
+                + "\"fail\":{\"gt\":1000}}],"
+                + "\"serverMetrics\":{\"components\":{\"db\":{\"type\":\"custom\"}},\"asserts\":["
+                + "{\"id\":\"lag\",\"component\":\"db\",\"query\":\"lag\",\"reduce\":{\"kind\":\"max\"},\"fail\":{\"gt\":5}},"
+                + "null]}}").getBytes(StandardCharsets.UTF_8));
+        AnnotationLoader.Result r = loader.read(file.toFile());
+        assertFalse(r.unusable(), String.valueOf(r.problem()));
+        assertEquals(1, r.annotations().getAssertions().size(), "the client rule is read");
+        ServerMetricsJson block = r.annotations().getServerMetrics();
+        assertNotNull(block.getUnreadable(), "the block is isolated");
+        ServerMetricsMapper.Result mapped = new ServerMetricsMapper().map(block);
+        assertTrue(mapped.config().kpis().isEmpty());
+        assertEquals(1, mapped.config().errorCount());
+    }
+
+    @Test
+    void anIsolatedServerBlockIsPublishedWithItsCredentialsMasked(@TempDir Path dir) throws Exception {
+        // The block does not bind ("asserts": {}), so every key rides unknownKeys verbatim and the
+        // bound sources/environments the masks read are null: a literal secret in it was written
+        // into every report as the file had it.
+        Path file = dir.resolve("a.json");
+        Files.write(file, ("{\"assertions\":[],\"serverMetrics\":{"
+                + "\"sources\":{\"p\":{\"type\":\"prometheus\",\"url\":\"https://u:CANARY1@h/api?api_key=CANARY2\","
+                + "\"auth\":{\"bearerToken\":\"CANARY3\",\"tokenEnv\":\"PROM_TOKEN\"},\"password\":\"CANARY4\"},"
+                + "\"q\":\"https://v:CANARY5@other\","
+                + "\"r\":{\"url\":\"https://${env.USER}:${env.PASS}@h\",\"auth\":\"CANARY6\"}},"
+                + "\"environments\":{\"prod\":{\"vars\":{\"URL\":\"https://bob:CANARY7@host\",\"PASS\":\"CANARY8\","
+                + "\"HOST\":\"db.example\"}}},"
+                + "\"components\":{\"db\":{\"type\":\"custom\"}},\"asserts\":{}}}")
+                .getBytes(StandardCharsets.UTF_8));
+        ServerMetricsJson block = loader.read(file.toFile()).annotations().getServerMetrics();
+        assertNotNull(block.getUnreadable(), "the block is the isolated one");
+
+        String published = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(block.publishable());
+        for (int i = 1; i <= 8; i++) {
+            assertFalse(published.contains("CANARY" + i), "CANARY" + i + " published: " + published);
+        }
+        assertTrue(published.contains("\"tokenEnv\":\"PROM_TOKEN\""), "a reference survives: " + published);
+        assertTrue(published.contains("\"HOST\":\"db.example\""), "a plain var survives: " + published);
+        assertTrue(published.contains("\"asserts\":{}"), "the rest is written back as the file had it: " + published);
+        assertTrue(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(block).contains("CANARY1"),
+                "the original is untouched: the mapper and the editor read what was loaded");
+    }
+
+    @Test
     void aSyntaxErrorStillLosesTheWholeFile(@TempDir Path dir) throws Exception {
         // One file cannot be half-parsed: a client rule beside a broken brace is lost too.
         Path file = dir.resolve("a.json");

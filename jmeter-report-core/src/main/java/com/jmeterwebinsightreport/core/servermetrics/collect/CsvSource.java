@@ -181,10 +181,12 @@ public final class CsvSource implements SeriesSource {
         String key = seriesKey(request.component(), request.metricKey());
         asked.add(key);
         ToolName readAs = null;
+        ToolName toolName = null;
         if (request.tool() != null) {
             // --from: the tool's name first, converted; then the catalogue's own name, as it is -
             // a series the user computed, already in the catalogue's unit (the escape hatch).
             ToolName name = request.toolName();
+            toolName = name;
             String toolKey = name == null ? null : seriesKey(request.component(), name.metric());
             if (toolKey != null) {
                 asked.add(toolKey);
@@ -215,8 +217,12 @@ public final class CsvSource implements SeriesSource {
         if (byInstance == null) {
             // No row names this series. When rows name one that differs only by case or by '.',
             // '_' or '-', that is a typo in the export or the file, not a missing series: say so,
-            // by name, rather than an EMPTY that reads like a query that matched nothing.
-            String near = nearMiss(idx, request.component(), request.metricKey());
+            // by name, rather than an EMPTY that reads like a query that matched nothing. Under
+            // --from the export most likely spelt the tool's name, so that is tried first.
+            String near = toolName == null ? null : nearMiss(idx, request.component(), toolName.metric());
+            if (near == null) {
+                near = nearMiss(idx, request.component(), request.metricKey());
+            }
             if (near != null) {
                 return Answer.failed(near);
             }
@@ -227,16 +233,6 @@ public final class CsvSource implements SeriesSource {
         // and coverage counts them. Clipping exactly read the same data as less covered than the
         // Prometheus backend did (98% against 100% on E26's own series).
         long slack = Math.max(0, source.stepMillis());
-        long fileFirst = Long.MAX_VALUE;
-        long fileLast = Long.MIN_VALUE;
-        int rowsRead = 0;
-        for (TreeMap<Long, Double> rows : byInstance.values()) {
-            if (!rows.isEmpty()) {
-                fileFirst = Math.min(fileFirst, rows.firstKey() + source.clockOffsetMs());
-                fileLast = Math.max(fileLast, rows.lastKey() + source.clockOffsetMs());
-                rowsRead += rows.size();
-            }
-        }
         for (Map.Entry<String, TreeMap<Long, Double>> e : byInstance.entrySet()) {
             // Converted over the whole instance, before the window: a counter's first rate in the
             // run is the difference from the row before it, which the window drops.
@@ -245,7 +241,7 @@ public final class CsvSource implements SeriesSource {
             List<ServerMetricsPayload.Point> points = new ArrayList<>();
             for (Map.Entry<Long, Double> p : rows.entrySet()) {
                 long ts = p.getKey() + source.clockOffsetMs();
-                if (window != null && (ts < window.getStart() - slack || ts > window.getEnd() + slack)) {
+                if (!inRun(ts, window, slack)) {
                     continue;
                 }
                 if (p.getValue() != null) {
@@ -261,33 +257,66 @@ public final class CsvSource implements SeriesSource {
             inst.setPoints(points);
             instances.add(inst);
         }
-        if (instances.isEmpty() && rowsRead > 0) {
-            String file = new File(source.path()).getName();
-            // The rows inside the run, a blank value's included: none means a time problem, whatever
-            // the rows outside it carry.
-            int inside = 0;
-            for (TreeMap<Long, Double> rows : byInstance.values()) {
-                for (Long t : rows.keySet()) {
-                    long ts = t + source.clockOffsetMs();
-                    if (window == null || (ts >= window.getStart() - slack && ts <= window.getEnd() + slack)) {
-                        inside++;
-                    }
-                }
-            }
-            if (inside == 0) {
-                // Rows exist for exactly this series and every one fell outside the run. That is a
-                // time problem - a local time written with Z, a wrong --time-zone, an export of
-                // another range, a skewed server clock - and never "the query matched no series":
-                // say so, with both spans and the shift between them.
-                return Answer.failed(outsideWindow(file, request.component(), request.metricKey(), rowsRead,
-                        fileFirst, fileLast, window, slack));
-            }
-            // Rows inside the run, and not one value among them.
-            return Answer.failed(file + " has " + inside + " row" + (inside == 1 ? "" : "s") + " for "
-                    + request.component() + "/" + request.metricKey() + (inside < rowsRead ? " inside the run" : "")
-                    + " and every value is empty or NaN - the export carries the series' times and no numbers");
+        if (instances.isEmpty()) {
+            return emptySeries(source, request, window, slack, byInstance, readAs);
         }
         return Answer.of(instances, readAs);
+    }
+
+    /**
+     * Why a series whose rows exist gave no point: every row outside the run (a time problem), the
+     * rows inside it holding numbers a {@code --from} conversion left nothing of, or none of them
+     * holding a number. The span and the counts are taken only here, where they are said.
+     */
+    private Answer emptySeries(ServerSource source, Request request, ServerMetricsPayload.Window window, long slack,
+                               Map<String, TreeMap<Long, Double>> byInstance, ToolName readAs) {
+        long fileFirst = Long.MAX_VALUE;
+        long fileLast = Long.MIN_VALUE;
+        int rowsRead = 0;
+        // The rows inside the run, a blank value's included: none means a time problem, whatever
+        // the rows outside it carry.
+        int inside = 0;
+        int insideWithValue = 0;
+        for (TreeMap<Long, Double> rows : byInstance.values()) {
+            if (!rows.isEmpty()) {
+                fileFirst = Math.min(fileFirst, rows.firstKey() + source.clockOffsetMs());
+                fileLast = Math.max(fileLast, rows.lastKey() + source.clockOffsetMs());
+                rowsRead += rows.size();
+            }
+            for (Map.Entry<Long, Double> r : rows.entrySet()) {
+                if (inRun(r.getKey() + source.clockOffsetMs(), window, slack)) {
+                    inside++;
+                    insideWithValue += r.getValue() != null ? 1 : 0;
+                }
+            }
+        }
+        if (rowsRead == 0) {
+            return Answer.of(new ArrayList<ServerMetricsPayload.InstanceRecord>(), readAs);
+        }
+        String file = new File(source.path()).getName();
+        if (inside == 0) {
+            // Rows exist for exactly this series and every one fell outside the run. That is a
+            // time problem - a local time written with Z, a wrong --time-zone, an export of
+            // another range, a skewed server clock - and never "the query matched no series":
+            // say so, with both spans and the shift between them.
+            return Answer.failed(outsideWindow(file, request.component(), request.metricKey(), rowsRead,
+                    fileFirst, fileLast, window, slack));
+        }
+        String rowsInside = file + " has " + inside + " row" + (inside == 1 ? "" : "s") + " for "
+                + request.component() + "/" + request.metricKey() + (inside < rowsRead ? " inside the run" : "");
+        if (insideWithValue > 0 && readAs != null) {
+            // Numbers in the run that the --from conversion left nothing of: a counter's rate is
+            // the difference from the row before, and the export holds no row before them. Told
+            // "every value is empty or NaN", the reader looked at cells that held numbers.
+            return Answer.failed(rowsInside + " holding numbers, and none is left once read as " + readAs.tool()
+                    + "'s " + readAs.kind().key() + " " + readAs.metric()
+                    + (readAs.kind() == ToolName.Kind.COUNTER
+                        ? ": a counter's rate needs the row before each one - export from one step before the run"
+                        : ""));
+        }
+        // Rows inside the run, and not one value among them.
+        return Answer.failed(rowsInside
+                + " and every value is empty or NaN - the export carries the series' times and no numbers");
     }
 
     /**
@@ -339,6 +368,12 @@ public final class CsvSource implements SeriesSource {
      * {@code .}, {@code _} and {@code -} swapped: the sentence naming both, or null.
      */
     static String nearMiss(Index idx, String component, String metric) {
+        // An assert that names no component (INVALID_RULE already) names nothing a row could: an
+        // empty answer, as before nearMiss existed - never the NullPointerException that cost the
+        // whole report.
+        if (component == null || metric == null) {
+            return null;
+        }
         String wanted = loose(component) + "\u0000" + loose(metric);
         for (Map.Entry<String, Map<String, TreeMap<Long, Double>>> e : idx.series.entrySet()) {
             int sep = e.getKey().indexOf('\u0000');
@@ -453,25 +488,11 @@ public final class CsvSource implements SeriesSource {
      * one interval for most of its rows has none to measure, and is collected at the default.
      */
     static long intervalOf(List<Long> ascending) {
-        TreeMap<Long, Integer> counts = new TreeMap<>();
-        int gaps = 0;
-        for (int i = 1; i < ascending.size(); i++) {
-            long gap = ascending.get(i) - ascending.get(i - 1);
-            if (gap > 0) {
-                gaps++;
-                counts.merge(gap, 1, Integer::sum);
-            }
-        }
-        long common = 0;
-        int most = 0;
-        // Ascending, and only a strictly larger count replaces: a tie keeps the smaller gap.
-        for (Map.Entry<Long, Integer> e : counts.entrySet()) {
-            if (e.getValue() > most) {
-                most = e.getValue();
-                common = e.getKey();
-            }
-        }
-        return most >= MIN_STEP_REPEATS && most * 2 >= gaps ? common : 0;
+        // Coverage's own count of the gaps (the smaller on a tie), so the measured step and the
+        // spacing the warnings quote are one rule; only the floor is this method's.
+        long[] counts = Coverage.spacingCounts(ascending);
+        long most = counts[1];
+        return most >= MIN_STEP_REPEATS && most * 2 >= counts[2] ? counts[0] : 0;
     }
 
     /**

@@ -57,18 +57,15 @@ class PropertyCheckTest {
     }
 
     /**
-     * The reader options are the exporter's {@code CSV_OPTIONS}, read reflectively because that
-     * constant is package-private in another package: an option added there and not here would be
-     * read by the exporter and warned about as inert, and one here and not there would be passed
-     * by the check and never read.
+     * The reader options are {@code ReportRebuild.CSV_OPTIONS}, the table the in-process collection
+     * reads, and {@code PropertyCheck} now takes its list from it. This still pins the result: an
+     * option the collection reads and the check warns about as inert, or one the check passes and
+     * nothing reads, fails here.
      */
     @Test
     void theReaderOptionsAreTheOnesTheExporterReads() throws Exception {
-        java.lang.reflect.Field f = com.jmeterwebinsightreport.report.exporter.WebInsightDataExporter.class
-                .getDeclaredField("CSV_OPTIONS");
-        f.setAccessible(true);
         List<String> read = new java.util.ArrayList<>();
-        for (String[] option : (String[][]) f.get(null)) {
+        for (String[] option : com.jmeterwebinsightreport.report.exporter.ReportRebuild.CSV_OPTIONS) {
             read.add(option[0]);
         }
         assertEquals(read, PropertyCheck.SERVER_DATA_OPTIONS);

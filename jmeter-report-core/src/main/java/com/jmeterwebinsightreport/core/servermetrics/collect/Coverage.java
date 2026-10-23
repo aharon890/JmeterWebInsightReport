@@ -75,11 +75,22 @@ public final class Coverage {
      * and a series' spacing ({@link #spacingMillis}), so the two cannot disagree.
      */
     static long mostCommonSpacing(Iterable<Long> ascending) {
+        return spacingCounts(ascending)[0];
+    }
+
+    /**
+     * {@link #mostCommonSpacing}'s answer with what it was decided from: {@code {spacing, how many
+     * gaps were that spacing, how many gaps there were}}. {@code CsvSource.intervalOf} floors a
+     * measured step on the last two, so it counts with this rule rather than a copy of it.
+     */
+    static long[] spacingCounts(Iterable<Long> ascending) {
         TreeMap<Long, Integer> spacings = new TreeMap<>();
         Long previous = null;
+        int gaps = 0;
         for (Long t : ascending) {
             if (previous != null && t > previous) {
                 spacings.merge(t - previous, 1, Integer::sum);
+                gaps++;
             }
             previous = t;
         }
@@ -92,6 +103,6 @@ public final class Coverage {
                 common = e.getKey();
             }
         }
-        return common;
+        return new long[] {common, most, gaps};
     }
 }

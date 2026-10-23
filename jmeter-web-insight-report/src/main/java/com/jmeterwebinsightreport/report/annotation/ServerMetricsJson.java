@@ -79,6 +79,9 @@ public class ServerMetricsJson {
      * shared by reference; only a source or environment that needs a mask is copied.
      */
     public ServerMetricsJson publishable() {
+        if (unreadable != null) {
+            return publishableUnreadable();
+        }
         Set<String> credentialVars = credentialVarNames();
         boolean sourcesNeedMask = false;
         if (sources != null) {
@@ -105,6 +108,117 @@ public class ServerMetricsJson {
         copy.unknownKeys.putAll(unknownKeys);
         copy.sources = sourcesNeedMask ? maskedSources() : sources;
         return copy;
+    }
+
+    /**
+     * {@link #publishable()} for a block {@code AnnotationLoader} isolated because its shape did not
+     * bind: every key rides {@code unknownKeys} verbatim, the bound {@code sources} and
+     * {@code environments} are null, and the masks above saw nothing - so a credential beside
+     * {@code "asserts": {}} was written into every report as the file had it. Its {@code sources}
+     * and {@code environments} are masked here by the same rules, over whatever shape they have
+     * (the shape is what failed): under {@code sources} every string through {@link #maskUrl}, a
+     * secret-like key's value and every non-reference value of an {@code auth} map to {@link #MASK};
+     * under {@code environments} every string through {@code maskVar}, the credential vars being
+     * every {@code ${env.NAME}} a source string names - wider than {@link #credentialVarNames()},
+     * which costs nothing in a block that judges nothing. The original is untouched.
+     */
+    private ServerMetricsJson publishableUnreadable() {
+        Object rawSources = unknownKeys.get("sources");
+        Object rawEnvironments = unknownKeys.get("environments");
+        if (rawSources == null && rawEnvironments == null) {
+            return this;
+        }
+        Set<String> refs = new HashSet<>();
+        envRefs(rawSources, refs);
+        ServerMetricsJson copy = new ServerMetricsJson();
+        copy.unreadable = unreadable;
+        for (Map.Entry<String, Object> e : unknownKeys.entrySet()) {
+            Object v = e.getValue();
+            if (e.getKey().equals("sources")) {
+                v = maskSourceTree(v);
+            } else if (e.getKey().equals("environments")) {
+                v = maskEnvironmentTree(null, v, refs);
+            }
+            copy.unknownKeys.put(e.getKey(), v);
+        }
+        return copy;
+    }
+
+    private static void envRefs(Object node, Set<String> out) {
+        if (node instanceof String) {
+            envNamesIn((String) node, out);
+        } else if (node instanceof Map) {
+            for (Object v : ((Map<?, ?>) node).values()) {
+                envRefs(v, out);
+            }
+        } else if (node instanceof List) {
+            for (Object v : (List<?>) node) {
+                envRefs(v, out);
+            }
+        }
+    }
+
+    private static Object maskSourceTree(Object node) {
+        if (node instanceof String) {
+            return maskUrl((String) node);
+        }
+        if (node instanceof Map) {
+            Map<String, Object> out = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> e : ((Map<?, ?>) node).entrySet()) {
+                String key = String.valueOf(e.getKey());
+                Object v = e.getValue();
+                if (isSecretLikeKey(key)) {
+                    out.put(key, MASK);
+                } else if (key.equals("auth")) {
+                    out.put(key, maskAuthTree(v));
+                } else {
+                    out.put(key, maskSourceTree(v));
+                }
+            }
+            return out;
+        }
+        if (node instanceof List) {
+            List<Object> out = new ArrayList<>();
+            for (Object v : (List<?>) node) {
+                out.add(maskSourceTree(v));
+            }
+            return out;
+        }
+        return node;
+    }
+
+    private static Object maskAuthTree(Object auth) {
+        if (!(auth instanceof Map)) {
+            return auth == null ? null : MASK;
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> a : ((Map<?, ?>) auth).entrySet()) {
+            String key = String.valueOf(a.getKey());
+            out.put(key, isReferenceKey(key) ? a.getValue() : MASK);
+        }
+        return out;
+    }
+
+    private static Object maskEnvironmentTree(String name, Object node, Set<String> refs) {
+        if (node instanceof String) {
+            return maskVar(name, (String) node, refs);
+        }
+        if (node instanceof Map) {
+            Map<String, Object> out = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> e : ((Map<?, ?>) node).entrySet()) {
+                String key = String.valueOf(e.getKey());
+                out.put(key, maskEnvironmentTree(key, e.getValue(), refs));
+            }
+            return out;
+        }
+        if (node instanceof List) {
+            List<Object> out = new ArrayList<>();
+            for (Object v : (List<?>) node) {
+                out.add(maskEnvironmentTree(name, v, refs));
+            }
+            return out;
+        }
+        return node;
     }
 
     private Map<String, SourceJson> maskedSources() {
@@ -473,6 +587,13 @@ public class ServerMetricsJson {
     public CollectionJson getCollection() { return collection; }
     public void setCollection(CollectionJson collection) { this.collection = collection; }
     public List<KpiJson> getAsserts() { return asserts; }
+    /**
+     * A null entry is refused at bind, so {@code AnnotationLoader} isolates the block as it does
+     * {@code "asserts": {}}, and the page's {@code blockShapeProblem} and the run agree that nothing
+     * in it is judged. Bound as a Java null, it reached the mapper and its NullPointerException
+     * lost the whole report, the client half included.
+     */
+    @com.fasterxml.jackson.annotation.JsonSetter(contentNulls = com.fasterxml.jackson.annotation.Nulls.FAIL)
     public void setAsserts(List<KpiJson> asserts) { this.asserts = asserts; }
 
     /**

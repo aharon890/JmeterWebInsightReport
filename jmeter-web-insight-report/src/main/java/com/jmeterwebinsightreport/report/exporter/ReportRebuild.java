@@ -304,6 +304,11 @@ public final class ReportRebuild {
             err.println("wir-collect: ran out of memory reading " + given.getName()
                     + " - give JMeter more heap (JVM_ARGS=-Xmx2g) or export a narrower window");
             code = 1;
+        } catch (RuntimeException e) {
+            // A fault in the collector costs the Server tab, never the client report (decision B):
+            // uncaught, it reached the exporter as an ExportException and no report was written.
+            err.println("wir-collect: could not collect " + given.getName() + " - " + ReportArtifacts.describe(e));
+            code = 1;
         }
         if (code == 0) {
             config.setServerMetricsFile(payload);

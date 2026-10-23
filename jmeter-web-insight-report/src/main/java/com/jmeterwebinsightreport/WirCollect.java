@@ -380,7 +380,9 @@ public final class WirCollect {
             }
             // A file's rows are at the interval it was exported at, which the step must match.
             if (csv) {
-                String key = s.getMetric() != null ? s.getMetric() : s.getResolvedQuery();
+                // The name the rows are under: under --from, the tool's, when the series was read as it.
+                String key = s.getReadAs() != null ? s.getReadAs().getMetric()
+                        : s.getMetric() != null ? s.getMetric() : s.getResolvedQuery();
                 int blank = s.getComponent() != null ? csvReader.blankRows(source, window, s.getComponent(), key) : 0;
                 long rowSpacing = blank > 0 ? csvReader.rowSpacingMillis(source, window, s.getComponent(), key) : 0;
                 for (String line : spacingLines(name, s, blank, rowSpacing, source.stepMillis())) {
@@ -591,7 +593,7 @@ public final class WirCollect {
         if (series == null || series.isEmpty()) {
             return null;
         }
-        return series.size() + (series.size() == 1 ? " series" : " series") + " in the file "
+        return series.size() + " series in the file "
                 + (series.size() == 1 ? "is" : "are") + " not asked for by the annotations (component/metric"
                 + " must match exactly): " + quotedList(series);
     }

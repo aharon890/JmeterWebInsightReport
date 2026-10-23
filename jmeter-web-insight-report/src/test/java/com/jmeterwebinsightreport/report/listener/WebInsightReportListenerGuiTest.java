@@ -39,6 +39,21 @@ class WebInsightReportListenerGuiTest {
     }
 
     @Test
+    void theTwoSecondCheckRunsOnlyWhileThePanelIsInAWindow() {
+        // Started in the constructor, it ticked for the JVM's life and nothing could stop it.
+        WebInsightReportListenerGui gui = new WebInsightReportListenerGui();
+        assertFalse(gui.ticking(), "a panel no window holds runs no timer");
+        try {
+            gui.addNotify();
+        } catch (java.awt.HeadlessException noPeers) {
+            org.junit.jupiter.api.Assumptions.assumeTrue(false, "no component peers in this headless JVM");
+        }
+        assertTrue(gui.ticking(), "put in a window, it checks every two seconds");
+        gui.removeNotify();
+        assertFalse(gui.ticking(), "taken out again, it stops");
+    }
+
+    @Test
     void everyFieldRoundTripsThroughTheElementAndClearGuiForgetsThemAll() {
         WebInsightReportListenerGui gui = new WebInsightReportListenerGui();
 

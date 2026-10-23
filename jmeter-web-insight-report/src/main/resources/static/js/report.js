@@ -18892,12 +18892,22 @@ WIR.serverKpis = (function () {
             return S.isConfigErrorReason(k.notJudged) || k.notJudged === 'NO_MATCH';
         });
         if (!unjudged.length) return '';
+        /* The flag acts on configuration and collection errors only (NotJudged.isConfigError); an
+           UNMATCHED row is not one, and was said to become fatal under it. */
+        var fatal = unjudged.filter(function (k) { return S.isConfigErrorReason(k.notJudged); }).length;
+        var flag = fatal === unjudged.length
+            ? 'webinsight.report.server.failonerror=true makes them fatal.'
+            : fatal > 0
+                ? 'webinsight.report.server.failonerror=true makes the ' + fatal + ' configuration or collection '
+                    + (fatal === 1 ? 'error' : 'errors') + ' among them fatal; an ' + S.DISPLAY.NO_MATCH
+                    + ' one never is.'
+                : 'An ' + S.DISPLAY.NO_MATCH + ' assert never fails the build, not even under '
+                    + 'webinsight.report.server.failonerror=true.';
         return '<div class="wir-server-problems" id="serverProblems" role="note">'
             + '<strong>' + esc(unjudged.length + ' server assert' + (unjudged.length === 1 ? ' was' : 's were')
                 + ' not judged') + '</strong> '
             + esc(EM_DASH + ' each row below says why. Server data problems do not fail the build: the '
-                + 'client report and its verdict are complete. '
-                + 'webinsight.report.server.failonerror=true makes them fatal.')
+                + 'client report and its verdict are complete. ' + flag)
             + '</div>';
     }
 
@@ -26077,6 +26087,7 @@ WIR.serverKpis = (function () {
         _kpiToJson: kpiToJson,
         _kpiFromJson: kpiFromJson,
         _blockShapeProblem: blockShapeProblem,
+        _problemsHtml: problemsHtml,
         _findings: currentFindings,
         _reducerFromJson: reducerFromJson,
         _serverBandFromJson: serverBandFromJson,
