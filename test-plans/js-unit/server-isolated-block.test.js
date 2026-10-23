@@ -59,6 +59,41 @@ test('F1: a list of asserts beside a malformed part of the block is written back
     assert.deepStrictEqual(JSON.parse(WIR.document.text()).serverMetrics, block);
 });
 
+test('F1: Discard drafts after a client edit re-reads the block as declaring nothing, and draws', () => {
+    // discardDrafts drops the drafts and then re-reads the loaded document's server half; that
+    // re-read parsed the isolated block and threw after the drafts were already gone.
+    const WIR = page(BLOCK);
+    WIR.asserts._retune('p95', 500);
+    assert.doesNotThrow(() => WIR.asserts.discardDrafts());
+    assert.doesNotThrow(() => WIR.serverKpis.reread());
+    assert.strictEqual(WIR.serverKpis._state.declaredKpis.length, 0);
+    assert.deepStrictEqual(JSON.parse(WIR.document.text()).serverMetrics, BLOCK);
+    // So does a block whose assert entry is null.
+    const nullEntry = { components: { db: { type: 'custom' } }, asserts: [null] };
+    const W2 = page(nullEntry);
+    assert.doesNotThrow(() => W2.serverKpis.reread());
+});
+
+test('F1: after a Discard the mirror judges with the settings init read, not the unreadable block\'s', () => {
+    // Init reads such a block's collection settings as the defaults (nothing in it is judged); the
+    // re-read took them from the block, so a Discard moved the window and the floor the mirror used.
+    const block = { components: { db: { type: 'custom' } },
+        collection: { excludeRampUp: false, coverageFloor: 0.5 }, asserts: {} };
+    const WIR = page(block);
+    const atInit = plain(WIR.serverKpis._state.config);
+    WIR.asserts._retune('p95', 500);
+    WIR.asserts.discardDrafts();
+    assert.deepStrictEqual(plain(WIR.serverKpis._state.config), atInit);
+    assert.notStrictEqual(atInit.coverageFloor, 0.5);
+});
+
+test('F1: the refusal of such a block says what the plugin does with it', () => {
+    const WIR = page(BLOCK);
+    assert.strictEqual(WIR.serverKpis._blockShapeProblem(BLOCK),
+        '"serverMetrics.asserts" must be a list of server assert objects — otherwise the plugin judges'
+        + ' nothing in the serverMetrics block.');
+});
+
 test('F1: a block that binds is still read', () => {
     const WIR = page({
         components: { db: { type: 'custom' } },

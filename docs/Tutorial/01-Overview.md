@@ -83,7 +83,7 @@ See [Export & CI/CD](11-Export-Integration.md) for setup details on the `-g -o` 
 | `webinsight.report.filename` | `web-insight-report.html` |
 | `webinsight.apdex.threshold` | `500` (ms) |
 | `webinsight.report.junit` | `false` |
-| `webinsight.report.servermetrics` | none — the payload `wir-collect` wrote, for server asserts |
+| `webinsight.report.servermetrics` | none — the server data for server asserts: a CSV exported from your monitoring tool, or the payload `wir-collect` wrote. Read by `jmeter -g` and the listener's **Rebuild report with server data** button |
 
 With no output directory configured, a listener run writes to the first of these it can actually
 write to (each is probed with a real write, and the log names the one chosen): the directory of

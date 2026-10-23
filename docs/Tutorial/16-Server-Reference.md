@@ -33,7 +33,7 @@ usage: wir-collect --jtl <results.jtl> --annotations <report-annotations.json> -
 | `--csv-columns SPEC` | With a long `--csv`: the file's names for the columns, as `key=column` pairs — `time`, `component`, `metric`, `instance`, `value`; a key not given keeps its own name. `metric=_measurement+_field` joins two columns as `<measurement>.<field>`. See [From InfluxDB 2](#from-influxdb-2-csv-columns-and-a-fixed-component) |
 | `--component ID` | With a long `--csv`: every row belongs to component `ID`, for an export with no component column whose asserts are all on `ID` — an assert on any other component finds no rows and reads `UNMATCHED`. Refused beside `--csv-columns component=` (exit 1). Beside a component column of the file's own, the file is refused and every series fails ([below](#from-influxdb-2-csv-columns-and-a-fixed-component)) |
 | `--time-zone ZONE` | With `--csv`: the zone of a time written with none — an IANA id (`Europe/Berlin`), `UTC`, or an offset (`+03:00`). Without it such a time is refused |
-| `--step DURATION` | The resolution asked for, and the coverage grid. Default: with `--csv`, the interval measured from the file's rows as the collector reads them (each instance's most frequent gap between rows with a value, within the run's window, taken when it repeats at least 3 times; the widest over the series the asserts read, so a coarser series in the file that no assert reads does not set it — with no assert yet, over the declared components' catalogue metrics), printed as `wir-collect: step 5s, measured from the file's rows`; with no measurable interval, and for Prometheus and `--recording`, `15s`. A measured interval coarser than `15s` that would leave fewer than 10 points in the run is not used, and the console says so (`step 10m measured from the file's rows is too coarse for this 35m run (fewer than 10 points) - collecting at 15s; …`) |
+| `--step DURATION` | The resolution asked for, and the coverage grid. Default: with `--csv`, the interval measured from the file's rows as the collector reads them (each instance's most frequent gap between rows with a value, within the run's window, taken when it repeats at least 3 times and is at least half the gaps; the widest over the series the asserts read, so a coarser series in the file that no assert reads does not set it — with no assert yet, over the declared components' catalogue metrics), printed as `wir-collect: step 5s, measured from the file's rows`; with no measurable interval, and for Prometheus and `--recording`, `15s`. A measured interval coarser than `15s` that would leave fewer than 10 points in the run is not used, and the console says so (`step 10m measured from the file's rows is too coarse for this 35m run (fewer than 10 points) - collecting at 15s; …`) |
 | `--clock-offset DURATION` | Added to every timestamp the source reports: `-30s` lines up servers whose clocks run 30 s ahead. Default `0` |
 | `--env NAME` | The `serverMetrics.environments` entry to resolve `${env.*}` from. Default: the file's `defaultEnv` |
 | `--test-name NAME` | The same text as `-Jwebinsight.report.title` when step 3 sets one. Default: `JMeter Web Insight Report` |
@@ -628,8 +628,8 @@ step 2 read has the same effect.
 Deploy the release's JAR to `$JMETER_HOME/lib/ext` as usual. The JAR runs the collector itself, with
 the same command on Windows (PowerShell or cmd), macOS and Linux; it finds JMeter from its place in
 `lib/ext`, and refuses a `lib/ext` that holds two plugin JARs. A plugin JAR run from anywhere else
-(a release folder) is the collector that runs, against the JMeter `JMETER_HOME` names, whatever
-version that JMeter's `lib/ext` holds. `--help` prints the line with your JAR's real name:
+(a release folder) is the collector that runs, against the JMeter `JMETER_HOME` names (else the one
+`jmeter` on `PATH` belongs to), whatever version that JMeter's `lib/ext` holds. `--help` prints the line with your JAR's real name:
 
 ```
 java -jar <JMETER_HOME>/lib/ext/jmeter-web-insight-report-X.Y.Z.jar --jtl results.jtl ...
@@ -647,14 +647,16 @@ under `scripts/`:
 - **`wir-collect.bat`** is one `java` line, no `bash`, for cmd and PowerShell. It runs the plugin
   JAR it finds beside itself, else in `..\lib\ext` (the `.bat` copied into `$JMETER_HOME\bin`),
   else in `%JMETER_HOME%\lib\ext`, so in `bin` or beside the JAR it needs no `JMETER_HOME`; a JAR
-  beside it that is not in a `lib\ext` still needs `JMETER_HOME` to find JMeter, and says so. Two
+  beside it that is not in a `lib\ext` finds JMeter from `JMETER_HOME`, else from `jmeter` on
+  `PATH` (as `wir-collect.sh` does), and says so when neither is there. Two
   plugin JARs beside it are refused, naming both, as two in `lib\ext` are. With
   no plugin JAR in any of the three, Java prints
   `Could not find or load main class com.jmeterwebinsightreport.WirCollectLauncher`.
 
 **On a machine with more than one JMeter**, set `JMETER_HOME` to the one that holds the plugin JAR
-you mean to collect with. Without it the script takes the JMeter that `jmeter` on `PATH` belongs to,
-and collects with whichever plugin JAR that one holds.
+you mean to collect with. Without it the script, and a plugin JAR run from outside `lib/ext` (by
+`java -jar` or the `.bat`), take the JMeter that `jmeter` on `PATH` belongs to; the script then
+collects with whichever plugin JAR that one holds.
 
 ---
 
@@ -675,7 +677,8 @@ and collects with whichever plugin JAR that one holds.
 
 Unknown keys are ignored and carried through a Save untouched. A few keys are refused instead,
 each with a sentence naming what to write ([below](#retired-and-refused-keys)). A container of the wrong shape (`"asserts": {}`,
-`"warn": 640`, `"reduce": "max"`) fails the whole annotations file at load, as a client rule's would.
+`"warn": 640`, `"reduce": "max"`) costs the whole `serverMetrics` block at load: nothing in it is
+judged and the run says `SERVER NOT JUDGED`, while the client asserts are read and judged as usual.
 A written `null` means absent.
 
 Durations are written `500ms`, `30s`, `2m`, `1h`: lowercase, no space, never a bare number, because a

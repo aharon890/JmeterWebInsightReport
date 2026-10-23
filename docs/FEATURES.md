@@ -1210,6 +1210,29 @@ Add **Web Insight Report** listener to your test plan (GUI or non-GUI mode). Aut
 writer (the listener is one), so a GUI run leaves the JTL that adding server data needs. Empty
 writes none. When the file exists, JMeter asks to append, overwrite or not start.
 
+**Server data (CSV) field and the Rebuild report with server data button:** after the run, name the
+CSV exported from your monitoring tool (or a `server-metrics.json` payload) and click the button. It
+runs the same rebuild `jmeter -g` runs, over the run's own Results file, and writes the report over
+the one the run wrote, under the same name in the same folder. The rebuilt report is built from the
+JTL, so its error details carry no response bodies. A dialog shows the verdict, the collector's own
+lines (each series, its coverage, rows outside the run, near-miss names, the measured step) and every
+problem or warning, with **Open report** and **Copy**.
+
+- The results file, output folder, report name and title are the ones the last run in this JMeter
+  session used; after a restart, the fields as they read now, and the dialog says so.
+- `webinsight.report.servermetrics`, when JMeter was started with it, wins over the field, and the
+  line under the field reads `Overridden by webinsight.report.servermetrics = X - this is the file
+  Rebuild reads`. Otherwise that line reads `Resolves to <path> · found, 2.1 MB`, or why it cannot.
+- A Server data or Annotations field unchanged since the run reads as the run read it, test-plan
+  variables included. An edited one is evaluated at the click, with JMeter functions and properties
+  (`${__P(runs.dir)}/server.csv`); a `${name}` it cannot resolve is refused, naming it.
+- Refused while a test is running. A CSV saved before the run ended is warned about as probably the
+  previous run's export. The reader options (`webinsight.report.servermetrics.*`) come from JMeter's
+  properties, as for `jmeter -g`.
+- The field is read only by the button. At the end of a run the listener never collects server data,
+  and the `WEB-INSIGHT-REPORT: NEXT` console line names the file the button would read
+  (`webinsight.report.servermetrics`, else the Server data (CSV) field) and, in the GUI, the button.
+
 **Output Directory field:**
 
 | Value | Resolves to |
@@ -1277,8 +1300,8 @@ All settings can be overridden via JMeter `-J` properties. CLI properties take p
 | `webinsight.report.junit` | `false` |
 | `webinsight.report.failonerror` | `true` — an incomplete artifact set, or a gate that could not be built from the file, exits non-zero |
 | `webinsight.report.failonassert` | `false` — `true` exits non-zero on a client FAIL or a FAIL on any server component |
-| `webinsight.report.servermetrics.*` | none — for a CSV given to `-g`: `step`, `clockoffset`, `timezone`, `from`, `layout`, `columns`, `csvcolumns`, `component`, `env`, each the collector's flag of the same name |
-| `webinsight.report.servermetrics` | none, never auto-detected — a CSV exported from a monitoring tool, which `jmeter -g` collects in-process, or the `server-metrics.json` payload `wir-collect` wrote for this run. Read by the `-g -o` step only: the listener writes its report before the server data exists and ignores the property, so one `run.properties` serves both commands |
+| `webinsight.report.servermetrics.*` | none — for a CSV given to `-g` or to the listener's Rebuild button: `step`, `clockoffset`, `timezone`, `from`, `layout`, `columns`, `csvcolumns`, `component`, `env`, each the collector's flag of the same name |
+| `webinsight.report.servermetrics` | none, never auto-detected — a CSV exported from a monitoring tool, which `jmeter -g` collects in-process, or the `server-metrics.json` payload `wir-collect` wrote for this run. Read by the `-g -o` step and by the listener's **Rebuild report with server data** button, where it wins over the **Server data (CSV)** field. At the end of a run the listener writes its report before the server data exists and ignores the property, so one `run.properties` serves both commands |
 | `webinsight.report.externaldata` | `false` — `true` always writes the chart data to a sibling `-data.js` (see [External Data Mode](#external-data-mode)) |
 | `webinsight.report.externaldata.threshold` | `10000000` (characters) — the size above which the chart data goes to the sibling file |
 

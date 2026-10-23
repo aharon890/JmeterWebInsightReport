@@ -87,6 +87,25 @@ public class ReportConfiguration {
      */
     private String serverDataProblem;
 
+    /**
+     * The temporary payload the in-process collection of a CSV wrote for this report, or null - also
+     * null when the server data is a payload somebody gave us, which is theirs and never deleted.
+     *
+     * <p>Kept apart from {@link #getServerMetricsFile()}, which points at the same file once the
+     * collection succeeded, because that one cannot say whose the file is. The rebuild deletes this
+     * one as soon as the report has read it: {@code deleteOnExit} alone kept one file per rebuild for
+     * as long as the JVM lived, which in a GUI JMeter is the whole working day.
+     */
+    private File collectedServerPayload;
+
+    public File getCollectedServerPayload() {
+        return collectedServerPayload;
+    }
+
+    public void setCollectedServerPayload(File collectedServerPayload) {
+        this.collectedServerPayload = collectedServerPayload;
+    }
+
     public String getServerDataProblem() {
         return serverDataProblem;
     }

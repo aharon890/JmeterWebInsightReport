@@ -2,7 +2,7 @@
 
 Comprehensive review of ALL scenarios across runtime, configuration, data, UI, and integration dimensions.
 
-**Last updated:** 2026-10-20 (4.0.4)
+**Last updated:** 2026-10-23 (4.0.18)
 
 No counts are written here, of scenarios, tests or rows. Every one that was drifted within
 weeks, and a stale count reads as a verified figure. `./scripts/list-scenarios.sh --count`
@@ -38,6 +38,7 @@ Two things to know when reading a citation:
 | 1.5 | Docker containerized execution | [x] | E16, E17 (`run-docker-tests.sh`); G01–G05 |
 | 1.6 | Listener + `-g -o` collision (both produce report — exporter should skip) | [x] | D01–D06 |
 | 1.7 | Multiple Web Insight listeners in same test plan | [x] | A07, A08, C26 |
+| 1.8 | GUI **Rebuild report with server data** (the listener's Server data (CSV) field, the button, its result dialog) | [~] | The rebuild and its inputs: `ReportRebuildTest` (equal to the `-g` route), `GuiRebuildTest`, `RebuildRequestTest`, `FieldValueTest`, `WebInsightReportListenerTest` (`LastRun`, the clone link), `WebInsightReportListenerGuiTest` (field round-trip). The click, the status line, the dialog and Open report: manual on Windows, macOS and Linux before a release (`EXPLORATORY-LOG.md`, 2026-10-23); a Swing button is not driven by any suite |
 
 ## 2. Output Path Configuration
 

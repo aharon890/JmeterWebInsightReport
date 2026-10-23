@@ -1836,13 +1836,55 @@ class CsvSourceTest {
 
     @Test
     void jitteredTimestampsMeasureNoStep() throws IOException {
-        // Every gap seen once: no interval repeats, so none is taken (F6).
+        // Gaps of 15001, 14998, 15003, 14998 ms: none is seen three times (F6).
         ServerSource s = csv("time,component,metric,value\n1700000000000,app,cpu,1\n1700000015001,app,cpu,1\n"
                 + "1700000029999,app,cpu,1\n1700000045002,app,cpu,1\n1700000060000,app,cpu,1\n");
         assertEquals(0, new CsvSource().measuredStepMillis(s, HOUR));
-        // Two repeats are not enough either.
+        // An hour of a raw 15 s export jittered by up to 3 ms, over several instances. Each instance's
+        // most common gap repeats dozens of times (14998ms 103 times in 239), so on repeats alone the
+        // widest of them, 15002ms, was taken - a step no sustainedFor 30s is a whole number of. None is
+        // half the gaps, so nothing is measured and the collection keeps the default.
+        StringBuilder sb = new StringBuilder("time,component,metric,instance,value\n");
+        long[] jitter = {0, 3, -2, 1, -3, 2, -1};
+        for (int inst = 0; inst < 5; inst++) {
+            for (int i = 0; i < 240; i++) {
+                long t = 1_700_000_000_000L + i * 15_000L + jitter[(i * (inst + 2)) % jitter.length];
+                sb.append(t).append(",app,cpu,i").append(inst).append(",1\n");
+            }
+        }
+        assertEquals(0, new CsvSource().measuredStepMillis(csv(sb.toString()), HOUR));
+    }
+
+    @Test
+    void anExportWithNoOneIntervalForMostOfItsRowsMeasuresNoStep() throws IOException {
+        // Gaps of 10, 12 and 11 s: whole seconds, each seen once.
+        assertEquals(0, new CsvSource().measuredStepMillis(csv("time,component,metric,value\n"
+                + "1700000000000,app,cpu,1\n1700000010000,app,cpu,1\n1700000022000,app,cpu,1\n"
+                + "1700000033000,app,cpu,1\n"), HOUR));
+        // Two repeats are not enough.
         assertEquals(0, new CsvSource().measuredStepMillis(csv("time,component,metric,value\n"
                 + rows("app,cpu", 1_700_000_000_000L, 10_000, 3, false)), HOUR));
+        // Three 5 s gaps among nine scattered ones repeat, and are still not the export's interval.
+        long[] gaps = {5000, 7000, 5000, 9000, 11000, 5000, 13000, 17000, 19000, 23000, 29000, 31000};
+        StringBuilder sb = new StringBuilder("time,component,metric,value\n");
+        long t = 1_700_000_000_000L;
+        sb.append(t).append(",app,cpu,1\n");
+        for (long g : gaps) {
+            t += g;
+            sb.append(t).append(",app,cpu,1\n");
+        }
+        assertEquals(0, new CsvSource().measuredStepMillis(csv(sb.toString()), HOUR));
+    }
+
+    @Test
+    void anIntervalIsTakenWhenItIsHalfTheGapsOrMore() {
+        assertEquals(500, CsvSource.intervalOf(java.util.Arrays.asList(0L, 500L, 1000L, 1500L)));
+        // Half the gaps is enough - an export that missed a scrape now and then keeps its interval.
+        assertEquals(15_000, CsvSource.intervalOf(java.util.Arrays.asList(0L, 15_000L, 45_000L, 60_000L,
+                90_000L, 105_000L, 135_000L)));
+        // Three of seven is not: 15 s three times, 30 s three times, 35 s once.
+        assertEquals(0, CsvSource.intervalOf(java.util.Arrays.asList(0L, 15_000L, 45_000L, 60_000L,
+                90_000L, 105_000L, 135_000L, 170_000L)));
     }
 
     @Test

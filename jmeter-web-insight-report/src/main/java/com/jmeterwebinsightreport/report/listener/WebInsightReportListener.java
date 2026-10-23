@@ -13,7 +13,11 @@ import com.jmeterwebinsightreport.report.generator.PropertyCheck;
 import com.jmeterwebinsightreport.report.generator.ReportArtifacts;
 import com.jmeterwebinsightreport.report.generator.ReportConfiguration;
 import com.jmeterwebinsightreport.report.generator.WebInsightReportGenerator;
+import com.jmeterwebinsightreport.core.util.RunIdentity;
+import com.jmeterwebinsightreport.report.listener.rebuild.LastRun;
 import org.apache.jmeter.control.TransactionController;
+import org.apache.jmeter.engine.util.CompoundVariable;
+import org.apache.jmeter.testelement.property.JMeterProperty;
 import org.apache.jmeter.reporters.ResultCollector;
 import org.apache.jmeter.samplers.SampleEvent;
 import org.apache.jmeter.samplers.SampleResult;
@@ -22,8 +26,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * JMeter Listener that collects sample results during test execution and generates
@@ -41,6 +47,58 @@ public class WebInsightReportListener extends ResultCollector {
 
     /** The annotations file: the asserts, markers and notes this run is judged against. */
     public static final String ANNOTATIONS_FILE = "WebInsightReport.annotationsFile";
+
+    /**
+     * The server data the panel's <b>Rebuild report with server data</b> button reads: a CSV, or a
+     * {@code server-metrics.json} payload. Read only by that button (and named by the NEXT line as the
+     * file to write). The run itself never collects it: when the run ends, the data does not exist yet
+     * (L2), and {@code jmeter -g} cannot see a {@code .jmx} field, so a path saved here can never reach
+     * or override a pipeline's {@code -g}.
+     */
+    public static final String SERVER_DATA_FILE = "WebInsightReport.serverDataFile";
+
+    /**
+     * Runs with a report still to come, across every Web Insight listener in this JVM: incremented
+     * when a run's first host starts, decremented once its last host ended and the report is written
+     * (or was not). Half of the panel's "is a test running" (R8); {@code JMeterContextService}'s start
+     * time is the other half, and reaches 0 only once every results file is closed.
+     */
+    private static final AtomicInteger RUNS_IN_FLIGHT = new AtomicInteger();
+
+    /**
+     * The element this one was cloned from - its <b>direct</b> source, never followed further.
+     *
+     * <p>A GUI Start runs on clones: {@code Start.cloneTree} uses {@code new TreeCloner(false)}, which
+     * clones {@code NoThreadClone} elements too, so {@code testStarted}/{@code testEnded} never run on
+     * the element the panel edits (R1). The run-clone publishes its {@link LastRun} through this link
+     * into the element the panel shows. Never chained: a pasted copy is a clone too, and its run must
+     * land on the copy, not on the element it was copied from.
+     *
+     * <p>Weak, so a finished run's clone cannot keep a deleted element alive, and an identity link,
+     * not a map key: {@code AbstractTestElement}'s equals and hashCode are property-based, so two
+     * listeners configured alike are equal.
+     */
+    private transient WeakReference<WebInsightReportListener> source;
+
+    /** What this element's last run resolved, published once by its run-clone (or itself under -n). */
+    private transient volatile LastRun lastRun;
+
+    /**
+     * {@link #getFilename()} as this run resolved it. A running clone's property is a function JMeter
+     * re-executes on every read, so {@code results-${__time(HHmmss)}.jtl} named one file when
+     * ResultCollector opened it and another at the NEXT line (R2). Cleared when a run starts, before
+     * {@code super.testStarted} opens the file through it; set only while running.
+     */
+    private transient volatile String filenameThisRun;
+
+    /** Whether this element counted a run in {@link #RUNS_IN_FLIGHT} that it has not yet uncounted. */
+    private transient boolean countedInFlight;
+
+    /** The two fields the Rebuild button reads, as this run was started with them and as it resolved them (R4). */
+    private transient String serverDataRaw;
+    private transient String serverDataResolved;
+    private transient String annotationsRaw;
+    private transient String annotationsResolved;
 
     /** Written on the test-start thread under {@code synchronized (this)}, read by every
      *  sampler thread (and by RMI worker threads in distributed mode) in
@@ -60,6 +118,41 @@ public class WebInsightReportListener extends ResultCollector {
         super();
     }
 
+    /** A clone that knows its direct source, so its run can tell the panel what it resolved. See {@link #source}. */
+    @Override
+    public Object clone() {
+        WebInsightReportListener copy = (WebInsightReportListener) super.clone();
+        copy.source = new WeakReference<>(this);
+        return copy;
+    }
+
+    /** The last run of this element in this JMeter session, or null - what the Rebuild button rebuilds. */
+    public LastRun getLastRun() {
+        return lastRun;
+    }
+
+    /**
+     * Runs whose report is still to come, in this JVM. The panel refuses to rebuild while it is above
+     * zero: the run's results file is still being written.
+     */
+    public static int runsInFlight() {
+        return RUNS_IN_FLIGHT.get();
+    }
+
+    /** Memoised while running: see {@link #filenameThisRun}. */
+    @Override
+    public String getFilename() {
+        String memo = filenameThisRun;
+        if (memo != null) {
+            return memo;
+        }
+        String name = super.getFilename();
+        if (isRunningVersion()) {
+            filenameThisRun = name;
+        }
+        return name;
+    }
+
     @Override
     public void testStarted() {
         testStarted("");
@@ -67,11 +160,29 @@ public class WebInsightReportListener extends ResultCollector {
 
     @Override
     public void testStarted(String host) {
+        synchronized (this) {
+            if (activeHostCount == 0) {
+                // Before super.testStarted, which opens the results file through getFilename(): from
+                // here the name is read once and kept, so the JTL, the NEXT line and LastRun agree.
+                filenameThisRun = null;
+            }
+        }
         super.testStarted(host);
         synchronized (this) {
             if (activeHostCount == 0) {
                 log.info("Web Insight Report Listener: test started");
+                if (!countedInFlight) {
+                    countedInFlight = true;
+                    RUNS_IN_FLIGHT.incrementAndGet();
+                }
                 testStartTime = System.currentTimeMillis();
+                // The panel's element forgets the previous run now, not when this one's report is
+                // written: a run whose report then fails never publishes a LastRun, and the one
+                // before it would stay - so Rebuild would quietly rebuild that older run (its JTL,
+                // its folder, its title) over its own report, judged fresh against its own end time,
+                // and a runId check that passes because the older JTL really is the older run. With
+                // nothing remembered the button reads the fields as they are now, and says so.
+                panelElement().lastRun = null;
                 // A new run, so forget which paths the previous one wrote. Here and not on
                 // every testStarted: in distributed mode this method fires once per remote
                 // host on this single instance, and clearing per host would disarm the guard
@@ -84,6 +195,13 @@ public class WebInsightReportListener extends ResultCollector {
                 // the same way, and first: it is read lock-free too (RPT-13).
                 ReportConfiguration config = new ReportConfiguration();
                 LiveStatisticsEngine engine = createConfiguredEngine(config);
+                // The two fields the panel's Rebuild button reads at the click, kept as this run
+                // read them: an unchanged field then reads as the run read it (R4) - a test-plan
+                // variable included, which resolves here on the engine thread and nowhere after.
+                serverDataRaw = rawText(SERVER_DATA_FILE);
+                serverDataResolved = getPropertyAsString(SERVER_DATA_FILE);
+                annotationsRaw = rawText(ANNOTATIONS_FILE);
+                annotationsResolved = getPropertyAsString(ANNOTATIONS_FILE);
                 configuration = config;
                 statsEngine = engine;
             } else {
@@ -195,10 +313,12 @@ public class WebInsightReportListener extends ResultCollector {
         // property and refuse what it named as another run's - so one run.properties shared by
         // both commands (the documented way: no -J to survive a shell) made every interim report
         // read REFUSED instead of "Add the server data", with no NEXT line. Ignored here, and said.
+        // The panel's Rebuild button reads it (it beats the Server data field), after the run.
         String serverMetrics = getJMeterProperty("webinsight.report.servermetrics");
         if (serverMetrics != null && !serverMetrics.isEmpty()) {
-            log.info("webinsight.report.servermetrics ({}) is for the jmeter -g step: this report is written"
-                    + " when the run ends, before the server data exists", serverMetrics);
+            log.info("webinsight.report.servermetrics ({}) is for the jmeter -g step and the listener's Rebuild"
+                    + " report with server data button: this report is written when the run ends, before the"
+                    + " server data exists", serverMetrics);
         }
 
         // Ramp-up overlay. The engine owns this in listener mode — the exporter's
@@ -444,6 +564,22 @@ public class WebInsightReportListener extends ResultCollector {
                 return; // generate only after the last host ends
             }
         }
+        // The run is out of flight once its report is written or has failed to be, whichever way
+        // reportAtEnd leaves: the panel's Rebuild must not wait on a run that returned early.
+        try {
+            reportAtEnd();
+        } finally {
+            synchronized (this) {
+                if (countedInFlight) {
+                    countedInFlight = false;
+                    RUNS_IN_FLIGHT.decrementAndGet();
+                }
+            }
+        }
+    }
+
+    /** The report, once the last host has ended. */
+    private void reportAtEnd() {
         log.info("Web Insight Report Listener: test ended, generating report");
 
         // Same check as the exporter's: a setting under a name nothing reads is said, and the
@@ -520,6 +656,7 @@ public class WebInsightReportListener extends ResultCollector {
             // same test. It runs later in this same JVM, so a property survives.
             publishResolved(artifacts);
             announce(artifacts);
+            publishLastRun(reportData, artifacts);
 
             // A1: an incomplete set is a failed run too.
             //
@@ -732,10 +869,14 @@ public class WebInsightReportListener extends ResultCollector {
         // parsing a block or reading jmeter.log.
         System.out.println(artifacts.successMarker());
         // The listener cannot see -l's path; it names its own Results file when one is set, and the
-        // JTL generically otherwise. Logged too, so the GUI's log viewer shows it.
+        // JTL generically otherwise - the name this run resolved, not a function re-run now (R2).
+        // Logged too, so the GUI's log viewer shows it. When the Server data field (or the property
+        // that beats it) names a file, that is the file to write; with a GUI, the panel's Rebuild
+        // button is the way to add it.
         String ownJtl = getFilename();
         String next = artifacts.nextStepsLine(ownJtl == null || ownJtl.trim().isEmpty() ? null
-                : ownJtl.trim().replace(java.io.File.separatorChar, '/'));
+                : ownJtl.trim().replace(java.io.File.separatorChar, '/'),
+                serverDataToWrite(), guiMode());
         if (next != null) {
             System.out.println(next);
             log.info("{}", next);
@@ -747,6 +888,90 @@ public class WebInsightReportListener extends ResultCollector {
             // because this line is now also the explanation for a non-zero exit.
             System.err.println("WEB-INSIGHT-REPORT: INCOMPLETE — " + artifacts.incompleteReason());
         }
+    }
+
+    /**
+     * The server data file the Rebuild button would read, for the NEXT line: the property, which beats
+     * the field (L1), else the field as this run resolved it; null when neither names one. Never read
+     * by this run: only named.
+     */
+    private String serverDataToWrite() {
+        String property = getJMeterProperty("webinsight.report.servermetrics");
+        String path = property != null && !property.trim().isEmpty() ? property : serverDataResolved;
+        return path == null || path.trim().isEmpty() ? null
+                : path.trim().replace(File.separatorChar, '/');
+    }
+
+    /** Whether this JMeter has a GUI, and so a Rebuild button to name. */
+    private static boolean guiMode() {
+        try {
+            return org.apache.jmeter.gui.GuiPackage.getInstance() != null;
+        } catch (Throwable e) {   // no GUI classes in an embedding: no button
+            return false;
+        }
+    }
+
+    /**
+     * Tell the element the panel shows what this run resolved (R1, L3): its direct source when this is
+     * a GUI run's clone, else this element itself (a non-GUI run is not cloned). Written once, after a
+     * report was generated - a run that wrote none has nothing to rebuild, and its start already cleared
+     * the run before it (see {@code testStarted}).
+     */
+    private void publishLastRun(ReportData reportData, ReportArtifacts artifacts) {
+        try {
+            File jtl = null;
+            String name = getFilename();
+            if (name != null && !name.trim().isEmpty()) {
+                // As ResultCollector resolved it when it opened the file: relative to the test plan.
+                jtl = new File(org.apache.jmeter.services.FileServer.resolveBaseRelativeName(name.trim()))
+                        .getAbsoluteFile();
+            }
+            String baseline = getJMeterProperty("webinsight.report.baseline");
+            LastRun run = LastRun.builder()
+                    .jtl(jtl)
+                    .outputDirectory(configuration.getOutputDirectory().getAbsoluteFile())
+                    .htmlFilename(artifacts.filename(ReportArtifacts.Kind.HTML))
+                    .title(configuration.getReportTitle())
+                    .rampUpMillis(configuration.getRampUpDurationMillis())
+                    .junit(configuration.isGenerateJunitXml())
+                    .externalData(configuration.isExternalDataMode(), configuration.getExternalDataThreshold())
+                    .apdexThreshold(getJMeterProperty("webinsight.apdex.threshold"))
+                    .baseline(baseline == null || baseline.isEmpty() ? null : new File(baseline))
+                    .runId(RunIdentity.of(reportData))
+                    .endedAt(System.currentTimeMillis())
+                    .serverData(serverDataRaw, serverDataResolved)
+                    .annotations(annotationsRaw, annotationsResolved)
+                    .build();
+            panelElement().lastRun = run;
+        } catch (Exception e) {
+            // The report is written and announced; only the panel's rebuild loses its memory of it.
+            log.debug("Could not record this run for the listener panel's Rebuild button: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * The element whose {@link LastRun} this run writes: its direct source when this is a GUI run's
+     * clone, else this element itself. One answer for the run's start, which clears it, and its end,
+     * which sets it.
+     */
+    private WebInsightReportListener panelElement() {
+        WebInsightReportListener target = source == null ? null : source.get();
+        return target != null ? target : this;
+    }
+
+    /**
+     * A property's text as typed, not as evaluated: a running clone's property is a function, and its
+     * string value is what the function returns now. The function keeps the text it was compiled from.
+     * Read on this element, not its source: it is the text this run was started with, whatever the
+     * panel's element has been edited to since.
+     */
+    private String rawText(String name) {
+        JMeterProperty property = getProperty(name);
+        Object value = property.getObjectValue();
+        if (value instanceof CompoundVariable) {
+            return ((CompoundVariable) value).getRawParameters();
+        }
+        return property.getStringValue();
     }
 
 }

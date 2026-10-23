@@ -47,12 +47,54 @@ Telegraf's, OpenTelemetry's or CloudWatch's own metric names are read too: see
 ## By hand, in the JMeter GUI
 
 1. Add the **Web Insight Report** listener and set its **Annotations File** and its **Results file
-   (JTL)**, such as `C:/runs/checkout/results.jtl` — the steps below need the run's JTL. When the
+   (JTL)**, such as `C:/runs/checkout/results.jtl` — the rebuild reads the run's JTL. When the
    file exists already, JMeter asks whether to append or overwrite; choose overwrite for a new run.
 2. Run the test. Open the report it wrote and go to the **Server** tab: under **Add the server
    data** it shows the window to export and the names to use, and **Download a CSV template**.
 3. Export that window from your monitoring tool as a CSV, and save it beside the JTL.
-4. Write `run.properties` beside them, with forward slashes in the paths:
+4. In the listener, set **Server data (CSV)** to that file: type the path, or use **Browse...**. The
+   line under the field shows what it found, such as
+   `Resolves to C:/runs/checkout/server.csv · found, 2.1 MB`.
+5. Click **Rebuild report with server data**. A dialog shows the verdict, the collector's own lines
+   (each series and its coverage, rows outside the run, near-miss names, the step measured from the
+   file) and every problem or warning. **Open report** opens the report in your browser; **Copy**
+   copies the dialog's text.
+
+The rebuild writes over the report the run wrote: the same file, in the same folder. It is built from
+the JTL, as `jmeter -g` builds it, and a JTL holds no response bodies, so the rebuilt report's error
+details carry none. Each click reads the CSV and the annotations file again, so after a new export or
+an edit to the asserts, click it again.
+
+What the button reads:
+
+- **The run's own settings**: the results file, the output folder, the report name and the title the
+  last run in this JMeter session used. A Report Title edited since the run applies from the next run.
+  After JMeter restarts, or when the last run wrote no report, there is no run to read them from: every
+  field is read as it is now, and the dialog says so.
+- **Server data (CSV) and Annotations File**: a field unchanged since the run reads as the run read
+  it, so a test-plan variable in it works. An edited field is read at the click, with JMeter functions
+  and properties evaluated, such as `${__P(runs.dir)}/server.csv`. A `${name}` it cannot resolve then
+  is refused, naming it: a test-plan variable exists only while a test runs, so use `${__P(name)}`.
+- **`webinsight.report.servermetrics`**, when JMeter was started with it (`-J`, `-q` or
+  `user.properties`), wins over the field. The line under the field then reads
+  `Overridden by webinsight.report.servermetrics = D:/other/server.csv - this is the file Rebuild reads`.
+- **The reader options** (`webinsight.report.servermetrics.timezone`, `.clockoffset` and the rest)
+  come from JMeter's properties, as for `jmeter -g`: see
+  [Where the metrics come from](16-Server-Reference.md#where-the-metrics-come-from).
+
+The field also takes the `server-metrics.json` payload `wir-collect` writes. The button is refused
+while a test is running, because the JTL is still being written. A CSV saved before the run ended is
+probably the previous run's export, and the line under the field warns. A large CSV is read in the
+JMeter GUI's own memory, about ten times the file's size. At the end of a run, the console's
+`WEB-INSIGHT-REPORT: NEXT` line names the file the button would read (`webinsight.report.servermetrics`,
+else the **Server data (CSV)** field) and the button.
+
+### A JTL written by `-l` or another listener
+
+The button rebuilds the report of the listener's own **Results file (JTL)**. For a JTL written by
+`-l` or by another listener, use JMeter's **Tools › Generate HTML report**:
+
+1. Write `run.properties` beside the JTL and the CSV, with forward slashes in the paths:
 
    ```properties
    jmeter.reportgenerator.exporter.webinsight.classname=com.jmeterwebinsightreport.report.exporter.WebInsightDataExporter
@@ -60,12 +102,12 @@ Telegraf's, OpenTelemetry's or CloudWatch's own metric names are read too: see
    webinsight.report.servermetrics=C:/runs/checkout/server.csv
    ```
 
-5. **Tools › Generate HTML report**: the results file, `run.properties` as the user.properties
+2. **Tools › Generate HTML report**: the results file, `run.properties` as the user.properties
    file, and a new output folder. Click **Generate report**.
-6. Open `web-insight-report.html` in that folder.
+3. Open `web-insight-report.html` in that folder.
 
-The dialog says "Report created !" whatever the server side found; the report's Server tab says the
-rest.
+JMeter's dialog says "Report created !" whatever the server side found; the report's Server tab says
+the rest.
 
 Write the paths in `run.properties` in full. A relative path is read against JMeter's working folder,
 which under the GUI's dialog is JMeter's own `bin/`; a relative `webinsight.report.servermetrics` that
@@ -154,7 +196,11 @@ with the times your monitoring tool shows.
 
 | You see | Why | Fix |
 |---|---|---|
-| Server tab: **Add the server data** / chip `Server · NOT COLLECTED` | this report was built without server data | follow the panel; open the report in the new output folder |
+| Server tab: **Add the server data** / chip `Server · NOT COLLECTED` | this report was built without server data | follow the panel. After **Rebuild report with server data**, reload the same report (or click **Open report**); after Tools › Generate HTML report or `jmeter -g`, open the one in the new output folder |
+| the line under **Server data (CSV)** reads `Overridden by webinsight.report.servermetrics = … - this is the file Rebuild reads` | JMeter was started with that property (`-J`, `-q` or `user.properties`), and it wins over the field | remove it there and restart JMeter, or point it at this run's file |
+| the line under **Server data (CSV)** warns the file was saved before this run ended | it is probably the previous run's export | export this run's window again |
+| **Rebuild report with server data** refuses a `${name}` | a test-plan variable in a field edited since the run, or in any field after JMeter restarted (there is no run to read it from); it exists only while a test runs. `${timestamp}` in Report Filename is the plugin's own and is left alone | `${__P(name)}`, with the property set when JMeter starts |
+| **Rebuild report with server data** refuses `the backslash before ${…} stops JMeter evaluating it` | a `\` right before `${` is an escape to JMeter's function parser, so the function never runs | write the path with `/`, as the refusal shows it |
 | `UNMATCHED` — "no row of the CSV names component db, metric connections" | no row carries that pair | the names table under **Add the server data**; the console lists the pairs the file does carry |
 | `SOURCE FAILED` — "no row names component app, metric cpu.pct; 62 rows name App/cpu.pct" | a case or `.`/`_`/`-` difference | write the names exactly as the annotations do |
 | `INVALID` — "sustainedFor 30s is not a whole number of the data's measured 4s spacing" | the export's interval does not divide the `sustainedFor` | a `sustainedFor` that is a multiple of both the interval and the step (`60s` for 4 s rows at 15 s) |
@@ -164,5 +210,5 @@ with the times your monitoring tool shows.
 | chip `Server · REFUSED` | the payload belongs to another run, or the CSV could not be read | the tab says which |
 | the report says nothing was declared, and the console printed `CONFIG ERROR — JMeter received a property named "webinsight"` | PowerShell split an unquoted `-J` | put the settings in `run.properties`, or quote each `-J` |
 | `WARNING — … holds a control character` | a single backslash in a properties-file path | forward slashes |
-| JMeter: "Cannot write to '…' as folder is not empty" | `-o` already holds files | a new folder |
+| JMeter: "Cannot write to '…' as folder is not empty" | Tools › Generate HTML report's output folder, or `jmeter -g`'s `-o`, already holds files (the Rebuild button writes over its report and needs no new folder) | a new folder |
 | only JMeter's own dashboard (`index.html`) in the output folder | the Web Insight exporter is not registered | the `jmeter.reportgenerator.exporter.webinsight.classname` line in `run.properties` |

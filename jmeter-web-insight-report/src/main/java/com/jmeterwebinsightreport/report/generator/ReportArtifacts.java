@@ -192,15 +192,32 @@ public final class ReportArtifacts {
      * @param jtl the JTL's path when this path knows it (the exporter), or null (the listener)
      */
     public String nextStepsLine(String jtl) {
+        return nextStepsLine(jtl, null, false);
+    }
+
+    /**
+     * {@link #nextStepsLine(String)} as the listener says it: the file to write when its Server data
+     * field (or {@code webinsight.report.servermetrics}) names one, and, when JMeter runs with a GUI,
+     * the listener's <b>Rebuild report with server data</b> button as the way to add it, before the
+     * {@code jmeter -g} command that works everywhere. With neither it is the one-argument line, word
+     * for word: {@code -g} and the goldens print that one.
+     *
+     * <p>A local path here is fine where it is not on the page: the console and {@code jmeter.log} are
+     * the operator's own, and the published page must name none ({@code report_local_path}).
+     *
+     * @param serverDataPath the server data file the button would read, {@code /} separators, or null
+     * @param guiMode        whether this JMeter has a GUI, so the button is there to click
+     */
+    public String nextStepsLine(String jtl, String serverDataPath, boolean guiMode) {
         if (serverGates == null || !serverGates.declared() || serverGates.evaluated()
                 || serverGates.payloadRefusal() != null) {
             return null;
         }
-        // The asserts requiredSeries() reads: a disabled one waits for nothing, so it is not counted,
-        // and a file whose every assert is disabled has no next step.
+        // The asserts requiredSeries() reads: a disabled one, or one naming neither a metric nor a
+        // query, waits for nothing, so it is not counted, and a file of only those has no next step.
         int waiting = 0;
         for (ServerKpi kpi : serverGates.config().kpis()) {
-            if (kpi.enabled() && kpi.gate() != null) {
+            if (ServerGateEvaluation.waitsForServerData(kpi)) {
                 waiting++;
             }
         }
@@ -222,7 +239,12 @@ public final class ReportArtifacts {
             sb.append(" as a CSV (time,component,metric,instance,value) with these component/metric names: ")
                     .append(String.join(", ", names));
         }
-        sb.append(". Then rebuild: jmeter -g ").append(jtl != null ? jtl : "<the run's JTL>")
+        if (serverDataPath != null && !serverDataPath.trim().isEmpty()) {
+            sb.append(". Write it to ").append(serverDataPath.trim());
+        }
+        sb.append(guiMode
+                ? ". Then click Rebuild report with server data on the Web Insight Report listener, or rebuild: jmeter -g "
+                : ". Then rebuild: jmeter -g ").append(jtl != null ? jtl : "<the run's JTL>")
                 .append(" -o <a new folder> -q <a properties file naming webinsight.report.annotations and")
                 .append(" webinsight.report.servermetrics>");
         return sb.toString();

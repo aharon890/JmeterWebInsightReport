@@ -458,17 +458,30 @@ public final class ServerGateEvaluation {
         List<String[]> out = new ArrayList<>();
         java.util.Set<String> seen = new java.util.LinkedHashSet<>();
         for (ServerKpi kpi : config.kpis()) {
-            if (!kpi.enabled() || kpi.gate() == null) {
+            if (!waitsForServerData(kpi)) {
                 continue;
             }
             String metric = kpi.metric() != null ? kpi.metric() : kpi.query();
-            if (metric == null || metric.isEmpty() || !seen.add(kpi.gate() + "|" + metric)) {
+            if (!seen.add(kpi.gate() + "|" + metric)) {
                 continue;
             }
             String unit = kpi.unit() == null || kpi.unit().isEmpty() ? null : kpi.unit();
             out.add(new String[] {kpi.gate(), metric, unit});
         }
         return out;
+    }
+
+    /**
+     * Whether a server assert asks for a series {@link #requiredSeries()} lists: enabled, on a
+     * component, and naming a catalogue metric or a query. The console's NEXT line counts by it, so
+     * its count and its list of names are of the same asserts.
+     */
+    public static boolean waitsForServerData(ServerKpi kpi) {
+        if (!kpi.enabled() || kpi.gate() == null) {
+            return false;
+        }
+        String metric = kpi.metric() != null ? kpi.metric() : kpi.query();
+        return metric != null && !metric.isEmpty();
     }
 
     /** The accepted payload's {@code collectionId}, or null when not evaluated. */

@@ -16983,7 +16983,10 @@ WIR.serverKpis = (function () {
     function rereadDeclared() {
         var doc = WIR.document.loaded();
         var block = (doc && doc.serverMetrics) || null;
-        adoptBlock(block, block ? kpisFromDocument(block) : []);
+        /* The loaded document is the shipped one after a Discard, so its block may be one that does
+           not bind: read as declaring nothing, as readDeclared reads it. Parsed, it threw after
+           discard() had already dropped the drafts, and the page was never drawn again. */
+        adoptBlock(block, block && !blockShapeProblem(block) ? kpisFromDocument(block) : []);
     }
 
     /* The one place the declared half is replaced. kpis are parsed by the caller, BEFORE this
@@ -16996,7 +16999,7 @@ WIR.serverKpis = (function () {
         seedsCache = null;
         state.block = block;
         state.declaredKpis = assignKeys(kpis);
-        state.config = configFromJson(block);
+        state.config = configFromJson(block && !blockShapeProblem(block) ? block : null);
         state.filters = { gate: '', status: '', text: '' };
         state.componentMenu = null;
         editor = null;
@@ -18024,10 +18027,16 @@ WIR.serverKpis = (function () {
                 + ' <span class="wir-dim">Grafana: set each series’ legend to component/metric and use'
                 + ' Download CSV with “Series joined by time”.</span></li>';
         }
-        html += '<li><strong>Add it to this run</strong>: in JMeter, Tools › Generate HTML report with the'
-            + ' run’s results file, a properties file naming <code>webinsight.report.annotations</code> and'
+        /* Three routes, the GUI's own first. The page cannot tell a GUI run from -n, and must name
+           no local path (report_local_path), so the listener's field is named, never its value. */
+        html += '<li><strong>Add it to this run</strong>: in the JMeter GUI, set the Web Insight Report'
+            + ' listener’s <strong>Server data (CSV)</strong> field to the exported file and click'
+            + ' <strong>Rebuild report with server data</strong>. It rebuilds this report in place from the'
+            + ' run’s results file, so without response bodies. For a results file written by'
+            + ' <code>-l</code> or another listener: Tools › Generate HTML report with that file, a'
+            + ' properties file naming <code>webinsight.report.annotations</code> and'
             + ' <code>webinsight.report.servermetrics</code> (forward slashes in paths) and a new output'
-            + ' folder; or from any shell: <code>jmeter -g &lt;results.jtl&gt; -o &lt;new folder&gt; -q'
+            + ' folder. From any shell: <code>jmeter -g &lt;results.jtl&gt; -o &lt;new folder&gt; -q'
             + ' run.properties</code>. Server data never changes the build’s exit code.</li></ol></div>';
         return html;
     }
@@ -21375,8 +21384,8 @@ WIR.serverKpis = (function () {
 
     /**
      * A Boolean flag exactly as Jackson 2.16 binds it to {@code Boolean}: true, false, or null
-     * for "absent" — and undefined when Jackson refuses the value, which makes the whole file a
-     * CONFIG ERROR (flagProblem's job). Probed shape by shape against ServerMetricsJson
+     * for "absent" — and undefined when Jackson refuses the value, which makes the serverMetrics
+     * block unreadable: nothing in it is judged, the client half is (flagProblem's job). Probed shape by shape against ServerMetricsJson
      * (2026-10-02): an integer is false only at 0; a string is trimmed, then "true"/"TRUE"/"True"
      * and "false"/"FALSE"/"False" are flags, "" and "null" are null, anything else ("tRUE", "1",
      * "yes") is refused. A number with a fraction is refused too, but JSON.parse has already
@@ -23965,13 +23974,14 @@ WIR.serverKpis = (function () {
     /* ---- what the loader refuses as a WHOLE FILE ------------------------------ */
 
     /* Jackson binds serverMetrics to ServerMetricsJson, and a value of the wrong JSON type is
-       not a finding about one KPI — the file is unreadable and the run exits CONFIG ERROR. The
+       not a finding about one KPI — the block is unreadable: AnnotationLoader isolates it, judges
+       nothing in it and the client half as usual, and the run says SERVER NOT JUDGED. The
        browser has to refuse the same shapes BEFORE adopting a document, or Apply is offered for
-       a file the next run cannot read, and kpiFromJson throws on half of them. Checked against
+       a block the next run cannot read, and kpiFromJson throws on half of them. Checked against
        AnnotationLoader shape by shape (2026-10-02). Lenient where Jackson coerces: a number is
        accepted for a text field, and an integer, "true"/"false" (three casings each) or a blank
        for a flag — and the parsers then READ those flags the way Jackson does (flagValue). */
-    var WHOLE_FILE = ' — the plugin refuses the whole annotations file otherwise.';
+    var WHOLE_FILE = ' — otherwise the plugin judges nothing in the serverMetrics block.';
 
     function isPlainObject(v) {
         return v !== null && typeof v === 'object' && !Array.isArray(v);

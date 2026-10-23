@@ -133,8 +133,11 @@ webinsight.report.servermetrics=server.csv
   `jmeter -g`, and a CSV it cannot read is a refused payload: said, and never fatal by default.
 - The report is stamped with the CSV's own file time, so rebuilding from the same file keeps the
   Server tab's drafts.
-- In the JMeter GUI, **Tools › Generate HTML report** does the second command: the results file, the
-  properties file, and a new output folder.
+- In the JMeter GUI, the listener's **Server data (CSV)** field and its **Rebuild report with server
+  data** button do the second command for the run's own **Results file (JTL)**, and write over the
+  report the run wrote. For a JTL written by `-l` or another listener, **Tools › Generate HTML
+  report** does it: the results file, the properties file, and a new output folder. See
+  [Getting Server Data In](14-Server-Data.md#by-hand-in-the-jmeter-gui).
 
 Prometheus and `--recording` still use the collector, as below.
 
@@ -249,8 +252,10 @@ the server asserts yet, so the Server tab says what to do instead, under **Add t
    query text), the unit, and the name each supported tool's export gives a catalogue metric.
    **Download a CSV template** writes `server-metrics-template.csv`: the header and one row per series
    at the run's start, ready to fill in.
-3. **How to add it**: JMeter's **Tools › Generate HTML report**, or `jmeter -g <results.jtl> -o <new
-   folder> -q run.properties` from any shell.
+3. **How to add it**: in the JMeter GUI, the listener's **Server data (CSV)** field and **Rebuild
+   report with server data** button; for a JTL written by `-l` or another listener, JMeter's
+   **Tools › Generate HTML report**; or `jmeter -g <results.jtl> -o <new folder> -q run.properties`
+   from any shell.
 
 The console prints the same at the end of the run, as one line starting
 `WEB-INSIGHT-REPORT: NEXT`, and the CI/CD JSON carries it for a script: `window` and `serverData`

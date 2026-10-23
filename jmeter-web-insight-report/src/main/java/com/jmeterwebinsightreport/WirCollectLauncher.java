@@ -15,7 +15,8 @@ import java.util.List;
  * <p>{@link WirCollect} needs JMeter's own libraries (Jackson, slf4j), which the plugin JAR does not
  * shade, so it cannot be this JAR's {@code Main-Class} by itself - that was the reason for "never
  * java -jar". This class uses the JDK only: it finds JMeter from the JAR's own place in
- * {@code <JMETER_HOME>/lib/ext} (or from {@code JMETER_HOME} when the JAR is elsewhere), refuses a
+ * {@code <JMETER_HOME>/lib/ext} (when the JAR is elsewhere, from {@code JMETER_HOME}, else from
+ * {@code jmeter} on {@code PATH}, as {@code wir-collect.sh} finds it), refuses a
  * {@code lib/ext} it runs from that holds no plugin JAR or more than one, and runs {@code WirCollect}
  * in-process through a class loader over this JAR and {@code <JMETER_HOME>/lib/*.jar} - the classpath
  * {@code wir-collect.sh} builds, so nothing else in {@code lib/ext} is on it. Every refusal is one
@@ -42,7 +43,7 @@ public final class WirCollectLauncher {
     /** The launch; returns only on a refusal - WirCollect.main exits the JVM itself. */
     static int run(String[] args) throws Refusal {
         File jar = ownJar();
-        File home = jmeterHome(jar, System.getenv("JMETER_HOME"));
+        File home = jmeterHome(jar, System.getenv("JMETER_HOME"), System.getenv("PATH"));
         File plugin = onePluginJar(new File(home, "lib/ext"), jar, System.getProperty("java.class.path", ""));
         List<URL> urls = new ArrayList<>();
         try {
@@ -86,24 +87,88 @@ public final class WirCollectLauncher {
     }
 
     /**
-     * JMeter's home: the JAR's {@code ../..} when it sits in a {@code lib/ext}, else {@code JMETER_HOME}.
-     * A JMETER_HOME that is set and is not a JMeter installation is an error, never a reason to look
-     * elsewhere - wir-collect.sh's rule.
+     * JMeter's home: the JAR's {@code ../..} when it sits in a {@code lib/ext}, else {@code JMETER_HOME},
+     * else the install whose {@code bin} holds the first {@code jmeter} on {@code path} - wir-collect.sh's
+     * order, each candidate probed at {@code libexec} too and the PATH one's symlinks followed, so
+     * Homebrew's wrapper resolves. A JMETER_HOME that is set - to anything, blanks included - and is not
+     * a JMeter installation is an error, never a reason to look elsewhere - wir-collect.sh's rule.
      */
-    static File jmeterHome(File jar, String env) throws Refusal {
+    static File jmeterHome(File jar, String env, String path) throws Refusal {
         if (inLibExt(jar)) {
             return jar.getAbsoluteFile().getParentFile().getParentFile().getParentFile();
         }
-        if (env == null || env.trim().isEmpty()) {
-            throw new Refusal("the plugin JAR is not in a JMeter lib/ext and JMETER_HOME is unset - run the JAR"
-                    + " from <JMETER_HOME>/lib/ext, or set JMETER_HOME");
+        if (env != null && !env.isEmpty()) {
+            File home = env.trim().isEmpty() ? null : installAt(new File(env.trim()));
+            if (home == null) {
+                throw new Refusal("JMETER_HOME is set to '" + env + "', which has no lib/ext - point it at the JMeter"
+                        + " installation (the folder holding bin and lib)");
+            }
+            return home;
         }
-        File home = new File(env.trim());
-        if (!new File(home, "lib/ext").isDirectory()) {
-            throw new Refusal("JMETER_HOME is set to '" + env + "', which has no lib/ext - point it at the JMeter"
-                    + " installation (the folder holding bin and lib)");
+        File onPath = jmeterOnPath(path);
+        if (onPath == null) {
+            throw new Refusal("the plugin JAR is not in a JMeter lib/ext, JMETER_HOME is unset and `jmeter` is not"
+                    + " on PATH - run the JAR from <JMETER_HOME>/lib/ext, set JMETER_HOME, or put JMeter's bin on PATH");
+        }
+        File home = homeOf(onPath);
+        if (home == null) {
+            throw new Refusal("JMETER_HOME is unset, and `jmeter` on PATH (" + onPath + ") is not in a JMeter"
+                    + " install's bin - set JMETER_HOME to the JMeter directory (the one holding bin and lib/ext)");
         }
         return home;
+    }
+
+    /**
+     * The first {@code jmeter} on {@code path} as {@code command -v jmeter} finds it, or null: on Windows
+     * {@code jmeter.exe}, {@code .bat}, {@code .cmd} or the bare name, in PATHEXT's order; elsewhere an
+     * executable {@code jmeter}, so a leftover without the execute bit is passed over as the shell passes
+     * it over. A shim that is no JMeter's is found, and refused by {@link #homeOf}, as the script refuses it.
+     */
+    private static File jmeterOnPath(String path) {
+        if (path == null) {
+            return null;
+        }
+        boolean windows = File.pathSeparatorChar == ';';
+        String[] names = windows
+                ? new String[] {"jmeter.exe", "jmeter.bat", "jmeter.cmd", "jmeter"} : new String[] {"jmeter"};
+        for (String entry : path.split(java.util.regex.Pattern.quote(File.pathSeparator))) {
+            String dir = entry.trim();
+            if (dir.length() > 1 && dir.startsWith("\"") && dir.endsWith("\"")) {
+                dir = dir.substring(1, dir.length() - 1);
+            }
+            if (dir.isEmpty()) {
+                continue;
+            }
+            for (String name : names) {
+                File f = new File(dir, name);
+                if (f.isFile() && (windows || f.canExecute())) {
+                    return f;
+                }
+            }
+        }
+        return null;
+    }
+
+    /** The JMeter home a {@code bin/jmeter} launcher belongs to - symlinks followed, {@code libexec} probed - or null. */
+    private static File homeOf(File launcher) {
+        File real;
+        try {
+            real = launcher.toPath().toRealPath().toFile();
+        } catch (java.io.IOException | RuntimeException e) {
+            real = launcher.getAbsoluteFile();
+        }
+        File bin = real.getParentFile();
+        File home = bin == null ? null : bin.getParentFile();
+        return home == null ? null : installAt(home);
+    }
+
+    /** {@code home} when it holds a {@code lib/ext}, else its {@code libexec} when that does, else null - the script's normalize_jmeter_home. */
+    private static File installAt(File home) {
+        if (new File(home, "lib/ext").isDirectory()) {
+            return home;
+        }
+        File libexec = new File(home, "libexec");
+        return new File(libexec, "lib/ext").isDirectory() ? libexec : null;
     }
 
     /** Whether the file sits directly in a folder {@code lib/ext}. */
@@ -121,20 +186,24 @@ public final class WirCollectLauncher {
      * first, and that is refused, naming them. {@code java -jar} names its one JAR, so a folder of
      * several releases is no ambiguity there. Otherwise the one plugin JAR in lib/ext - refusing none
      * (name the fix) and several (list them).
+     *
+     * <p>The folder and each classpath entry are compared as the file system names them
+     * ({@link #canonical}), not as they are spelt: the JVM expands the .bat's {@code %~dp0*} in the
+     * spelling the .bat was called by - a Windows 8.3 short path ({@code C:\PROGRA~1\...})
+     * included - while this JAR's own location comes back long, so two JARs beside a .bat called by
+     * its short path were never seen as one folder's, and whichever the JVM listed first ran.
      */
-    /** {@link #onePluginJar(File, File, String)} as {@code java -jar} runs it: the classpath is the JAR. */
-    static File onePluginJar(File ext, File self) throws Refusal {
-        return onePluginJar(ext, self, self.getPath());
-    }
-
     static File onePluginJar(File ext, File self, String classPath) throws Refusal {
         if (self.isFile() && isPluginJar(self.getName()) && !inLibExt(self)) {
-            File folder = self.getAbsoluteFile().getParentFile();
+            File folder = canonical(self.getAbsoluteFile().getParentFile());
             List<File> listed = new ArrayList<>();
             for (String entry : classPath.split(java.util.regex.Pattern.quote(File.pathSeparator))) {
-                File f = new File(entry).getAbsoluteFile();
-                if (!entry.isEmpty() && isPluginJar(f.getName()) && f.getParentFile() != null
-                        && f.getParentFile().equals(folder) && !listed.contains(f)) {
+                if (entry.isEmpty()) {
+                    continue;
+                }
+                File f = canonical(new File(entry).getAbsoluteFile());
+                if (isPluginJar(f.getName()) && f.getParentFile() != null && f.getParentFile().equals(folder)
+                        && !listed.contains(f)) {
                     listed.add(f);
                 }
             }
@@ -153,6 +222,20 @@ public final class WirCollectLauncher {
                     + " whichever comes first; keep exactly one");
         }
         return found[0];
+    }
+
+    /** {@link #onePluginJar(File, File, String)} as {@code java -jar} runs it: the classpath is the JAR. */
+    static File onePluginJar(File ext, File self) throws Refusal {
+        return onePluginJar(ext, self, self.getPath());
+    }
+
+    /** The file as the file system names it - a short path expanded, {@code ..} resolved - or as given when that fails. */
+    private static File canonical(File f) {
+        try {
+            return f.getCanonicalFile();
+        } catch (java.io.IOException | SecurityException e) {
+            return f;
+        }
     }
 
     private static boolean isPluginJar(String name) {

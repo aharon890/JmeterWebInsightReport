@@ -34,6 +34,10 @@
             <groupId>org.apache.jmeter</groupId>
             <artifactId>ApacheJMeter_components</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.apache.jmeter</groupId>
+            <artifactId>ApacheJMeter_functions</artifactId>
+        </dependency>
 
         <!-- Jackson (provided — JMeter bundles it) -->
         <dependency>

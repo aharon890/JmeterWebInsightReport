@@ -81,7 +81,7 @@ cp jmeter-web-insight-report/target/jmeter-web-insight-report-*.jar $JMETER_HOME
 
 ### GUI
 
-The **Web Insight Report** listener has five fields and a checkbox:
+The **Web Insight Report** listener has six fields, a checkbox and a button:
 
 | Field | Description | Default |
 |-------|-------------|---------|
@@ -89,8 +89,10 @@ The **Web Insight Report** listener has five fields and a checkbox:
 | Report Filename | Output filename | `web-insight-report.html` |
 | Output Directory | Where report files are written | Resolved — see [Where the report goes by default](#where-the-report-goes-by-default) |
 | Annotations File | The `report-annotations.json` holding the asserts, timeline markers and notes the run is judged against | Auto-detected in the output directory |
-| Results file (JTL) | Where the run's samples are written, as a Simple Data Writer would. Needed to add server data afterwards (`jmeter -g`, or Tools › Generate HTML report). Leave empty when `-l` or another writer already saves the JTL | Empty: no JTL |
+| Results file (JTL) | Where the run's samples are written, as a Simple Data Writer would. Needed to add server data afterwards: the **Rebuild report with server data** button reads it. Leave empty when `-l` or another writer already saves the JTL, and add server data to that JTL with `jmeter -g` or Tools › Generate HTML report | Empty: no JTL |
+| Server data (CSV) | The CSV exported from your monitoring tool after the run (or a `server-metrics.json` payload), read only by **Rebuild report with server data**. The line under it shows the file it resolves to, or that `webinsight.report.servermetrics` overrides it. JMeter functions and properties work, such as `${__P(runs.dir)}/server.csv` | Empty |
 | Generate JUnit XML | Also write `<name>.xml` | Off |
+| **Rebuild report with server data** (button) | Rebuilds the run's report from its Results file with the server data, as `jmeter -g` would, and writes it over the report the run wrote (built from the JTL, so with no response bodies). A dialog shows the verdict, the collector's lines and any problem, with **Open report** and **Copy**. Refused while a test is running. See [Getting Server Data In](docs/Tutorial/14-Server-Data.md#by-hand-in-the-jmeter-gui) | — |
 
 ### CLI Properties
 
@@ -112,8 +114,8 @@ Precedence: **`-J` property > GUI field > default.**
 | `webinsight.report.output` | Output directory path. Set explicitly, it is never relocated — it fails instead | Resolved — see [below](#where-the-report-goes-by-default) |
 | `webinsight.report.junit` | Also write a JUnit XML summary | `false` |
 | `webinsight.report.annotations` | Path to `report-annotations.json` (asserts, server asserts, markers, notes) | auto-detected in the output directory |
-| `webinsight.report.servermetrics` | The *actual* numbers the server asserts are judged against: a CSV exported from your monitoring tool, which `jmeter -g` collects itself, or the `server-metrics.json` payload `wir-collect` wrote. Read by the `-g -o` step only: the listener writes its report when the run ends, before the server data exists, so it ignores the property (and says so in `jmeter.log`). One `run.properties` can therefore serve both commands. A relative path missing where JMeter runs is looked up beside the JTL. See [Server asserts](#server-asserts) | none — never auto-detected |
-| `webinsight.report.servermetrics.*` | For a CSV: `step`, `clockoffset`, `timezone`, `from`, `layout`, `columns`, `csvcolumns`, `component`, `env` — each the collector's flag of the same name | none |
+| `webinsight.report.servermetrics` | The *actual* numbers the server asserts are judged against: a CSV exported from your monitoring tool, which `jmeter -g` collects itself, or the `server-metrics.json` payload `wir-collect` wrote. Read by the `-g -o` step and by the listener's **Rebuild report with server data** button, where it wins over the **Server data (CSV)** field. The listener writes its own report when the run ends, before the server data exists, so at that point it ignores the property (and says so in `jmeter.log`). One `run.properties` can therefore serve both commands. A relative path missing where JMeter runs is looked up beside the JTL. See [Server asserts](#server-asserts) | none — never auto-detected |
+| `webinsight.report.servermetrics.*` | For a CSV, read by `jmeter -g` and the Rebuild button alike: `step`, `clockoffset`, `timezone`, `from`, `layout`, `columns`, `csvcolumns`, `component`, `env` — each the collector's flag of the same name | none |
 | `webinsight.report.baseline` | Path to a baseline JTL, which enables the Compare tab | auto-detected as `baseline.jtl` in the output directory |
 | `webinsight.report.rampup` | Ramp-up duration in ms, for the timeline overlay | none |
 | `webinsight.report.externaldata` | Force the chart payload into a separate `.js` file | `false` |
@@ -145,8 +147,8 @@ Anything else **warns and is treated as unset**, so the GUI/JMX field decides wh
 With no output directory configured, a listener run writes to the first of these it can actually
 write to (each is probed with a real write, and the log names the one chosen):
 
-1. the directory of the listener's own results file — the `filename` property in the `.jmx`,
-   which this listener's GUI does not show and `-l` does not set, so it is normally empty
+1. the directory of the listener's own results file — its **Results file (JTL)** field, which `-l`
+   does not set
 2. the working directory
 3. the test plan's directory
 4. `~/.jmeter-web-insight-report`

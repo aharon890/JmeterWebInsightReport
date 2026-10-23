@@ -488,7 +488,7 @@ public final class WirCollect {
     /**
      * The line for a CSV series whose points are further apart than {@code --step} can count, or
      * {@code null}: its spacing ({@link Coverage#spacingMillis}, the largest over its instances) more
-     * than 1.5 x the step, or above the step at all when the series came back INSUFFICIENT. Coverage
+     * than 1.5 x the step, or more than 1% above it when the series came back INSUFFICIENT. Coverage
      * counts one slot per step, so a Grafana export at the panel's 60 s interval read at the default
      * 15 s covers a quarter of the slots at most and reads LOW_COVERAGE - a correct export judged on
      * nothing, for a reason no other line gives. Within 1.5 x a slot in every few is missed, which is
@@ -501,12 +501,18 @@ public final class WirCollect {
             return null;
         }
         long spacing = Coverage.spacingMillis(s.getInstances());
-        boolean coarse = spacing * 2 > stepMillis * 3;
-        boolean cost = spacing > stepMillis && s.collectionStatus() == CollectionStatus.INSUFFICIENT;
-        if (!coarse && !cost) {
-            return null;
-        }
-        return spacingSentence(name, spacing, stepMillis);
+        return tooCoarse(spacing, stepMillis, s) ? spacingSentence(name, spacing, stepMillis) : null;
+    }
+
+    /**
+     * {@link #spacingWarning}'s rule: more than 1.5 x the step, or more than 1% above it when that cost
+     * the series its floor. Within 1% is the step itself, timestamps jittered by a few ms: a raw 15 s
+     * export reads 15002ms apart, which loses no slot, and an outage that left it short of its floor
+     * was advised "pass --step 15.002s".
+     */
+    private static boolean tooCoarse(long spacing, long stepMillis, ServerMetricsPayload.SeriesRecord s) {
+        return spacing * 2 > stepMillis * 3
+                || spacing * 100 > stepMillis * 101 && s.collectionStatus() == CollectionStatus.INSUFFICIENT;
     }
 
     private static String spacingSentence(String name, long spacing, long stepMillis) {
@@ -518,9 +524,9 @@ public final class WirCollect {
      * The spacing lines for one CSV series: its {@link #spacingWarning}, and beside it a line for its
      * rows with no value. A series with {@code blank} such rows has gaps the export wrote, which a
      * coarser --step would read as covered; so where its rows - a blank one included,
-     * {@code rowSpacing} apart - are within 1.5 x the step, the blanks made the wide gaps and only
-     * they are said, as gaps and not a coarser interval. Where the rows themselves are further apart
-     * than that, both are said: the interval the rows are at, and the blanks beside it.
+     * {@code rowSpacing} apart - are not too coarse for the step by {@link #spacingWarning}'s own rule,
+     * the blanks made the wide gaps and only they are said, as gaps and not a coarser interval. Where
+     * the rows themselves are, both are said: the interval the rows are at, and the blanks beside it.
      */
     static List<String> spacingLines(String name, ServerMetricsPayload.SeriesRecord s, int blank, long rowSpacing,
                                      long stepMillis) {
@@ -529,7 +535,9 @@ public final class WirCollect {
         if (spacing == null) {
             return lines;
         }
-        boolean rowsCoarse = rowSpacing * 2 > stepMillis * 3;
+        // The rows' own spacing by spacingWarning's rule: 20 s rows in 15 s slots that left the series
+        // INSUFFICIENT are a coarser interval, blanks or not.
+        boolean rowsCoarse = tooCoarse(rowSpacing, stepMillis, s);
         if (blank == 0) {
             lines.add(spacing);
             return lines;

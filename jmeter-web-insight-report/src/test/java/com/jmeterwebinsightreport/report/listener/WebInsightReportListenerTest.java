@@ -1,13 +1,22 @@
 package com.jmeterwebinsightreport.report.listener;
 
+import com.jmeterwebinsightreport.report.generator.NonZeroExit;
 import com.jmeterwebinsightreport.report.generator.ReportConfiguration;
+import com.jmeterwebinsightreport.report.listener.rebuild.LastRun;
+import org.apache.jmeter.samplers.SampleEvent;
+import org.apache.jmeter.samplers.SampleResult;
+import org.apache.jmeter.util.JMeterUtils;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.io.File;
+import java.io.IOException;
+import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
+import java.nio.file.Path;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * The listener publishes its configuration once, complete (RPT-13).
@@ -49,6 +58,8 @@ class WebInsightReportListenerTest {
     void theConfigurationIsNotVisibleUntilItIsComplete() {
         Probe listener = new Probe();
         listener.setProperty(WebInsightReportListener.REPORT_TITLE, "Probe title");
+        // Ended below, so the run leaves the in-flight count as it found it: the report goes here.
+        listener.setProperty(WebInsightReportListener.REPORT_OUTPUT_DIR, work.toString());
 
         listener.testStarted("");
 
@@ -57,5 +68,176 @@ class WebInsightReportListenerTest {
         Object published = configurationField(listener);
         assertNotNull(published, "the configuration is published once the build is done");
         assertEquals("Probe title", ((ReportConfiguration) published).getReportTitle());
+        endQuietly(listener);
+    }
+
+    // ---- the panel's Rebuild button: what the run leaves for it (R1, R2) ----
+
+    @TempDir
+    Path work;
+
+    @BeforeAll
+    static void initJMeterProperties() throws IOException {
+        if (JMeterUtils.getJMeterProperties() == null) {
+            File empty = File.createTempFile("wir-test-", ".properties");
+            empty.deleteOnExit();
+            JMeterUtils.loadJMeterProperties(empty.getAbsolutePath());
+        }
+    }
+
+    /**
+     * A run's testEnded with failonerror off: a report this test cannot make complete must not arrange
+     * a {@code halt(1)} on the test JVM.
+     */
+    private static void endQuietly(WebInsightReportListener listener) {
+        String before = JMeterUtils.getProperty(NonZeroExit.FAIL_ON_ERROR);
+        JMeterUtils.setProperty(NonZeroExit.FAIL_ON_ERROR, "false");
+        try {
+            listener.testEnded("");
+        } finally {
+            if (before == null) {
+                JMeterUtils.getJMeterProperties().remove(NonZeroExit.FAIL_ON_ERROR);
+            } else {
+                JMeterUtils.setProperty(NonZeroExit.FAIL_ON_ERROR, before);
+            }
+        }
+    }
+
+    private static void sample(WebInsightReportListener listener) {
+        SampleResult result = new SampleResult();
+        result.setSampleLabel("GET /checkout");
+        result.setStampAndTime(System.currentTimeMillis() - 120, 120);
+        result.setSuccessful(true);
+        listener.sampleOccurred(new SampleEvent(result, "Thread Group"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static WebInsightReportListener sourceOf(WebInsightReportListener listener) {
+        try {
+            Field f = WebInsightReportListener.class.getDeclaredField("source");
+            f.setAccessible(true);
+            WeakReference<WebInsightReportListener> ref = (WeakReference<WebInsightReportListener>) f.get(listener);
+            return ref == null ? null : ref.get();
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError("the listener has no source field", e);
+        }
+    }
+
+    @Test
+    void aCloneKnowsItsDirectSourceAndNeverTheSourcesSource() {
+        WebInsightReportListener original = new WebInsightReportListener();
+        WebInsightReportListener pasted = (WebInsightReportListener) original.clone();
+        WebInsightReportListener runClone = (WebInsightReportListener) pasted.clone();
+
+        assertNull(sourceOf(original), "an element loaded or created is nobody's clone");
+        assertSame(original, sourceOf(pasted));
+        assertSame(pasted, sourceOf(runClone), "the pasted copy's run belongs to the copy, not to what it was copied from");
+    }
+
+    @Test
+    void theRunsLastRunLandsOnTheElementThePanelShowsAndNowhereElse() {
+        WebInsightReportListener original = new WebInsightReportListener();
+        WebInsightReportListener shown = (WebInsightReportListener) original.clone();
+        shown.setProperty(WebInsightReportListener.REPORT_TITLE, "Checkout");
+        shown.setProperty(WebInsightReportListener.REPORT_OUTPUT_DIR, work.toString());
+        shown.setProperty(WebInsightReportListener.SERVER_DATA_FILE, "C:/runs/server.csv");
+        WebInsightReportListener runClone = (WebInsightReportListener) shown.clone();
+
+        int inFlight = WebInsightReportListener.runsInFlight();
+        runClone.testStarted("");
+        assertEquals(inFlight + 1, WebInsightReportListener.runsInFlight(), "a run in flight while its report is to come");
+        sample(runClone);
+        endQuietly(runClone);
+        assertEquals(inFlight, WebInsightReportListener.runsInFlight(), "out of flight once the report is written");
+
+        LastRun last = shown.getLastRun();
+        assertNotNull(last, "the run's LastRun did not reach the element the panel shows");
+        assertNull(runClone.getLastRun(), "kept on the clone, it is in nothing the panel can read");
+        assertNull(original.getLastRun(), "chained to the copy's source");
+
+        assertEquals("Checkout", last.title());
+        assertEquals("web-insight-report.html", last.htmlFilename());
+        assertEquals(work.toFile().getAbsoluteFile(), last.outputDirectory());
+        assertTrue(new File(last.outputDirectory(), last.htmlFilename()).isFile());
+        assertNull(last.jtl(), "no Results file was set: the run wrote no JTL");
+        assertEquals(16, last.runId().length());
+        assertEquals("C:/runs/server.csv", last.serverDataRaw());
+        assertEquals("C:/runs/server.csv", last.serverDataResolved());
+        assertTrue(last.endedAt() > 0);
+    }
+
+    @Test
+    void aRunWhoseReportFailsLeavesThePanelNoRunRatherThanTheOneBefore() throws IOException {
+        WebInsightReportListener shown = new WebInsightReportListener();
+        shown.setProperty(WebInsightReportListener.REPORT_OUTPUT_DIR, work.toString());
+
+        // Run 1 writes its report: the panel can rebuild it.
+        WebInsightReportListener first = (WebInsightReportListener) shown.clone();
+        first.testStarted("");
+        sample(first);
+        endQuietly(first);
+        assertNotNull(shown.getLastRun(), "run 1 wrote its report");
+
+        // Run 2's output directory is a file, so its report cannot be written.
+        File notADirectory = work.resolve("not-a-directory").toFile();
+        assertTrue(notADirectory.createNewFile());
+        shown.setProperty(WebInsightReportListener.REPORT_OUTPUT_DIR, notADirectory.getPath());
+        WebInsightReportListener second = (WebInsightReportListener) shown.clone();
+        second.testStarted("");
+        assertNull(shown.getLastRun(), "run 2 started: run 1 is no longer the last run");
+        sample(second);
+        endQuietly(second);
+        assertNull(shown.getLastRun(),
+                "a failed run left run 1's LastRun, and Rebuild would rebuild run 1 without a word");
+    }
+
+    @Test
+    void aRunThatWasNotClonedKeepsItsLastRunItself() {
+        // jmeter -n: no panel, no clone; the element itself ran.
+        WebInsightReportListener listener = new WebInsightReportListener();
+        listener.setProperty(WebInsightReportListener.REPORT_OUTPUT_DIR, work.toString());
+        listener.testStarted("");
+        sample(listener);
+        endQuietly(listener);
+        assertNotNull(listener.getLastRun());
+    }
+
+    /** A results filename that is a function: a new value on every read, as {@code ${__time(HHmmssSSS)}} would be. */
+    private static final class TickingFilename extends WebInsightReportListener {
+        private static final long serialVersionUID = 1L;
+        transient Path dir;
+        transient int reads;
+
+        @Override
+        public String getPropertyAsString(String key) {
+            if (FILENAME.equals(key)) {
+                return dir.resolve("results-" + (++reads) + ".jtl").toString();
+            }
+            return super.getPropertyAsString(key);
+        }
+    }
+
+    @Test
+    void theResultsFilenameIsReadOnceWhileRunningSoTheJtlTheNextLineAndLastRunAgree() {
+        TickingFilename listener = new TickingFilename();
+        listener.dir = work;
+        listener.setProperty(WebInsightReportListener.REPORT_OUTPUT_DIR, work.toString());
+
+        // Not running (the panel's element): the raw text, read as asked.
+        assertNotEquals(listener.getFilename(), listener.getFilename());
+
+        listener.setRunningVersion(true);
+        String stale = listener.getFilename();
+        listener.testStarted("");   // forgets the name from before the run, then opens the JTL through it
+        String thisRun = listener.getFilename();
+        assertNotEquals(stale, thisRun, "the memo was not cleared when the run started");
+        assertEquals(thisRun, listener.getFilename());
+        assertTrue(new File(thisRun).isFile(), "ResultCollector opened the file under the memoised name");
+        sample(listener);
+        endQuietly(listener);
+
+        LastRun last = listener.getLastRun();
+        assertNotNull(last);
+        assertEquals(new File(thisRun).getAbsoluteFile(), last.jtl(), "the JTL the run wrote, not a fresh evaluation");
     }
 }

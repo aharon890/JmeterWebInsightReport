@@ -368,11 +368,10 @@ public final class CsvSource implements SeriesSource {
      * The interval the CSV was exported at (decision 12), from the index this reader builds for
      * {@code source} - the same rows, layout, column names and time rules {@link #collect} reads, and
      * the index {@link #collect} then reuses, since a source's step is not part of what the file reads
-     * as. Each instance's {@linkplain Coverage#mostCommonSpacing most common spacing} between its rows
-     * with a value (a blank row is a gap, as {@link Coverage#spacingMillis} reads it), counting only
-     * rows within {@code window} and one {@code source} step of it (null: every row), taken when that
-     * spacing repeats at least {@value #MIN_STEP_REPEATS} times in the instance - a jittered or sparse
-     * export has no interval to measure; then the widest over every instance of the series
+     * as. Each instance's {@linkplain #intervalOf interval} between its rows with a value (a blank row
+     * is a gap, as {@link Coverage#spacingMillis} reads it), counting only rows within {@code window}
+     * and one {@code source} step of it (null: every row) - a jittered, sparse or scattered export has
+     * none; then the widest over every instance of the series
      * {@code requests} ask for, as {@link Coverage#spacingMillis} takes it, so a coarser series is never
      * counted in slots finer than its rows. A series is found as {@link #collect} finds it - by
      * component and metric key, under a {@code --from} tool's name first when the file has rows under
@@ -410,10 +409,7 @@ public final class CsvSource implements SeriesSource {
                         times.add(ts);
                     }
                 }
-                long spacing = Coverage.mostCommonSpacing(times);
-                if (spacing > 0 && repeats(times, spacing) >= MIN_STEP_REPEATS) {
-                    widest = Math.max(widest, spacing);
-                }
+                widest = Math.max(widest, intervalOf(times));
             }
         }
         return widest;
@@ -448,13 +444,34 @@ public final class CsvSource implements SeriesSource {
         return window == null || (ts >= window.getStart() - slack && ts <= window.getEnd() + slack);
     }
 
-    /** How many consecutive pairs of {@code ascending} are {@code spacing} apart. */
-    private static int repeats(List<Long> ascending, long spacing) {
-        int n = 0;
+    /**
+     * The interval one instance's rows ({@code ascending}) were exported at, or 0 when they have none:
+     * the most common gap, the smaller on a tie, taken only when it repeats at least
+     * {@value #MIN_STEP_REPEATS} times and is at least half of the gaps. On repeats alone a jittered
+     * hour at 15 s repeated some millisecond gap often enough to be taken, and 15001ms, which no
+     * {@code sustainedFor} is a whole number of, became the collection's step (F6); an export with no
+     * one interval for most of its rows has none to measure, and is collected at the default.
+     */
+    static long intervalOf(List<Long> ascending) {
+        TreeMap<Long, Integer> counts = new TreeMap<>();
+        int gaps = 0;
         for (int i = 1; i < ascending.size(); i++) {
-            n += ascending.get(i) - ascending.get(i - 1) == spacing ? 1 : 0;
+            long gap = ascending.get(i) - ascending.get(i - 1);
+            if (gap > 0) {
+                gaps++;
+                counts.merge(gap, 1, Integer::sum);
+            }
         }
-        return n;
+        long common = 0;
+        int most = 0;
+        // Ascending, and only a strictly larger count replaces: a tie keeps the smaller gap.
+        for (Map.Entry<Long, Integer> e : counts.entrySet()) {
+            if (e.getValue() > most) {
+                most = e.getValue();
+                common = e.getKey();
+            }
+        }
+        return most >= MIN_STEP_REPEATS && most * 2 >= gaps ? common : 0;
     }
 
     /**
