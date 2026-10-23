@@ -17,6 +17,29 @@ on E19/E20 where the payload load path differs from `file://`).
 
 ---
 
+## 2026-10-23 · a GUI run's interim report (no fixture) · the listener's Rebuild report with server data, on Windows, macOS and Linux (manual; not yet run)
+
+The listener's **Server data (CSV)** field and **Rebuild report with server data** button (4.0.18)
+are unit-tested behind the click — `ReportRebuildTest`, `GuiRebuildTest`, `RebuildRequestTest`,
+`FieldValueTest`, `WebInsightReportListenerTest` and the headless field round-trip in
+`WebInsightReportListenerGuiTest` — and nothing drives the click itself. This entry is the manual
+check, to run on each OS before the release; **nothing below has been observed yet**, and each row's
+outcome is written when it is run. The check, the same on every OS, in JMeter's own GUI with a plan
+whose listener sets **Annotations File** and **Results file (JTL)**: run it; set **Server data (CSV)**
+by **Browse...** (the path is written with `/`) and see `Resolves to <path> · found, <size>` under it;
+click **Rebuild report with server data**, and see the button disabled while it works, then a dialog
+with the verdict, the collector's lines and any problem; **Open report** opens the rewritten report in
+place (same file, Server tab judged), and **Copy** copies the dialog's text. Then: a click while a test
+runs is refused; JMeter started with `-Jwebinsight.report.servermetrics=X` shows
+`Overridden by webinsight.report.servermetrics = X - this is the file Rebuild reads` and the field
+greyed; a CSV saved before the run ended is warned about.
+
+| # | Finding | Confidence | Outcome |
+|---|---|---|---|
+| GR1 | Windows (Windows PowerShell launch, `jmeter.bat`): the check above | unverified (not run) | **Not automated.** A Swing button in JMeter's GUI: no suite starts JMeter's GUI, and Playwright opens reports, not JMeter. Outcome: pending — to run before release |
+| GR2 | macOS (Terminal launch; Homebrew's `jmeter` included): the check above, plus **Open report** through the default browser | unverified (not run) | **Not automated.** A Swing button in JMeter's GUI: no suite starts JMeter's GUI, and Playwright opens reports, not JMeter. Outcome: pending — to run before release |
+| GR3 | Linux (a desktop session, and one where `Desktop` browsing is not supported, which shows the report's path with **Copy** instead): the check above | unverified (not run) | **Not automated.** A Swing button in JMeter's GUI: no suite starts JMeter's GUI, and Playwright opens reports, not JMeter. Outcome: pending — to run before release |
+
 ## 2026-10-07 · E02 E05 E07 E25 E26 (+ fresh `-g` runs over plain.jtl and a hand-written JTL) · verifying the reported bugs (headless Chromium; the Chrome extension was not connected)
 
 Each reported bug was reproduced from scratch by one agent on 3.1.47 and then attacked by a second,

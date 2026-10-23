@@ -95,6 +95,42 @@ class ReportArtifactsTest {
     }
 
     @Test
+    void theListenersNextLineNamesTheFileToWriteAndTheButtonAndTheOneArgumentLineIsUnchanged() throws Exception {
+        com.jmeterwebinsightreport.core.model.ReportData data = com.jmeterwebinsightreport.report.gate.ServerFixtures.run();
+        ReportArtifacts a = inlineRun().recordServerGates(com.jmeterwebinsightreport.report.gate.ServerFixtures.evaluate(
+                com.jmeterwebinsightreport.report.gate.ServerFixtures.block(null,
+                        com.jmeterwebinsightreport.report.gate.ServerFixtures.kpi("lag", "lag", 500, null)),
+                null, data)).recordRunWindow(1_700_000_000_000L, 1_700_000_060_000L);
+
+        // The -g exporter and the goldens print the one-argument line: word for word what it was.
+        String plain = a.nextStepsLine("run/results.jtl");
+        assertEquals(plain, a.nextStepsLine("run/results.jtl", null, false));
+        assertEquals(plain, a.nextStepsLine("run/results.jtl", "  ", false), "a blank path names nothing");
+        assertTrue(plain.endsWith(". Then rebuild: jmeter -g run/results.jtl -o <a new folder> -q <a properties file"
+                + " naming webinsight.report.annotations and webinsight.report.servermetrics>"), plain);
+        assertFalse(plain.contains("Write it to"), plain);
+        assertFalse(plain.contains("Rebuild report with server data"), plain);
+
+        // The Server data field names the file to write; under -n there is no button to name.
+        String withPath = a.nextStepsLine("run/results.jtl", "C:/runs/server.csv", false);
+        assertTrue(withPath.contains(". Write it to C:/runs/server.csv. Then rebuild: jmeter -g run/results.jtl -o "),
+                withPath);
+        assertTrue(withPath.startsWith(plain.substring(0, plain.indexOf(". Then rebuild"))), withPath);
+
+        // With a GUI, the button first, and the command that works everywhere kept.
+        String gui = a.nextStepsLine("run/results.jtl", "C:/runs/server.csv", true);
+        assertTrue(gui.contains(". Write it to C:/runs/server.csv. Then click Rebuild report with server data on the"
+                + " Web Insight Report listener, or rebuild: jmeter -g run/results.jtl -o <a new folder> -q "), gui);
+        String guiNoPath = a.nextStepsLine(null, null, true);
+        assertTrue(guiNoPath.contains("with these component/metric names: "), guiNoPath);
+        assertTrue(guiNoPath.contains(". Then click Rebuild report with server data on the Web Insight Report listener,"
+                + " or rebuild: jmeter -g <the run's JTL> -o "), guiNoPath);
+
+        // Nothing waits: no line, whatever the listener would add.
+        assertNull(inlineRun().nextStepsLine("x.jtl", "C:/runs/server.csv", true));
+    }
+
+    @Test
     void theNextLineCountsTheEnabledAssertsItListsAndIsAbsentWhenNoneIs() throws Exception {
         // A disabled assert waits for no data: it was counted while its name was left out of the list.
         com.jmeterwebinsightreport.core.model.ReportData data = com.jmeterwebinsightreport.report.gate.ServerFixtures.run();

@@ -2,7 +2,6 @@ package com.jmeterwebinsightreport.report.exporter;
 
 import com.jmeterwebinsightreport.core.assertion.AssertionStatus;
 import com.jmeterwebinsightreport.core.model.ReportData;
-import com.jmeterwebinsightreport.core.parser.JtlParser;
 import com.jmeterwebinsightreport.report.gate.GateEvaluation;
 import com.jmeterwebinsightreport.report.generator.ExitPolicy;
 import com.jmeterwebinsightreport.report.generator.NonZeroExit;
@@ -21,7 +20,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
-import com.jmeterwebinsightreport.WirCollect;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -36,6 +34,12 @@ import java.util.regex.Pattern;
  * When the user runs {@code jmeter -g results.jtl -o report/}, JMeter's ReportGenerator
  * calls this exporter. We re-parse the JTL file with our own JtlParser to produce a
  * full-fidelity ReportData, then generate the HTML report.
+ * </p>
+ * <p>
+ * The parse, the companion files, the in-process CSV collection and the generation are
+ * {@link ReportRebuild}'s, which the listener panel's Rebuild button runs too. What stays here is
+ * this path's policy: the output directory, the configuration from {@code -J}, the property check,
+ * the "already reported" skip, the markers and the exit code.
  * </p>
  * <p>
  * Note: The {@code file} parameter in {@link #export} is the <b>source JTL file</b>,
@@ -105,7 +109,7 @@ public class WebInsightDataExporter extends AbstractDataExporter {
             File outputDir = resolveOutputDirectory(reportGeneratorConfiguration, jtlFile);
 
             // 2. What would an existing report of this run be CALLED? The decision about
-            //    whether to skip is made on identity, at step 6 — this only finds candidates.
+            //    whether to skip is made on identity, at step 5 — this only finds candidates.
             //
             // Prefer what the listener actually wrote over what -J says. The listener accepts
             // its filename from EITHER source: -J first, then the JMX/GUI property. This
@@ -124,36 +128,12 @@ public class WebInsightDataExporter extends AbstractDataExporter {
             // 3. Read configuration from JMeter properties (-J flags)
             ReportConfiguration config = buildConfiguration(outputDir);
 
-            // 4. Parse the JTL file with our parser
-            JtlParser parser = new JtlParser();
-            if (config.getRampUpDurationMillis() > 0) {
-                parser.setRampUpDurationMillis(config.getRampUpDurationMillis());
-            }
+            // 4. Parse the JTL file with our parser, under the configured title, ramp-up and Apdex
+            //    threshold, with the JMeter version in the metadata (ReportRebuild, which the
+            //    listener panel's Rebuild button runs too).
+            ReportData reportData = ReportRebuild.parse(jtlFile, config, JMeterUtils::getProperty);
 
-            // Apdex threshold from -J property
-            String apdexStr = JMeterUtils.getProperty("webinsight.apdex.threshold");
-            if (apdexStr != null && !apdexStr.isEmpty()) {
-                try {
-                    parser.setApdexThreshold(Double.parseDouble(apdexStr));
-                } catch (NumberFormatException e) {
-                    log.warn("Invalid webinsight.apdex.threshold: {}", apdexStr);
-                }
-            }
-
-            String testName = config.getReportTitle();
-            ReportData reportData = parser.parse(jtlFile, testName);
-
-            // 5. Set JMeter version in metadata
-            try {
-                String version = JMeterUtils.getJMeterVersion();
-                if (version != null) {
-                    reportData.getMetadata().setJmeterVersion(version);
-                }
-            } catch (Exception e) {
-                // JMeterUtils may not be available
-            }
-
-            // 6. Is this run's report already here?
+            // 5. Is this run's report already here?
             //
             // This check used to run FIRST, on a filename, and that is why it is here now. A
             // name cannot tell "the listener in this very run already wrote this" from
@@ -184,21 +164,11 @@ public class WebInsightDataExporter extends AbstractDataExporter {
                 return;
             }
 
-            // 7. Generate the report
-            WebInsightReportGenerator generator = new WebInsightReportGenerator(config);
-            ReportArtifacts artifacts = generator.generateReport(reportData);
-
-            // Same emitters as the listener, from the same strings, so the two ingestion
-            // paths cannot drift apart in what they report. One line to the log (the intent
-            // line above already itemises every artifact), the block to stdout.
-            log.info("{}", artifacts.successMarker());
-            System.out.println(artifacts.consoleSummary());
-            System.out.println(artifacts.successMarker());
-            String next = artifacts.nextStepsLine(jtlFile == null ? null : jtlFile.getPath().replace(File.separatorChar, '/'));
-            if (next != null) {
-                System.out.println(next);
-                log.info("{}", next);
-            }
+            // 6. Generate the report and say so - the summary, the marker and the NEXT line, the
+            //    same emitters as the listener's - and drop the payload a CSV was collected into.
+            ReportArtifacts artifacts = ReportRebuild.generateAndAnnounce(config, reportData,
+                    jtlFile == null ? null : jtlFile.getPath().replace(File.separatorChar, '/'),
+                    System.out, line -> log.info("{}", line));
             // Both markers, independently. They used to be an if/else chain, so a run that lost
             // an artifact AND could not build its gate printed only the first — and the one CI
             // is told to grep for a broken gate definition was the one withheld, on exactly the
@@ -290,15 +260,14 @@ public class WebInsightDataExporter extends AbstractDataExporter {
     }
 
     /**
-     * The files this run reads beside its own settings, in the order one needs the other: the
-     * annotations and baseline auto-detected in the output directory first, then the server data,
-     * because collecting a CSV reads the annotations file to know what to collect. Collected first,
-     * a CSV given beside an auto-detected annotations file was refused as having none.
-     * {@code reportData} is this run's parse of {@code jtlFile}, which the collection reuses.
+     * {@link ReportRebuild#readCompanionFiles} with this process's properties, console and
+     * environment: the annotations and baseline auto-detected in the output directory, then the
+     * server data. {@code reportData} is this run's parse of {@code jtlFile}, which the collection
+     * reuses.
      */
     void readCompanionFiles(ReportConfiguration config, File outputDir, File jtlFile, ReportData reportData) {
-        autoDetectCompanionFiles(config, outputDir);
-        collectServerCsvIfGiven(config, jtlFile, reportData);
+        ReportRebuild.readCompanionFiles(config, outputDir, jtlFile, reportData,
+                JMeterUtils::getProperty, System.out, System.err, System.getenv(), ReportRebuild.Route.COMMAND_LINE);
     }
 
     /**
@@ -317,111 +286,26 @@ public class WebInsightDataExporter extends AbstractDataExporter {
         return (file != null && file.exists()) || config.getServerDataProblem() != null;
     }
 
-    /** The reader options for a CSV given as server data, as -J or -q properties, and wir-collect's flag for each. */
-    static final String[][] CSV_OPTIONS = {
-            {"step", "--step"}, {"clockoffset", "--clock-offset"}, {"timezone", "--time-zone"}, {"from", "--from"},
-            {"layout", "--layout"}, {"columns", "--columns"}, {"csvcolumns", "--csv-columns"},
-            {"component", "--component"}, {"env", "--env"}};
+    /**
+     * The reader options for a CSV given as server data. They live with the collection in
+     * {@link ReportRebuild}; this alias stays because {@code PropertyCheckTest} reads it here, by
+     * reflection, to hold {@code PropertyCheck}'s list to the one the {@code -g} path reads.
+     */
+    static final String[][] CSV_OPTIONS = ReportRebuild.CSV_OPTIONS;
 
     /**
-     * When {@code webinsight.report.servermetrics} names a CSV rather than a wir-collect payload,
-     * collect it here, in-process, with the collector's own code ({@link WirCollect#run}): every
-     * check, refusal and console line the collector has, no second grammar. The run's window,
-     * identity and ramp-up come from this very JTL and title, so there is no --test-name or second
-     * --rampup to get wrong. The JTL is not read again: {@code parsed}, this report's own parse of it
-     * under its title, is handed to the collector ({@link WirCollect#run(String[], ReportData,
-     * java.io.PrintStream, java.io.PrintStream, java.util.Map)}), whose window and runId derive from exactly the
-     * fields its own parse would give (null: the collector parses the file). The payload goes to a
-     * temporary file that this report then reads; a CSV the collector refuses becomes a refused
-     * payload - said, never fatal by default (decision B).
-     *
-     * <p>A relative path that does not exist where JMeter runs is looked up beside the JTL, so a
-     * properties file with relative names works from JMeter's own Generate HTML report dialog too.
+     * {@link ReportRebuild#collectServerCsvIfGiven} with this process's properties, console and
+     * environment: when {@code webinsight.report.servermetrics} names a CSV rather than a wir-collect
+     * payload, collect it in-process into a temporary payload this report then reads.
      */
     void collectServerCsvIfGiven(ReportConfiguration config, File jtlFile, ReportData parsed) {
-        File given = config.getServerMetricsFile();
-        if (given == null) {
-            return;
-        }
-        if (!given.exists() && !given.isAbsolute() && jtlFile != null && jtlFile.getAbsoluteFile().getParentFile() != null) {
-            File besideJtl = new File(jtlFile.getAbsoluteFile().getParentFile(), given.getPath());
-            if (besideJtl.exists()) {
-                given = besideJtl;
-                config.setServerMetricsFile(given);
-            }
-        }
-        if (!given.isFile() || looksLikeJson(given)) {
-            return;   // a payload, or a missing file: the loader says which, as it always has
-        }
-        if (config.getAnnotationsFile() == null) {
-            config.setServerMetricsFile(null);
-            config.setServerDataProblem("the server data " + given.getName() + " is a CSV, and no annotations file"
-                    + " says what to read from it - give webinsight.report.annotations too");
-            return;
-        }
-        List<String> args = new ArrayList<>(java.util.Arrays.asList(
-                "--jtl", jtlFile.getAbsolutePath(), "--annotations", config.getAnnotationsFile().getPath(),
-                "--csv", given.getPath(), "--no-wait",
-                "--collected-at", java.time.Instant.ofEpochMilli(given.lastModified()).toString()));
-        File out;
-        try {
-            out = File.createTempFile("wir-server-metrics-", ".json");
-            out.deleteOnExit();
-        } catch (java.io.IOException e) {
-            config.setServerMetricsFile(null);
-            config.setServerDataProblem("the server CSV " + given.getName() + " could not be collected: "
-                    + ReportArtifacts.describe(e));
-            return;
-        }
-        args.add("--out");
-        args.add(out.getPath());
-        if (config.getReportTitle() != null && !config.getReportTitle().isEmpty()) {
-            args.add("--test-name");
-            args.add(config.getReportTitle());
-        }
-        if (config.getRampUpDurationMillis() > 0) {
-            args.add("--rampup");
-            args.add(String.valueOf(config.getRampUpDurationMillis()));
-        }
-        for (String[] option : CSV_OPTIONS) {
-            String value = JMeterUtils.getProperty("webinsight.report.servermetrics." + option[0]);
-            if (value != null && !value.trim().isEmpty()) {
-                args.add(option[1]);
-                args.add(value.trim());
-            }
-        }
-        int code;
-        try {
-            code = WirCollect.run(args.toArray(new String[0]), parsed, System.out, System.err, System.getenv());
-        } catch (OutOfMemoryError e) {
-            System.err.println("wir-collect: ran out of memory reading " + given.getName()
-                    + " - give JMeter more heap (JVM_ARGS=-Xmx2g) or export a narrower window");
-            code = 1;
-        }
-        if (code == 0) {
-            config.setServerMetricsFile(out);
-        } else {
-            config.setServerMetricsFile(null);
-            config.setServerDataProblem("the server CSV " + given.getName() + " could not be collected - the"
-                    + " wir-collect lines on the console say why");
-        }
+        ReportRebuild.collectServerCsvIfGiven(config, jtlFile, parsed,
+                JMeterUtils::getProperty, System.out, System.err, System.getenv(), ReportRebuild.Route.COMMAND_LINE);
     }
 
-    /** True when the file's first non-blank character (after a BOM) opens a JSON object. */
+    /** @see ReportRebuild#looksLikeJson */
     static boolean looksLikeJson(File file) {
-        try (java.io.Reader in = new java.io.InputStreamReader(new java.io.FileInputStream(file),
-                java.nio.charset.StandardCharsets.UTF_8)) {
-            int c;
-            while ((c = in.read()) != -1) {
-                if (c == 0xFEFF || Character.isWhitespace(c)) {
-                    continue;
-                }
-                return c == '{';
-            }
-        } catch (java.io.IOException e) {
-            return true;   // unreadable: let the loader say so, in its words
-        }
-        return true;
+        return ReportRebuild.looksLikeJson(file);
     }
 
     /**
@@ -605,27 +489,6 @@ public class WebInsightDataExporter extends AbstractDataExporter {
         }
 
         return config;
-    }
-
-    /**
-     * Auto-detect report-annotations.json and baseline.jtl in the output directory.
-     */
-    private void autoDetectCompanionFiles(ReportConfiguration config, File outputDir) {
-        if (config.getAnnotationsFile() == null) {
-            File autoAnnotations = new File(outputDir, "report-annotations.json");
-            if (autoAnnotations.exists()) {
-                config.setAnnotationsFile(autoAnnotations);
-                log.warn("{}", ReportConfiguration.annotationsAutoDetectWarning(autoAnnotations));
-            }
-        }
-
-        if (config.getBaselineJtlFile() == null) {
-            File autoBaseline = new File(outputDir, "baseline.jtl");
-            if (autoBaseline.exists()) {
-                config.setBaselineJtlFile(autoBaseline);
-                log.info("Auto-detected baseline JTL: {}", autoBaseline.getAbsolutePath());
-            }
-        }
     }
 
     /**

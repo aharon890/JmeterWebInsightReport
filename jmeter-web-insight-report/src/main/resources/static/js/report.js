@@ -18027,10 +18027,16 @@ WIR.serverKpis = (function () {
                 + ' <span class="wir-dim">Grafana: set each series’ legend to component/metric and use'
                 + ' Download CSV with “Series joined by time”.</span></li>';
         }
-        html += '<li><strong>Add it to this run</strong>: in JMeter, Tools › Generate HTML report with the'
-            + ' run’s results file, a properties file naming <code>webinsight.report.annotations</code> and'
+        /* Three routes, the GUI's own first. The page cannot tell a GUI run from -n, and must name
+           no local path (report_local_path), so the listener's field is named, never its value. */
+        html += '<li><strong>Add it to this run</strong>: in the JMeter GUI, set the Web Insight Report'
+            + ' listener’s <strong>Server data (CSV)</strong> field to the exported file and click'
+            + ' <strong>Rebuild report with server data</strong>. It rebuilds this report in place from the'
+            + ' run’s results file, so without response bodies. For a results file written by'
+            + ' <code>-l</code> or another listener: Tools › Generate HTML report with that file, a'
+            + ' properties file naming <code>webinsight.report.annotations</code> and'
             + ' <code>webinsight.report.servermetrics</code> (forward slashes in paths) and a new output'
-            + ' folder; or from any shell: <code>jmeter -g &lt;results.jtl&gt; -o &lt;new folder&gt; -q'
+            + ' folder. From any shell: <code>jmeter -g &lt;results.jtl&gt; -o &lt;new folder&gt; -q'
             + ' run.properties</code>. Server data never changes the build’s exit code.</li></ol></div>';
         return html;
     }

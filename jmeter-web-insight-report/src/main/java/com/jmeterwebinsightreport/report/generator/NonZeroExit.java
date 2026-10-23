@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Arranges a non-zero process status without throwing.
@@ -48,7 +49,20 @@ public final class NonZeroExit {
     /** One shutdown hook per JVM, however many reasons it is given. */
     private static final AtomicBoolean ARRANGED = new AtomicBoolean(false);
 
+    /**
+     * Every call, counted - not only the first, which {@link #ARRANGED} already records. A test of a
+     * path that must never arrange an exit (the listener panel's Rebuild button: in a GUI session it
+     * would hang a {@code halt(1)} on the user's JMeter) compares this before and after; the boolean
+     * cannot answer that once any earlier test in the same JVM has arranged one.
+     */
+    private static final AtomicInteger CALLS = new AtomicInteger();
+
     private NonZeroExit() {
+    }
+
+    /** How many times {@link #arrange} has been called in this JVM. For tests, through {@code NonZeroExitProbe}. */
+    static int calls() {
+        return CALLS.get();
     }
 
     /**
@@ -66,6 +80,7 @@ public final class NonZeroExit {
         // the same time — a lost artifact and a broken gate — and both branches now report
         // independently, which is the point; what must not double is the exit itself, or the
         // shutdown prints "exiting 1 because …" twice and the second hook races a halted JVM.
+        CALLS.incrementAndGet();
         log.error("{}=true — this run will exit 1: {}", flag, reason);
         if (!ARRANGED.compareAndSet(false, true)) {
             return;

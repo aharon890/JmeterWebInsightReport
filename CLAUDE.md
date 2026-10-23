@@ -422,12 +422,19 @@ The failures these catch are all silent in the wild:
 
 ### Two ingestion paths, one generator
 
-Both produce a `ReportData` and hand it to `WebInsightReportGenerator`:
+Each produces a `ReportData` and hands it to `WebInsightReportGenerator` (the third row is the second
+path started from the GUI):
 
 | Path | Entry point | Source of stats |
 |------|-------------|-----------------|
 | Listener (GUI or `-n -t`) | `WebInsightReportListener extends ResultCollector` | `LiveStatisticsEngine` fed per-sample from `sampleOccurred` |
 | CLI `jmeter -g x.jtl -o dir` | `WebInsightDataExporter extends AbstractDataExporter` | `JtlParser` re-parses the JTL (JMeter's own `SampleContext` is discarded — it lacks the fidelity the report needs) |
+| GUI **Rebuild report with server data** (the listener panel's button, after a run) | `report/listener/rebuild/GuiRebuild` | `JtlParser`, through `report/exporter/ReportRebuild` — the service the exporter runs |
+
+`ReportRebuild` (parse, companion files with the in-process CSV collection, generate and announce) is
+the one rebuild, so the button cannot drift from `-g` the way `failonassert` once drifted between the
+listener and the exporter. Each caller keeps its own policy: the exporter its skip check, markers,
+`NonZeroExit` and `ExportException`; the button none of them, writing over the interim report.
 
 Both paths can be active at once, so the exporter checks whether the listener already
 wrote a report and skips if so. That check must derive the expected filename via
@@ -942,10 +949,19 @@ ramp-up and `--collected-at` = the CSV's mtime (so a rebuild keeps the collectio
 Reader options are `webinsight.report.servermetrics.<step|clockoffset|timezone|from|layout|columns|
 csvcolumns|component|env>`. A collection the collector refuses becomes `ReportConfiguration
 .serverDataProblem` → a refused (UNREADABLE) payload, never an ExportException (decision B). A relative
-path missing in the cwd is looked up beside the JTL. Exporter only: the listener runs before the data
-exists, and ignores `webinsight.report.servermetrics` altogether (an INFO line), so one `run.properties`
-serves both commands — it used to read it and refuse it as another run's, so a shared file made every
-interim report read REFUSED, with no NEXT line. A -g run that brings server data that exists, or a recorded refusal of it, is never skipped by `thisRunAlreadyReported` (it used to be,
+path missing in the cwd is looked up beside the JTL. Never at test end: the listener's `testEnded` runs
+before the data exists, and ignores `webinsight.report.servermetrics` altogether (an INFO line), so one
+`run.properties` serves both commands — it used to read it and refuse it as another run's, so a shared
+file made every interim report read REFUSED, with no NEXT line. The one listener-side reader is the
+panel's **Rebuild report with server data** button, after the run: it reads the property, else the
+panel's `WebInsightReport.serverDataFile` field, and runs `report/exporter/ReportRebuild` — the very
+service `-g` runs, through `report/listener/rebuild/GuiRebuild` — over the last run's JTL, output
+directory, filename and title (`LastRun`, which the run's clone writes into the element the panel
+edits: a GUI Start runs on clones), and writes over the interim report under its own name. It never
+calls `NonZeroExit`, `ExitPolicy` or `PropertyCheck.emit` (an exit code means nothing in a GUI session),
+and the page it writes is the `-g` report, so with no response bodies. The NEXT line names the file the
+button would read (the property, else the field) when either is set, and the button when JMeter runs
+with a GUI. A -g run that brings server data that exists, or a recorded refusal of it, is never skipped by `thisRunAlreadyReported` (it used to be,
 silently, over the listener's interim report); any skip prints `WEB-INSIGHT-REPORT: SKIPPED`. This
 reverses "a report reads only the payload the collector wrote": for files it is two steps, not three.
 Golden G10 = G4's inputs given as the CSV; equal to G4 but for collectionId, which the canonicaliser
@@ -1378,8 +1394,11 @@ sentence for every flag.
 `-J` properties override GUI fields, which override defaults. Comparison thresholds layer
 further: defaults → `report-annotations.json` → `-J` properties, in `ComparisonThresholdResolver`.
 Annotations and `baseline.jtl` are auto-detected in the output directory when not configured
-explicitly. The server-metrics payload is not: it comes from `-Jwebinsight.report.servermetrics`
-only.
+explicitly. Server data never is: on `-g` it comes from `webinsight.report.servermetrics` only, and
+the panel's Rebuild button reads that property, else the listener's `WebInsightReport.serverDataFile`
+field — the usual `-J`-over-GUI order, said under the field ("Overridden by
+webinsight.report.servermetrics = X - this is the file Rebuild reads"). A `-g` run cannot see a
+`.jmx`, so a path in the field can never reach a pipeline's `jmeter -g`.
 
 That resolver is extracted rather than inlined for two reasons, and the second is the real one.
 It used to be a private method with **one `try` around all five `webinsight.compare.*` reads and
@@ -1448,7 +1467,7 @@ docs/                        Docsify documentation site
 docs/README.md               Its homepage; index.html sets relativePath: true, and _sidebar.md links are root-absolute (it renders on every page)
 docs/schema/                 Published copy of the annotations schema; js-unit/schema-published.test.js holds it identical to the JAR's
 docs/Instructions.md         Full test execution guide
-docs/FEATURES.md             Feature list (E-numbered, referenced by tests)
+docs/FEATURES.md             Feature reference, by area (not numbered; E-ids name test scenarios, not features)
 docs/TEST-COVERAGE-GAPS.md   Coverage tracker
 test-plans/*.jmx             Scenario test plans
 test-plans/annotations/      Assert/annotation fixtures used by E10-E13
