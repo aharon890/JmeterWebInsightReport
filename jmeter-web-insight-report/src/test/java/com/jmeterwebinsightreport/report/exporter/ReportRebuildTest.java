@@ -95,6 +95,28 @@ class ReportRebuildTest {
     }
 
     @Test
+    void anAssertNamingNoComponentIsRefusedAndTheReportIsStillWritten() throws Exception {
+        // It reached CsvSource.nearMiss with a null component, whose NullPointerException left
+        // jmeter -g with no report at all - a server-file fault costing the client report.
+        File annotations = work.resolve("orphan.json").toFile();
+        Files.write(annotations.toPath(), ("{\"serverMetrics\":{\"components\":{\"db\":{\"type\":\"custom\"}},"
+                + "\"asserts\":[{\"id\":\"orphan\",\"query\":\"cpu.pct\",\"reduce\":{\"kind\":\"max\"},"
+                + "\"fail\":{\"gt\":90}}]}}").getBytes(StandardCharsets.UTF_8));
+        ReportConfiguration config = config("orphan", CSV, annotations);
+        Captured captured = new Captured();
+        ReportData parsed = ReportRebuild.parse(JTL, config, PROPS);
+        ReportRebuild.readCompanionFiles(config, config.getOutputDirectory(), JTL, parsed,
+                PROPS, captured.out, captured.err, NO_ENV, ReportRebuild.Route.LISTENER_PANEL);
+        assertNull(config.getServerDataProblem(), captured.err());
+        ReportRebuild.generateAndAnnounce(config, parsed, JTL.getPath().replace(File.separatorChar, '/'),
+                captured.out, captured.logged::add);
+        JsonNode json = JSON.readTree(new File(config.getOutputDirectory(), "web-insight-report.json"));
+        JsonNode orphan = json.get("serverAsserts").get(0);
+        assertEquals("orphan", orphan.get("id").asText(), json.toString());
+        assertEquals("INVALID_RULE", orphan.get("notJudged").asText(), orphan.toString());
+    }
+
+    @Test
     void theServiceWritesWhatTheGRouteWritesFromTheGoldensInputs() throws Exception {
         // The service, as the button runs it: its streams, its log, no JMeter console.
         ReportConfiguration service = config("service", CSV, ANNOTATIONS);

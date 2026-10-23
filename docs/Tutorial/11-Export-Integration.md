@@ -994,7 +994,10 @@ Both produce the same interactive report. The listener captures richer error det
 **Server asserts are judged on the `-g -o` path.** The metrics are collected after the run ends,
 so the listener's report is the interim one: it judges the client rules, and its server asserts
 are not evaluated yet. The listener ignores `webinsight.report.servermetrics` when the run ends
-(`jmeter.log` says so), so one `run.properties` can serve both commands. In the JMeter GUI, the
+(`jmeter.log` says so), so one `run.properties` can serve both commands. Under `-n -t … -e -o`, where
+JMeter builds the reports straight after the run, a server data file it names is never read: no
+export of this run can exist yet, so the exporter keeps the listener's report and says the file was
+not read (`WEB-INSIGHT-REPORT: SKIPPED`). In the JMeter GUI, the
 listener's **Rebuild report with server data** button runs the `-g -o` step over the listener's own
 results file: it reads `webinsight.report.servermetrics`, else the listener's **Server data (CSV)**
 field, and writes over the interim report. See [Getting Server Data In](14-Server-Data.md).

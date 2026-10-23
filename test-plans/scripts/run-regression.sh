@@ -151,19 +151,28 @@ else
     # The smoke suite as well (E24, and E30's live server-data flow): the fixture suite holds
     # neither, so a regeneration alone would never run the live flow on exactly the change that
     # needed it.
-    if ! run_live_smoke; then
-        record R04 "Report fixtures regenerated + live smoke" FAIL \
-            "the live smoke failed (E24 or E30) — see $RESULTS_DIR/E24/jmeter.log, $RESULTS_DIR/E30/"
-    elif [[ $fixture_fail -eq 0 ]] && fixtures_current; then
-        record R04 "Report fixtures regenerated" PASS
+    #
+    # Both are judged, and every cause present is named: a failed smoke used to be the whole
+    # R04 line, and a fixture that failed to regenerate beside it went unnamed.
+    #
+    # A scenario that produced nothing is a recorded FAIL now, not a silent one: every
+    # producer empties its directory first and stamps only a report it wrote, so the
+    # fixture is missing rather than last cycle's under a fresh stamp (F3; pinned by
+    # selftest_failed_regeneration). fixtures_current still has to agree afterwards,
+    # because a regeneration can exit 0 and still not be what the tree would render:
+    # lib/ext swapped during the run, or a source edited while it ran.
+    r04_causes=""
+    run_live_smoke \
+        || r04_causes="the live smoke failed (E24 or E30) — see $RESULTS_DIR/E24/jmeter.log, $RESULTS_DIR/E30/"
+    if [[ $fixture_fail -ne 0 ]] || ! fixtures_current; then
+        stale_ids="$(stale_fixture_reason | sort -u | tr '\n' ',' | sed 's/,$//; s/,/, /g')"
+        r04_causes="${r04_causes:+$r04_causes; }fixtures not regenerated (${stale_ids:-a producer failed})"
+        r04_causes="$r04_causes — see $RESULTS_DIR/test-execution-report.csv"
+    fi
+    if [[ -z "$r04_causes" ]]; then
+        record R04 "Report fixtures + live JMeter smoke" PASS "regenerated"
     else
-        # A scenario that produced nothing is a recorded FAIL now, not a silent one: every
-        # producer empties its directory first and stamps only a report it wrote, so the
-        # fixture is missing rather than last cycle's under a fresh stamp (F3; pinned by
-        # selftest_failed_regeneration). fixtures_current still has to agree afterwards,
-        # because a regeneration can exit 0 and still not be what the tree would render:
-        # lib/ext swapped during the run, or a source edited while it ran.
-        record R04 "Report fixtures regenerated" FAIL "see $RESULTS_DIR/test-execution-report.csv"
+        record R04 "Report fixtures + live JMeter smoke" FAIL "$r04_causes"
     fi
 fi
 
@@ -175,7 +184,7 @@ if fixtures_current; then
         record R05 "Playwright ($(playwright_test_count) tests)" FAIL "see test-results/playwright-report/"
     fi
 else
-    record R05 "Playwright ($(playwright_test_count) tests)" FAIL "fixtures still stale after regeneration"
+    record R05 "Playwright ($(playwright_test_count) tests)" FAIL "fixtures still stale after regeneration — R04 names them"
 fi
 
 # --- 6. Golden artifacts ------------------------------------------------------

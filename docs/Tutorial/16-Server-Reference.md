@@ -143,7 +143,9 @@ time,component,metric,instance,value
   that sentence on the console and the Server tab. A shift of seconds is named as clock skew, with
   the `--clock-offset` that moves it; rows before and after the run with none inside it (an export
   of two other runs) are named as such, with `export the run's window`. Nothing is ever shifted
-  without being asked. Rows inside the run whose every value is empty or `NaN` are said as that.
+  without being asked. Rows inside the run whose every value is empty or `NaN` are said as that; under
+  `--from`, rows that hold numbers a counter conversion leaves nothing of (no row before the run to
+  take a rate from) are said as that, with `export from one step before the run`.
 - **The names must match exactly.** `component` and `metric` are compared as written; a row whose
   names differ from the annotations only by case or by `.`, `_` and `-` (`App` for `app`,
   `cpu_pct` for `cpu.pct`) fails the series with a sentence naming both spellings, and every
@@ -677,9 +679,9 @@ collects with whichever plugin JAR that one holds.
 
 Unknown keys are ignored and carried through a Save untouched. A few keys are refused instead,
 each with a sentence naming what to write ([below](#retired-and-refused-keys)). A container of the wrong shape (`"asserts": {}`,
-`"warn": 640`, `"reduce": "max"`) costs the whole `serverMetrics` block at load: nothing in it is
-judged and the run says `SERVER NOT JUDGED`, while the client asserts are read and judged as usual.
-A written `null` means absent.
+`"warn": 640`, `"reduce": "max"`, a `null` entry in `asserts`) costs the whole `serverMetrics` block at
+load: nothing in it is judged and the run says `SERVER NOT JUDGED`, while the client asserts are read
+and judged as usual. Elsewhere a written `null` means absent.
 
 Durations are written `500ms`, `30s`, `2m`, `1h`: lowercase, no space, never a bare number, because a
 bare number is ambiguous between seconds and milliseconds.

@@ -1,5 +1,7 @@
 package com.jmeterwebinsightreport.report.generator;
 
+import com.jmeterwebinsightreport.report.exporter.ReportRebuild;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -56,11 +58,19 @@ public final class PropertyCheck {
 
     /**
      * The server-data reader options, {@code webinsight.report.servermetrics.<option>} — the names
-     * {@code WebInsightDataExporter.CSV_OPTIONS} reads, each by its exact name, so a misspelt one is
-     * a WARNING like any other. {@code PropertyCheckTest} holds this list to that constant.
+     * {@link ReportRebuild#CSV_OPTIONS} reads, each by its exact name, so a misspelt one is a WARNING
+     * like any other. Taken from that table, so an option added there is known here with no second
+     * edit; it used to be a copy a test held equal.
      */
-    static final List<String> SERVER_DATA_OPTIONS = Collections.unmodifiableList(Arrays.asList(
-            "step", "clockoffset", "timezone", "from", "layout", "columns", "csvcolumns", "component", "env"));
+    static final List<String> SERVER_DATA_OPTIONS = serverDataOptions();
+
+    private static List<String> serverDataOptions() {
+        List<String> names = new ArrayList<>();
+        for (String[] option : ReportRebuild.CSV_OPTIONS) {
+            names.add(option[0]);
+        }
+        return Collections.unmodifiableList(names);
+    }
 
     /** Every name the plugin reads. A name outside this set is unknown. */
     static final Set<String> KNOWN = Collections.unmodifiableSet(known(
@@ -75,8 +85,8 @@ public final class PropertyCheck {
             "webinsight.report.baseline",
             "webinsight.report.externaldata",
             "webinsight.report.externaldata.threshold",
-            "webinsight.report.failonassert",
-            "webinsight.report.failonerror",
+            NonZeroExit.FAIL_ON_ASSERT,
+            NonZeroExit.FAIL_ON_ERROR,
             "webinsight.report.filename",
             "webinsight.report.junit",
             "webinsight.report.output",
@@ -84,7 +94,7 @@ public final class PropertyCheck {
             "webinsight.report.resolved.annotations",
             "webinsight.report.resolved.filename",
             "webinsight.report.resolved.title",
-            "webinsight.report.server.failonerror",
+            NonZeroExit.FAIL_ON_SERVER_ERROR,
             "webinsight.report.servermetrics",
             "webinsight.report.title"));
 

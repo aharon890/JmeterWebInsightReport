@@ -116,6 +116,10 @@ class CsvSourceTest {
         // And a name nothing resembles is still an empty answer: NO_MATCH.
         assertNull(ask(reader, s, "db", "connections").error());
         assertTrue(ask(reader, s, "db", "connections").instances().isEmpty());
+        // An assert that names no component (INVALID_RULE already) is an empty answer too, never
+        // a NullPointerException.
+        assertNull(ask(reader, s, null, "cpu.pct").error());
+        assertTrue(ask(reader, s, null, "cpu.pct").instances().isEmpty());
     }
 
     @Test
@@ -818,6 +822,27 @@ class CsvSourceTest {
         ServerMetricsPayload otel = collectFrom("otel", "", shopKpi("drops"));
         assertEquals("the catalogue does not name shop.drops in otel's export - put the series in the file under"
                 + " drops", seriesOf(otel, "web", "drops").getError());
+    }
+
+    @Test
+    void aCounterWithNoRowBeforeTheRunIsSaidToNeedOneNotToHoldNoNumbers() throws Exception {
+        // One counter row inside the run and none before it: the cell holds a number, and the
+        // conversion to a rate leaves nothing. It was "every value is empty or NaN".
+        ServerMetricsPayload p = collectFrom("telegraf",
+                (WINDOW.getStart() + 15_000L) + ",web,shop_requests_total,,100\n", shopKpi("requests"));
+        assertEquals("export.csv has 1 row for web/requests holding numbers, and none is left once read as"
+                + " telegraf's counter shop_requests_total: a counter's rate needs the row before each one - export"
+                + " from one step before the run", seriesOf(p, "web", "requests").getError());
+    }
+
+    @Test
+    void underFromATyposInTheToolsNameIsSaidAsANearMiss() throws Exception {
+        // The export spells the tool's name, so a case slip there was compared with our own name
+        // only, matched nothing, and read EMPTY - NO_MATCH, with nothing to say why.
+        ServerMetricsPayload p = collectFrom("datadog", every15s("web", "Shop.Drops", "", i -> "2"), shopKpi("drops"));
+        String error = seriesOf(p, "web", "drops").getError();
+        assertNotNull(error, "a near miss, not an empty answer");
+        assertTrue(error.contains("no row names component web, metric shop.drops") && error.contains("web/Shop.Drops"), error);
     }
 
     @Test

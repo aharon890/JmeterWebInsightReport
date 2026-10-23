@@ -962,7 +962,10 @@ calls `NonZeroExit`, `ExitPolicy` or `PropertyCheck.emit` (an exit code means no
 and the page it writes is the `-g` report, so with no response bodies. The NEXT line names the file the
 button would read (the property, else the field) when either is set, and the button when JMeter runs
 with a GUI. A -g run that brings server data that exists, or a recorded refusal of it, is never skipped by `thisRunAlreadyReported` (it used to be,
-silently, over the listener's interim report); any skip prints `WEB-INSIGHT-REPORT: SKIPPED`. This
+silently, over the listener's interim report) — except in the listener's own non-GUI JVM (`-n -t … -e`: the listener's
+resolved filename is set and `JMeter.isNonGUI()`), where no export of the run can exist yet: there the skip is decided on
+identity before anything is collected, and the SKIPPED line says the file was not read (I37). Any skip prints
+`WEB-INSIGHT-REPORT: SKIPPED`. This
 reverses "a report reads only the payload the collector wrote": for files it is two steps, not three.
 Golden G10 = G4's inputs given as the CSV; equal to G4 but for collectionId, which the canonicaliser
 drops for a CSV case (`--volatile-collection`). Prometheus and `--recording` keep wir-collect.
@@ -1130,7 +1133,10 @@ non-zero"; with it on, the 4.0.x fold comes back exactly, which is how C35 and C
 assertions as `-strict` sub-runs. JUnit is unchanged (Aaron, decision 3): server collection and config
 faults stay `<failure>`. A `serverMetrics` block whose shape does not bind (`"asserts": {}`) costs the
 server side only: `AnnotationLoader` re-reads the file without it and carries it, keys verbatim, as
-`ServerMetricsJson.unreadable`, which the mapper refuses as one block problem. A JSON *syntax* error
+`ServerMetricsJson.unreadable`, which the mapper refuses as one block problem; `publishable()` masks such a block's
+`sources` and `environments` by the bound path's rules over whatever shape they have, since the bound fields its masks read
+are null there and a credential beside `"asserts": {}` was published verbatim. A `null` entry in `asserts` is refused at
+bind (`Nulls.FAIL`), so it isolates the block the same way rather than reaching the mapper as a NullPointerException. A JSON *syntax* error
 still loses both sides. `PropertyCheck` (both paths) makes a property named exactly `webinsight` —
 PowerShell's split of an unquoted `-Jwebinsight.report.x=y` — a client CONFIG ERROR, and warns on an
 unknown `webinsight.*` name and on a path a properties file mangled.
