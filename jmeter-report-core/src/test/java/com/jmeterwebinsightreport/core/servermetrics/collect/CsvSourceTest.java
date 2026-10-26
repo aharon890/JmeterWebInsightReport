@@ -107,6 +107,32 @@ class CsvSourceTest {
     }
 
     @Test
+    void anUnquotedQueryWithACommaFailsByLineNeverASilentNoMatch() throws IOException {
+        // A PromQL query in an unquoted cell splits at its ',': the row is refused under the fragment's key,
+        // and the query the assert asks for found no rows and no error - NO_MATCH, which STRICT does not
+        // count (S4 X08, 2026-10-25).
+        ServerSource s = csv("time,component,metric,instance,value\n"
+                + "1700000000000,db,sum by (a, b) (x),,5\n"
+                + "1700000015000,db,sum by (a, b) (x),,6\n");
+        assertEquals("m.csv line 2: metric \"sum by (a\" is the start of sum by (a, b) (x), split at its ',' - a"
+                + " metric with ',' in it must be quoted: \"...\", each '\"' inside doubled",
+                ask(new CsvSource(), s, "db", "sum by (a, b) (x)").error());
+        // Quoted as RFC 4180 says, it reads.
+        ServerSource quoted = csv("time,component,metric,instance,value\n"
+                + "1700000000000,db,\"sum by (a, b) (x{app=\"\"c\"\"})\",,5\n");
+        assertNull(ask(new CsvSource(), quoted, "db", "sum by (a, b) (x{app=\"c\"})").error());
+        // A query that only shares the fragment's start with no ',' after it is not blamed.
+        assertNull(ask(new CsvSource(), s, "db", "sum by (abc)").error());
+        // A '"' before the ',' is lost too in an unquoted cell (it toggles quoting), so the fragment is the
+        // query's start without it - still that query's row (S4 X08's fourth query).
+        ServerSource quotes = csv("time,component,metric,instance,value\n"
+                + "1700000000000,db,max(x{app=\"c\"}) * topk(1, y),,5\n");
+        assertEquals("m.csv line 2: metric \"max(x{app=c}) * topk(1\" is the start of max(x{app=\"c\"}) * topk(1, y),"
+                + " split at its ',' - a metric with ',' in it must be quoted: \"...\", each '\"' inside doubled",
+                ask(new CsvSource(), quotes, "db", "max(x{app=\"c\"}) * topk(1, y)").error());
+    }
+
+    @Test
     void aNameThatDiffersOnlyByCaseOrPunctuationIsSaidNotEmpty() throws IOException {
         ServerSource s = csv("time,component,metric,instance,value\n"
                 + "1700000000000,App,cpu_pct,,40\n1700000015000,App,cpu_pct,,41\n");

@@ -226,6 +226,10 @@ public final class CsvSource implements SeriesSource {
             if (near != null) {
                 return Answer.failed(near);
             }
+            String split = splitAt(idx, request.component(), request.metricKey());
+            if (split != null) {
+                return Answer.failed(split);
+            }
             return Answer.of(instances, readAs);
         }
         // Rows outside the run are dropped, with one step of slack at each edge: a range query on
@@ -387,6 +391,31 @@ public final class CsvSource implements SeriesSource {
                 return "no row names component " + component + ", metric " + metric + "; " + rows + " row"
                         + (rows == 1 ? "" : "s") + " name " + c + "/" + m + " - component and metric must be "
                         + "written exactly as the annotations file writes them";
+            }
+        }
+        return null;
+    }
+
+    /**
+     * When no row names {@code component/metric} because a row with more cells than its header was read
+     * under the start of that metric - the text before its ',' - the sentence naming that row, or null.
+     * A metric with a ',' in it, a PromQL query's, splits that way when its cell is not quoted, and the
+     * query it was asked by found no rows and no error: a NO_MATCH that said nothing (S4 X08).
+     */
+    static String splitAt(Index idx, String component, String metric) {
+        if (component == null || metric == null || metric.indexOf(',') < 0) {
+            return null;
+        }
+        // An unquoted cell loses its '"' as well (each one toggles quoting), so the fragment is compared
+        // with the metric written without them.
+        String bare = metric.replace("\"", "");
+        for (Map.Entry<String, String> e : idx.wideRows.entrySet()) {
+            int sep = e.getKey().indexOf('\u0000');
+            String fragment = e.getKey().substring(sep + 1);
+            if (e.getKey().substring(0, sep).equals(component) && !fragment.isEmpty() && bare.startsWith(fragment)
+                    && bare.substring(fragment.length()).trim().startsWith(",")) {
+                return e.getValue() + ": metric \"" + fragment + "\" is the start of " + metric + ", split at its ','"
+                        + " - a metric with ',' in it must be quoted: \"...\", each '\"' inside doubled";
             }
         }
         return null;
@@ -731,6 +760,7 @@ public final class CsvSource implements SeriesSource {
                 written--;
             }
             if (written > header.width) {
+                idx.wideRows.putIfAbsent(key, name + " line " + row.line);
                 idx.errors.put(key, where + "has " + written + " cells where the header has " + header.width
                         + " - an unquoted ',' inside a value? Write numbers with a '.' decimal point and no"
                         + " thousands separator, or quote the cell");
@@ -1152,6 +1182,12 @@ public final class CsvSource implements SeriesSource {
         final List<String> mapMissing = new ArrayList<>();
         /** By series key, the first line that repeated a time with another value: said, never fatal. */
         final Map<String, String> duplicates = new LinkedHashMap<>();
+        /**
+         * By the key a row with more cells than its header was read under, that row ("m.csv line 5"). When
+         * the ',' was inside the metric cell - an unquoted PromQL query - that key holds only the query's
+         * start, and the lookup of the whole query is pointed here ({@link #splitAt}).
+         */
+        final Map<String, String> wideRows = new LinkedHashMap<>();
         String fileError;
 
         static Index failed(String error) {
