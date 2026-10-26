@@ -262,7 +262,7 @@ public final class CsvSource implements SeriesSource {
             instances.add(inst);
         }
         if (instances.isEmpty()) {
-            return emptySeries(source, request, window, slack, byInstance, readAs);
+            return emptySeries(source, request, window, slack, byInstance, readAs, idx);
         }
         return Answer.of(instances, readAs);
     }
@@ -273,7 +273,7 @@ public final class CsvSource implements SeriesSource {
      * holding a number. The span and the counts are taken only here, where they are said.
      */
     private Answer emptySeries(ServerSource source, Request request, ServerMetricsPayload.Window window, long slack,
-                               Map<String, TreeMap<Long, Double>> byInstance, ToolName readAs) {
+                               Map<String, TreeMap<Long, Double>> byInstance, ToolName readAs, Index idx) {
         long fileFirst = Long.MAX_VALUE;
         long fileLast = Long.MIN_VALUE;
         int rowsRead = 0;
@@ -303,8 +303,9 @@ public final class CsvSource implements SeriesSource {
             // time problem - a local time written with Z, a wrong --time-zone, an export of
             // another range, a skewed server clock - and never "the query matched no series":
             // say so, with both spans and the shift between them.
+            long[] span = outsideSpan(idx, source.clockOffsetMs(), window, slack);
             return Answer.failed(outsideWindow(file, request.component(), request.metricKey(), rowsRead,
-                    fileFirst, fileLast, window, slack));
+                    fileFirst, fileLast, span[0], span[1], window, slack));
         }
         String rowsInside = file + " has " + inside + " row" + (inside == 1 ? "" : "s") + " for "
                 + request.component() + "/" + request.metricKey() + (inside < rowsRead ? " inside the run" : "");
@@ -324,15 +325,59 @@ public final class CsvSource implements SeriesSource {
     }
 
     /**
+     * The earliest and latest row, clock offset applied, of every series in the file with no row inside
+     * the run: the rows a shift would have to move. Rows of series the run does contain are left out, so
+     * one series shifted beside in-window ones is measured on its own (E28).
+     */
+    static long[] outsideSpan(Index idx, long offset, ServerMetricsPayload.Window window, long slack) {
+        long first = Long.MAX_VALUE;
+        long last = Long.MIN_VALUE;
+        for (Map<String, TreeMap<Long, Double>> series : idx.series.values()) {
+            long sFirst = Long.MAX_VALUE;
+            long sLast = Long.MIN_VALUE;
+            boolean inside = false;
+            for (TreeMap<Long, Double> rows : series.values()) {
+                for (Long t : rows.keySet()) {
+                    if (inRun(t + offset, window, slack)) {
+                        inside = true;
+                        break;
+                    }
+                }
+                if (inside) {
+                    break;
+                }
+                if (!rows.isEmpty()) {
+                    sFirst = Math.min(sFirst, rows.firstKey() + offset);
+                    sLast = Math.max(sLast, rows.lastKey() + offset);
+                }
+            }
+            if (!inside && sFirst <= sLast) {
+                first = Math.min(first, sFirst);
+                last = Math.max(last, sLast);
+            }
+        }
+        return new long[] {first, last};
+    }
+
+    /**
      * The sentence for a series whose every row is outside the run window: how many rows, the span
      * they cover against the run's, and the shift between them - a whole number of hours or quarter
      * hours named as a likely time zone, anything else as clock skew, each with the flag that moves
      * it. A hint only: nothing is shifted without being asked.
+     *
+     * <p>One shift for the file: measured over {@code spanFirst..spanLast}, every series that lies
+     * wholly outside the run ({@link #outsideSpan}), so each of them is told the same offset. When that
+     * span is at least as long as the run, its middle is matched with the run's: an export takes a
+     * lead-in before the run and as much after it ("a minute either side"), which start to start counted
+     * into the shift - a file 400 s late was told 340 s, and a series that started late more - and the
+     * hint says "about". A shorter span is matched start to start.
      */
     static String outsideWindow(String file, String component, String metric, int rows, long first, long last,
-                                ServerMetricsPayload.Window window, long slack) {
-        // Start to start: a file shifted whole keeps its distance from the run at both ends.
-        long shift = Math.round((first - window.getStart()) / 1000.0) * 1000L;
+                                long spanFirst, long spanLast, ServerMetricsPayload.Window window, long slack) {
+        boolean centred = spanFirst <= spanLast && spanLast - spanFirst >= window.getEnd() - window.getStart();
+        long raw = centred ? (spanFirst + spanLast) / 2 - (window.getStart() + window.getEnd()) / 2
+                : (spanFirst <= spanLast ? spanFirst : first) - window.getStart();
+        long shift = Math.round(raw / 1000.0) * 1000L;
         boolean before = last < window.getStart();
         // Rows on both sides and none inside: an export of other runs, the run falling between them.
         // No shift lines that up.
@@ -345,6 +390,12 @@ public final class CsvSource implements SeriesSource {
         if (around) {
             return sb.append(" - export the run's window").toString();
         }
+        if (spanFirst < window.getStart() && spanLast > window.getEnd()) {
+            // This series lies on one side, but the file's rows outside the run lie on both (an export of
+            // other periods): the middle of those is no clock offset.
+            return sb.append(" - export the run's window: the file's rows lie before and after it, so no shift"
+                    + " lines them up").toString();
+        }
         long quarter = 15 * 60_000L;
         long rounded = Math.round((double) shift / quarter) * quarter;
         long tolerance = Math.max(2 * 60_000L, 2 * slack);
@@ -355,7 +406,9 @@ public final class CsvSource implements SeriesSource {
                     .append(" zone with --time-zone, or move the rows with --clock-offset ").append(rounded > 0 ? "-" : "")
                     .append(Durations.format(Math.abs(rounded)));
         } else if (shift != 0 && Math.abs(shift) <= 14 * 3_600_000L) {
-            sb.append(". Export the run's window; if the server's clock is off, move the rows with --clock-offset ")
+            sb.append(". Export the run's window; if the server's clock is off")
+                    .append(centred ? " by about " + Durations.format(Math.abs(shift)) : "")
+                    .append(", move the rows with --clock-offset ")
                     .append(shift > 0 ? "-" : "").append(Durations.format(Math.abs(shift)));
         } else {
             sb.append(". The file covers another period: export the run's window");

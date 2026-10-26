@@ -146,6 +146,51 @@ class CsvSourceTest {
     }
 
     @Test
+    void aShiftedExportWithALeadInIsToldItsWholeShiftTheSameForEverySeries() throws IOException {
+        // A real export (petstore_ms, 2026-10-25): the run's window and a minute either side, every row 400 s
+        // late. Measured start to start the hint said -340s (the lead-in counted into the shift), and more for a
+        // rate series whose first rows were missing; followed, it gave a report silently a minute off (S4 X14).
+        StringBuilder text = new StringBuilder("time,component,metric,instance,value\n");
+        for (long t = 1_700_000_000_000L - 60_000 + 400_000; t <= 1_700_000_060_000L + 60_000 + 400_000; t += 15_000) {
+            text.append(t).append(",app,cpu,,40\n");
+            if (t >= 1_700_000_000_000L + 15_000 + 400_000) {
+                text.append(t).append(",app,rate,,7\n");   // starts 75 s into the export
+            }
+        }
+        ServerSource s = csv(text.toString());
+        CsvSource reader = new CsvSource();
+        for (String metric : new String[] {"cpu", "rate"}) {
+            String e = ask(reader, s, "app", metric).error();
+            assertTrue(e.endsWith("if the server's clock is off by about 400s, move the rows with --clock-offset -400s"), e);
+        }
+    }
+
+    @Test
+    void theShiftIsMeasuredOverTheSeriesOutsideTheRunNotTheWholeFile() throws IOException {
+        // One series shifted 3 h beside another inside the run (E28): the whole file's span would put the
+        // middle 90 minutes off; the shifted series alone says 3h.
+        ServerSource s = csv("time,component,metric,instance,value\n"
+                + "1700000000000,app,ok,,1\n1700000060000,app,ok,,1\n"
+                + "1700010800000,app,late,,1\n1700010860000,app,late,,1\n");
+        String e = ask(new CsvSource(), s, "app", "late").error();
+        assertTrue(e.endsWith("move the rows with --clock-offset -3h"), e);
+    }
+
+    @Test
+    void aSeriesOnOneSideOfAFileThatStraddlesTheRunIsToldToExportTheRunNotAShift() throws IOException {
+        // An export of two other periods (S4 X16): most series have rows before and after the run; one
+        // starts late and has rows only after it. No shift lines the file up, so that one is not given
+        // the middle of the file's rows as a clock offset (it read "off by about 7s").
+        ServerSource s = csv("time,component,metric,instance,value\n"
+                + "1699999900000,app,cpu,,40\n1700000160000,app,cpu,,43\n"
+                + "1700000160000,app,late,,1\n1700000175000,app,late,,2\n");
+        assertEquals("m.csv has 2 rows for app/late and none inside the run: they run 2023-11-14T22:16:00Z .."
+                + " 2023-11-14T22:16:15Z, after the run (2023-11-14T22:13:20Z .. 2023-11-14T22:14:20Z) - export the"
+                + " run's window: the file's rows lie before and after it, so no shift lines them up",
+                ask(new CsvSource(), s, "app", "late").error());
+    }
+
+    @Test
     void aNameThatDiffersOnlyByCaseOrPunctuationIsSaidNotEmpty() throws IOException {
         ServerSource s = csv("time,component,metric,instance,value\n"
                 + "1700000000000,App,cpu_pct,,40\n1700000015000,App,cpu_pct,,41\n");
