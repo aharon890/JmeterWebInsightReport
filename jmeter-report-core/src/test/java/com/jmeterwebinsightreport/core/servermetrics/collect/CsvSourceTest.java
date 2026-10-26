@@ -133,6 +133,19 @@ class CsvSourceTest {
     }
 
     @Test
+    void anUnquotedQueryThatLostItsQuotesIsSaidNotEmpty() throws IOException {
+        // No ',' to split it, but each '"' toggles quoting instead of being text: the row names the query
+        // without them, and the assert read NO_MATCH with nothing said (S4 X08's other 7).
+        ServerSource s = csv("time,component,metric,instance,value\n"
+                + "1700000000000,db,max(x{app=\"c\"}),,5\n");
+        assertEquals("no row names component db, metric max(x{app=\"c\"}); 1 row name db/max(x{app=c}) - the same"
+                + " text without its '\"': a cell holding '\"' must be quoted, \"...\", with each '\"' inside doubled",
+                ask(new CsvSource(), s, "db", "max(x{app=\"c\"})").error());
+        // Only when the series is otherwise empty: the row's own name still reads.
+        assertNull(ask(new CsvSource(), s, "db", "max(x{app=c})").error());
+    }
+
+    @Test
     void aNameThatDiffersOnlyByCaseOrPunctuationIsSaidNotEmpty() throws IOException {
         ServerSource s = csv("time,component,metric,instance,value\n"
                 + "1700000000000,App,cpu_pct,,40\n1700000015000,App,cpu_pct,,41\n");

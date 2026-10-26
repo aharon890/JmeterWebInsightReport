@@ -379,18 +379,24 @@ public final class CsvSource implements SeriesSource {
             return null;
         }
         String wanted = loose(component) + "\u0000" + loose(metric);
+        // Each '"' in a cell that is not quoted opens or closes quoting instead of being text, so the row
+        // names a query without them (N4).
+        String unquoted = metric.indexOf('"') >= 0 ? component + "\u0000" + metric.replace("\"", "") : null;
         for (Map.Entry<String, Map<String, TreeMap<Long, Double>>> e : idx.series.entrySet()) {
             int sep = e.getKey().indexOf('\u0000');
             String c = e.getKey().substring(0, sep);
             String m = e.getKey().substring(sep + 1);
-            if ((loose(c) + "\u0000" + loose(m)).equals(wanted)) {
+            boolean lostQuotes = e.getKey().equals(unquoted);
+            if (lostQuotes || (loose(c) + "\u0000" + loose(m)).equals(wanted)) {
                 int rows = 0;
                 for (TreeMap<Long, Double> r : e.getValue().values()) {
                     rows += r.size();
                 }
                 return "no row names component " + component + ", metric " + metric + "; " + rows + " row"
-                        + (rows == 1 ? "" : "s") + " name " + c + "/" + m + " - component and metric must be "
-                        + "written exactly as the annotations file writes them";
+                        + (rows == 1 ? "" : "s") + " name " + c + "/" + m + (lostQuotes
+                            ? " - the same text without its '\"': a cell holding '\"' must be quoted, \"...\","
+                              + " with each '\"' inside doubled"
+                            : " - component and metric must be written exactly as the annotations file writes them");
             }
         }
         return null;
