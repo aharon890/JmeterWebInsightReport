@@ -310,6 +310,17 @@ the run beside numbered ones outside it). They replace Stage 2's D6 test that re
   NoData). Only `±Inf` joined that skip.
 - Tutorial 16 and CLAUDE.md say the new rule.
 
+**5.9, expected (written before the change, 4.1.25):** none in S4. Only X17c (60 s rows) and X18b (1 s rows) measure
+their step, and in each every instance has one spacing. In WIR, E26 and E27 are uniform and E28 sets 15 s; the goldens
+are unchanged. Only a series mixing a sparse instance with dense ones moves.
+
+**5.9, done (4.1.25).** Red first: `CollectPureTest` (spacing of a 15 s and a 60 s instance: 15 s) and `CsvSourceTest`'s
+step case (a 5 s and a 15 s instance: 5 s). Both had pinned the widest on purpose ("one instance at 15 s does not hide
+another at 60 s"). Across series the widest stays, and the cross-series case is unchanged. Observed, as registered:
+- X17c still measures `1m` (too coarse, collected at 15s) and X18b `1s`.
+- X17c's 31 and X18b's 2 differences from 4.1.0 are all 5.6's gap suffix; status, actual and coverage are identical.
+- M01 none.
+
 **For the owner:**
 - **Q5, the y-axis.** Grafana bounds it by the data; WIR includes every band (R3-3) so the drag handles stay on the
   plot.

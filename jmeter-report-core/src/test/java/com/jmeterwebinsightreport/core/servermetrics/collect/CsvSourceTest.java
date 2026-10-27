@@ -1985,14 +1985,16 @@ class CsvSourceTest {
     @Test
     void theStepIsAnInstancesMostCommonSpacingBetweenRowsWithAValue() throws IOException {
         // Instance a every 5 s; instance b's rows are blank but for every third, which would read
-        // 15 s - a blank row is a gap, not the export's interval, so b measures 15 s and is the widest.
+        // 15 s - a blank row is a gap, not the export's interval, so b measures 15 s. Within one series
+        // the finest instance sets the step (5.9, N6): a's points fill every 5 s slot b leaves empty,
+        // and one every-third-row instance used to coarsen the whole collection.
         StringBuilder sb = new StringBuilder("time,component,metric,instance,value\n");
         for (int i = 0; i < 30; i++) {
             long t = 1_700_000_000_000L + i * 5000L;
             sb.append(t).append(",app,cpu,a,50\n");
             sb.append(t).append(",app,cpu,b,").append(i % 3 == 0 ? "7" : "").append('\n');
         }
-        assertEquals(15_000, new CsvSource().measuredStepMillis(csv(sb.toString()), HOUR));
+        assertEquals(5_000, new CsvSource().measuredStepMillis(csv(sb.toString()), HOUR));
         // Without b, a's 5 s.
         assertEquals(5_000, new CsvSource().measuredStepMillis(csv("time,component,metric,instance,value\n"
                 + rows("app,cpu,a", 1_700_000_000_000L, 5000, 10, false)), HOUR));

@@ -985,8 +985,9 @@ measured from the reader's own index, under every flag given (`CsvSource.measure
 CSV grammar: each instance's `CsvSource.intervalOf` over its rows with a value inside the run window (plus
 one step) — the most common gap, taken when it repeats at least 3 times and is at least half the gaps
 (on repeats alone a millisecond-jittered hour adopted a 15001ms step, and every `sustainedFor 30s` was
-INVALID_RULE; a jittered export now measures nothing and keeps 15 s) — then the widest over every instance of the
-series the asserts read, as `Coverage.spacingMillis` takes it — asked as the collection asks
+INVALID_RULE; a jittered export now measures nothing and keeps 15 s) — within a series the finest of its
+instances, as `Coverage.spacingMillis` takes it (5.9: the dense ones fill the slots a sparse one leaves, so one
+every-other-minute instance no longer coarsens the collection), then the widest over the series the asserts read — asked as the collection asks
 (`Collector.assertRequests`: the same names, `--from` tool names and resolved queries), so a coarse series
 no assert reads sets nothing; a file with no assert yet is measured over its components' catalogue metrics
 (`Collector.catalogueRequests`). Blank-row and row-spacing lines count the same rows. The index is keyed without the step, so `WirCollect.measureCsv` hands

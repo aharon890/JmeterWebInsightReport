@@ -489,7 +489,7 @@ public final class WirCollect {
 
     /**
      * The line for a CSV series whose points are further apart than {@code --step} can count, or
-     * {@code null}: its spacing ({@link Coverage#spacingMillis}, the largest over its instances) more
+     * {@code null}: its spacing ({@link Coverage#spacingMillis}, the finest over its instances, 5.9) more
      * than 1.5 x the step, or more than 1% above it when the series came back INSUFFICIENT. Coverage
      * counts one slot per step, so a Grafana export at the panel's 60 s interval read at the default
      * 15 s covers a quarter of the slots at most and reads LOW_COVERAGE - a correct export judged on

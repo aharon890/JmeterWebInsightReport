@@ -506,9 +506,10 @@ public final class CsvSource implements SeriesSource {
      * as. Each instance's {@linkplain #intervalOf interval} between its rows with a value (a blank row
      * is a gap, as {@link Coverage#spacingMillis} reads it), counting only rows within {@code window}
      * and one {@code source} step of it (null: every row) - a jittered, sparse or scattered export has
-     * none; then the widest over every instance of the series
-     * {@code requests} ask for, as {@link Coverage#spacingMillis} takes it, so a coarser series is never
-     * counted in slots finer than its rows. A series is found as {@link #collect} finds it - by
+     * none; within one series the finest of its instances, as {@link Coverage#spacingMillis} takes it
+     * (5.9, N6: the dense instances fill the slots a sparse one leaves, so one every-other-minute
+     * instance no longer coarsens the collection); then the widest over the series {@code requests}
+     * ask for, so a coarser series is never counted in slots finer than its rows. A series is found as {@link #collect} finds it - by
      * component and metric key, under a {@code --from} tool's name first when the file has rows under
      * it - and one the collection never reads, however coarse, sets nothing. 0 when nothing was
      * measured, a file the reader refuses included: its refusal follows.
@@ -536,6 +537,7 @@ public final class CsvSource implements SeriesSource {
         long slack = Math.max(0, source.stepMillis());
         long widest = 0;
         for (Map<String, TreeMap<Long, Double>> byInstance : measured) {
+            long finest = 0;
             for (TreeMap<Long, Double> rows : byInstance.values()) {
                 List<Long> times = new ArrayList<>();
                 for (Map.Entry<Long, Double> p : rows.entrySet()) {
@@ -544,8 +546,12 @@ public final class CsvSource implements SeriesSource {
                         times.add(ts);
                     }
                 }
-                widest = Math.max(widest, intervalOf(times));
+                long interval = intervalOf(times);
+                if (interval > 0 && (finest == 0 || interval < finest)) {
+                    finest = interval;
+                }
             }
+            widest = Math.max(widest, finest);
         }
         return widest;
     }

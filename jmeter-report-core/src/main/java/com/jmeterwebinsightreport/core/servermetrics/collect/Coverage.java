@@ -101,21 +101,26 @@ public final class Coverage {
     /**
      * How far apart a series' points are, in milliseconds: each instance's
      * {@linkplain #mostCommonSpacing most common spacing} between consecutive points, and the
-     * largest of those over the instances; 0 when no instance has two points. What
+     * smallest of those over the instances; 0 when no instance has two points. The smallest (5.9,
+     * N6): coverage counts the union of a series' slots, so one sparse instance beside dense ones
+     * leaves none empty, and Grafana's interval follows the finest series rather than the sparsest. What
      * {@code wir-collect} compares with {@code --step}: an export at a panel's 60 s interval, counted
      * in 15 s slots, covers a quarter of them at most and reads LOW_COVERAGE for a reason nothing
      * else says.
      */
     public static long spacingMillis(List<ServerMetricsPayload.InstanceRecord> instances) {
-        long widest = 0;
+        long finest = 0;
         for (ServerMetricsPayload.InstanceRecord inst : instances) {
             List<Long> times = new ArrayList<>();
             for (ServerMetricsPayload.Point p : inst.getPoints()) {
                 times.add(p.getTs());
             }
-            widest = Math.max(widest, mostCommonSpacing(times));
+            long spacing = mostCommonSpacing(times);
+            if (spacing > 0 && (finest == 0 || spacing < finest)) {
+                finest = spacing;
+            }
         }
-        return widest;
+        return finest;
     }
 
     /**
