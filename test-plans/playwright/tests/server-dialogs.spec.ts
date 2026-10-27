@@ -386,6 +386,24 @@ test.describe('SF28: a server dialog stays the dialog wireDialog wired', () => {
     await expect(page.locator(PANEL)).toHaveCount(0);
     expect(await chartRegistry(page)).toEqual({ count: baseline.count, detached: 0 });
   });
+
+  test('[R] C4, the 4.1.33 review: the picker\'s time axis follows its own points, not the Timeline\'s range', async ({ page }) => {
+    // Its tick floor and labels read the Timeline's visible range, as the rows' did (finding 8). E27's run is
+    // 48 s, so over its own points it may tick finer than a minute and print seconds, whatever the Timeline
+    // shows - here a range of five minutes, under which the visible range would have fixed a 60 s floor.
+    await openServer(page);
+    await page.evaluate(() => { (window as any).visibleTimeRangeMs = 300000; });
+    await page.click(ORDERS_ADD);
+    await page.locator('.wir-pick-name', { hasText: 'Cache hit ratio' }).click();
+    const axis = await page.evaluate(() => {
+      const pick = (window as any).echarts.getInstanceByDom(document.getElementById('serverPickChart')!);
+      const x = pick.getOption().xAxis[0];
+      const data = pick.getOption().series[0].data;
+      return { minInterval: x.minInterval ?? null, label: x.axisLabel.formatter(data[0][0]) };
+    });
+    expect(axis.minInterval, 'a 48 s span has no minute floor').toBeNull();
+    expect(axis.label, 'and prints its seconds').toMatch(/^\d{2}:\d{2}:\d{2}$/);
+  });
 });
 
 /*

@@ -14,7 +14,7 @@
 
 const assert = require('assert');
 const path = require('path');
-const { loadReportJs } = require('./harness');
+const { loadReportJs, loadReportScope } = require('./harness');
 
 const WIR = loadReportJs();
 const SK = WIR.serverKpis;
@@ -622,6 +622,37 @@ test('R3-13: one `max sustainedFor 5m` over 20 pods x 3600 points judges in well
     const elapsed = Date.now() - t0;
     assert.strictEqual(result.status, 'PASS');
     assert.ok(elapsed < 200, `took ${elapsed} ms`);
+});
+
+/* ---- the time axis: its own span, never the Timeline's zoom (C4, the 4.1.33 review) ------- */
+
+test('a Server time axis takes its tick floor and its labels from its own span, whatever the Timeline shows', () => {
+    // The floor read the Timeline's visible range when the chart was drawn and formatClock read it again
+    // at every render: drawn zoomed, a five-minute row ticked every 30 s, and after a reset the ticks
+    // printed "15:48 15:49 15:49 15:50" (petstore R1 on 4.1.33, finding 8).
+    const scope = loadReportScope();
+    const axisOf = scope.window.WIR.serverKpis._serverTimeAxis;
+    assert.strictEqual(typeof axisOf, 'function', 'no Server time axis seam');
+    const at = new Date(2026, 9, 25, 15, 48, 30).getTime();
+    for (const visible of [95000, 300000, 4 * 3600000]) {
+        scope.visibleTimeRangeMs = visible;
+        const chart = {};
+        const wide = axisOf(chart, 240000, { min: 1, max: 2 });
+        assert.strictEqual(wide.type, 'time');
+        assert.strictEqual(wide.minInterval, 60000, 'a 240 s window ticks by the minute at visible ' + visible);
+        assert.strictEqual(wide.axisLabel.hideOverlap, true);
+        assert.strictEqual(wide.min, 1, 'the rest of the axis is the caller\'s');
+        assert.strictEqual(wide.axisLabel.formatter(at), '15:48', 'no seconds on a minute tick, visible ' + visible);
+        // Kept on the chart, so the clock / elapsed toggle does not swap in the Timeline's formatter.
+        assert.strictEqual(chart.__wirTimeAxisFormatter, wide.axisLabel.formatter);
+        const short = axisOf({}, 90000, {});
+        assert.strictEqual(short.minInterval, undefined, 'a 90 s window may tick finer, visible ' + visible);
+        assert.strictEqual(short.axisLabel.formatter(at), '15:48:30', 'with its seconds, visible ' + visible);
+        // One point (the picker's, or a row with no window and one sample) spans nothing: seconds, no floor.
+        const point = axisOf({}, 0, {});
+        assert.strictEqual(point.minInterval, undefined);
+        assert.strictEqual(point.axisLabel.formatter(at), '15:48:30', 'one point, visible ' + visible);
+    }
 });
 
 // ---------------------------------------------------------------------------
