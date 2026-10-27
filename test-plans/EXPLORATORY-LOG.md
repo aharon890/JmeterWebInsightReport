@@ -17,6 +17,38 @@ on E19/E20 where the payload load path differs from `file://`).
 
 ---
 
+## 2026-10-27 · petstore F2 and F5 rebuilt with 4.1.15 (not fixtures) · the Server tab after Stage 4 (C5, C6, C2, C4, C1)
+
+The end-of-stage session the staged plan asks for (`plans/server-tab-real-data.md`). It ran in the Chrome extension, on the two
+real-backend reports rebuilt from the Stage 0 harness's frozen CSV inputs and served from `tmp/reverify` over http.
+Every row in both reports was opened, 68 charts per report, and read against the option data, the drawn text and the
+source CSVs.
+
+A correction to the brief: F2's data shows a **catalog** pod replaced (catalog-…-2rf5p last at 18:36:09, -94xlz from
+18:36:24), not the gateway pod killed. That is why catalog-jvm, catalog-api and app-pods show 2 instances.
+
+**Held:**
+- **C5:** F2's slowest-statement row draws exactly the top 20 by in-window max, the deciding one included.
+- **C6:** F2 stays closed and lists `heap.live.growth … (no assert reads it)`. F5 opens on its 6 asserted series and
+  lists 11 extras, marked.
+- **C2:** heights are 510, 422 and 260 px, every name is drawn, nothing overlaps, and the tooltip names in full.
+- **C4:** all 34 time charts per report print distinct minutes, also redrawn at 280, 360 and 480 px. The smallest
+  value-label gap is 9 px.
+- **C1:** label-like names are bare and consistent across bars, legend and both tooltips.
+
+`resize_window` did not change the page viewport, so the narrow widths were redrawn through ECharts' resize.
+
+| # | Finding | Confidence | Outcome |
+|---|---|---|---|
+| 1 | Per instance names under the 38% cap drawn cut: `routeId=cata…`, `instanc…` (a 10-character name). They were measured in 12px sans-serif and drawn in ECharts' platform default, 12px Microsoft YaHei on Windows, 3–6% wider. A defect of 4.1.13. | verified (both reports) | Spec: server-layout.spec.ts · "[R] C2: a Per instance name that fits is drawn whole, not cut". Fixed in 4.1.16 (the axis draws in the font it is measured in). |
+| 2 | Value over time's tooltip is clipped on the left when names are long (F2 app-pods at left −77 px, 617 px wide; slowest-statement at left −590 px, 1220 px wide). It sits inside `.table-wrapper` (overflow auto) and the card (overflow hidden), so the reader loses the timestamp and the start of every name. | verified (3 rows, both reports) | **Not automated.** It predates Stage 4 (row charts inside the card, SF34) and is outside the staged plan. The candidate fix is an ECharts `tooltip.appendToBody`, waiting for the owner's go; its spec hovers a row with long names and holds the tooltip box inside the viewport. |
+| 3 | Cut names collide: two `container=catalog, n…` bars (one of them the deciding pod), three `query=select i1_0.id…`. The part that tells them apart (`pod=`, `queryid=`) comes last and is what the cut removes. | verified (both reports) | **Not automated.** This is a design call: a middle ellipsis, or the differing labels first. It is not a regression, since before 4.1.13 these names ran off the canvas, about one in five drawn. The tooltip names each bar in full. |
+| 4 | Both panels sort the twenty names alphabetically, so the deciding statement is bar 18 of 20 and legend page 18. Value over time cycles a 10-colour palette over 20 series, so the deciding series shares its colour. On the 0–60 ms axis every bar is 0–2 px long. "27 (20 drawn)" wraps in the Instances column. | verified (the order); unverified (the deciding instance: F2's is the only capped row) | **Not automated.** The order and the palette predate Stage 4 and are a design call (the deciding instance first, or a colour of its own). Proposed to the owner in the tracker. |
+| 5 | F5's Collection opens, but its line still reads `metrics OK`, and each entry says only `INSUFFICIENT`: no coverage (the console has 80%), no gap time, no assert id. Two custom series are listed as raw PromQL that a reader cannot match to their rows. One condition carries four words on one page: NOT EVALUATED, LOW COVERAGE, INSUFFICIENT, "collected below the coverage floor". | unverified (F5 only) | **Not automated.** The list format (P3) predates C6. Naming the assert id and the coverage is a candidate for the owner; its spec would be E26 with an asserted custom series INSUFFICIENT. |
+| 6 | F5's outage reads as a data problem: catalog-db NOT EVALUATED, `up` LOW COVERAGE with bars at 1 and 1, the banner "Server data problems do not fail the build". The exporter left with the pod, so the 75 s hole is the only evidence. | unverified (one report) | **Not automated.** This is B1/Q1: the owner decided on 2026-10-27 to keep "a gap is not a zero" and *name the gap*. The docs half shipped in 4.1.8/4.1.9 (Tutorial 15, the `up` descriptions). Naming the longest gap in the LOW COVERAGE detail is decided but not yet scheduled; the tracker's Open says so. |
+| 7 | F5 prints histogram ceilings as exact actuals: p95 10,000 ms on three rows (the services' 10 s maximum-expected-value), and Hikari acquire 30,000 ms. These are lower bounds. | verified (4 rows) | **Not automated.** This is B5, decided docs-only, since a CSV carries no bucket bounds. The catalogue's source text and Tutorial 15 say "at that bound means at least that" since 4.1.9. |
+| 8 | F2 app-pods restarts read PASS, peak 0/min, while a catalog pod was replaced mid-run: a replacement pod starts its own restart count at 0. | unverified (F2 only) | **Not automated.** This is assert semantics, not display: restarts cannot see a deleted pod. It is a candidate kubernetes-pod catalogue note, logged for the owner. |
+
 ## 2026-10-23 · a GUI run's interim report (no fixture) · the listener's Rebuild report with server data, on Windows, macOS and Linux (manual; not yet run)
 
 The listener's **Server data (CSV)** field and **Rebuild report with server data** button (4.0.18)

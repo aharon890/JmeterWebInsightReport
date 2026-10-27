@@ -171,7 +171,24 @@ pinned *which* twenty: p0 kept, p19 dropped, under the old collector-order fill.
 C5 p0 (the lowest) gives its slot up and p19 is drawn. The pin now says that (the test commit after 4.1.13), found
 on the first run of that spec over fixtures regenerated after 4.1.11.
 
+**End of Stage 4.** Full regression on 4.1.15 green: R01–R06, fixtures regenerated, 1082 Playwright tests (+5). The
+R06 goldens did not move, as registered, since the CI/CD JSON and JUnit read the evaluation. The `explore-report` session
+over F2 and F5 at 4.1.15 (EXPLORATORY-LOG 2026-10-27) found C5, C6, C2, C4 and C1 holding, plus 8 findings. One was a
+defect of 4.1.13 (names under the cap cut: measured in sans-serif, drawn in Microsoft YaHei), now **4.1.16, `2c3b98e`**,
+red first. The other seven are logged with reasons; the owner-facing ones are under Open.
+
 ## Open
+
+From the Stage 4 exploration. These predate Stage 4 or are design calls, so none is in the staged plan; each needs the
+owner's go:
+- **The Value over time tooltip is clipped** by the card's overflow when names are long (loses the time and the name
+  starts). Candidate: `tooltip.appendToBody`. A real wrong-output case, and small.
+- **Cut Per instance names collide** (`container=catalog, n…` twice): a middle ellipsis, or the differing labels first.
+- **The deciding instance is not first** in either panel (alphabetical), and 20 series share a 10-colour palette.
+- **The Collection list says only INSUFFICIENT**: no coverage, no assert id, raw PromQL for custom series.
+- **B1 "name the gap"** (owner, 2026-10-27) is decided but not scheduled: the LOW COVERAGE detail could name the longest
+  gap in the judged window. F5 shows why: the DB outage reads as a data problem.
+- **kubernetes-pod restarts cannot see a deleted pod** (F2): a catalogue description note.
 
 - **End of Stage 2 (4.1.7):** full regression green on 2026-10-27, R01–R06 with fixtures regenerated, 1077 Playwright
   passed. That includes `docs-check-bugs.spec.ts` E02 and E25, the two that timed out in the A1+A2 regression, so those
