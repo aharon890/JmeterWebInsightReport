@@ -334,6 +334,15 @@ defects in 5.1, 5.6, 5.7, 5.8 and 5.9, plus four doc lags. The full regression a
   Server chart's tooltip, visible since 5.1 put it on the body. Server charts now link among themselves
   (`serverChartGroup`). Red: the leak spec found 1 floating tooltip; now 0.
 
+- **4.1.28 (5.6's gap):**
+  - `longestGap` (Java and the mirror) now walks the sorted covered slots, so its memory goes by points. A boolean per
+    slot overflowed past 2^31 slots: red, `NegativeArraySizeException` at 30 days and 1 ms.
+  - The two-step threshold, a gap at the start and at the end, an empty window and the union of instances are pinned
+    on both sides (CollectPureTest, js-unit `_longestGap`). The parity vectors match by `contains()`, so they could not
+    pin these.
+  - A capped series ships Java's gap (`judgedGap`) and the page names that, never its thinned copy's. Red on 4.1.27:
+    `server-board.spec.ts` "5.6 review".
+
 **For the owner:**
 - **Q5, the y-axis.** Grafana bounds it by the data; WIR includes every band (R3-3) so the drag handles stay on the
   plot.

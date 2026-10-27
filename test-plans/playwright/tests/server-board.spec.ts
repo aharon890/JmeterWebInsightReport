@@ -142,6 +142,27 @@ test.describe('Server tab — the component board', () => {
     for (let i = 1; i < bars.values.length; i++) expect(bars.values[i]).toBeLessThanOrEqual(bars.values[i - 1]);
   });
 
+  test('[R] 5.6 review: a capped series names the gap Java found over the full series, not its copy\'s', async ({ page }) => {
+    // E26's many-instances is capped (21 instances, 20 shipped). Made INSUFFICIENT, its row's LOW
+    // COVERAGE reason must name judgedGap - Java's longest stretch over every instance - never one
+    // worked out from the twenty the page holds.
+    await loadClean(page, 'E26');
+    await switchTab(page, 'server');
+    const said = await page.evaluate(() => {
+      const W = window as any;
+      const d = JSON.parse(JSON.stringify(W.chartData));
+      const k = d.serverKpis.find((x: any) => x.id === 'many-instances');
+      const s = d.serverMetrics.series.find((x: any) => x.query === k.query);
+      s.status = 'INSUFFICIENT';
+      s.coverage = 0.5;
+      s.judgedGap = [d.serverMetrics.window.start, d.serverMetrics.window.start + 20000];
+      W.WIR.serverKpis.init(d);
+      return new Date(d.serverMetrics.window.start - d.serverMetrics.window.start % 1000).toISOString().replace('.000Z', 'Z');
+    });
+    await expect(page.locator('tr.wir-kpi-row', { has: page.locator('.wir-kpi-name:text-is("many-instances")') }))
+      .toContainText('no point between ' + said);
+  });
+
   test('[R] Expand all rows opens every row, and a second click closes them', async ({ page }) => {
     await loadClean(page, 'E26');
     await switchTab(page, 'server');

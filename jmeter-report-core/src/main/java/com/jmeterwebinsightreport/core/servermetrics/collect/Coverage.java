@@ -63,38 +63,38 @@ public final class Coverage {
         if (stepMillis <= 0 || window == null || window.durationMillis() < 0) {
             return null;
         }
-        int expected = (int) (window.durationMillis() / stepMillis + 1);
-        boolean[] covered = new boolean[expected];
+        long expected = window.durationMillis() / stepMillis + 1;
+        // The covered slots, sorted: memory by points, never by window/step (a month at 1 ms is 2.6e9
+        // slots - the Stage 5 review).
+        java.util.TreeSet<Long> covered = new java.util.TreeSet<>();
         for (ServerMetricsPayload.InstanceRecord inst : instances) {
             for (ServerMetricsPayload.Point p : inst.getPoints()) {
                 long slot = Math.round((p.getTs() - window.getStart()) / (double) stepMillis);
                 if (slot >= 0 && slot < expected) {
-                    covered[(int) slot] = true;
+                    covered.add(slot);
                 }
             }
         }
-        int bestStart = -1;
-        int bestLength = 0;
-        int runStart = -1;
-        for (int i = 0; i < expected; i++) {
-            if (covered[i]) {
-                runStart = -1;
-                continue;
+        long bestStart = -1;
+        long bestLength = 0;
+        long previous = -1;   // a covered slot before the window, so a gap at its start counts from slot 0
+        for (long slot : covered) {
+            if (slot - previous - 1 > bestLength) {
+                bestLength = slot - previous - 1;
+                bestStart = previous + 1;
             }
-            if (runStart < 0) {
-                runStart = i;
-            }
-            if (i - runStart + 1 > bestLength) {
-                bestLength = i - runStart + 1;
-                bestStart = runStart;
-            }
+            previous = slot;
+        }
+        if (expected - previous - 1 > bestLength) {
+            bestLength = expected - previous - 1;
+            bestStart = previous + 1;
         }
         if (bestLength < 2) {
             return null;
         }
         long from = bestStart == 0 ? window.getStart() : window.getStart() + (bestStart - 1) * stepMillis;
         long to = bestStart + bestLength >= expected ? window.getEnd()
-                : window.getStart() + (long) (bestStart + bestLength) * stepMillis;
+                : window.getStart() + (bestStart + bestLength) * stepMillis;
         return new long[] {from, to};
     }
 

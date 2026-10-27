@@ -548,6 +548,22 @@ test('5.3: Per instance bars go worst first, as a Datadog top list or a sorted G
         { names: ['e', 'a', 'd', 'c', 'b'], values: [5, 10, 10, 30, null] });
 });
 
+test('5.6: the longest gap is two or more empty steps in a row, as Java names it (Coverage.longestGap)', () => {
+    assert.strictEqual(typeof SK._longestGap, 'function', 'report.js exposes no _longestGap seam');
+    const w = { start: 0, end: 120000 };
+    const inst = (...ts) => ({ points: ts.map((t) => [t, 1]) });
+    const gap = (instances, win, step) => { const g = SK._longestGap(instances, win, step); return g ? Array.from(g) : g; };
+    assert.strictEqual(gap([inst(0, 15000, 45000, 60000, 75000, 90000, 105000, 120000)], w, 15000), null, 'one missed step is noise');
+    assert.deepStrictEqual(gap([inst(0, 15000, 75000, 90000, 105000, 120000)], w, 15000), [15000, 75000]);
+    assert.deepStrictEqual(gap([inst(45000, 60000, 75000, 90000, 105000, 120000)], w, 15000), [0, 45000], 'at the start');
+    assert.deepStrictEqual(gap([inst(0, 15000, 30000, 45000, 60000, 75000)], w, 15000), [75000, 120000], 'at the end');
+    assert.deepStrictEqual(gap([], w, 15000), [0, 120000], 'no point at all');
+    assert.strictEqual(gap([inst(0, 30000, 60000, 90000, 120000), inst(15000, 45000, 75000, 105000)], w, 15000), null,
+        'the union of instances');
+    const month = { start: 0, end: 30 * 24 * 3600 * 1000 };
+    assert.deepStrictEqual(gap([inst(0, 1)], month, 1), [1, month.end], 'memory by points, not by window/step');
+});
+
 test('R3-13: the one-pass sustainedFor agrees with the rescan on random irregular series', () => {
     for (let seed = 1; seed <= 300; seed++) {
         const r = rng(seed);

@@ -22251,19 +22251,22 @@ WIR.serverKpis = (function () {
     function longestGap(instances, window, step) {
         if (!(step > 0) || !window || window.end - window.start < 0) return null;
         var expected = Math.floor((window.end - window.start) / step) + 1;
-        var covered = new Array(expected);
+        /* The covered slots, sorted: memory by points, never by window/step, as Java's. */
+        var seen = Object.create(null);
+        var covered = [];
         (instances || []).forEach(function (inst) {
             (inst.points || []).forEach(function (p) {
                 var slot = Math.round((p[0] - window.start) / step);
-                if (slot >= 0 && slot < expected) covered[slot] = true;
+                if (slot >= 0 && slot < expected && !seen[slot]) { seen[slot] = true; covered.push(slot); }
             });
         });
-        var bestStart = -1, bestLength = 0, runStart = -1;
-        for (var i = 0; i < expected; i++) {
-            if (covered[i]) { runStart = -1; continue; }
-            if (runStart < 0) runStart = i;
-            if (i - runStart + 1 > bestLength) { bestLength = i - runStart + 1; bestStart = runStart; }
-        }
+        covered.sort(function (a, b) { return a - b; });
+        var bestStart = -1, bestLength = 0, previous = -1;
+        covered.forEach(function (slot) {
+            if (slot - previous - 1 > bestLength) { bestLength = slot - previous - 1; bestStart = previous + 1; }
+            previous = slot;
+        });
+        if (expected - previous - 1 > bestLength) { bestLength = expected - previous - 1; bestStart = previous + 1; }
         if (bestLength < 2) return null;
         var from = bestStart === 0 ? window.start : window.start + (bestStart - 1) * step;
         var to = bestStart + bestLength >= expected ? window.end : window.start + (bestStart + bestLength) * step;
@@ -22272,7 +22275,11 @@ WIR.serverKpis = (function () {
 
     /** ServerKpiEvaluator.gapText's words: "; no point between <from> and <to> (<n> s)", or "". */
     function gapText(series, payload) {
-        var gap = longestGap(series.instances, payload && payload.window, stepOf(payload, series.source));
+        /* A capped series' copy is twenty instances and thinned points: the gap it shows need not be the
+           run's, so Java's, over the full series, travels with it (judgedGap; the Stage 5 review). */
+        var capped = series.instancesCapped || (series.instances || []).some(function (i) { return i.pointsCapped; });
+        var gap = capped ? (series.judgedGap || null)
+            : longestGap(series.instances, payload && payload.window, stepOf(payload, series.source));
         if (!gap) return '';
         var utc = function (ms) { return new Date(Math.floor(ms / 1000) * 1000).toISOString().replace(/\.000Z$/, 'Z'); };
         return '; no point between ' + utc(gap[0]) + ' and ' + utc(gap[1])
@@ -26303,6 +26310,7 @@ WIR.serverKpis = (function () {
         _breachAreasAcross: breachAreasAcross,
         _bandAxisBounds: bandAxisBounds,
         _orderBars: orderBars,
+        _longestGap: longestGap,
         _chartFrame: chartFrame,
         /* How many times the board has run the mirror — once per render that can move a
            verdict, never for a chart toggle or a filter (R3-13). */

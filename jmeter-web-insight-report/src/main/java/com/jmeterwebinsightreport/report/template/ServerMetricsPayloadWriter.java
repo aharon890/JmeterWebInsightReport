@@ -8,6 +8,7 @@ import com.jmeterwebinsightreport.core.servermetrics.ServerSource;
 import com.jmeterwebinsightreport.core.servermetrics.catalogue.Catalogue;
 import com.jmeterwebinsightreport.core.servermetrics.catalogue.CatalogueMetric;
 import com.jmeterwebinsightreport.core.servermetrics.catalogue.CatalogueType;
+import com.jmeterwebinsightreport.core.servermetrics.collect.Coverage;
 import com.jmeterwebinsightreport.core.servermetrics.collect.ServerMetricsPayload;
 import com.jmeterwebinsightreport.report.gate.ServerGateEvaluation;
 import org.slf4j.Logger;
@@ -234,6 +235,15 @@ final class ServerMetricsPayloadWriter {
                 Map<String, Double> actuals = judgedActuals(config, payload, s, types);
                 if (!actuals.isEmpty()) {
                     m.put("judgedActuals", actuals);
+                }
+                // The longest stretch with no point, as a LOW_COVERAGE reason names it (5.6), over the
+                // full series: the page's copy of twenty instances can show a gap the run does not
+                // have (the Stage 5 review). The page's gapText reads this on a capped series.
+                ServerMetricsPayload.SourceRecord src = payload.source(s.getSource());
+                long[] gap = Coverage.longestGap(s.getInstances(), payload.getWindow(),
+                        src == null ? 0 : src.getStepMillis());
+                if (gap != null) {
+                    m.put("judgedGap", java.util.Arrays.asList(gap[0], gap[1]));
                 }
             }
             series.add(m);
