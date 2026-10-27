@@ -184,6 +184,29 @@ class ServerMetricsPayloadWriterTest {
     }
 
     @Test
+    void aCappedSeriesCarriesTheGapJavaNamesOverTheFullSeries() throws Exception {
+        // The Stage 5 review: a LOW_COVERAGE reason names the longest stretch with no point (5.6),
+        // and the page's mirror worked it out from its capped copy - twenty instances - so it could
+        // name a gap the full series does not have. Like judgedMax, the gap travels on a capped series.
+        // Window 0..60 s at 15 s, five slots: instance 0 alone covers slots 0 and 1, every other one only
+        // slot 0, so slots 2..4 are empty for all - a gap from 15 s to the end.
+        int n = ServerMetricsPayloadWriter.MAX_INSTANCES_PER_SERIES + 5;
+        ServerMetricsPayload.SeriesRecord sparse = catalogueSeries("orders-db", "postgres", "connections.used.pct", n,
+                (i, t) -> (t == 0 || (i == 0 && t == 1)) ? 50 : Double.NaN);
+        // As the collector writes a series: no point where there was no value.
+        for (ServerMetricsPayload.InstanceRecord inst : sparse.getInstances()) {
+            inst.getPoints().removeIf(pt -> Double.isNaN(pt.getValue()));
+        }
+        ServerMetricsPayload p = payload(sparse);
+        JsonNode s = judge(ServerFixtures.block(COMPONENTS), p).series("orders-db", "connections.used.pct");
+        assertTrue(s.get("instancesCapped").asBoolean());
+        JsonNode gap = s.get("judgedGap");
+        assertNotNull(gap, "a capped series carries the gap Java names: " + s);
+        assertEquals(ServerFixtures.START + 15_000, gap.get(0).asLong());
+        assertEquals(ServerFixtures.START + 60_000, gap.get(1).asLong());
+    }
+
+    @Test
     void anUnassertedCappedSeriesBesideAnAssertedOneKeepsItsDecidingInstanceToo() throws Exception {
         // F6 on a file that DOES declare asserts: the evaluation carries the payload, so the
         // asserts' tier runs - and covers only the series an assert names. up is named by none,

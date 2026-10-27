@@ -3773,6 +3773,24 @@ body.wir-on-server-tab .filter-bar-toggle-wrapper {
     margin-bottom: 0;
 }
 
+/* A series name in a Server-tab chart tooltip, cut at a fixed width as Grafana's tooltip rows are. The tooltip
+   sits on the body (appendTo), so this rule is not scoped to the tab. */
+.wir-tip-name {
+    display: inline-block;
+    max-width: 420px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+}
+
+/* The Per instance tooltip's one name wraps instead: the bar's name is cut, and this is where it is read whole. */
+.wir-tip-name.wir-tip-wrap {
+    max-width: 600px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
 .wir-instance-chart {
     width: 100%;
     height: 260px;

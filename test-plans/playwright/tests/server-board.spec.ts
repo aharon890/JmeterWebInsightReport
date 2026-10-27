@@ -79,8 +79,91 @@ test.describe('Server tab — the component board', () => {
       const time = (window as any).echarts.getInstanceByDom(document.getElementById('serverChart-' + key)!).getOption();
       return { bars: per.yAxis[0].data, lines: (time.series as any[]).map((s) => s.name).filter((n) => n) };
     });
-    expect(named.bars).toEqual(['routeId=catalog', 'instance=plain']);
+    // The names, whatever order the values put the bars in (5.3 sorts them worst first).
+    expect([...named.bars].sort()).toEqual(['instance=plain', 'routeId=catalog']);
     expect(named.lines).toEqual(expect.arrayContaining(['routeId=catalog', 'instance=plain']));
+  });
+
+  test('[R] 5.2: instances are named by the labels that tell them apart, as Grafana\'s Auto legend names series', async ({ page }) => {
+    // Petstore F2's app-pods rows named two catalog pods "container=catalog, n…" twice: every label
+    // was written, the shared namespace and container first, and the pod that tells them apart was cut.
+    // Grafana's legend Auto mode writes only the labels whose values differ; one series keeps them all.
+    await loadClean(page, 'E26');
+    await switchTab(page, 'server');
+    await page.evaluate(() => {
+      const W = window as any;
+      const d = JSON.parse(JSON.stringify(W.chartData));
+      const series = (id: string) => {
+        const k = d.serverKpis.find((x: any) => x.id === id);
+        return d.serverMetrics.series.find((x: any) => x.query === k.query);
+      };
+      const two = series('cpu-headroom');
+      two.instances[0].labels = { namespace: 'petstorems', pod: 'catalog-a', container: 'catalog' };
+      two.instances[1].labels = { namespace: 'petstorems', pod: 'catalog-b', container: 'catalog' };
+      series('lag-spike').instances[0].labels = { pod: 'p', container: 'c' };
+      W.WIR.serverKpis.init(d);
+      const S = W.WIR.serverKpis;
+      S.toggle(S._keyOf('cpu-headroom'));
+      S.toggle(S._keyOf('lag-spike'));
+    });
+    const names = (id: string) => page.evaluate((kid) => {
+      const W = (window as any).WIR.serverKpis;
+      const key = W._keyOf(kid);
+      const per = (window as any).echarts.getInstanceByDom(document.getElementById('serverInstances-' + key)!);
+      const time = (window as any).echarts.getInstanceByDom(document.getElementById('serverChart-' + key)!);
+      if (!per || !time) return null;
+      return { bars: per.getOption().yAxis[0].data, lines: (time.getOption().series as any[]).map((s) => s.name).filter((n) => n) };
+    }, id);
+    await expect.poll(() => names('cpu-headroom')).not.toBeNull();
+    const two = (await names('cpu-headroom'))!;
+    expect([...two.bars].sort()).toEqual(['pod=catalog-a', 'pod=catalog-b']);
+    expect(two.lines).toEqual(expect.arrayContaining(['pod=catalog-a', 'pod=catalog-b']));
+    await expect.poll(() => names('lag-spike')).not.toBeNull();
+    expect((await names('lag-spike'))!.bars).toEqual(['container=c, pod=p']);
+  });
+
+  test('[R] 5.3: Per instance draws its bars worst first, so the bar a verdict is about leads', async ({ page }) => {
+    // Petstore F2's capped slowest-statement row drew its twenty bars alphabetically: the deciding
+    // statement was bar 18 of 20. A Datadog top list and a sorted Grafana bar gauge put the worst first.
+    await loadClean(page, 'E26');
+    await switchTab(page, 'server');
+    await page.evaluate(() => { const S = (window as any).WIR.serverKpis; S.toggle(S._keyOf('many-instances')); });
+    await expect.poll(() => page.evaluate(() => {
+      const W = (window as any).WIR.serverKpis;
+      return !!(window as any).echarts.getInstanceByDom(document.getElementById('serverInstances-' + W._keyOf('many-instances'))!);
+    })).toBe(true);
+    const bars = await page.evaluate(() => {
+      const W = (window as any).WIR.serverKpis;
+      const o = (window as any).echarts.getInstanceByDom(document.getElementById('serverInstances-' + W._keyOf('many-instances'))!).getOption();
+      return { names: o.yAxis[0].data as string[], values: o.series[0].data as number[] };
+    });
+    // E26's values rise p0 -> p20, and across max took p20: it leads, and every bar is no higher than the one above.
+    expect(bars.names[0]).toBe('instance=p20');
+    for (let i = 1; i < bars.values.length; i++) expect(bars.values[i]).toBeLessThanOrEqual(bars.values[i - 1]);
+  });
+
+  test('[R] 5.6 review: a capped series names the gap Java found over the full series, not its copy\'s', async ({ page }) => {
+    // E26's many-instances is capped (21 instances, 20 shipped). Made INSUFFICIENT, its row's LOW
+    // COVERAGE reason must name judgedGap - Java's longest stretch over every instance - never one
+    // worked out from the twenty the page holds.
+    await loadClean(page, 'E26');
+    await switchTab(page, 'server');
+    const said = await page.evaluate(() => {
+      const W = window as any;
+      const d = JSON.parse(JSON.stringify(W.chartData));
+      const k = d.serverKpis.find((x: any) => x.id === 'many-instances');
+      const s = d.serverMetrics.series.find((x: any) => x.query === k.query);
+      s.status = 'INSUFFICIENT';
+      s.coverage = 0.5;
+      s.judgedGap = [d.serverMetrics.window.start, d.serverMetrics.window.start + 20000];
+      W.WIR.serverKpis.init(d);
+      return new Date(d.serverMetrics.window.start - d.serverMetrics.window.start % 1000).toISOString().replace('.000Z', 'Z');
+    });
+    // The reason is the row under the assert's (tr.wir-reason-row), not the assert's own row.
+    const reason = page.locator('tr.wir-kpi-row', { has: page.locator('.wir-kpi-name:text-is("many-instances")') })
+      .locator('xpath=following-sibling::tr[1]');
+    await expect(reason).toHaveClass(/wir-reason-row/);
+    await expect(reason).toContainText('no point between ' + said);
   });
 
   test('[R] Expand all rows opens every row, and a second click closes them', async ({ page }) => {
@@ -184,16 +267,61 @@ test.describe('Server tab — the component board', () => {
     await expect(page.locator('details.wir-collection')).not.toHaveAttribute('open', '');
     const items = page.locator('.wir-unusable-series li');
     await expect(items).toHaveCount(1);
-    await expect(items.first()).toContainText('orders-db/up INSUFFICIENT');
+    await expect(items.first()).toContainText('orders-db/up');
     await expect(items.first()).toContainText('(no assert reads it)');
 
     await mutate(true);
     await expect(page.locator('details.wir-collection')).toHaveAttribute('open', '');
     await expect(items).toHaveCount(2);
     // The one an assert reads first, and not marked.
-    await expect(items.nth(0)).toContainText('orders-db/connections.used.pct INSUFFICIENT');
+    await expect(items.nth(0)).toContainText('orders-db/connections.used.pct');
     await expect(items.nth(0)).not.toContainText('no assert reads it');
     await expect(items.nth(1)).toContainText('(no assert reads it)');
+  });
+
+  test('[R] 5.7: the Collection says No data, or how many steps have a point, and which assert reads it', async ({ page }) => {
+    // Petstore F5's Collection listed each series as a bare "INSUFFICIENT", custom ones as raw PromQL,
+    // with nothing to match them to a row. Grafana says "No data" for an empty result, its query
+    // inspector gives what came back against what was asked, and a notice sits on the panel that used
+    // the query. E27: 1 s steps over 48.464 s, so 49 steps; 24 of them is coverage 0.4898.
+    await loadClean(page, 'E27');
+    await switchTab(page, 'server');
+    await page.evaluate(() => {
+      const W = window as any;
+      const d = JSON.parse(JSON.stringify(W.chartData));
+      d.serverMetrics.series.forEach((x: any) => { x.status = 'OK'; delete x.error; });
+      const conn = d.serverMetrics.series.find((x: any) => x.component === 'orders-db' && x.metric === 'connections.used.pct');
+      conn.status = 'INSUFFICIENT';
+      conn.coverage = 0.4898;
+      const up = d.serverMetrics.series.find((x: any) => x.component === 'orders-db' && x.metric === 'up');
+      up.status = 'EMPTY';
+      up.coverage = 0;
+      W.WIR.serverKpis.init(d);
+    });
+    const items = page.locator('.wir-unusable-series li');
+    await expect(items).toHaveCount(2);
+    await expect(items.nth(0)).toHaveText('orders-db/connections.used.pct 24 of 49 steps have a point (49%)'
+      + ' · read by orders-db-connections-used-pct');
+    await expect(items.nth(1)).toHaveText('orders-db/up No data (no assert reads it)');
+  });
+
+  test('[R] 5.7 review: past 10,000 steps the Collection says the coverage, never a step count it cannot know', async ({ page }) => {
+    // Coverage reaches the page rounded to four places, so N = coverage x M is exact only below 10,000
+    // steps; past that it was off by one or more (the Stage 5 review). 20,001 one-second steps here.
+    await loadClean(page, 'E27');
+    await switchTab(page, 'server');
+    await page.evaluate(() => {
+      const W = window as any;
+      const d = JSON.parse(JSON.stringify(W.chartData));
+      d.serverMetrics.window.end = d.serverMetrics.window.start + 20_000_000;
+      d.serverMetrics.series.forEach((x: any) => { x.status = 'OK'; delete x.error; });
+      const conn = d.serverMetrics.series.find((x: any) => x.component === 'orders-db' && x.metric === 'connections.used.pct');
+      conn.status = 'INSUFFICIENT';
+      conn.coverage = 0.1234;
+      W.WIR.serverKpis.init(d);
+    });
+    await expect(page.locator('.wir-unusable-series li').first())
+      .toHaveText('orders-db/connections.used.pct coverage 12% · read by orders-db-connections-used-pct');
   });
 
   test('[U] SF26: a catalogue assert is named by its label, with its id the dim line under it — on the board and in the editor', async ({ page }) => {

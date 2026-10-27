@@ -91,9 +91,10 @@ test.describe('AF5: Copy Verdict', () => {
     const lines = await copyVerdict(page);
     const server = lines.filter((l) => l.startsWith('Server:'));
     expect(server).toEqual([`Server: ${word}` + (v.label ? ` — ${v.label}` : '')
-      + (v.others > 0 ? ` · ${v.others} more` : '')]);
-    // The same word and component the header chip shows.
+      + (v.othersText ? ` · ${v.othersText}` : '')]);
+    // The same word and component the header chip shows, and the same counts by state (5.5, B2).
     const chip = await shown(page, '.wir-server-chip');
+    if (v.othersText) expect(chip).toContain(v.othersText);
     if (v.label) expect(chip).toContain(`${v.label} ${word}`);
     expect(lines[1]).toBe(await assertsLine(page));
     expect(lines.length).toBeLessThanOrEqual(6);

@@ -50,23 +50,74 @@ public final class Coverage {
     }
 
     /**
-     * How far apart a series' points are, in milliseconds: each instance's
-     * {@linkplain #mostCommonSpacing most common spacing} between consecutive points, and the
-     * largest of those over the instances; 0 when no instance has two points. What
+     * The longest stretch of the window in which no instance has a point, by {@link #of}'s slots:
+     * from the last covered slot before it (or the window's start) to the first covered slot after
+     * it (or the window's end), as two epoch-millisecond times; null when no two slots in a row are
+     * empty. Two, as Grafana's alerting waits two evaluation intervals before it calls a series
+     * NoData: one missed scrape is noise. What a LOW_COVERAGE reason names (B1, "name the gap"): a
+     * target that went away with its exporter writes no 0, only a hole, and Grafana's state history
+     * and Alertmanager give such a stretch as its start and end.
+     */
+    public static long[] longestGap(List<ServerMetricsPayload.InstanceRecord> instances,
+                                    ServerMetricsPayload.Window window, long stepMillis) {
+        if (stepMillis <= 0 || window == null || window.durationMillis() < 0) {
+            return null;
+        }
+        long expected = window.durationMillis() / stepMillis + 1;
+        // The covered slots, sorted: memory by points, never by window/step (a month at 1 ms is 2.6e9
+        // slots - the Stage 5 review).
+        java.util.TreeSet<Long> covered = new java.util.TreeSet<>();
+        for (ServerMetricsPayload.InstanceRecord inst : instances) {
+            for (ServerMetricsPayload.Point p : inst.getPoints()) {
+                long slot = Math.round((p.getTs() - window.getStart()) / (double) stepMillis);
+                if (slot >= 0 && slot < expected) {
+                    covered.add(slot);
+                }
+            }
+        }
+        long bestStart = -1;
+        long bestLength = 0;
+        long previous = -1;   // a covered slot before the window, so a gap at its start counts from slot 0
+        for (long slot : covered) {
+            if (slot - previous - 1 > bestLength) {
+                bestLength = slot - previous - 1;
+                bestStart = previous + 1;
+            }
+            previous = slot;
+        }
+        if (expected - previous - 1 > bestLength) {
+            bestLength = expected - previous - 1;
+            bestStart = previous + 1;
+        }
+        if (bestLength < 2) {
+            return null;
+        }
+        long from = bestStart == 0 ? window.getStart() : window.getStart() + (bestStart - 1) * stepMillis;
+        long to = bestStart + bestLength >= expected ? window.getEnd()
+                : window.getStart() + (bestStart + bestLength) * stepMillis;
+        return new long[] {from, to};
+    }
+
+    /**
+     * How far apart a series' points are, in milliseconds: the
+     * {@linkplain #pooledSpacingCounts most common gap over every instance's points together}; 0 when no
+     * instance has two points. Pooled (5.9, N6): one sparse instance beside dense ones does not make
+     * the series coarse, as Grafana's interval does not follow the sparsest series, and one short-lived
+     * dense instance does not make it fine either (the Stage 5 review). What
      * {@code wir-collect} compares with {@code --step}: an export at a panel's 60 s interval, counted
      * in 15 s slots, covers a quarter of them at most and reads LOW_COVERAGE for a reason nothing
      * else says.
      */
     public static long spacingMillis(List<ServerMetricsPayload.InstanceRecord> instances) {
-        long widest = 0;
+        List<List<Long>> perInstance = new ArrayList<>();
         for (ServerMetricsPayload.InstanceRecord inst : instances) {
             List<Long> times = new ArrayList<>();
             for (ServerMetricsPayload.Point p : inst.getPoints()) {
                 times.add(p.getTs());
             }
-            widest = Math.max(widest, mostCommonSpacing(times));
+            perInstance.add(times);
         }
-        return widest;
+        return pooledSpacingCounts(perInstance)[0];
     }
 
     /**
@@ -84,15 +135,28 @@ public final class Coverage {
      * measured step on the last two, so it counts with this rule rather than a copy of it.
      */
     static long[] spacingCounts(Iterable<Long> ascending) {
+        return pooledSpacingCounts(java.util.Collections.singletonList(ascending));
+    }
+
+    /**
+     * {@link #spacingCounts} over several instances' rows at once: each instance's own gaps (never one
+     * between two instances), counted together. The most common gap over a series' rows is its
+     * interval (5.9): one sparse instance beside dense ones does not coarsen it, and one short-lived
+     * dense instance does not re-grid it either (the Stage 5 review: "the finest instance" let a pod
+     * that lived 15 s at 5 s set a 5 s step for an hour of 15 s rows).
+     */
+    static long[] pooledSpacingCounts(Iterable<? extends Iterable<Long>> instancesAscending) {
         TreeMap<Long, Integer> spacings = new TreeMap<>();
-        Long previous = null;
         int gaps = 0;
-        for (Long t : ascending) {
-            if (previous != null && t > previous) {
-                spacings.merge(t - previous, 1, Integer::sum);
-                gaps++;
+        for (Iterable<Long> ascending : instancesAscending) {
+            Long previous = null;
+            for (Long t : ascending) {
+                if (previous != null && t > previous) {
+                    spacings.merge(t - previous, 1, Integer::sum);
+                    gaps++;
+                }
+                previous = t;
             }
-            previous = t;
         }
         long common = 0;
         int most = 0;

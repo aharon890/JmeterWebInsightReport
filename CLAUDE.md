@@ -930,7 +930,8 @@ name in any order, extra columns ignored, quoted cells and a UTF-8 BOM allowed:
 milliseconds — a time with no zone is refused, never guessed. `metric` is a catalogue metric's name
 or a custom assert's `query` text. `instance` is optional (empty is one instance; a value becomes
 the chart label `instance=<value>`, or the value alone when it already reads `k=…`, C1). `value` uses `.` as the decimal point and no thousands
-separator; empty or `NaN` is a gap, not zero; without `--from` it is the metric's value in the
+separator; empty, `NaN` and `+Inf`/`-Inf`/`Infinity` are a gap, not zero, as the live path drops a non-finite
+sample, and an instance whose every row in the run is a gap is kept with no point (LOW_COVERAGE, 5.8); without `--from` it is the metric's value in the
 catalogue's unit, with no counter conversion. Rows more than one step outside the run window are
 dropped. A bad row fails **only the series it belongs to**, naming the line
 (`e26-metrics.csv line 1328: time "2023-11-14 22:13:20" has no time zone - ...`), so the source
@@ -984,8 +985,9 @@ measured from the reader's own index, under every flag given (`CsvSource.measure
 CSV grammar: each instance's `CsvSource.intervalOf` over its rows with a value inside the run window (plus
 one step) — the most common gap, taken when it repeats at least 3 times and is at least half the gaps
 (on repeats alone a millisecond-jittered hour adopted a 15001ms step, and every `sustainedFor 30s` was
-INVALID_RULE; a jittered export now measures nothing and keeps 15 s) — then the widest over every instance of the
-series the asserts read, as `Coverage.spacingMillis` takes it — asked as the collection asks
+INVALID_RULE; a jittered export now measures nothing and keeps 15 s) — within a series the finest of its
+instances, as `Coverage.spacingMillis` takes it (5.9: the dense ones fill the slots a sparse one leaves, so one
+every-other-minute instance no longer coarsens the collection), then the widest over the series the asserts read — asked as the collection asks
 (`Collector.assertRequests`: the same names, `--from` tool names and resolved queries), so a coarse series
 no assert reads sets nothing; a file with no assert yet is measured over its components' catalogue metrics
 (`Collector.catalogueRequests`). Blank-row and row-spacing lines count the same rows. The index is keyed without the step, so `WirCollect.measureCsv` hands
@@ -1013,7 +1015,7 @@ both spans and the shift (`outsideWindow`: a whole number of quarter hours withi
 time zone with `--time-zone`/`--clock-offset`, seconds as clock skew, anything larger as another
 period) — it used to be EMPTY → NO_MATCH "the query matched no series" and pass every gate; a name
 that differs only by case or `.`/`_`/`-` is FAILED naming both spellings (`nearMiss`); rows inside the
-run with no value are FAILED as such; a row with more cells than the header (an unquoted `90,9`), one
+run with no value are an instance with no point, LOW_COVERAGE as on the live path (5.8; they were FAILED as such); a row with more cells than the header (an unquoted `90,9`), one
 that stops before the value, an unclosed quote, a 15+-digit epoch (µs/ns), a `;`/tab delimiter and a
 UTF-16 long file are refused by line or by name; a repeated time with another value is a console
 WARNING (`duplicateNotes`). `wir-collect` prints the run window, the long file's unasked series
@@ -1109,8 +1111,9 @@ NOT_EVALUATED (a component that judged nothing) > WARN > PASS — and NOT_EVALUA
 reported. `ServerGateEvaluation.worstBuildingGate()` is that fold, and the only one:
 `serverStatus()` and `headerChip()` both read it, so the JSON's word and the header's cannot be
 chosen by two rules (a component whose source died used to lose the header word to a sibling's
-PASS). The chip's word is the worst component's; every other declared component is "N more", a
-pointer to the tab. The page is handed the same word as `chartData.serverVerdict` (status, the
+PASS). The chip's word is the worst component's; every other declared component is counted by its
+state in the fold's order (`· 1 warn · 3 pass`, B2: "N more" hid a WARN behind a component that judged
+nothing; Grafana's rule stats and the Prometheus alerts page count every state). The page is handed the same word as `chartData.serverVerdict` (status, the
 chip's entry and label, and the reserved entry when there is one), so the Summary card prints it
 rather than folding again. Asserts that name no declared component are reported as one more
 component, the reserved `(no gate)` entry, in the fold and in `serverComponents[]` (where it has no

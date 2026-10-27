@@ -2447,7 +2447,7 @@
    "expect": {
     "status": "NOT_JUDGED",
     "notJudged": "LOW_COVERAGE",
-    "reason": "coverage 40% of the collected window is below the floor 90%",
+    "reason": "coverage 40% of the collected window is below the floor 90%; no point between 1970-01-01T00:01:15Z and 1970-01-01T00:10:00Z (525 s)",
     "coverage": 0.4,
     "instances": 1
    }
@@ -4508,7 +4508,7 @@
    "expect": {
     "status": "NOT_JUDGED",
     "notJudged": "LOW_COVERAGE",
-    "reason": "coverage 40% of the collected window is below the floor 90%"
+    "reason": "coverage 40% of the collected window is below the floor 90%; no point between 1970-01-01T00:01:15Z and 1970-01-01T00:10:00Z (525 s)"
    }
   },
   {

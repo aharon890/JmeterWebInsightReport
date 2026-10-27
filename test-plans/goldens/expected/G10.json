@@ -355,7 +355,7 @@
       "across": "max",
       "status": "NOT_JUDGED",
       "notJudged": "LOW_COVERAGE",
-      "reason": "coverage 6% of the collected window is below the floor 90%",
+      "reason": "coverage 6% of the collected window is below the floor 90%; no point between 2023-11-14T22:13:22Z and 2023-11-14T22:14:08Z (46 s)",
       "actual": null,
       "coverage": 0.0612,
       "instances": 1,

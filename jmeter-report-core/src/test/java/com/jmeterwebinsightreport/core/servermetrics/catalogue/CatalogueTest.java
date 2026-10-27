@@ -1570,6 +1570,19 @@ class CatalogueTest {
                 catalogue.type("postgres").source());
     }
 
+    /**
+     * kube-state-metrics counts restarts per container, and a deleted pod's replacement starts its
+     * own count at 0, so a pod killed and recreated reads no restart (petstore F2: catalog replaced,
+     * restarts PASS 0). Datadog's kubernetes.containers.restarts means the same. Both descriptions say so.
+     */
+    @Test
+    void theRestartsSayAReplacedPodIsNotARestart() {
+        for (String metric : new String[] {"restarts", "restarts.oom"}) {
+            String said = catalogue.type("kubernetes-pod").metric(metric).description();
+            assertTrue(said.contains("A pod that is deleted and replaced is not a restart"), metric + ": " + said);
+        }
+    }
+
     /** Three metrics that read a number which cannot mean what the name suggests in a common setup. */
     @Test
     void threeDescriptionsSayWhereTheirMetricCannotReadWhatItsNameSays() {

@@ -273,11 +273,26 @@ class CsvSourceTest {
     }
 
     @Test
-    void rowsInsideTheRunWithNoValueAreSaidNotEmpty() throws IOException {
+    void rowsInsideTheRunWithNoValueAreAnInstanceWithNoPointAsOnTheLivePath() throws IOException {
+        // 5.8 (Q1, N2): a series whose every value in the run is empty or NaN was SOURCE_FAILED here,
+        // and LOW_COVERAGE live, where Prometheus' NaN samples are dropped and the series kept. Grafana
+        // and Prometheus count a NaN-valued series as data with no value: one rule on both paths.
         ServerSource s = csv("time,component,metric,instance,value\n"
                 + "1700000000000,app,cpu,,\n1700000015000,app,cpu,,NaN\n");
-        assertEquals("m.csv has 2 rows for app/cpu and every value is empty or NaN - the export carries the"
-                + " series' times and no numbers", ask(new CsvSource(), s, "app", "cpu").error());
+        SeriesSource.Answer a = ask(new CsvSource(), s, "app", "cpu");
+        assertNull(a.error(), a.error());
+        assertEquals(1, a.instances().size(), "the instance is there");
+        assertTrue(a.instances().get(0).getPoints().isEmpty(), "with no point: coverage 0, LOW_COVERAGE");
+    }
+
+    @Test
+    void anInstanceWithNoValueStillCountsAsAnInstanceBesideOnesWithNumbers() throws IOException {
+        // 5.8 (B7): the payload paths counted it (5 instances), this one dropped it (4).
+        ServerSource s = csv("time,component,metric,instance,value\n"
+                + "1700000000000,app,cpu,a,40\n1700000000000,app,cpu,b,NaN\n1700000015000,app,cpu,b,\n");
+        SeriesSource.Answer a = ask(new CsvSource(), s, "app", "cpu");
+        assertNull(a.error(), a.error());
+        assertEquals(2, a.instances().size());
     }
 
     @Test
@@ -909,6 +924,37 @@ class CsvSourceTest {
     }
 
     @Test
+    void underFromAnInstanceWithNoNumberInTheRunIsKeptAndABlankSeriesIsLowCoverage() throws Exception {
+        // The Stage 5 review: 5.8 kept a point-less instance only without --from, so under a tool's
+        // name b was dropped (1 instance where the same file without --from gives 2), and an all-NaN
+        // series still failed "every value is empty or NaN".
+        ServerMetricsPayload mixed = collectFrom("datadog", every15s("web", "shop.drops", "a", i -> "0.5")
+                + every15s("web", "shop.drops", "b", i -> "NaN"), shopKpi("drops"));
+        ServerMetricsPayload.SeriesRecord both = seriesOf(mixed, "web", "drops");
+        assertEquals(2, both.getInstances().size(), both.getInstances().toString());
+        ServerMetricsPayload blank = collectFrom("datadog", every15s("web", "shop.drops", "", i -> "NaN"), shopKpi("drops"));
+        ServerMetricsPayload.SeriesRecord none = seriesOf(blank, "web", "drops");
+        assertNull(none.getError(), none.getError());
+        assertEquals(CollectionStatus.INSUFFICIENT, none.collectionStatus());
+    }
+
+    @Test
+    void aWideColumnWithNoNumberIsAnInstanceWithNoPointAsInTheLongLayout() throws IOException {
+        // The Stage 5 review: the wide reader skipped a blank, NaN or Inf cell without storing it, so an
+        // all-gap column left nothing for 5.8's rule to keep - "no row of the CSV names component c"
+        // (false: the header names it), and b dropped beside a (1 instance where the long layout gives 2).
+        SeriesSource.Answer mixed = ask(new CsvSource(),
+                wide("\"Time\",\"c/x/a\",\"c/x/b\"\n1700000000000,1,\n1700000015000,2,NaN\n"), "c", "x");
+        assertNull(mixed.error(), mixed.error());
+        assertEquals(2, mixed.instances().size());
+        SeriesSource.Answer gaps = ask(new CsvSource(),
+                wide("\"Time\",\"c/x\"\n1700000000000,+Inf\n1700000015000,Infinity\n"), "c", "x");
+        assertNull(gaps.error(), gaps.error());
+        assertEquals(1, gaps.instances().size());
+        assertTrue(gaps.instances().get(0).getPoints().isEmpty());
+    }
+
+    @Test
     void aCounterWithNoRowBeforeTheRunIsSaidToNeedOneNotToHoldNoNumbers() throws Exception {
         // One counter row inside the run and none before it: the cell holds a number, and the
         // conversion to a rate leaves nothing. It was "every value is empty or NaN".
@@ -1046,19 +1092,28 @@ class CsvSourceTest {
     }
 
     @Test
-    void prometheusInfIsNotAFiniteNumberNotADecimalPointSlip() throws IOException {
-        // D6 (S4 X07): histogram_quantile into the +Inf bucket reads +Inf, Prometheus' own spelling, which
-        // Double.parseDouble does not take: it was told to use a '.' decimal point.
+    void prometheusInfIsAGapAsOnTheLivePath() throws IOException {
+        // 5.8 (Q1, N3; S4 X07): Prometheus writes +Inf/-Inf (histogram_quantile into the +Inf bucket,
+        // a division by zero) and Grafana's CSV export Infinity. The live path drops a non-finite
+        // sample as a gap; this one refused the whole series by line. One rule: a gap here too.
         ServerSource s = csv("time,component,metric,instance,value\n"
-                + "1700000000000,c,x,,+Inf\n1700000000000,c,y,,-Inf\n1700000000000,c,z,,Infinity\n");
+                + "1700000000000,c,x,,+Inf\n1700000015000,c,x,,5\n1700000000000,c,y,,-Inf\n"
+                + "1700000000000,c,z,,Infinity\n1700000015000,c,z,,7\n");
         CsvSource reader = new CsvSource();
-        assertEquals("m.csv line 2: value \"+Inf\" is not a finite number", ask(reader, s, "c", "x").error());
-        assertEquals("m.csv line 3: value \"-Inf\" is not a finite number", ask(reader, s, "c", "y").error());
-        assertEquals("m.csv line 4: value \"Infinity\" is not a finite number", ask(reader, s, "c", "z").error());
+        SeriesSource.Answer x = ask(reader, s, "c", "x");
+        assertNull(x.error(), x.error());
+        assertEquals(1, x.instances().get(0).getPoints().size(), "+Inf left a gap beside the 5");
+        assertEquals(5.0, x.instances().get(0).getPoints().get(0).getValue(), 0.0);
+        assertNull(ask(reader, s, "c", "y").error());
+        assertEquals(1, ask(reader, s, "c", "z").instances().get(0).getPoints().size());
         // The wide layout reads its cells the same way.
-        ServerSource w = wide("\"Time\",\"c/x\"\n1700000000000,+Inf\n");
-        assertEquals("grafana.csv line 2: column \"c/x\": value \"+Inf\" is not a finite number",
-                ask(new CsvSource(), w, "c", "x").error());
+        ServerSource w = wide("\"Time\",\"c/x\"\n1700000000000,+Inf\n1700000015000,3\n");
+        SeriesSource.Answer wx = ask(new CsvSource(), w, "c", "x");
+        assertNull(wx.error(), wx.error());
+        assertEquals(1, wx.instances().get(0).getPoints().size());
+        // A number too big for a double is no tool's spelling of infinity: still refused by line.
+        ServerSource big = csv("time,component,metric,instance,value\n1700000000000,c,x,,1e400\n");
+        assertEquals("m.csv line 2: value \"1e400\" is not a finite number", ask(new CsvSource(), big, "c", "x").error());
     }
 
     @Test
@@ -1932,11 +1987,15 @@ class CsvSourceTest {
     }
 
     @Test
-    void blankRowsInsideTheRunBesideNumberedOnesOutsideItAreCountedInside() throws IOException {
+    void blankRowsInsideTheRunBesideNumberedOnesOutsideItAreAnInstanceWithNoPoint() throws IOException {
+        // The rows inside the run decide it: blank there, so the instance is there with no point (5.8),
+        // never a time problem because the numbered row is outside.
         ServerSource s = csv("time,component,metric,instance,value\n"
                 + "1699999900000,app,cpu,,40\n1700000000000,app,cpu,,\n1700000015000,app,cpu,,NaN\n");
-        assertEquals("m.csv has 2 rows for app/cpu inside the run and every value is empty or NaN - the export"
-                + " carries the series' times and no numbers", ask(new CsvSource(), s, "app", "cpu").error());
+        SeriesSource.Answer a = ask(new CsvSource(), s, "app", "cpu");
+        assertNull(a.error(), a.error());
+        assertEquals(1, a.instances().size());
+        assertTrue(a.instances().get(0).getPoints().isEmpty());
     }
 
     // ---- the measured step (decision 12): the reader's own index, the reader's own rules ----------
@@ -1957,17 +2016,46 @@ class CsvSourceTest {
     @Test
     void theStepIsAnInstancesMostCommonSpacingBetweenRowsWithAValue() throws IOException {
         // Instance a every 5 s; instance b's rows are blank but for every third, which would read
-        // 15 s - a blank row is a gap, not the export's interval, so b measures 15 s and is the widest.
+        // 15 s - a blank row is a gap, not the export's interval, so b measures 15 s. Within one series
+        // the most common gap over all its rows sets the step (5.9, N6): a's 29 gaps of 5 s outnumber
+        // b's 9 of 15 s, and one every-third-row instance used to coarsen the whole collection.
         StringBuilder sb = new StringBuilder("time,component,metric,instance,value\n");
         for (int i = 0; i < 30; i++) {
             long t = 1_700_000_000_000L + i * 5000L;
             sb.append(t).append(",app,cpu,a,50\n");
             sb.append(t).append(",app,cpu,b,").append(i % 3 == 0 ? "7" : "").append('\n');
         }
-        assertEquals(15_000, new CsvSource().measuredStepMillis(csv(sb.toString()), HOUR));
+        assertEquals(5_000, new CsvSource().measuredStepMillis(csv(sb.toString()), HOUR));
         // Without b, a's 5 s.
         assertEquals(5_000, new CsvSource().measuredStepMillis(csv("time,component,metric,instance,value\n"
                 + rows("app,cpu,a", 1_700_000_000_000L, 5000, 10, false)), HOUR));
+    }
+
+    @Test
+    void aShortLivedDenseInstanceDoesNotRegridTheSeriesTheMostCommonGapOverItsRowsDoes() throws IOException {
+        // The Stage 5 review: under "the finest instance" a pod that lived 15 s at 5 s (3 gaps) beside one
+        // reporting every 15 s for the hour set a 5 s step, and the hour-long instance then covered a third
+        // of the slots - LOW_COVERAGE on every assert. The most common gap over the series' rows is 15 s.
+        String file = "time,component,metric,instance,value\n"
+                + rows("app,cpu,a", 1_700_000_000_000L, 15_000, 240, false)
+                + rows("app,cpu,b", 1_700_000_100_000L, 5_000, 4, false);
+        assertEquals(15_000, new CsvSource().measuredStepMillis(csv(file), HOUR));
+    }
+
+    @Test
+    void theRowsSpacingIsTheMostCommonGapOverTheSeriesRowsAsThePointsSpacingIs() throws IOException {
+        // The Stage 5 review: Coverage.spacingMillis followed one rule and rowSpacingMillis, its row-side
+        // twin, another (the widest), so wir-collect advised "pass --step 60s" from a sparse instance's rows.
+        // a: rows every 15 s for 4 minutes, every other one blank; b: a row every 60 s.
+        StringBuilder sb = new StringBuilder("time,component,metric,instance,value\n");
+        for (int i = 0; i < 16; i++) {
+            sb.append(1_700_000_000_000L + i * 15_000L).append(",app,cpu,a,").append(i % 2 == 0 ? "1" : "").append('\n');
+        }
+        sb.append(rows("app,cpu,b", 1_700_000_000_000L, 60_000, 5, false));
+        CsvSource reader = new CsvSource();
+        ServerSource s = csv(sb.toString());
+        ask(reader, s, "app", "cpu");
+        assertEquals(15_000, reader.rowSpacingMillis(s, HOUR, "app", "cpu"));
     }
 
     @Test

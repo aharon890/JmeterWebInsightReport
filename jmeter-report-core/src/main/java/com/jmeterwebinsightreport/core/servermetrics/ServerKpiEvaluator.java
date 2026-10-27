@@ -7,6 +7,7 @@ import com.jmeterwebinsightreport.core.assertion.GateSummary;
 import com.jmeterwebinsightreport.core.assertion.NotJudged;
 import com.jmeterwebinsightreport.core.assertion.Predicate;
 import com.jmeterwebinsightreport.core.assertion.RuleResult;
+import com.jmeterwebinsightreport.core.servermetrics.collect.Coverage;
 import com.jmeterwebinsightreport.core.servermetrics.collect.ServerMetricsPayload;
 
 import java.math.BigDecimal;
@@ -607,8 +608,10 @@ public final class ServerKpiEvaluator {
 
     /**
      * Every instance of the KPI's series that reduces to a number, worst first: the highest reduced
-     * value first under {@code across: max}, the lowest under {@code min}, the furthest from the
-     * instances' mean under {@code avg}; ties in index order. Computed by the reduction, window and
+     * value first under {@code across: max} and {@code avg}, the lowest under {@code min}; ties in
+     * index order. Datadog's top() and bottom() rank by the reduced value; {@code avg} takes their
+     * default direction (5.4: it was the distance from the instances' mean, which no tool offers,
+     * and under {@code avg} the payload writer keeps both deciding instances first anyway). Computed by the reduction, window and
      * step {@link #decidingInstances} uses, so under {@code max} and {@code min} its first is the
      * deciding instance.
      *
@@ -664,12 +667,9 @@ public final class ServerKpiEvaluator {
             }
         }
         Across direction = across == null ? Across.defaultValue() : across;
-        double mean = values.values().stream().mapToDouble(Double::doubleValue).average().orElse(0);
         // A stable sort over ascending indices: ties stay in index order.
         if (direction == Across.MIN) {
             ranked.sort((a, b) -> Double.compare(values.get(a), values.get(b)));
-        } else if (direction == Across.AVG) {
-            ranked.sort((a, b) -> Double.compare(Math.abs(values.get(b) - mean), Math.abs(values.get(a) - mean)));
         } else {
             ranked.sort((a, b) -> Double.compare(values.get(b), values.get(a)));
         }
@@ -850,6 +850,25 @@ public final class ServerKpiEvaluator {
 
     // ---- the collection step's detail ---------------------------------------------------
 
+    /**
+     * {@code "; no point between <from> and <to> (<n> s)"}: the longest stretch of the collected
+     * window with no point from any instance ({@link Coverage#longestGap}), in ISO-8601 UTC to the
+     * second, or "" when there is none. The page's {@code gapText} writes the same words.
+     */
+    static String gapText(ServerMetricsPayload.SeriesRecord series, ServerMetricsPayload payload) {
+        long[] gap = Coverage.longestGap(series.getInstances(), payload.getWindow(),
+                stepOf(payload, series.getSource()));
+        if (gap == null) {
+            return "";
+        }
+        return "; no point between " + secondsUtc(gap[0]) + " and " + secondsUtc(gap[1])
+                + " (" + Math.round((gap[1] - gap[0]) / 1000.0) + " s)";
+    }
+
+    private static String secondsUtc(long epochMillis) {
+        return java.time.Instant.ofEpochMilli(epochMillis).truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString();
+    }
+
     private static String collectionDetail(CollectionStatus status, ServerMetricsPayload.SeriesRecord series,
                                            ServerMetricsConfig config, ServerMetricsPayload payload) {
         switch (status) {
@@ -883,14 +902,15 @@ public final class ServerKpiEvaluator {
                 // "of the collected window" (D28): coverage is measured over the collected window
                 // while the verdicts are taken over the judged one, and the two can disagree.
                 Double got = series.getCoverage();
+                String gap = gapText(series, payload);
                 if (got != null && !Double.isNaN(got) && got >= config.coverageFloor()) {
                     return "coverage " + percent(got) + " of the collected window was below the floor "
                             + "in force when this series was collected; the file now asks for "
                             + percent(config.coverageFloor())
-                            + " - re-run wir-collect to judge it against the current floor";
+                            + " - re-run wir-collect to judge it against the current floor" + gap;
                 }
                 return "coverage " + percent(got) + " of the collected window is below the floor "
-                        + percent(config.coverageFloor());
+                        + percent(config.coverageFloor()) + gap;
             }
             case NOT_REQUESTED:
                 return "no series was collected for this server assert - re-run wir-collect";

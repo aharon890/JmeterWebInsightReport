@@ -177,6 +177,206 @@ over F2 and F5 at 4.1.15 (EXPLORATORY-LOG 2026-10-27) found C5, C6, C2, C4 and C
 defect of 4.1.13 (names under the cap cut: measured in sans-serif, drawn in Microsoft YaHei), now **4.1.16, `2c3b98e`**,
 red first. The other seven are logged with reasons; the owner-facing ones are under Open.
 
+## Stage 5: follow the standard tools (branch `fix/server-tab-stage5-standards`)
+
+**Owner, 2026-10-27:**
+- "We do not invent some new logics here for performance reporting. All we do is laying out in one nice report both
+  client and server metrics."
+- JMeter first: the server side gets the same KPIs, by the same logic, as the client, so the two correlate.
+
+So each open item was settled by what JMeter, Grafana, Prometheus and Datadog actually do: a 3-agent research pass with
+sources (`tmp/standards/standards-2026-10-27.json`, gitignored), plus JMeter's own source for percentiles.
+
+| Step | Item | The standard | Change |
+|---|---|---|---|
+| 5.1 | the tooltip clipped (exploration) | Grafana renders tooltips in a portal; ECharts `appendTo` | Server-tab chart tooltips `appendTo: 'body'` |
+| 5.2 | colliding names (exploration) | Grafana legend "Auto": only the labels that differ (findUniqueLabels), keys sorted | with 2+ instances, drop the labels all share |
+| 5.3 | the deciding instance buried (exploration) | Datadog Top List, Grafana bar gauge sort | Per instance bars by value: worst first (ascending under min), nulls last |
+| 5.4 | C5's `avg` ranking | Datadog top/bottom rank by the reduced value | rank by value, not distance from the mean |
+| 5.5 | B2 "surface hidden WARNs" | Grafana RuleStats, the Prometheus alerts page: counts per state beside the worst | a count row beside the chip, fixed order, non-zero states only |
+| 5.6 | B1 "name the gap" | Grafana state history, Alertmanager startsAt/endsAt | name from-to of the longest stretch no instance reported; the coverage floor stays the tolerance (Datadog's "missing for N min") |
+| 5.7 | Collection says only INSUFFICIENT (exploration) | Grafana "No data", the query inspector's rows returned | "No data" or "12 of 120 points", and the assert(s) reading it |
+| 5.8 | Q1 path consistency (N2, N3, B7) | Prometheus/Grafana: NaN is a value drawn as a gap; no rows = NoData; failure = Error | the CSV path treats NaN/±Inf cells as the live path does (gaps), and keeps an all-NaN instance |
+| 5.9 | N6 the measured CSV step | Grafana's minimum interval; a sparse series does not coarsen others | the finest instance's spacing, not the widest |
+| 5.10 | restarts cannot see a replaced pod (exploration) | kube-state-metrics/Datadog: container restarts | description: "container restarts"; a replaced pod is not counted |
+
+Already matching: Q6 (the chip names the label), top-N selection (Datadog `top20` by the reducer), the palette's
+cycling, B5 (docs-only: a CSV carries no bucket bounds).
+
+**5.1, expected (written before the F2 check, 4.1.17):** on F2, the Value over time tooltips of `catalog-db-slowest-statement` and
+`app-pods-memory-limit-used-pct`, hovered at the right edge, are fully visible, where 4.1.0 cut them at left -590 and -77 px;
+`cmp.cjs` none.
+
+**5.1, done (4.1.17).** Red first (`server-layout.spec.ts` "[R] 5.1: …"). `appendTo: 'body'` alone stopped the card clipping, but F2's
+slowest-statement tooltip was 1221 px wide and still began at left -458, off the screen. The spec's names were
+lengthened to petstore's (red again: -829), and each row's name is cut at 420 px (`.wir-tip-name`), as Grafana's tooltip
+rows are. The Per instance tooltip, one row, wraps its name instead, since the bar's own name is already cut. Observed on
+F2: both tooltips on the body, about 518 px wide, at left 245, nothing clipped; `cmp.cjs` none. One spec's tooltip lookup
+(server-tab) and three HTML pins (server-numbers) follow the new markup.
+
+**5.2, expected (written before the F2 check, 4.1.18):**
+- F2's app-pods rows lose `namespace=petstorems` from every name. `container` differs between the deployments, so it
+  stays, and the two catalog pods may still read alike once cut.
+- gateway-route-p95 and kafka-lag (one label each) are unchanged, and so is catalog-db-slowest-statement (`query` and
+  `queryid` both differ).
+- `cmp.cjs`: none.
+
+**5.2, done (4.1.18).** Red first (`server-board.spec.ts` "[R] 5.2: …"). `instanceNames` names a series' instances together.
+- **Deviation:** F2's CSV app-pods names did **not** change. Petstore's exporter writes the whole label set into the one
+  `instance` cell (`container=catalog, namespace=petstorems, pod=…`), so on the CSV path there is no separate label to
+  leave out. Parsing the cell back was rejected in C1, because label values (SQL text) hold `, ` and `=`.
+- On F2's **replay**, the names went from `container=catalog, namespace=petstorems, pod=catalog-5d4bd757bd-2rf5p` to
+  `container=catalog, pod=catalog-5d4bd757bd-2rf5p`.
+- The CSV half belongs to the exporter: write only the labels that differ into the `instance` cell, as Grafana's Auto
+  legend does. That is a petstore item (the other chat).
+- `cmp.cjs`: none. Server specs: 206/206.
+
+**5.3, expected (written before the F2 check, 4.1.19):** F2's `catalog-db-slowest-statement` Per instance leads with the deciding
+statement (`select setting from pg_settings…`, 0.688 ms) and no bar is higher than the one above it; `app-pods-memory-limit-used-pct`
+leads with the catalog pod at 91.27 %. `cmp.cjs` none.
+
+**5.3, done (4.1.19).** Red first (js-unit `5.3: …` over `_orderBars` for max/avg/min; `server-board.spec.ts` "[R] 5.3: …" on
+E26). Observed on F2, as registered: slowest-statement leads with `select setting from pg_settings…` = 0.687937 and no bar
+rises (7 did before); app-pods leads with 91.27 %; `cmp.cjs` none. C1's name pin compares the names as a set.
+
+**5.4, expected (written before the build, 4.1.20):** none anywhere. Only a capped series under `across: avg` can draw another
+set, and no S4 variant or F-run has one (C08's and F2's capped series fold `max`).
+
+**5.4, done (4.1.20).** Red first (`ServerKpiEvaluatorTest`'s ranking case, avg now `[5, 1, 3, 0, 4, 2]`). Observed, as
+registered: C08 vs 4.1.11 and F2 vs 4.1.19, `cmp.cjs` none.
+
+**5.5, expected (written before the F-run check, 4.1.21):** F6's chip names the same worst component as on 4.1.0, and its
+counts now include a `warn` (kafka-lag, hidden behind NOT EVALUATED until now); F2's and F5's chips keep their word, with
+the rest counted by state. `serverStatus` and the CI/CD JSON unchanged (`cmp.cjs` none); R06 goldens unchanged.
+
+**5.5, done (4.1.21).** Red first (`ServerGateEvaluationTest.theChipCountsTheOtherComponentsByState…`). Observed, as
+registered (chip, 4.1.0 → 4.1.21):
+- F6: `Catalog JVM NOT EVALUATED · 14 more` → `· 2 not evaluated · 2 warn · 10 pass`. The two WARNs were hidden.
+- F5: `Catalog API (no actuator) FAIL · 14 more` → `· 1 fail · 1 not evaluated · 2 warn · 10 pass`.
+- F2: `… WARN · 14 more` → `· 14 pass`.
+- `serverStatus` and every assert are unchanged. F2's and F6's one series difference is 4.1.11's capped row.
+- Five pins of "N more" now hold the counts; Tutorial 01, 13, FEATURES and CLAUDE.md describe them. The Summary card
+  prints the same text (`serverVerdict.othersText`).
+
+  **Missed at 5.5:** js-unit was not run before that commit, so `verdict-block.test.js` (AF5) stayed red on the old
+  `· 1 more`. Caught at 5.7's js-unit run and fixed in the test-only commit that follows 4.1.22.
+
+**5.6, expected (written before accepting the goldens, 4.1.22; the goldens were not in the list I wrote before the build,
+so this is after the first run and before any accept):** every golden whose `.json`/`.xml` carries a LOW_COVERAGE reason
+gains `; no point between <from>Z and <to>Z (<n> s)` on that reason, and nothing else moves. On F5, catalog-db's six
+LOW_COVERAGE asserts name the outage, 75 s.
+
+**5.6, done (4.1.22).** Vectors first: the two "below the floor 90%" vectors gain the gap, and the Java and node runners
+went red on exactly those two. `Coverage.longestGap` (Java) and `longestGap`/`gapText` (the mirror) use Coverage's slots,
+name a stretch of 2+ empty steps (Grafana's two evaluation intervals) and write UTC to the second.
+- **Goldens, as registered:** G4, G7 and G10 each gain the suffix on their `sparse` assert (`… (46 s)`), and nothing else
+  moved in 18 baselines. Accepted.
+- **F5 vs 4.1.15:** six reasons differ, reason text only; payload identical.
+  - `up` and connections: `no point between 2026-10-25T17:03:09Z and 2026-10-25T17:04:24Z (75 s)`;
+  - cache hit, deadlocks, DB time: 60 s (a rate needs two scrapes after the DB returns);
+  - slowest statement: 90 s.
+- Server specs 225/225, browser parity included.
+
+**5.7, expected (written before the F-run check, 4.1.23):** F5's Collection entries read `N of M steps have a point (P%)`
+in place of `INSUFFICIENT`, its two custom series are named by the asserts that read them (`catalog-db/catalog-db-time`,
+`catalog-db/catalog-db-slowest-statement`) in place of PromQL, and the extras end `(no assert reads it)`. F2's
+heap.live.growth reads its steps, unread. The panel's open state and chart data are unchanged.
+
+**5.7, done (4.1.23).** Red first (`server-board.spec.ts` "[R] 5.7: …" on E27). Observed, as registered:
+- F5: `catalog-db/up 16 of 20 steps have a point (80%) · read by catalog-db-up`. The customs appear as `catalog-db/catalog-db-time`
+  and `…/catalog-db-slowest-statement`, and 11 extras end `(no assert reads it)`.
+- F2: `catalog-jvm/heap.live.growth 11 of 20 steps have a point (55%) (no assert reads it)`, with the panel closed.
+- 20 steps is the 299.8 s collected window at 15 s, as Coverage counts it.
+- C6's pins lost the bare `INSUFFICIENT`. Tutorial 13 describes the words and 5.6's gap.
+
+**5.8, expected (written before the change, 4.1.24):**
+- S4 X07: its two asserts (mongo-command-p95 with an in-run `+Inf`, catalog-hikari-acquire-p95 with `Infinity`) go
+  SOURCE_FAILED → judged on their other points, as A0 judges them. The verdict and actual equal A0's unless the dropped
+  row held the reducer's point; coverage loses at most that one slot.
+- M10 (empty and `NaN` rows beside numbers) is unchanged; so is every other S4 variant.
+- WIR: E28's blank-values assert goes SOURCE_FAILED ("every value is empty or NaN") → LOW_COVERAGE (0 of N steps,
+  the gap named). Its spec pins move.
+
+**5.8, done (4.1.24).** Red first: four CsvSourceTest cases (an all-blank series is an instance with no point; an all-NaN
+instance counts beside numbered ones; `±Inf`/`Infinity` are gaps in both layouts while `1e400` is still refused; blank rows in
+the run beside numbered ones outside it). They replace Stage 2's D6 test that refused `+Inf` by line. Observed:
+- X07 vs A0: `catalog-hikari-acquire-p95` SOURCE_FAILED → PASS 0.95, as A0, coverage 0.95 → 0.90. As registered.
+- **Deviation:** `mongo-command-p95` SOURCE_FAILED → **LOW_COVERAGE**, not A0's PASS. Its A0 coverage sat exactly at the 0.90
+  floor, and the `+Inf` slot took it to 0.85. That is the live path's rule; my registration missed a series at the floor.
+  Its reason names the hole (30 s).
+- M10 unchanged; goldens unchanged (9 sets).
+- E28 `blank`: SOURCE_FAILED → LOW_COVERAGE, `app/blank 0 of 4 steps have a point (0%)`.
+- The wide layout skips its blank cells without storing them, so an all-blank wide column stays EMPTY (NO_MATCH, Grafana's
+  NoData). Only `±Inf` joined that skip.
+- Tutorial 16 and CLAUDE.md say the new rule.
+
+**5.9, expected (written before the change, 4.1.25):** none in S4. Only X17c (60 s rows) and X18b (1 s rows) measure
+their step, and in each every instance has one spacing. In WIR, E26 and E27 are uniform and E28 sets 15 s; the goldens
+are unchanged. Only a series mixing a sparse instance with dense ones moves.
+
+**5.9, done (4.1.25).** Red first: `CollectPureTest` (spacing of a 15 s and a 60 s instance: 15 s) and `CsvSourceTest`'s
+step case (a 5 s and a 15 s instance: 5 s). Both had pinned the widest on purpose ("one instance at 15 s does not hide
+another at 60 s"). Across series the widest stays, and the cross-series case is unchanged. Observed, as registered:
+- X17c still measures `1m` (too coarse, collected at 15s) and X18b `1s`.
+- X17c's 31 and X18b's 2 differences from 4.1.0 are all 5.6's gap suffix; status, actual and coverage are identical.
+- M01 none.
+
+**5.10, done (4.1.26).** Expected before the change: none (catalogue text). Red first
+(`CatalogueTest.theRestartsSayAReplacedPodIsNotARestart`). `restarts` and `restarts.oom` say that a pod deleted and
+replaced is not a restart: kube-state-metrics counts per container, and Datadog's kubernetes.containers.restarts means
+the same. A replica-gap metric (`kube_deployment_status_replicas_unavailable`, the standard signal for a dead pod) is
+under Open for the owner.
+
+**The Stage 5 review** (3 agents, one lens each, on the diff; the full list is in `tmp/` and the workflow journal) confirmed real
+defects in 5.1, 5.6, 5.7, 5.8 and 5.9, plus four doc lags. The full regression also failed one test: a second 5.5 pin
+(`verdict-block.spec.ts`), fixed in its own commit. One fix per commit, red first:
+- **4.1.27:** server charts had joined the client charts' connected group, so hovering a Timeline chart ran a hidden
+  Server chart's tooltip, visible since 5.1 put it on the body. Server charts now link among themselves
+  (`serverChartGroup`). Red: the leak spec found 1 floating tooltip; now 0.
+
+- **4.1.28 (5.6's gap):**
+  - `longestGap` (Java and the mirror) now walks the sorted covered slots, so its memory goes by points. A boolean per
+    slot overflowed past 2^31 slots: red, `NegativeArraySizeException` at 30 days and 1 ms.
+  - The two-step threshold, a gap at the start and at the end, an empty window and the union of instances are pinned
+    on both sides (CollectPureTest, js-unit `_longestGap`). The parity vectors match by `contains()`, so they could not
+    pin these.
+  - A capped series ships Java's gap (`judgedGap`) and the page names that, never its thinned copy's. Red on 4.1.27:
+    `server-board.spec.ts` "5.6 review".
+
+- **4.1.29 (5.8's missed paths), expected before the build:** S4's wide variants W1 and W2 keep their asserts and series. No
+  column is all gaps in the run, and the console may add blank-cell lines now that a wide gap is a row. No difference
+  beyond earlier steps' known ones (5.6's suffix).
+
+  Done: red first, two CsvSourceTest cases (a wide mixed column and an all-gap column; `--from` with a NaN instance and
+  an all-NaN series). Observed: W1 and W2 identical to 4.1.0, asserts and series, with no new console line.
+
+- **4.1.30 (5.9's rule), expected before the build:** none. X17c and X18b measure 1m and 1s (uniform instances), and
+  the F-runs set 15 s.
+
+  Done: the most common gap over all of a series' rows together (`Coverage.pooledSpacingCounts`, `CsvSource.intervalOfAll`),
+  for the points' spacing, the measured step (still the widest across series) and the rows' spacing alike. Red first: the
+  reviewer's short-lived dense pod (5 s → 15 s) and sparse-instance rows (60 s → 15 s). Observed: X17c and X18b identical
+  to 4.1.25. 5.9's two pins hold under the pooled rule.
+
+- **4.1.31 (5.7's count):** coverage reaches the page rounded to four places, so "N of M steps" is exact only below
+  10,000 steps; from there the Collection says `coverage P%`. Red first: `server-board.spec.ts` "5.7 review" (20,001
+  steps read `2468 of 20001`). Display only.
+
+- **4.1.32 (docs):** Tutorial 16's `--step` row (pooled), its wide-layout gap rule (infinities, the column with no
+  number), Tutorial 13's Per instance paragraph (worst first, the labels that tell instances apart), and the chip's
+  template comment (counts by state). The template is under `src/main`, hence the bump.
+
+- The full regression on 4.1.32 failed one test, the "5.6 review" spec from 4.1.28. It checked the assert's own row, but the
+  board writes a not-judged reason in the row under it (`tr.wir-reason-row`); its earlier pass is unexplained. Fixed to
+  read that row. Checked by hand on E26: with `judgedGap` the reason names the gap, without it there is none.
+
+**For the owner:**
+- **Q5, the y-axis.** Grafana bounds it by the data; WIR includes every band (R3-3) so the drag handles stay on the
+  plot.
+- **Percentiles.** JMeter's Aggregate Report uses nearest rank, as WIR's server `pN` does. JMeter's dashboard
+  interpolates (commons-math LEGACY, `backend_metrics_percentile_estimator`, over a 20000-sample window). Prometheus
+  uses R-7. WIR's client side uses a t-digest. Recommendation: keep nearest rank and document it.
+
 ## Open
 
 From the Stage 4 exploration. These predate Stage 4 or are design calls, so none is in the staged plan; each needs the

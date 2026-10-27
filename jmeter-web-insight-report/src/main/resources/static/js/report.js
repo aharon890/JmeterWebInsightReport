@@ -3450,10 +3450,14 @@ function syncSamplerCompanionRows(tbody) {
  * ============================================================ */
 
 var chartGroup = 'wir-linked';
+/* The Server tab's charts link among themselves, never with the client's: they span the collected
+   window on a tab of their own, and once their tooltips sat on the body (5.1) hovering a Timeline
+   chart showed a hidden Server chart's tooltip over the Timeline (the Stage 5 review). */
+var serverChartGroup = 'wir-server-linked';
 
 function connectCharts() {
     chartInstances.forEach(function (c) {
-        c.group = chartGroup;
+        if (c.group !== serverChartGroup) c.group = chartGroup;
     });
     if (typeof echarts !== 'undefined') {
         echarts.connect(chartGroup);
@@ -5224,7 +5228,7 @@ function verdictBlockText(facts) {
     var s = f.server;
     if (s && s.word) {
         lines.push('Server: ' + s.word + (s.label ? dash + s.label : '')
-            + (s.others > 0 ? ' · ' + s.others + ' more' : ''));
+            + (s.othersText ? ' · ' + s.othersText : ''));
     }
     if (a && f.draftDiffers) lines.push('Draft differs' + dash + 'see Asserts');
     if (f.fileName) lines.push(f.fileName);
@@ -5272,7 +5276,8 @@ function verdictFacts() {
         var verdict = typeof globalChartData !== 'undefined' && globalChartData && globalChartData.serverVerdict;
         var chipState = chip.getAttribute('data-wir-chip-state');
         if (verdict) {
-            server = { word: WIR.status.chipLabel(verdict.status), label: verdict.label || null, others: verdict.others || 0 };
+            server = { word: WIR.status.chipLabel(verdict.status), label: verdict.label || null, others: verdict.others || 0,
+                othersText: verdict.othersText || '' };
         } else if (chipState === 'REFUSED' || chipState === 'NOT_COLLECTED') {
             server = { word: chipState === 'REFUSED' ? 'REFUSED' : 'NOT COLLECTED', label: null, others: 0 };
         } else {
@@ -19605,6 +19610,28 @@ WIR.serverKpis = (function () {
        is the collector's business, and both stay in server-metrics.json. They are the Source
        cell's tooltip, for whoever has to find the file. What a reader needs to judge the series
        stays: the status and its error, the step, and the clock offset he asked to see here. */
+    /**
+     * What came back for an unusable series, in Grafana's words (5.7): "No data" for an empty answer,
+     * "N of M steps have a point (P%)" below the coverage floor (the percentage alone from 10,000 steps) - the steps Coverage counts over the
+     * collected window - and the status otherwise (FAILED, whose error follows).
+     */
+    function seriesStateText(s) {
+        if (s.status === 'EMPTY') return 'No data';
+        if (s.status === 'INSUFFICIENT' && s.coverage != null && !isNaN(s.coverage)) {
+            var w = state.metrics && state.metrics.window;
+            var step = stepOf(state.metrics, s.source);
+            /* Coverage reaches the page rounded to four places (Collector.round4), so the count it gives
+               back is exact only below 10,000 steps; past that, the percentage alone (the Stage 5 review). */
+            var expected = w && step > 0 ? Math.floor((w.end - w.start) / step) + 1 : 0;
+            if (expected > 0 && expected < 10000) {
+                return Math.round(s.coverage * expected) + ' of ' + expected + ' steps have a point ('
+                    + percent(s.coverage) + ')';
+            }
+            return 'coverage ' + percent(s.coverage);
+        }
+        return s.status;
+    }
+
     function collectionHtml() {
         var sources = (state.metrics && state.metrics.sources) || [];
         if (!sources.length) return '';
@@ -19615,10 +19642,18 @@ WIR.serverKpis = (function () {
            reads (D1: collected for the picker) is listed, marked so, and opens nothing: on petstore
            F2 an INSUFFICIENT heap.live.growth nobody asserted opened the panel on every load (C6). */
         var read = [];
+        var readers = [];   /* the ids of the enabled asserts reading read[i] */
         state.declaredKpis.forEach(function (k) {
             if (k.enabled === false) return;
             var s = seriesForDeclared(k);
-            if (s && read.indexOf(s) < 0) read.push(s);
+            if (!s) return;
+            var at = read.indexOf(s);
+            if (at < 0) {
+                read.push(s);
+                readers.push([k.id]);
+            } else if (readers[at].indexOf(k.id) < 0) {
+                readers[at].push(k.id);
+            }
         });
         var unusable = ((state.metrics && state.metrics.series) || []).filter(function (s) {
             return s.status === 'EMPTY' || s.status === 'INSUFFICIENT' || s.status === 'FAILED';
@@ -19671,12 +19706,21 @@ WIR.serverKpis = (function () {
         });
         html += '</tbody></table></div>';
         if (unusable.length) {
-            /* The ones an assert reads first: they are why the panel is open. */
+            /* The ones an assert reads first: they are why the panel is open. Each in Grafana's words
+               (5.7): "No data" for an empty answer, what came back against what was asked (its query
+               inspector's rows returned), and the assert that reads it, as Grafana pins a notice to
+               the panel that used the query. A custom series by that assert's id, never its PromQL:
+               petstore F5 listed a three-line query nobody could match to a row. */
             html += '<ul class="wir-unusable-series">' + asserted.concat(extras).map(function (s) {
-                var name = (s.component ? s.component + '/' : '') + (s.metric != null ? s.metric : s.resolvedQuery);
-                return '<li><strong>' + esc(name) + '</strong> ' + esc(s.status)
+                var at = read.indexOf(s);
+                var ids = at >= 0 ? readers[at] : [];
+                var own = s.metric != null ? s.metric : ids.length ? ids[0] : s.resolvedQuery;
+                var others = ids.filter(function (id) { return id !== own; });
+                return '<li><strong>' + esc((s.component ? s.component + '/' : '') + own) + '</strong> '
+                    + esc(seriesStateText(s))
                     + (s.error ? ' ' + EM_DASH + ' ' + esc(s.error) : '')
-                    + (read.indexOf(s) < 0 ? ' <span class="wir-dim">(no assert reads it)</span>' : '') + '</li>';
+                    + (at < 0 ? ' <span class="wir-dim">(no assert reads it)</span>'
+                        : others.length ? ' · read by ' + esc(others.join(', ')) : '') + '</li>';
             }).join('') + '</ul>';
         }
         /* The collection's id, stamped into serverComponents[] — the time is on the line above. */
@@ -20020,7 +20064,7 @@ WIR.serverKpis = (function () {
             return;
         }
         disposeChartIn(el);
-        var chart = createChart(el);
+        var chart = createServerChart(el);
         charts[k.key] = chart;
         bindHandlePlacement();
         watchHandles(chart, k.key);
@@ -20047,6 +20091,7 @@ WIR.serverKpis = (function () {
         var row = byKey(boardRows(), k.key);
         var undecided = !!(row && row.verdict && row.verdict.status === 'NOT_JUDGED');
 
+        var instanceLabels = instanceNames(series.instances);
         var drawn = series.instances.map(function (inst, i) {
             /* A thinned instance's points are several steps apart by construction; told what the
                collector saw, the gap test measures against the thinning's spacing (gapUnit), not
@@ -20068,7 +20113,7 @@ WIR.serverKpis = (function () {
             islandIndices(pts).forEach(function (j) { lone[j] = true; });
             var hasLone = Object.keys(lone).length > 0;
             return {
-                name: instanceName(inst, i),
+                name: instanceLabels[i],
                 type: 'line',
                 showSymbol: hasLone,
                 symbol: hasLone
@@ -20120,7 +20165,9 @@ WIR.serverKpis = (function () {
         var bounds = bandAxisBounds(extent.min, extent.max, bandValues);
 
         chart.setOption({
-            tooltip: { trigger: 'axis', formatter: tooltipFormatter(frame.name) },
+            /* In a portal on the body, as Grafana renders its tooltips: the card clips its overflow, and
+               a row with long names lost the time and every name's start to it (petstore F2, 5.1). */
+            tooltip: { trigger: 'axis', formatter: tooltipFormatter(frame.name), appendTo: 'body' },
             legend: drawn.length > 1 ? { type: 'scroll', bottom: 0 } : undefined,
             grid: { left: 60, right: 24, top: 24, bottom: drawn.length > 1 ? 48 : 32 },
             /* hideOverlap, as the picker's chart has (SF35): since SF34 a row's chart is the card's
@@ -20175,7 +20222,10 @@ WIR.serverKpis = (function () {
             var html = esc(formatTimeZoned(new Date(at)));
             list.forEach(function (p) {
                 var v = p.value && p.value.length > 1 ? p.value[1] : null;
-                html += '<br>' + (p.marker || '') + esc(p.seriesName) + ': <strong>'
+                /* Each name cut at a fixed width, as Grafana's tooltip rows are: petstore's SQL-text
+                   names made a 1221px tooltip no side of the cursor could hold (5.1). */
+                html += '<br>' + (p.marker || '') + '<span class="wir-tip-name">' + esc(p.seriesName)
+                    + '</span>: <strong>'
                     + esc(v === null || v === undefined ? EM_DASH
                         : formatValue(v, unit) + (unit ? ' ' + unit : ''))
                     + '</strong>';
@@ -20278,25 +20328,41 @@ WIR.serverKpis = (function () {
         return warn <= fail ? { warn: 'right', fail: 'left' } : { warn: 'left', fail: 'right' };
     }
 
-    function instanceName(inst, i) {
-        var labels = inst.labels;
-        if (!labels) return 'instance ' + (i + 1);
-        /* A CSV's instance cell is the label {instance: <cell>}. Where the cell already reads as a
-           label list ("routeId=catalog", an exporter writing the series' own labels), it is shown
-           bare: "instance=routeId=catalog" doubled the prefix the replay of the same run did not
-           have, and took the Per instance chart's width (C1). Display only; the payload keeps it. */
-        var keys = Object.keys(labels);
-        if (keys.length === 1 && keys[0] === 'instance'
-                && /^[A-Za-z_][A-Za-z0-9_]*=/.test(String(labels.instance))) {
-            return String(labels.instance);
+    /**
+     * Every instance's name in one series, as Grafana's legend "Auto" mode names series: with two or
+     * more instances, only the labels whose values tell them apart (a label every instance carries
+     * with one value is left out), keys in alphabetical order; one instance keeps all its labels.
+     * Petstore F2's app-pods rows wrote the shared namespace and container first, and two catalog
+     * pods read "container=catalog, n..." twice once cut (5.2).
+     */
+    function instanceNames(instances) {
+        var shared = Object.create(null);
+        if (instances.length > 1) {
+            var first = instances[0].labels || {};
+            Object.keys(first).forEach(function (key) {
+                var same = instances.every(function (inst) {
+                    var labels = inst.labels || {};
+                    return Object.prototype.hasOwnProperty.call(labels, key) && labels[key] === first[key];
+                });
+                if (same) shared[key] = true;
+            });
         }
-        var parts = [];
-        for (var key in labels) {
-            if (Object.prototype.hasOwnProperty.call(labels, key)) {
-                parts.push(key + '=' + labels[key]);
+        return instances.map(function (inst, i) {
+            var labels = inst.labels;
+            if (!labels) return 'instance ' + (i + 1);
+            var keys = Object.keys(labels).filter(function (key) { return !shared[key]; }).sort();
+            if (!keys.length) keys = Object.keys(labels).sort();
+            /* A CSV's instance cell is the label {instance: <cell>}. Where the cell already reads as a
+               label list ("routeId=catalog", an exporter writing the series' own labels), it is shown
+               bare: "instance=routeId=catalog" doubled the prefix the replay of the same run did not
+               have, and took the Per instance chart's width (C1). Display only; the payload keeps it. */
+            if (keys.length === 1 && keys[0] === 'instance'
+                    && /^[A-Za-z_][A-Za-z0-9_]*=/.test(String(labels.instance))) {
+                return String(labels.instance);
             }
-        }
-        return parts.length ? parts.join(', ') : 'instance ' + (i + 1);
+            var parts = keys.map(function (key) { return key + '=' + labels[key]; });
+            return parts.length ? parts.join(', ') : 'instance ' + (i + 1);
+        });
     }
 
     /** Rebuild every open chart — called by refreshAllCharts after it disposes them all. */
@@ -20338,6 +20404,34 @@ WIR.serverKpis = (function () {
         return getEffectiveVisibleRange() >= 120000 ? 60000 : undefined;
     }
 
+    /**
+     * The Per instance bars worst first (5.3), as a Datadog top list or a sorted Grafana bar gauge:
+     * the highest value first under {@code across: max} and {@code avg} (Datadog's default
+     * direction), the lowest under {@code min}; an instance with no value last; ties in the
+     * collector's order. Petstore F2's slowest-statement row drew the deciding statement as bar 18
+     * of 20. Pure.
+     */
+    function orderBars(names, values, across) {
+        var order = names.map(function (n, i) { return i; });
+        order.sort(function (a, b) {
+            var x = values[a], y = values[b];
+            if (x === null || y === null) return (x === null) - (y === null) || a - b;
+            return (across === 'min' ? x - y : y - x) || a - b;
+        });
+        return {
+            names: order.map(function (i) { return names[i]; }),
+            values: order.map(function (i) { return values[i]; })
+        };
+    }
+
+    /** A chart of this tab: createChart's, in the Server tab's own connected group (serverChartGroup). */
+    function createServerChart(el) {
+        var chart = createChart(el);
+        chart.group = serverChartGroup;
+        echarts.connect(serverChartGroup);
+        return chart;
+    }
+
     function initInstanceChartFor(k) {
         var chartKey = instanceChartKey(k.key);
         disposeChart(chartKey);
@@ -20356,12 +20450,16 @@ WIR.serverKpis = (function () {
         var step = stepOf(state.metrics, k.source);
         var names = [];
         var values = [];
+        var instanceLabels = instanceNames(series.instances);
         series.instances.forEach(function (inst, i) {
             var points = inWindow(inst.points || [], window);
             var value = points.length ? reduceOne(k.reducer, points, step) : NaN;
-            names.push(instanceName(inst, i));
+            names.push(instanceLabels[i]);
             values.push(isNaN(value) ? null : value / frame.by);
         });
+        var ordered = orderBars(names, values, k.across);
+        names = ordered.names;
+        values = ordered.values;
         disposeChartIn(el);
         /* One bar and one name per instance (C2). At a fixed 260px, ECharts' auto interval skipped
            the names that did not fit (20 bars, about every fifth named), and containLabel cannot fit
@@ -20382,7 +20480,7 @@ WIR.serverKpis = (function () {
             labelWidth = Math.max(labelWidth, r && isFinite(r.width) ? Math.ceil(r.width) + 2 : labelCap);
         });
         labelWidth = Math.min(labelCap, labelWidth);
-        var chart = createChart(el);
+        var chart = createServerChart(el);
         charts[chartKey] = chart;
         /* A row that decided nothing draws its limits muted, as Value over time does (F4, SF36):
            a bar past a full-strength fail line reads as a breach the run never earned — and from
@@ -20406,10 +20504,13 @@ WIR.serverKpis = (function () {
             finite.length ? Math.max.apply(null, finite) : 0, bandValues);
         chart.setOption({
             tooltip: {
-                trigger: 'axis', axisPointer: { type: 'shadow' },
+                trigger: 'axis', axisPointer: { type: 'shadow' }, appendTo: 'body',
                 formatter: function (params) {
                     var p = Array.isArray(params) ? params[0] : params;
-                    return esc(p.name) + ': <strong>' + esc(p.value === null || p.value === undefined
+                    /* One row, so the name wraps rather than cut: the bar's own name is already cut, and
+                       this is where the reader reads it whole. */
+                    return '<span class="wir-tip-name wir-tip-wrap">' + esc(p.name) + '</span>: <strong>'
+                        + esc(p.value === null || p.value === undefined
                         ? EM_DASH : formatValue(p.value, frame.name) + (frame.name ? ' ' + frame.name : ''))
                         + '</strong>';
                 }
@@ -22143,6 +22244,50 @@ WIR.serverKpis = (function () {
         OK: true, PARTIAL: true, INSUFFICIENT: true, EMPTY: true, FAILED: true, NOT_REQUESTED: true
     };
 
+    /**
+     * Coverage.longestGap, mirrored (B1, "name the gap"): the longest stretch of the collected window
+     * with no point from any instance, by Coverage's slots - from the last covered slot before it (or
+     * the window's start) to the first covered slot after it (or the window's end) - or null when no
+     * two slots in a row are empty. Pure.
+     */
+    function longestGap(instances, window, step) {
+        if (!(step > 0) || !window || window.end - window.start < 0) return null;
+        var expected = Math.floor((window.end - window.start) / step) + 1;
+        /* The covered slots, sorted: memory by points, never by window/step, as Java's. */
+        var seen = Object.create(null);
+        var covered = [];
+        (instances || []).forEach(function (inst) {
+            (inst.points || []).forEach(function (p) {
+                var slot = Math.round((p[0] - window.start) / step);
+                if (slot >= 0 && slot < expected && !seen[slot]) { seen[slot] = true; covered.push(slot); }
+            });
+        });
+        covered.sort(function (a, b) { return a - b; });
+        var bestStart = -1, bestLength = 0, previous = -1;
+        covered.forEach(function (slot) {
+            if (slot - previous - 1 > bestLength) { bestLength = slot - previous - 1; bestStart = previous + 1; }
+            previous = slot;
+        });
+        if (expected - previous - 1 > bestLength) { bestLength = expected - previous - 1; bestStart = previous + 1; }
+        if (bestLength < 2) return null;
+        var from = bestStart === 0 ? window.start : window.start + (bestStart - 1) * step;
+        var to = bestStart + bestLength >= expected ? window.end : window.start + (bestStart + bestLength) * step;
+        return [from, to];
+    }
+
+    /** ServerKpiEvaluator.gapText's words: "; no point between <from> and <to> (<n> s)", or "". */
+    function gapText(series, payload) {
+        /* A capped series' copy is twenty instances and thinned points: the gap it shows need not be the
+           run's, so Java's, over the full series, travels with it (judgedGap; the Stage 5 review). */
+        var capped = series.instancesCapped || (series.instances || []).some(function (i) { return i.pointsCapped; });
+        var gap = capped ? (series.judgedGap || null)
+            : longestGap(series.instances, payload && payload.window, stepOf(payload, series.source));
+        if (!gap) return '';
+        var utc = function (ms) { return new Date(Math.floor(ms / 1000) * 1000).toISOString().replace(/\.000Z$/, 'Z'); };
+        return '; no point between ' + utc(gap[0]) + ' and ' + utc(gap[1])
+            + ' (' + Math.round((gap[1] - gap[0]) / 1000) + ' s)';
+    }
+
     function collectionDetail(status, series, config, payload) {
         if (status === 'FAILED') {
             if (series.error) return series.error;
@@ -22167,14 +22312,15 @@ WIR.serverKpis = (function () {
                and "coverage 40% is below the floor 30%" is arithmetic that cannot be true.
                "of the collected window" because D28 says it wherever coverage is shown: the
                verdicts are taken over the judged window, and the two can disagree. */
+            var gap = gapText(series, payload);
             if (got !== null && got !== undefined && !isNaN(got) && got >= config.coverageFloor) {
                 return 'coverage ' + percent(got) + ' of the collected window was below the floor '
                     + 'in force when this series was collected; the file now asks for '
                     + percent(config.coverageFloor)
-                    + ' - re-run wir-collect to judge it against the current floor';
+                    + ' - re-run wir-collect to judge it against the current floor' + gap;
             }
             return 'coverage ' + percent(got) + ' of the collected window is below the floor '
-                + percent(config.coverageFloor);
+                + percent(config.coverageFloor) + gap;
         }
         if (status === 'NOT_REQUESTED') return 'no series was collected for this server assert - re-run wir-collect';
         return null;
@@ -25404,7 +25550,7 @@ WIR.serverKpis = (function () {
         }
         if (!chart) {
             el.innerHTML = '';
-            chart = createChart(el);
+            chart = createServerChart(el);
         }
         /* Replaces the option outright, so it says the background again (createChart). The time
            labels hide where they would overlap: on the 300px pane nine of them printed over one
@@ -25417,7 +25563,7 @@ WIR.serverKpis = (function () {
             grid: { left: 40, right: 8, top: 8, bottom: 20 },
             xAxis: { type: 'time', minInterval: serverTimeMinInterval(), axisLabel: { formatter: formatTimeAxis, hideOverlap: true } },
             yAxis: { type: 'value' },
-            tooltip: { trigger: 'axis', formatter: tooltipFormatter(metric.unit || '') },
+            tooltip: { trigger: 'axis', formatter: tooltipFormatter(metric.unit || ''), appendTo: 'body' },
             series: [{
                 name: metric.label || dialog.focus, type: 'line', showSymbol: false, data: run.points,
                 lineStyle: { width: 1.5 }
@@ -26165,6 +26311,8 @@ WIR.serverKpis = (function () {
         _breachAreas: breachAreas,
         _breachAreasAcross: breachAreasAcross,
         _bandAxisBounds: bandAxisBounds,
+        _orderBars: orderBars,
+        _longestGap: longestGap,
         _chartFrame: chartFrame,
         /* How many times the board has run the mirror — once per render that can move a
            verdict, never for a chart toggle or a filter (R3-13). */

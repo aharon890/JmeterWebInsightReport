@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -105,13 +106,41 @@ class CollectPureTest {
     }
 
     @Test
-    void aSeriesSpacingIsItsMostCommonGapTheLargestOverItsInstances() {
+    void theLongestGapIsTwoOrMoreEmptyStepsInARowNamedFromTheCoveredSlotBeforeToTheOneAfter() {
+        // B1 (5.6): what a LOW_COVERAGE reason names. Window 0..120 s at 15 s: nine slots.
+        ServerMetricsPayload.Window w = new ServerMetricsPayload.Window(0, 120_000, null);
+        // One missed step is noise, as Grafana waits two evaluation intervals before NoData.
+        assertNull(Coverage.longestGap(Collections.singletonList(
+                instance(0, 1, 15_000, 1, 45_000, 1, 60_000, 1, 75_000, 1, 90_000, 1, 105_000, 1, 120_000, 1)), w, 15_000));
+        // Slots 2..4 empty: from slot 1 (15 s) to slot 5 (75 s).
+        assertArrayEquals(new long[] {15_000, 75_000}, Coverage.longestGap(Collections.singletonList(
+                instance(0, 1, 15_000, 1, 75_000, 1, 90_000, 1, 105_000, 1, 120_000, 1)), w, 15_000));
+        // At the start: from the window's start; at the end: to the window's end.
+        assertArrayEquals(new long[] {0, 45_000}, Coverage.longestGap(Collections.singletonList(
+                instance(45_000, 1, 60_000, 1, 75_000, 1, 90_000, 1, 105_000, 1, 120_000, 1)), w, 15_000));
+        assertArrayEquals(new long[] {75_000, 120_000}, Coverage.longestGap(Collections.singletonList(
+                instance(0, 1, 15_000, 1, 30_000, 1, 45_000, 1, 60_000, 1, 75_000, 1)), w, 15_000));
+        // No point at all: the whole window.
+        assertArrayEquals(new long[] {0, 120_000}, Coverage.longestGap(
+                Collections.<ServerMetricsPayload.InstanceRecord>emptyList(), w, 15_000));
+        // The union of instances: b fills what a leaves.
+        assertNull(Coverage.longestGap(Arrays.asList(instance(0, 1, 30_000, 1, 60_000, 1, 90_000, 1, 120_000, 1),
+                instance(15_000, 1, 45_000, 1, 75_000, 1, 105_000, 1)), w, 15_000));
+        // Memory by points, not by window/step: 30 days at 1 ms is 2.6e9 slots, past an int (the review).
+        ServerMetricsPayload.Window month = new ServerMetricsPayload.Window(0, 30L * 24 * 3600 * 1000, null);
+        assertArrayEquals(new long[] {1, month.getEnd()}, Coverage.longestGap(
+                Collections.singletonList(instance(0, 1, 1, 1)), month, 1));
+    }
+
+    @Test
+    void aSeriesSpacingIsTheMostCommonGapOverAllItsInstancesPoints() {
         // What the step-against-spacing warning compares with --step: an export at the panel's
         // interval has every point a minute apart, however few gaps it has.
         assertEquals(60_000, Coverage.spacingMillis(Collections.singletonList(
                 instance(0, 1, 60_000, 1, 120_000, 1, 240_000, 1, 300_000, 1))));
-        // Per instance, then the largest: one instance at 15 s does not hide another at 60 s.
-        assertEquals(60_000, Coverage.spacingMillis(Arrays.asList(
+        // Pooled over the instances (5.9, N6): a 60 s instance beside a 15 s one does not coarsen the
+        // series, and coverage counts the union of its slots, which the 15 s one fills.
+        assertEquals(15_000, Coverage.spacingMillis(Arrays.asList(
                 instance(0, 1, 15_000, 1, 30_000, 1, 45_000, 1), instance(0, 1, 60_000, 1, 120_000, 1))));
         // A tie keeps the smaller spacing, as the export's period does (Conversion.period).
         assertEquals(15_000, Coverage.spacingMillis(Collections.singletonList(instance(0, 1, 15_000, 1, 45_000, 1))));

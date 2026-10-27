@@ -336,16 +336,16 @@ test.describe('Server tab — the board', () => {
 
   test('[R] the header chip names the worst BUILDING gate and counts the rest', async ({ page }) => {
     await loadClean(page, 'E26');
-    // D17. kafka FAILs and db only WARNs; the chip names the worst and counts the rest.
+    // D17. kafka FAILs and db only WARNs; the chip names the worst and counts the rest by state (B2:
+    // "1 more" hid db's WARN, as Grafana's rule stats and the Prometheus alerts page would not).
     const chip = page.locator('.wir-server-chip');
     await expect(chip).toBeVisible();
-    await expect(chip).toContainText('Kafka FAIL');
-    await expect(chip).toContainText('1 more');
+    await expect(chip).toHaveText('Server · Kafka FAIL · 1 warn');
     await expect(chip).toHaveClass(/badge-fail/);
   });
 
   test('[R] L3-6: the header chip is the way to the Server tab, from any tab', async ({ page }) => {
-    // The chip names a gate and counts the rest - "1 more" is a pointer to the tab, and it was a
+    // The chip names a gate and counts the rest - a pointer to the tab, and it was a
     // <span> nobody could follow. It is a button now, bound by report.js to the same switchTab
     // the tab bar uses (data-wir-tab, a listener - no inline handler for the sweep to excuse).
     await loadClean(page, 'E26');
@@ -1474,14 +1474,15 @@ test.describe('Server tab — charts that agree with the board (M7c E)', () => {
         expect(raw, `${id}: no ${pick} point to hover`).not.toBeNull();
         let text = '';
         await expect.poll(async () => {
-          text = await page.evaluate((kpiId) => {
-            const W = (window as any).WIR.serverKpis;
-            const el = document.getElementById('serverChart-' + W._keyOf(kpiId))!;
-            const tip = Array.from(el.querySelectorAll('div')).find((d) =>
+          text = await page.evaluate(() => {
+            // The Server tab's tooltips sit on the body (5.1: the card clipped them), so the one
+            // showing is the visible tooltip anywhere in the document.
+            const tip = Array.from(document.querySelectorAll('div')).filter((d) =>
               /z-index:\s*9999999/.test(d.getAttribute('style') || '')
-              && (d as HTMLElement).style.display !== 'none');
+              && (d as HTMLElement).style.display !== 'none'
+              && getComputedStyle(d).visibility !== 'hidden' && Number(getComputedStyle(d).opacity) > 0).pop();
             return tip ? (tip as HTMLElement).innerText : '';
-          }, id);
+          });
           return text;
         }, { message: `${id}: the tooltip never showed` }).not.toBe('');
         return { raw: raw as number, text };

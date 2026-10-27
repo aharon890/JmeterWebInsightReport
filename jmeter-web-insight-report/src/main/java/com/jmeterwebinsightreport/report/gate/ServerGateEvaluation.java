@@ -778,9 +778,10 @@ public final class ServerGateEvaluation {
      * {@link #serverStatus()} stays absent on both, as the CI/CD JSON's {@code serverComponents}
      * does, and the badge is {@code badge-none}.
      *
-     * <p>The word is the worst component's; every other declared component contributes to the
-     * count: "2 more" is a pointer to the tab, not a verdict. With no component reported there is
-     * no word at all, in the neutral style.
+     * <p>The word is the worst component's; every other declared component is counted by its state,
+     * in the fold's order ("1 warn · 3 pass", B2), as Grafana's rule stats and the Prometheus alerts
+     * page count every state beside the worst: "2 more" hid a WARN behind a component that judged
+     * nothing. With no component reported there is no word at all, in the neutral style.
      *
      * <p>The count is of DECLARED gates — the badges the Server tab's gate strip shows — so
      * "1 more" is one more badge to find there. {@value #NO_GATE_ID} takes part in the fold and
@@ -809,7 +810,19 @@ public final class ServerGateEvaluation {
         // The reserved entry is named as the Server tab names its card (SF22); its id stays the wire's.
         String label = declared != null ? declared.label() : displayId(worst.getKey());
         int others = gates.containsKey(worst.getKey()) ? declaredGates - 1 : declaredGates;
-        return new Chip(worst.getKey(), label, wireStatus(worst.getValue().status()), others);
+        // The rest by state, in the fold's order (B2): a WARN behind a component that judged nothing
+        // is said, as Grafana's rule stats and the Prometheus alerts page count every state.
+        Map<String, Integer> byState = new LinkedHashMap<>();
+        for (String state : new String[] {"FAIL", NOT_EVALUATED, "WARN", "PASS"}) {
+            byState.put(state, 0);
+        }
+        for (Map.Entry<String, GateSummary> gate : gates.entrySet()) {
+            if (!gate.getKey().equals(worst.getKey())) {
+                byState.merge(wireStatus(gate.getValue().status()), 1, Integer::sum);
+            }
+        }
+        byState.values().removeIf(n -> n == 0);
+        return new Chip(worst.getKey(), label, wireStatus(worst.getValue().status()), others, byState);
     }
 
     /** What the header renders: one gate's word, and how many gates are not named. */
@@ -825,17 +838,42 @@ public final class ServerGateEvaluation {
         private final String label;
         private final String status;
         private final int others;
+        private final Map<String, Integer> othersByState;
 
         Chip(String gateId, String label, String status, int others) {
+            this(gateId, label, status, others, Collections.<String, Integer>emptyMap());
+        }
+
+        Chip(String gateId, String label, String status, int others, Map<String, Integer> othersByState) {
             this.gateId = gateId;
             this.label = label;
             this.status = status;
             this.others = others;
+            this.othersByState = Collections.unmodifiableMap(new LinkedHashMap<>(othersByState));
         }
 
         /** The chip of a run whose server asserts were declared and not evaluated: {@link #REFUSED} or {@link #NOT_COLLECTED}. */
         static Chip unjudged(String state) {
             return new Chip(null, null, state, 0);
+        }
+
+        /**
+         * The components the chip does not name, counted by state in the fold's order — FAIL,
+         * NOT_EVALUATED, WARN, PASS — non-zero states only (B2). Empty when {@link #getOthers()} is 0.
+         */
+        public Map<String, Integer> getOthersByState() { return othersByState; }
+
+        /** {@code "1 warn · 3 pass"}: the counts as the chip and the Summary card write them. */
+        public String getOthersText() {
+            StringBuilder text = new StringBuilder();
+            for (Map.Entry<String, Integer> state : othersByState.entrySet()) {
+                if (text.length() > 0) {
+                    text.append(" · ");
+                }
+                text.append(state.getValue()).append(' ')
+                        .append(state.getKey().replace('_', ' ').toLowerCase(java.util.Locale.ROOT));
+            }
+            return text.toString();
         }
 
         /** True for {@link #REFUSED} and {@link #NOT_COLLECTED}: no component was evaluated at all. */
@@ -866,7 +904,7 @@ public final class ServerGateEvaluation {
         public int getOthers() { return others; }
 
         /**
-         * The chip's text: {@code "Server · Kafka FAIL · 2 more"}, {@code "Server · nothing judged"},
+         * The chip's text: {@code "Server · Kafka FAIL · 1 warn · 1 pass"}, {@code "Server · nothing judged"},
          * or the state of a run judged against nothing, {@code "Server · REFUSED"} or
          * {@code "Server · NOT COLLECTED"} — the Summary card's word for it.
          */
@@ -877,7 +915,8 @@ public final class ServerGateEvaluation {
             if (gateId == null) {
                 return "Server · nothing judged";
             }
-            return "Server · " + label + " " + getStatusLabel() + (others > 0 ? " · " + others + " more" : "");
+            String rest = getOthersText();
+            return "Server · " + label + " " + getStatusLabel() + (rest.isEmpty() ? "" : " · " + rest);
         }
 
         /** The tooltip: what the chip is a pointer to, and why it says what it says. */

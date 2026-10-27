@@ -172,6 +172,8 @@ final class GatePayloadBuilder {
         verdict.put("component", chip == null ? null : chip.getGateId());
         verdict.put("label", chip == null ? null : chip.getLabel());
         verdict.put("others", chip == null ? 0 : chip.getOthers());
+        // The rest by state, as the chip writes them (B2): the Summary card prints this text.
+        verdict.put("othersText", chip == null ? "" : chip.getOthersText());
         GateSummary reserved = server.reportedGates().get(ServerGateEvaluation.NO_GATE_ID);
         if (reserved != null) {
             verdict.put("reserved", CiCdJsonSerializer.serverGateEntries(server,

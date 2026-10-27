@@ -42,7 +42,8 @@ test.describe('E28 — server data that does not line up with the run', () => {
       aligned: 'PASS',
       shifted: 'NOT_JUDGED/SOURCE_FAILED',
       heap: 'NOT_JUDGED/SOURCE_FAILED',
-      blank: 'NOT_JUDGED/SOURCE_FAILED',
+      // 5.8: every value empty or NaN is data with no value, as live: LOW_COVERAGE, not a failed source.
+      blank: 'NOT_JUDGED/LOW_COVERAGE',
       spaced: 'NOT_JUDGED/INVALID_RULE',
       split: 'NOT_JUDGED/SOURCE_FAILED',
     });
@@ -53,7 +54,7 @@ test.describe('E28 — server data that does not line up with the run', () => {
     await expect(panel).toContainText('They start 3h late, which is usually a time zone');
     await expect(panel).toContainText('move the rows with --clock-offset -3h');
     await expect(panel).toContainText('50 rows name app/heap_used - component and metric must be written exactly');
-    await expect(panel).toContainText('every value is empty or NaN');
+    await expect(panel).toContainText('app/blank 0 of 4 steps have a point (0%)');
     await expect(panel).toContainText('e28-metrics.csv line 235: has 6 cells where the header has 5');
   });
 

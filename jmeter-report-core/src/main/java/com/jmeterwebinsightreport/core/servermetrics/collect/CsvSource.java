@@ -261,9 +261,12 @@ public final class CsvSource implements SeriesSource {
                     points.add(new ServerMetricsPayload.Point(ts, p.getValue()));
                 }
             }
-            if (points.isEmpty()) {
+            if (points.isEmpty() && !rowsInRunHoldNoNumber(e.getValue(), source.clockOffsetMs(), window, slack)) {
+                // Nothing in the run, or numbers a --from conversion left nothing of: emptySeries says which.
                 continue;
             }
+            // An instance whose rows in the run hold no number is still an instance, with no point, as
+            // the live path keeps a series whose samples are NaN (5.8, Q1/B7): LOW_COVERAGE, not FAILED.
             ServerMetricsPayload.InstanceRecord inst = new ServerMetricsPayload.InstanceRecord();
             inst.setLabels(e.getKey().isEmpty() ? Collections.<String, String>emptyMap()
                     : Collections.singletonMap(INSTANCE_LABEL, e.getKey()));
@@ -503,9 +506,11 @@ public final class CsvSource implements SeriesSource {
      * as. Each instance's {@linkplain #intervalOf interval} between its rows with a value (a blank row
      * is a gap, as {@link Coverage#spacingMillis} reads it), counting only rows within {@code window}
      * and one {@code source} step of it (null: every row) - a jittered, sparse or scattered export has
-     * none; then the widest over every instance of the series
-     * {@code requests} ask for, as {@link Coverage#spacingMillis} takes it, so a coarser series is never
-     * counted in slots finer than its rows. A series is found as {@link #collect} finds it - by
+     * none; within one series the most common gap over all its instances' rows together
+     * ({@link #intervalOfAll}, as {@link Coverage#spacingMillis} pools the points: 5.9, N6 - one
+     * every-other-minute instance no longer coarsens the collection, and one short-lived dense instance
+     * does not re-grid it either, the Stage 5 review); then the widest over the series {@code requests}
+     * ask for, so a coarser series is never counted in slots finer than its rows. A series is found as {@link #collect} finds it - by
      * component and metric key, under a {@code --from} tool's name first when the file has rows under
      * it - and one the collection never reads, however coarse, sets nothing. 0 when nothing was
      * measured, a file the reader refuses included: its refusal follows.
@@ -533,6 +538,7 @@ public final class CsvSource implements SeriesSource {
         long slack = Math.max(0, source.stepMillis());
         long widest = 0;
         for (Map<String, TreeMap<Long, Double>> byInstance : measured) {
+            List<List<Long>> perInstance = new ArrayList<>();
             for (TreeMap<Long, Double> rows : byInstance.values()) {
                 List<Long> times = new ArrayList<>();
                 for (Map.Entry<Long, Double> p : rows.entrySet()) {
@@ -541,8 +547,9 @@ public final class CsvSource implements SeriesSource {
                         times.add(ts);
                     }
                 }
-                widest = Math.max(widest, intervalOf(times));
+                perInstance.add(times);
             }
+            widest = Math.max(widest, intervalOfAll(perInstance));
         }
         return widest;
     }
@@ -580,6 +587,26 @@ public final class CsvSource implements SeriesSource {
     }
 
     /**
+     * Whether an instance has rows in the run (the clock offset applied) and none of them, as the file
+     * wrote them, holds a number: data with no value, kept as an instance with no point (5.8), under
+     * {@code --from} as without it (the Stage 5 review). Read from the raw rows, so numbers a counter
+     * conversion left nothing of are not this case but emptySeries' "export from one step before".
+     */
+    private static boolean rowsInRunHoldNoNumber(TreeMap<Long, Double> raw, long clockOffset,
+                                                 ServerMetricsPayload.Window window, long slack) {
+        boolean any = false;
+        for (Map.Entry<Long, Double> row : raw.entrySet()) {
+            if (inRun(row.getKey() + clockOffset, window, slack)) {
+                if (row.getValue() != null) {
+                    return false;
+                }
+                any = true;
+            }
+        }
+        return any;
+    }
+
+    /**
      * The interval one instance's rows ({@code ascending}) were exported at, or 0 when they have none:
      * the most common gap, the smaller on a tie, taken only when it repeats at least
      * {@value #MIN_STEP_REPEATS} times and is at least half of the gaps. On repeats alone a jittered
@@ -588,17 +615,22 @@ public final class CsvSource implements SeriesSource {
      * one interval for most of its rows has none to measure, and is collected at the default.
      */
     static long intervalOf(List<Long> ascending) {
+        return intervalOfAll(java.util.Collections.singletonList(ascending));
+    }
+
+    /** {@link #intervalOf} over several instances' rows at once, their gaps counted together (5.9). */
+    static long intervalOfAll(List<List<Long>> instancesAscending) {
         // Coverage's own count of the gaps (the smaller on a tie), so the measured step and the
         // spacing the warnings quote are one rule; only the floor is this method's.
-        long[] counts = Coverage.spacingCounts(ascending);
+        long[] counts = Coverage.pooledSpacingCounts(instancesAscending);
         long most = counts[1];
         return most >= MIN_STEP_REPEATS && most * 2 >= counts[2] ? counts[0] : 0;
     }
 
     /**
      * How far apart the rows of the file last read for this series are, a row with no value
-     * included: each instance's {@linkplain Coverage#mostCommonSpacing most common spacing}, the
-     * widest over the instances, 0 with none. Only the rows {@link #collect} keeps count: those within
+     * included: the most common gap over every instance's rows together
+     * ({@link Coverage#pooledSpacingCounts}, as {@link Coverage#spacingMillis} takes the points'), 0 with none. Only the rows {@link #collect} keeps count: those within
      * {@code window} and one {@code source} step of it, the clock offset applied, as
      * {@link #measuredStepMillis} and {@link #blankRows} count them - an export of a finer period
      * before the run must not speak for the run's rows. Beside {@link Coverage#spacingMillis} over the
@@ -609,7 +641,7 @@ public final class CsvSource implements SeriesSource {
         Map<String, TreeMap<Long, Double>> byInstance = index == null ? null
                 : index.series.get(seriesKey(component, metric));
         long slack = Math.max(0, source.stepMillis());
-        long widest = 0;
+        List<List<Long>> perInstance = new ArrayList<>();
         if (byInstance != null) {
             for (TreeMap<Long, Double> rows : byInstance.values()) {
                 List<Long> times = new ArrayList<>();
@@ -619,10 +651,12 @@ public final class CsvSource implements SeriesSource {
                         times.add(ts);
                     }
                 }
-                widest = Math.max(widest, Coverage.mostCommonSpacing(times));
+                perInstance.add(times);
             }
         }
-        return widest;
+        // Pooled over the instances, as Coverage.spacingMillis is (5.9; the Stage 5 review: the widest let
+        // one sparse instance's rows decide a "coarser interval" and the --step to advise).
+        return Coverage.pooledSpacingCounts(perInstance)[0];
     }
 
     /**
@@ -850,14 +884,16 @@ public final class CsvSource implements SeriesSource {
             }
             String v = row.cell(header.value).trim();
             Double value;
-            if (v.isEmpty() || v.equalsIgnoreCase("nan")) {
-                value = null;   // a gap, not a zero
+            if (v.isEmpty() || v.equalsIgnoreCase("nan") || infinityText(v)) {
+                // A gap, not a zero. Prometheus writes +Inf/-Inf and Grafana's export Infinity; the live
+                // path drops a non-finite sample as a gap, so this path does too (5.8, Q1).
+                value = null;
             } else {
                 try {
                     value = Double.parseDouble(v);
                 } catch (NumberFormatException e) {
-                    idx.errors.put(key, where + "value \"" + v + "\" " + (infinityText(v) ? "is not a finite number"
-                            : "is not a number - write it with a '.' decimal point and no thousands separator"));
+                    idx.errors.put(key, where + "value \"" + v + "\" is not a number - write it with a '.' decimal"
+                            + " point and no thousands separator");
                     continue;
                 }
                 if (value.isInfinite()) {

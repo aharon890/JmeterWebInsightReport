@@ -28,6 +28,16 @@ Open work as of 4.0.4. Line numbers are at 4.0.1 unless marked otherwise; `repor
 11. **A warn/fail pair that can never PASS** (`warn lt 100` with `fail gt 50`): WARNING or
     INVALID_RULE?
 12. **AF1 vs AF3:** which goes first, if either is scheduled.
+13. **Server y-axis against bands** (Q5, 2026-10-27). Grafana bounds the axis by the data and draws
+    only the thresholds inside it; WIR includes every band (R3-3) so each drag handle stays on the
+    plot. On petstore the data then sits at about 1% of the height. Standard or drag?
+14. **Server `pN` method** (2026-10-27). WIR's server side uses nearest rank, as JMeter's Aggregate
+    Report does. JMeter's HTML dashboard interpolates (commons-math `LEGACY`,
+    `backend_metrics_percentile_estimator`), Prometheus `quantile_over_time` uses R-7, and WIR's
+    client side uses a t-digest. Recommendation: keep nearest rank and document it.
+15. **A dead or replaced pod.** `kubernetes-pod` restarts cannot see one (4.1.26 says so). The
+    standard signal is the replica gap (`kube_deployment_status_replicas_unavailable`): add it to the
+    catalogue?
 
 ## Bugs
 
@@ -179,6 +189,15 @@ Low:
   - per-slice Discard
   - `minPoints`
   - a `nan` policy
+  - from the 2026-10-27 staged plan, parked as COULD (rule 1):
+    - D1: a CSV row naming a custom assert by its `id` (`--columns` covers long queries today)
+    - D3: `wir-collect --record DIR`, writing recordings
+    - D4: a `# wir match <component> <match>` comment in a long CSV, checked at collect time
+      (a WARNING only)
+    - E3/N7: a WARNING finding for an empty `requiresLoad` or `divideBy` (documented in 4.1.8)
+    - B3: "N missing slots lie before the ramp-up end" in a LOW_COVERAGE detail; D28 kept
+    - F1/F3: doc starting points for pg_stat_statements (DB time/s, statements/s) and Hikari
+      pending, once each query is checked on petstore
 - Types:
   - rabbitmq
   - sqlserver

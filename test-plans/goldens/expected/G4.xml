@@ -73,12 +73,12 @@ instances: 1
     <testcase name="up-per-rps" classname="server-metrics">
     </testcase>
     <testcase name="sparse-low-coverage" classname="server-metrics">
-      <failure message="Server assert was collected below the coverage floor: coverage 6% of the collected window is below the floor 90%">
+      <failure message="Server assert was collected below the coverage floor: coverage 6% of the collected window is below the floor 90%; no point between 2023-11-14T22:13:22Z and 2023-11-14T22:14:08Z (46 s)">
 component: db
 query:     sparse
 reduce:    max across max
 criteria:  fail &gt; 1
-problem:   Server assert was collected below the coverage floor: coverage 6% of the collected window is below the floor 90%
+problem:   Server assert was collected below the coverage floor: coverage 6% of the collected window is below the floor 90%; no point between 2023-11-14T22:13:22Z and 2023-11-14T22:14:08Z (46 s)
 coverage:  6% of the collected window
 instances: 1
       </failure>
