@@ -224,6 +224,44 @@ class ReportRebuildTest {
         assertEquals(Collections.emptySet(), after, "the refused collection's temporary file was left behind");
     }
 
+    /**
+     * A reader property past step reaches the collection as its flag does on the command line: only
+     * step and columns were ever passed through -g or Rebuild by a test, and C39-C41 run the other
+     * flags through wir-collect.sh alone (Stage 6, the audit). E27's Datadog export, as C41 reads it:
+     * {@code from=datadog} through the properties must write the payload {@code --from datadog} writes.
+     */
+    @Test
+    void aFromPropertyCollectsWhatWirCollectsFromFlagCollects() throws Exception {
+        File csv = new File("../test-plans/server-catalogue/e27-datadog.csv");
+        File annotations = new File("../test-plans/server-catalogue/e27-server.json");
+        Function<String, String> props = name -> "webinsight.report.servermetrics.from".equals(name) ? "datadog"
+                : "webinsight.report.servermetrics.step".equals(name) ? "1s" : PROPS.apply(name);
+        ReportConfiguration config = config("from-datadog", csv, annotations);
+        Captured captured = new Captured();
+        ReportRebuild.collectServerCsvIfGiven(config, JTL, null, props, captured.out, captured.err, NO_ENV,
+                ReportRebuild.Route.COMMAND_LINE);
+        assertNull(config.getServerDataProblem(), captured.err());
+
+        File standalone = work.resolve("from-datadog-standalone.json").toFile();
+        Captured quiet = new Captured();
+        assertEquals(0, com.jmeterwebinsightreport.WirCollect.run(new String[] {"--jtl", JTL.getPath(),
+                "--annotations", annotations.getPath(), "--out", standalone.getPath(), "--csv", csv.getPath(),
+                "--from", "datadog", "--step", "1s", "--no-wait", "--test-name", config.getReportTitle(),
+                "--collected-at", java.time.Instant.ofEpochMilli(csv.lastModified()).toString()},
+                quiet.out, quiet.err, NO_ENV), quiet.err());
+
+        JsonNode inProcess = JSON.readTree(config.getServerMetricsFile());
+        JsonNode fromFlag = JSON.readTree(standalone);
+        assertEquals("datadog", inProcess.get("sources").get(0).get("from").asText(), inProcess.get("sources").toString());
+        boolean converted = false;
+        for (JsonNode series : inProcess.get("series")) {
+            converted |= series.hasNonNull("readAs");
+        }
+        assertTrue(converted, "a series read under Datadog's name: " + inProcess.get("series"));
+        assertEquals(fromFlag.get("series"), inProcess.get("series"));
+        assertEquals(fromFlag, inProcess, "the whole payload");
+    }
+
     @Test
     void aCollectorRefusalNamesItsReasonInTheProblemText() throws Exception {
         // D5 (S4 W3): a long CSV given webinsight.report.servermetrics.columns without .layout. The

@@ -1522,4 +1522,20 @@ class WirCollectTest {
         assertEquals("m.csv", csv.path(), "as typed: no local path is made absolute and published");
         assertEquals(1_000L, csv.stepMillis());
     }
+
+    /**
+     * Every reader property -g and the GUI's Rebuild take (ReportRebuild.CSV_OPTIONS) is handed on
+     * under a flag this collector accepts. PropertyCheckTest holds the property names; nothing held
+     * the flags, and a flag renamed on either side would refuse every -g or Rebuild that sets it,
+     * the Server tab reading REFUSED (Stage 6, the audit).
+     */
+    @Test
+    void everyReaderPropertyReachesTheCollectorUnderAFlagItAccepts() {
+        for (String[] option : com.jmeterwebinsightreport.report.exporter.ReportRebuild.CSV_OPTIONS) {
+            assertTrue(option[1].startsWith("--"), option[1]);
+            assertTrue(WirCollect.OPTIONS.contains(option[1].substring(2)),
+                    "webinsight.report.servermetrics." + option[0] + " is passed as " + option[1]
+                            + ", which wir-collect does not take");
+        }
+    }
 }
