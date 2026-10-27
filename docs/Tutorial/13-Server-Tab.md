@@ -637,8 +637,12 @@ Under the table, the `collectionId`. The time the
 metrics were collected is on the Collection line itself, once; hover it for the collector's own UTC
 stamp.
 
-The line is **open by default only when the source did not answer in full** (any status but `OK`):
-that is when you need the error. On a clean collection it stays one line.
+The line is **open by default when the source did not answer in full** (any status but `OK`), or
+when a series an enabled server assert reads came back with nothing usable (`EMPTY`, `INSUFFICIENT`
+or `FAILED`): that is when you need the error. Those series are listed under the table with their
+reason. A catalogue metric no assert reads (collected for the picker) that came back unusable is
+listed too, marked `(no assert reads it)`, and does not open the line. On a clean collection it
+stays one line.
 
 Under the filter row, the findings list what the file got wrong, under a heading such as
 `1 configuration problem`. The sentences, their order and the names they are filed under are those

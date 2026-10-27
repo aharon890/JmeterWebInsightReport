@@ -894,7 +894,8 @@ test.describe('Server tab — the charts', () => {
       // L9-12. WHICH twenty matters: the cap kept the first twenty in collector order, and E26's
       // p20 — the 21st, and the highest — is the instance across: max took its number from.
       // The chart beside the verdict then never showed the series the verdict was about. The
-      // instance a verdict depends on is kept first; the rest fill up in collector order.
+      // instance a verdict depends on is kept first; since C5 the rest go worst first (here the
+      // highest), so p0, the lowest, is the one left out. What is drawn keeps collector order.
       const names = await page.evaluate(() => {
         const el = document.querySelector('.wir-server-chart')!;
         const inst = (window as any).echarts.getInstanceByDom(el);
@@ -902,8 +903,9 @@ test.describe('Server tab — the charts', () => {
       });
       expect(names).toHaveLength(20);
       expect(names).toContain('instance=p20');
-      expect(names).not.toContain('instance=p19');
-      expect(names[0]).toBe('instance=p0');
+      expect(names).toContain('instance=p19');
+      expect(names).not.toContain('instance=p0');
+      expect(names[0]).toBe('instance=p1');
     });
 
   test('[U] a FAIL decided by an instance other than the first is shaded too',

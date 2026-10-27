@@ -929,7 +929,7 @@ name in any order, extra columns ignored, quoted cells and a UTF-8 BOM allowed:
 `time,component,metric,instance,value`. `time` is ISO 8601 **with** an offset or `Z`, or epoch
 milliseconds — a time with no zone is refused, never guessed. `metric` is a catalogue metric's name
 or a custom assert's `query` text. `instance` is optional (empty is one instance; a value becomes
-the chart label `instance=<value>`). `value` uses `.` as the decimal point and no thousands
+the chart label `instance=<value>`, or the value alone when it already reads `k=…`, C1). `value` uses `.` as the decimal point and no thousands
 separator; empty or `NaN` is a gap, not zero; without `--from` it is the metric's value in the
 catalogue's unit, with no counter conversion. Rows more than one step outside the run window are
 dropped. A bad row fails **only the series it belongs to**, naming the line
@@ -1021,7 +1021,8 @@ WARNING (`duplicateNotes`). `wir-collect` prints the run window, the long file's
 `--csv` with exit 1, and turns an OutOfMemoryError into a sentence. A CSV source's `resolvedUrl` is its
 file name only, and its NO_MATCH reason reads "no row of the CSV names component X, metric Y" on both
 sides (`ServerKpiEvaluator.collectionDetail`, report.js `collectionDetail`). The Collection panel opens
-on any EMPTY/INSUFFICIENT/FAILED series and lists them. The tests that used to pin the silence
+on any EMPTY/INSUFFICIENT/FAILED series an enabled assert reads and lists them; an unusable catalogue extra
+no assert reads (D1) is listed after them, marked "(no assert reads it)", and opens nothing (C6). The tests that used to pin the silence
 (`CsvSourceTest` out-of-window, the DST case) now pin the sentence.
 
 `--from TOOL` (telegraf, datadog, otel, cloudwatch; `--csv` only) reads a file exported from that

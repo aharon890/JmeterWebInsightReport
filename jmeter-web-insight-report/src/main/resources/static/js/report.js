@@ -19608,14 +19608,24 @@ WIR.serverKpis = (function () {
     function collectionHtml() {
         var sources = (state.metrics && state.metrics.sources) || [];
         if (!sources.length) return '';
-        /* A series that came back with nothing usable opens the panel too: a source reads OK while one
-           of its series was EMPTY (a name or a time window that did not match), and that series is
-           the one a reader needs to see (research H2). Server data never changes the exit code, so
-           the page is where it has to be said. */
+        /* A series an enabled assert reads that came back with nothing usable opens the panel too: a
+           source reads OK while one of its series was EMPTY (a name or a time window that did not
+           match), and that series is the one a reader needs to see (research H2). Server data never
+           changes the exit code, so the page is where it has to be said. A catalogue extra no assert
+           reads (D1: collected for the picker) is listed, marked so, and opens nothing: on petstore
+           F2 an INSUFFICIENT heap.live.growth nobody asserted opened the panel on every load (C6). */
+        var read = [];
+        state.declaredKpis.forEach(function (k) {
+            if (k.enabled === false) return;
+            var s = seriesForDeclared(k);
+            if (s && read.indexOf(s) < 0) read.push(s);
+        });
         var unusable = ((state.metrics && state.metrics.series) || []).filter(function (s) {
             return s.status === 'EMPTY' || s.status === 'INSUFFICIENT' || s.status === 'FAILED';
         });
-        var failing = unusable.length > 0 || sources.some(function (s) { return s.status !== 'OK'; });
+        var asserted = unusable.filter(function (s) { return read.indexOf(s) >= 0; });
+        var extras = unusable.filter(function (s) { return read.indexOf(s) < 0; });
+        var failing = asserted.length > 0 || sources.some(function (s) { return s.status !== 'OK'; });
         var summary = sources.map(function (s) {
             return s.id + ' ' + s.status;
         }).join(' · ');
@@ -19661,10 +19671,12 @@ WIR.serverKpis = (function () {
         });
         html += '</tbody></table></div>';
         if (unusable.length) {
-            html += '<ul class="wir-unusable-series">' + unusable.map(function (s) {
+            /* The ones an assert reads first: they are why the panel is open. */
+            html += '<ul class="wir-unusable-series">' + asserted.concat(extras).map(function (s) {
                 var name = (s.component ? s.component + '/' : '') + (s.metric != null ? s.metric : s.resolvedQuery);
                 return '<li><strong>' + esc(name) + '</strong> ' + esc(s.status)
-                    + (s.error ? ' ' + EM_DASH + ' ' + esc(s.error) : '') + '</li>';
+                    + (s.error ? ' ' + EM_DASH + ' ' + esc(s.error) : '')
+                    + (read.indexOf(s) < 0 ? ' <span class="wir-dim">(no assert reads it)</span>' : '') + '</li>';
             }).join('') + '</ul>';
         }
         /* The collection's id, stamped into serverComponents[] — the time is on the line above. */
@@ -20118,6 +20130,7 @@ WIR.serverKpis = (function () {
                 type: 'time',
                 min: w ? w.start : undefined,
                 max: w ? w.end : undefined,
+                minInterval: serverTimeMinInterval(),
                 axisLabel: { formatter: formatTimeAxis, hideOverlap: true }
             },
             /* Bounded so every band, and the handle that drags it, is on the plot (R3-3).
@@ -20268,6 +20281,15 @@ WIR.serverKpis = (function () {
     function instanceName(inst, i) {
         var labels = inst.labels;
         if (!labels) return 'instance ' + (i + 1);
+        /* A CSV's instance cell is the label {instance: <cell>}. Where the cell already reads as a
+           label list ("routeId=catalog", an exporter writing the series' own labels), it is shown
+           bare: "instance=routeId=catalog" doubled the prefix the replay of the same run did not
+           have, and took the Per instance chart's width (C1). Display only; the payload keeps it. */
+        var keys = Object.keys(labels);
+        if (keys.length === 1 && keys[0] === 'instance'
+                && /^[A-Za-z_][A-Za-z0-9_]*=/.test(String(labels.instance))) {
+            return String(labels.instance);
+        }
         var parts = [];
         for (var key in labels) {
             if (Object.prototype.hasOwnProperty.call(labels, key)) {
@@ -20306,6 +20328,16 @@ WIR.serverKpis = (function () {
      * axis named in the verdict unit (instanceFrame). Drawn from the page's copy of the series,
      * so a capped one is said to be a sample.
      */
+    /**
+     * The finest tick a Server-tab time axis may take (C4). formatClock drops the seconds once the
+     * visible range reaches two minutes, whatever tick ECharts chose, and on a 240s judged window
+     * it chose 30s: "18:35 18:35 18:36 18:36". The client Timeline of the same run ticked by the
+     * minute at every width (N9, petstore F2), so the floor is this tab's alone.
+     */
+    function serverTimeMinInterval() {
+        return getEffectiveVisibleRange() >= 120000 ? 60000 : undefined;
+    }
+
     function initInstanceChartFor(k) {
         var chartKey = instanceChartKey(k.key);
         disposeChart(chartKey);
@@ -20331,6 +20363,25 @@ WIR.serverKpis = (function () {
             values.push(isNaN(value) ? null : value / frame.by);
         });
         disposeChartIn(el);
+        /* One bar and one name per instance (C2). At a fixed 260px, ECharts' auto interval skipped
+           the names that did not fit (20 bars, about every fifth named), and containLabel cannot fit
+           a name wider than the canvas: petstore's SQL-text instances ran off both edges and the
+           plot collapsed. So the panel grows with its bars, every name is drawn, cut to a share of
+           the width; the tooltip still names the bar in full. Sized before init, which reads it. The
+           grid makes room for that width itself: containLabel's estimate fell 11px short of a cut
+           name as drawn, which then started off the canvas. */
+        el.style.height = Math.max(260, 22 * names.length + 70) + 'px';
+        /* The widest name, never more than 38% of the width: short names keep the plot wide, and a
+           long one is cut there. Measured in the font the axis is told to draw in below: left to
+           ECharts' platform default (12px Microsoft YaHei on Windows) the names drew 3-6% wider than
+           measured, and "instance 1" read "instanc..." (end-of-Stage-4 session, petstore F2/F5). */
+        var labelCap = Math.round(0.38 * (el.clientWidth || 600));
+        var labelWidth = 0;
+        names.forEach(function (n) {
+            var r = echarts.format && echarts.format.getTextRect ? echarts.format.getTextRect(n, '12px sans-serif') : null;
+            labelWidth = Math.max(labelWidth, r && isFinite(r.width) ? Math.ceil(r.width) + 2 : labelCap);
+        });
+        labelWidth = Math.min(labelCap, labelWidth);
         var chart = createChart(el);
         charts[chartKey] = chart;
         /* A row that decided nothing draws its limits muted, as Value over time does (F4, SF36):
@@ -20368,7 +20419,7 @@ WIR.serverKpis = (function () {
                axis's end beside a 24px margin, so "msgs" showed as "m" and "B/min ÷
                load:throughput" ran 135px off the canvas (SF35). Under the axis, centred, it has the
                plot's width. */
-            grid: { left: 8, right: 24, top: 24, bottom: 40, containLabel: true },
+            grid: { left: labelWidth + 16, right: 24, top: 24, bottom: 44 },
             xAxis: {
                 type: 'value', name: frame.name,
                 nameLocation: 'middle',
@@ -20377,12 +20428,22 @@ WIR.serverKpis = (function () {
                 max: bounds.max === null ? undefined : bounds.max,
                 /* Ticks of 10,000,000 printed over one another (SF17): short, in one prefix for
                    the whole axis, and never two on top of each other. */
+                /* About one tick per 64px of plot (C4). hideOverlap hides a label whose box meets
+                   another's; two that only touched both stayed and read as one number, "1,0001,200",
+                   at ECharts' default five ticks on a 190px plot. */
+                splitNumber: Math.max(2, Math.floor(((el.clientWidth || 600) - labelWidth - 40) / 64)),
                 axisLabel: {
                     formatter: axisTicker(finite.concat(bandValues, [bounds.min, bounds.max])),
                     hideOverlap: true
                 }
             },
-            yAxis: { type: 'category', data: names, inverse: true },
+            yAxis: {
+                type: 'category', data: names, inverse: true,
+                axisLabel: {
+                    interval: 0, width: labelWidth, overflow: 'truncate',
+                    fontSize: 12, fontFamily: 'sans-serif'
+                }
+            },
             series: [{
                 type: 'bar', data: values, barMaxWidth: 18,
                 itemStyle: { color: chartColors()[0] },
@@ -25354,7 +25415,7 @@ WIR.serverKpis = (function () {
         chart.setOption({
             backgroundColor: 'transparent',
             grid: { left: 40, right: 8, top: 8, bottom: 20 },
-            xAxis: { type: 'time', axisLabel: { formatter: formatTimeAxis, hideOverlap: true } },
+            xAxis: { type: 'time', minInterval: serverTimeMinInterval(), axisLabel: { formatter: formatTimeAxis, hideOverlap: true } },
             yAxis: { type: 'value' },
             tooltip: { trigger: 'axis', formatter: tooltipFormatter(metric.unit || '') },
             series: [{

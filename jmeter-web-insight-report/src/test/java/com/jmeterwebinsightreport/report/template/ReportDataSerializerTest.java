@@ -281,8 +281,11 @@ class ReportDataSerializerTest {
         List<String> rising24 = drawnPods(json, "rising");
         assertEquals(ServerMetricsPayloadWriter.MAX_INSTANCES_PER_SERIES, rising24.size(), "still capped");
         assertTrue(rising24.contains("p" + (n - 1)), "the instance the FAIL came from is drawn: " + rising24);
-        assertEquals("p0", rising24.get(0), "collector order is kept for what is drawn");
-        assertFalse(rising24.contains("p" + (n - 2)), "the rest fill up in collector order: " + rising24);
+        // C5: the free slots go to the worst of the rest by the assert's own reduction, not to collector
+        // order - the twenty highest, p5..p24 - and what is drawn keeps collector order.
+        assertTrue(rising24.contains("p" + (n - 2)), "the next worst fills a free slot: " + rising24);
+        assertFalse(rising24.contains("p4"), "the lowest give their slots up: " + rising24);
+        assertEquals("p5", rising24.get(0), "collector order is kept for what is drawn");
 
         List<String> spreadPods = drawnPods(json, "spread");
         assertTrue(spreadPods.contains("p" + (n - 1)) && spreadPods.contains("p22"),

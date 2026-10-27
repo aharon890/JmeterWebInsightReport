@@ -52,6 +52,37 @@ test.describe('Server tab — the component board', () => {
     expect(bars.values).toEqual([900]);
   });
 
+  test('[R] C1: an instance cell that already reads as a label is shown bare, not as instance=<label>', async ({ page }) => {
+    // A CSV's instance cell becomes the label {instance: <cell>}. Petstore's exporter wrote the
+    // series' own labels into it, so the CSV path read "instance=routeId=catalog" where the replay of
+    // the same run read "routeId=catalog", and the doubled prefix took the Per instance chart's width.
+    await loadClean(page, 'E26');
+    await switchTab(page, 'server');
+    await page.evaluate(() => {
+      const W = window as any;
+      const d = JSON.parse(JSON.stringify(W.chartData));
+      const k = d.serverKpis.find((x: any) => x.id === 'cpu-headroom');
+      const s = d.serverMetrics.series.find((x: any) => x.query === k.query);
+      s.instances[0].labels = { instance: 'routeId=catalog' };
+      s.instances[1].labels = { instance: 'plain' };
+      W.WIR.serverKpis.init(d);
+      const S = W.WIR.serverKpis; S.toggle(S._keyOf('cpu-headroom'));
+    });
+    await expect.poll(() => page.evaluate(() => {
+      const W = (window as any).WIR.serverKpis;
+      return !!(window as any).echarts.getInstanceByDom(document.getElementById('serverInstances-' + W._keyOf('cpu-headroom'))!);
+    })).toBe(true);
+    const named = await page.evaluate(() => {
+      const W = (window as any).WIR.serverKpis;
+      const key = W._keyOf('cpu-headroom');
+      const per = (window as any).echarts.getInstanceByDom(document.getElementById('serverInstances-' + key)!).getOption();
+      const time = (window as any).echarts.getInstanceByDom(document.getElementById('serverChart-' + key)!).getOption();
+      return { bars: per.yAxis[0].data, lines: (time.series as any[]).map((s) => s.name).filter((n) => n) };
+    });
+    expect(named.bars).toEqual(['routeId=catalog', 'instance=plain']);
+    expect(named.lines).toEqual(expect.arrayContaining(['routeId=catalog', 'instance=plain']));
+  });
+
   test('[R] Expand all rows opens every row, and a second click closes them', async ({ page }) => {
     await loadClean(page, 'E26');
     await switchTab(page, 'server');
@@ -128,6 +159,41 @@ test.describe('Server tab — the component board', () => {
     await expect(page.locator('details.wir-collection')).toHaveAttribute('open', '');
     await expect(page.locator('.wir-unusable-series li')).toHaveCount(1);
     await expect(page.locator('.wir-unusable-series li')).toContainText('none inside the run');
+  });
+
+  test('[R] C6: an unusable series no assert reads is listed, and does not open the Collection; an asserted one does', async ({ page }) => {
+    // E27 collects every catalogue metric of its two components (D1), and asserts two of them. A
+    // catalogue extra under the coverage floor is worth a line, not an open panel: on petstore F2
+    // an INSUFFICIENT heap.live.growth nobody asserted opened it on every load.
+    await loadClean(page, 'E27');
+    await switchTab(page, 'server');
+    const mutate = (asserted: boolean) => page.evaluate((assertedToo) => {
+      const W = window as any;
+      const d = JSON.parse(JSON.stringify(W.chartData));
+      d.serverMetrics.sources.forEach((s: any) => { s.status = 'OK'; delete s.error; });
+      d.serverMetrics.series.forEach((x: any) => { x.status = 'OK'; delete x.error; });
+      d.serverMetrics.series.find((x: any) => x.component === 'orders-db' && x.metric === 'up').status = 'INSUFFICIENT';
+      if (assertedToo) {
+        d.serverMetrics.series.find((x: any) => x.component === 'orders-db'
+          && x.metric === 'connections.used.pct').status = 'INSUFFICIENT';
+      }
+      W.WIR.serverKpis.init(d);
+    }, asserted);
+
+    await mutate(false);
+    await expect(page.locator('details.wir-collection')).not.toHaveAttribute('open', '');
+    const items = page.locator('.wir-unusable-series li');
+    await expect(items).toHaveCount(1);
+    await expect(items.first()).toContainText('orders-db/up INSUFFICIENT');
+    await expect(items.first()).toContainText('(no assert reads it)');
+
+    await mutate(true);
+    await expect(page.locator('details.wir-collection')).toHaveAttribute('open', '');
+    await expect(items).toHaveCount(2);
+    // The one an assert reads first, and not marked.
+    await expect(items.nth(0)).toContainText('orders-db/connections.used.pct INSUFFICIENT');
+    await expect(items.nth(0)).not.toContainText('no assert reads it');
+    await expect(items.nth(1)).toContainText('(no assert reads it)');
   });
 
   test('[U] SF26: a catalogue assert is named by its label, with its id the dim line under it — on the board and in the editor', async ({ page }) => {

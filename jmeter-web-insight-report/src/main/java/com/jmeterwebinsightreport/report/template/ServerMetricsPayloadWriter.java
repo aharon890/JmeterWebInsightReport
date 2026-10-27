@@ -45,15 +45,18 @@ import java.util.TreeSet;
  * ServerMetricsPayload)}) — then, for each catalogue metric of the series' component whose query
  * finds it, the one its {@code judgedActuals} number came from (the static
  * {@code ServerKpiEvaluator.decidingInstances}, under that metric's reducer and across), then the
- * rest in collector order, and the kept set drawn in collector order. Keeping the first twenty
- * dropped the deciding instance whenever it sorted late: a FAIL beside a chart with nothing over the
+ * rest worst first by the first assert over the series (else its first catalogue metric), ranked by
+ * the same reduction ({@link ServerKpiEvaluator#rankedInstances(ServerKpi, ServerMetricsConfig,
+ * ServerMetricsPayload)}), then collector order, and the kept set drawn in collector order. Filling
+ * the free slots in collector order kept an instance far inside the band and dropped a second one
+ * past it (C5: S4's C08, 26 instances, 83.3 over a warn at 80 not drawn, 6 drawn). Keeping the
+ * first twenty dropped the deciding instance whenever it sorted late: a FAIL beside a chart with nothing over the
  * band, the chart contradicting the verdict it sits under. The catalogue's tier exists for the same
  * contradiction where no assert names the number: the metric picker, Set thresholds and Generate
  * show a series' number from {@code judgedActuals} whether or not an assert names it, and draw the
  * series beside it - "low 0" over a flat line at 1, "peak 120 s" over one that never reached 3 (F6).
  * The asserts' instances come first, so a verdict's instance is never displaced by a catalogue
- * number's (L9-12, SF2). The client side caps the same way and keeps the worst
- * ({@code RuleResult.cappedTo}).
+ * number's (L9-12, SF2). The client side keeps the worst as well ({@code RuleResult.cappedTo}).
  *
  * <p>A capped series also carries what the page cannot recompute from its copy, both taken over
  * the full series by the evaluator's own reduction ({@link ServerKpiEvaluator#judgedActual}):
@@ -99,6 +102,7 @@ final class ServerMetricsPayloadWriter {
         Map<ServerMetricsPayload.SeriesRecord, Set<Integer>> asserted = assertedInstances(payload, server);
         Map<ServerMetricsPayload.SeriesRecord, Set<Integer>> catalogue =
                 catalogueInstances(server == null ? null : server.config(), payload, types);
+        Map<ServerMetricsPayload.SeriesRecord, List<Integer>> ranked = rankedInstances(payload, server, types);
         Map<String, Object> block = new LinkedHashMap<>();
         block.put("schema", payload.getSchema());
         block.put("runId", payload.getRunId());
@@ -184,7 +188,7 @@ final class ServerMetricsPayloadWriter {
             }
             m.put("instanceCount", s.getInstances().size());
             List<Map<String, Object>> instances = new ArrayList<>();
-            Set<Integer> kept = keptInstances(s.getInstances().size(), asserted.get(s), catalogue.get(s));
+            Set<Integer> kept = keptInstances(s.getInstances().size(), asserted.get(s), catalogue.get(s), ranked.get(s));
             if (kept.size() < s.getInstances().size()) {
                 instancesDropped += s.getInstances().size() - kept.size();
                 m.put("instancesCapped", true);
@@ -302,13 +306,60 @@ final class ServerMetricsPayloadWriter {
     }
 
     /**
+     * For each series that will be capped, its instances worst first, for the slots the deciding
+     * instances leave (C5): ranked by the first assert over the series when the evaluation judged
+     * this very payload, as {@link #assertedInstances} is gated, else by the first catalogue metric
+     * whose query finds it, as {@link #catalogueInstances} is. A series neither ranks keeps collector
+     * order.
+     */
+    private static Map<ServerMetricsPayload.SeriesRecord, List<Integer>> rankedInstances(
+            ServerMetricsPayload payload, ServerGateEvaluation server, Catalogue types) {
+        Map<ServerMetricsPayload.SeriesRecord, List<Integer>> out = new IdentityHashMap<>();
+        if (server == null || server.config() == null) {
+            return out;
+        }
+        if (server.payload() == payload) {
+            ServerKpiEvaluator evaluator = new ServerKpiEvaluator();
+            for (ServerKpi kpi : server.config().kpis()) {
+                ServerMetricsPayload.SeriesRecord s = payload.findByQuery(kpi.source(), kpi.query(), kpi.gate());
+                if (s == null || s.getInstances().size() <= MAX_INSTANCES_PER_SERIES || out.containsKey(s)) {
+                    continue;
+                }
+                List<Integer> ranked = evaluator.rankedInstances(kpi, server.config(), payload);
+                if (!ranked.isEmpty()) {
+                    out.put(s, ranked);
+                }
+            }
+        }
+        for (ServerMetricsPayload.SeriesRecord s : payload.getSeries()) {
+            if (s.getInstances().size() <= MAX_INSTANCES_PER_SERIES || out.containsKey(s)) {
+                continue;
+            }
+            for (CatalogueMetric metric : catalogueMetricsOf(server.config(), payload, s, types)) {
+                List<Integer> ranked = ServerKpiEvaluator.rankedInstances(server.config(), payload, s,
+                        metric.reducer(), metric.across());
+                if (!ranked.isEmpty()) {
+                    out.put(s, ranked);
+                    break;
+                }
+            }
+        }
+        return out;
+    }
+
+    /** As below, with no ranking: the free slots filled in collector order. */
+    static Set<Integer> keptInstances(int count, Set<Integer> asserted, Set<Integer> catalogue) {
+        return keptInstances(count, asserted, catalogue, null);
+    }
+
+    /**
      * The indices to ship: every one when the series is under the cap; otherwise the asserts'
      * deciding instances first, then the catalogue's (each tier in index order, the whole at most
-     * the cap), filled up to the cap in collector order. Returned sorted, so what is drawn keeps
-     * the collector's order. Asserts first: an instance a verdict came from is never displaced by
-     * one a catalogue number came from.
+     * the cap), then {@code ranked}'s in its order (worst first), filled up to the cap in collector
+     * order. Returned sorted, so what is drawn keeps the collector's order. Asserts first: an
+     * instance a verdict came from is never displaced by one a catalogue number came from.
      */
-    static Set<Integer> keptInstances(int count, Set<Integer> asserted, Set<Integer> catalogue) {
+    static Set<Integer> keptInstances(int count, Set<Integer> asserted, Set<Integer> catalogue, List<Integer> ranked) {
         Set<Integer> kept = new TreeSet<>();
         if (count <= MAX_INSTANCES_PER_SERIES) {
             for (int i = 0; i < count; i++) {
@@ -318,6 +369,16 @@ final class ServerMetricsPayloadWriter {
         }
         keepFirst(kept, asserted, count);
         keepFirst(kept, catalogue, count);
+        if (ranked != null) {
+            for (int i : ranked) {
+                if (kept.size() == MAX_INSTANCES_PER_SERIES) {
+                    break;
+                }
+                if (i >= 0 && i < count) {
+                    kept.add(i);
+                }
+            }
+        }
         for (int i = 0; i < count && kept.size() < MAX_INSTANCES_PER_SERIES; i++) {
             kept.add(i);
         }

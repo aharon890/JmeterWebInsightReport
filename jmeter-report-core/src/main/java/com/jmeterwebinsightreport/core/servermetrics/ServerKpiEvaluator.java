@@ -509,7 +509,8 @@ public final class ServerKpiEvaluator {
      * <p>For whatever has to drop instances for display: the page's payload is capped at a fixed
      * number per series, and a cap that kept the first N in collector order dropped the very
      * instance a FAIL was about whenever it sorted late — the chart beside the verdict then showed
-     * nothing over the band. The client side caps the same way and keeps the worst.
+     * nothing over the band. The payload writer keeps these first, then the worst of the rest by
+     * {@link #rankedInstances}, as the client side keeps the worst ({@code RuleResult.cappedTo}).
      */
     public List<Integer> decidingInstances(ServerKpi kpi, ServerMetricsConfig config, ServerMetricsPayload payload) {
         if (kpi == null || config == null || payload == null || kpi.reducer() == null) {
@@ -602,6 +603,77 @@ public final class ServerKpiEvaluator {
             deciding.add(low);
         }
         return deciding;
+    }
+
+    /**
+     * Every instance of the KPI's series that reduces to a number, worst first: the highest reduced
+     * value first under {@code across: max}, the lowest under {@code min}, the furthest from the
+     * instances' mean under {@code avg}; ties in index order. Computed by the reduction, window and
+     * step {@link #decidingInstances} uses, so under {@code max} and {@code min} its first is the
+     * deciding instance.
+     *
+     * <p>For a display cap's free slots, after the deciding instances: filled in collector order,
+     * they kept an instance far inside the band and dropped a second one past it (C5, S4's C08:
+     * 26 instances, 83.3 over a warn at 80 not drawn, 6 drawn).
+     */
+    public List<Integer> rankedInstances(ServerKpi kpi, ServerMetricsConfig config, ServerMetricsPayload payload) {
+        if (kpi == null || config == null || payload == null || kpi.reducer() == null) {
+            return new ArrayList<>();
+        }
+        ServerMetricsPayload.SeriesRecord series = payload.findByQuery(kpi.source(), kpi.query(), kpi.gate());
+        if (series == null) {
+            return new ArrayList<>();
+        }
+        return rankedIn(series, kpi.reducer(), kpi.across(), judgedWindow(config, payload.getWindow()),
+                stepOf(payload, kpi.source()));
+    }
+
+    /**
+     * As above for a reducer and an across that need not belong to a declared KPI, under
+     * {@link #decidingInstances(ServerMetricsConfig, ServerMetricsPayload, ServerMetricsPayload.SeriesRecord,
+     * Reducer, Across)}'s guards: where that has no deciding instance, this ranks nothing.
+     */
+    public static List<Integer> rankedInstances(ServerMetricsConfig config, ServerMetricsPayload payload,
+                                                ServerMetricsPayload.SeriesRecord series, Reducer reducer,
+                                                Across across) {
+        if (payload == null || series == null || reducer == null || !reducer.toleranceHasLevel()) {
+            return new ArrayList<>();
+        }
+        long step = stepOf(payload, series.getSource());
+        if (!spansWholeSteps(reducer, step)) {
+            return new ArrayList<>();
+        }
+        long[] window = judgedWindow(config == null || config.excludeRampUp(), payload.getWindow());
+        return rankedIn(series, reducer, across, window, step);
+    }
+
+    private static List<Integer> rankedIn(ServerMetricsPayload.SeriesRecord series, Reducer reducer, Across across,
+                                          long[] window, long step) {
+        List<Integer> ranked = new ArrayList<>();
+        Map<Integer, Double> values = new LinkedHashMap<>();
+        List<ServerMetricsPayload.InstanceRecord> instances = series.getInstances();
+        for (int i = 0; i < instances.size(); i++) {
+            List<ServerMetricsPayload.Point> points = inWindow(instances.get(i).getPoints(), window);
+            if (points.isEmpty()) {
+                continue;
+            }
+            double value = reduceOne(reducer, points, step);
+            if (!Double.isNaN(value)) {
+                ranked.add(i);
+                values.put(i, value);
+            }
+        }
+        Across direction = across == null ? Across.defaultValue() : across;
+        double mean = values.values().stream().mapToDouble(Double::doubleValue).average().orElse(0);
+        // A stable sort over ascending indices: ties stay in index order.
+        if (direction == Across.MIN) {
+            ranked.sort((a, b) -> Double.compare(values.get(a), values.get(b)));
+        } else if (direction == Across.AVG) {
+            ranked.sort((a, b) -> Double.compare(Math.abs(values.get(b) - mean), Math.abs(values.get(a) - mean)));
+        } else {
+            ranked.sort((a, b) -> Double.compare(values.get(b), values.get(a)));
+        }
+        return ranked;
     }
 
     /** The reduced value {@link Across} the instances, or {@code null} when nothing could be reduced. */

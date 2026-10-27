@@ -157,6 +157,33 @@ class ServerMetricsPayloadWriterTest {
     }
 
     @Test
+    void theFreeSlotsGoToTheWorstInstancesNotTheFirstInCollectorOrder() throws Exception {
+        // C5, S4's C08: 26 instances under a max/max assert warning over 80. The deciding instance
+        // (0, at 92) was kept, and the other nineteen slots went to collector order, so a second
+        // instance over the band (20, at 83.3) was not drawn while one at 6 (16) was: a WARN beside
+        // a chart with one line over the band, the other breach missing. The free slots now go by
+        // each instance's reduced value, worst first under the assert's across.
+        int n = 26;
+        ServerMetricsPayload p = payload(catalogueSeries("orders-db", "postgres", "connections.used.pct", n,
+                (i, t) -> i == 0 ? 92 : i == 20 ? 83.3 : i == 16 ? 6 : 50));
+        Judged j = judge(ServerFixtures.block(COMPONENTS,
+                withDefaults("orders-db", "connections.used.pct", "\"warn\":{\"gt\":80}")), p);
+        assertEquals(AssertionStatus.WARN, j.result("orders-db", "connections.used.pct").status());
+
+        JsonNode s = j.series("orders-db", "connections.used.pct");
+        assertTrue(s.get("instancesCapped").asBoolean());
+        List<String> drawn = drawnLabels(s);
+        assertEquals(ServerMetricsPayloadWriter.MAX_INSTANCES_PER_SERIES, drawn.size());
+        assertTrue(drawn.contains("pg-1"), "the deciding instance: " + drawn);
+        assertTrue(drawn.contains("pg-21"), "the other instance over the band: " + drawn);
+        assertFalse(drawn.contains("pg-17"), "the lowest instance gives its slot up: " + drawn);
+        // Still drawn in collector order.
+        List<String> sorted = new ArrayList<>(drawn);
+        sorted.sort(java.util.Comparator.comparingInt(l -> Integer.parseInt(l.substring(3))));
+        assertEquals(sorted, drawn);
+    }
+
+    @Test
     void anUnassertedCappedSeriesBesideAnAssertedOneKeepsItsDecidingInstanceToo() throws Exception {
         // F6 on a file that DOES declare asserts: the evaluation carries the payload, so the
         // asserts' tier runs - and covers only the series an assert names. up is named by none,

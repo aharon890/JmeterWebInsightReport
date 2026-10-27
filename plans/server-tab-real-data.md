@@ -91,7 +91,104 @@ registered:
   ended 5 min before; it was stopped. Not investigated: whether a series that never reaches the window end should wait
   that long.
 
+## Stage 4: the page (branch `fix/server-tab-stage4-page`)
+
+Stage 3 merged first (PR #25, `eb08dbb`).
+
+**4.1, C5, expected re-verify diff (written before the change, 4.1.11).** Only C08 has capped series in S4 (a scan of
+every archived report): app-pods `memory.limit.used.pct`, `restarts` and `restarts.oom`, 26 instances each.
+- C08 `memory.limit.used.pct`: the drawn set gains tails-messages (83.30, over warn 80) and gives up the lowest
+  instance; `cmp.cjs` shows that one payload series differing (instance hash), asserts 0 differ.
+- C08 `restarts`, `restarts.oom`: unchanged when their values tie (ties keep index order); a nonzero instance past
+  the first twenty is the deciding one and was kept already.
+- Every other S4 variant: none. CI/CD JSON, JUnit and the R06 goldens: none (they read the evaluation).
+- WIR fixtures: E26 `many` (21 instances) and E29 (24) may draw a different set; their specs pin counts.
+
+**4.1, done (4.1.11).** Red first (`ServerMetricsPayloadWriterTest.theFreeSlotsGoToTheWorstInstancesNotTheFirstInCollectorOrder`:
+pg-1..pg-20 drawn, pg-21 at 83.3 not). `ServerKpiEvaluator.rankedInstances` ranks by the evaluator's own reduction;
+`ReportDataSerializerTest.theInstanceCapKeepsTheInstancesTheVerdictComesFrom` pinned the old fill ("the rest fill up in
+collector order") and now pins the new one. The N8 javadoc (`decidingInstances`) says what the cap keeps. Observed, as
+registered: C08 vs 4.1.0, asserts 35/35 equal, 1 of 104 series differs (`memory.limit.used.pct`: tails-messages 83.3,
+tails-realtime x2, traffic-generator, tails-web, web drawn in place of the six lowest, redis 6.0 among them);
+`restarts` and `restarts.oom` unchanged. M01 vs 4.1.10: none.
+
+**4.2, C6, expected (written before the build, 4.1.12):** F2 (CSV and replay; inputs read from the Stage 0 harness's
+frozen `runs/F2`): its source is OK and its only unusable series is `catalog-jvm/heap.live.growth` INSUFFICIENT, which
+no assert reads. So on 4.1.0 the Collection panel opens by itself; on 4.1.12 it stays closed and lists heap.live.growth
+marked `(no assert reads it)`. Chart data unchanged (report.js only), so `cmp.cjs` shows none anywhere.
+
+**4.2, done (4.1.12).** Red first (`server-board.spec.ts` "[R] C6: …" on E27: an unasserted INSUFFICIENT `up` opened
+the panel). The first cut read `state.kpis`, the baked results, which carry no `source`, so no series counted as
+asserted and P3's spec went red; it reads `state.declaredKpis`, as the board does. Observed, as registered: F2 rebuilt
+from the frozen inputs, headless: 4.1.0 `open: true`, items `catalog-jvm/heap.live.growth INSUFFICIENT`; 4.1.12
+`open: false`, the same item ending `(no assert reads it)`. server-board.spec.ts 24/24 on regenerated E26/E27.
+Tutorial 13's "open by default only when the source did not answer in full" predated P3 and now says both.
+
+**4.3, C2, expected (written before the F2 check, 4.1.13):** display only, chart data unchanged. F2's slowest-statement
+row (27 instances, 20 drawn, named by SQL text): 4.1.0 draws 4 names, clipped off both edges; 4.1.13 draws all 20,
+each inside the canvas, plot at least 40% of the width.
+
+**4.3, done (4.1.13).** Red first (`server-layout.spec.ts` "[R] C2: …", E26 `many-instances` with 120-char names: 10
+of 20 names drawn). Every name is drawn (`interval: 0`), cut at the widest name's measured width or 38% of the chart,
+the panel is max(260, 22 x bars + 70) px tall, and the grid leaves the label room itself: with `containLabel` the
+estimate fell 11 px short of a cut name and every name started at x = -11. Observed on F2 (1280 px): 4.1.0 draws 10
+names, all 10 off the canvas, and the plot collapses (negative width); 4.1.13 draws 20, none outside, plot 51%, canvas
+377x510. The registered "4 names" came from the evaluation's screenshot at another width; same failure. `cmp.cjs`
+vs 4.1.12: none. server-layout, server-board and server-numbers specs: 62/62.
+
+**4.4, C4, N9 first.** F2 (4.1.13, headless): the client Timeline's charts tick by the minute at 1166, 618 and 338 px,
+no repeat; the server row (`catalog-jvm-heap-used-pct`, judged window 240 s after the 60 s ramp-up) ticks every 30 s
+and repeats 4 labels at 755 and 596 px. So, per the plan, server-only: no `formatClock` change, the client pins stay.
+**Expected (written before the F2 check, 4.1.14):** that row 0 repeats at 1280 and 700 px; the Timeline unchanged;
+chart data unchanged.
+
+**4.4, done (4.1.14).** Red first, two specs in `server-layout.spec.ts`. The first cut of each passed on 4.1.13, so
+neither was the mechanism yet: the time test needed F2's ramp-up (a 300 s window charts as 240 s, and only 240 s ticks
+every 30 s), the gap test a 303 px chart (1024 px viewport: 0.46 px between two value labels). Fix: server time axes
+take `minInterval: 60000` whenever the visible range is two minutes or more (`serverTimeMinInterval`); the Per instance
+value axis takes `splitNumber` from its plot width, one tick per 64 px. A first try, `axisLabel.padding`, does not count
+toward `hideOverlap`. Observed on F2, as registered: the row reads `18:35 18:36 18:37 18:38` at 1280 and 700 px, the
+Timeline unchanged, `cmp.cjs` none. The value labels' smallest gap is 18.8 px or more from 390 to 1920 px.
+
+**4.5, C1, expected (written before the F2 check, 4.1.15):** display only, chart data unchanged. On F2's CSV rebuild, six
+rows have instance cells that read as labels (gateway-route-p95 4/4 `routeId=…`, app-pods x3 6/6, kafka-lag 1/1,
+catalog-db-slowest-statement 20/20); their Per instance names lose the `instance=` prefix and nothing else changes.
+`gateway-route-p95` reads `routeId=catalog …` as the replay of the same run does.
+
+**4.5, done (4.1.15).** Red first (`server-board.spec.ts` "[R] C1: …", E26 `cpu-headroom` with instance cells
+`routeId=catalog` and `plain`). `instanceName` shows a lone `instance` label bare when its value starts `k=`. Observed
+on F2, as registered: `cmp.cjs` none; gateway-route-p95 `instance=routeId=catalog` → `routeId=catalog`,
+kafka-lag `instance=consumergroup=catalog, topic=order-placed` → `consumergroup=catalog, topic=order-placed`, both now
+what the replay of the run shows. Aside, not WIR's: the replay carries a fifth route, `routeId=traffic-generator`,
+that the CSV export does not (petstore's exporter). Tutorial 16 (two places) and CLAUDE.md say the value can show bare.
+
+**Outside 4.1's registered list:** that list came from a scan of S4 only. F2's catalog-db slowest-statement custom query
+(27 instances, capped) also draws a different twenty under C5 (`cmp.cjs` vs 4.1.0: 1 of 117 series, 0 asserts). The
+same rule, on a run the scan did not cover.
+
+**Also outside 4.1's list:** I wrote that E26 `many`'s specs pin counts only. `server-tab.spec.ts` (L9-12) also
+pinned *which* twenty: p0 kept, p19 dropped, under the old collector-order fill. E26's values rise p0 → p20, so under
+C5 p0 (the lowest) gives its slot up and p19 is drawn. The pin now says that (the test commit after 4.1.13), found
+on the first run of that spec over fixtures regenerated after 4.1.11.
+
+**End of Stage 4.** Full regression on 4.1.15 green: R01–R06, fixtures regenerated, 1082 Playwright tests (+5). The
+R06 goldens did not move, as registered, since the CI/CD JSON and JUnit read the evaluation. The `explore-report` session
+over F2 and F5 at 4.1.15 (EXPLORATORY-LOG 2026-10-27) found C5, C6, C2, C4 and C1 holding, plus 8 findings. One was a
+defect of 4.1.13 (names under the cap cut: measured in sans-serif, drawn in Microsoft YaHei), now **4.1.16, `2c3b98e`**,
+red first. The other seven are logged with reasons; the owner-facing ones are under Open.
+
 ## Open
+
+From the Stage 4 exploration. These predate Stage 4 or are design calls, so none is in the staged plan; each needs the
+owner's go:
+- **The Value over time tooltip is clipped** by the card's overflow when names are long (loses the time and the name
+  starts). Candidate: `tooltip.appendToBody`. A real wrong-output case, and small.
+- **Cut Per instance names collide** (`container=catalog, n…` twice): a middle ellipsis, or the differing labels first.
+- **The deciding instance is not first** in either panel (alphabetical), and 20 series share a 10-colour palette.
+- **The Collection list says only INSUFFICIENT**: no coverage, no assert id, raw PromQL for custom series.
+- **B1 "name the gap"** (owner, 2026-10-27) is decided but not scheduled: the LOW COVERAGE detail could name the longest
+  gap in the judged window. F5 shows why: the DB outage reads as a data problem.
+- **kubernetes-pod restarts cannot see a deleted pod** (F2): a catalogue description note.
 
 - **End of Stage 2 (4.1.7):** full regression green on 2026-10-27, R01–R06 with fixtures regenerated, 1077 Playwright
   passed. That includes `docs-check-bugs.spec.ts` E02 and E25, the two that timed out in the A1+A2 regression, so those
