@@ -161,6 +161,38 @@ class SourcesAndCollectorTest {
     }
 
     @Test
+    void maxWaitIsTheSourcesWholeBudgetNotEachSeriess() {
+        // A target that goes away before the run's end (petstore F2's deleted pod, F5's database
+        // outage) leaves every series of it short of the window's end, so none settles. With the cap
+        // per series the collection waited --max-wait once per asserted series - 10 min each, serially:
+        // Stage 3.4 stopped one. The docs promise "how long a source may take to settle" (Stage 6).
+        String early = matrix("a", 1_700_000_000L, 1, 1_700_000_015L, 2, 1_700_000_030L, 3);
+        FakeHttp http = new FakeHttp(early);
+        FakeTiming timing = new FakeTiming(WINDOW.getEnd() + 300_000);   // five minutes after the run
+        PrometheusSource src = new PrometheusSource(http, timing, Collections.<String, String>emptyMap(),
+                new PrometheusSource.Settle(600_000, 15_000, 2));
+        ServerSource source = prom(Collections.<String, String>emptyMap());
+
+        for (String query : new String[] {"a", "b", "c"}) {
+            SeriesSource.Answer a = src.collect(source, query, WINDOW);
+            assertFalse(a.failed(), query);
+            assertEquals(3, a.instances().get(0).getPoints().size(), "what arrived, for " + query);
+        }
+        long waited = 0;
+        for (long s : timing.sleeps) waited += s;
+        assertTrue(waited <= 600_000, "three series waited " + waited + " ms in all; --max-wait is 600000");
+
+        // Another source has its own budget.
+        FakeHttp other = new FakeHttp(early);
+        int before = timing.sleeps.size();
+        new PrometheusSource(other, timing, Collections.<String, String>emptyMap(),
+                new PrometheusSource.Settle(600_000, 15_000, 2))
+                .collect(ServerSource.prometheus("other", "https://other.corp/api/v1", 15_000, 0,
+                        Collections.<String, String>emptyMap()), "a", WINDOW);
+        assertTrue(timing.sleeps.size() > before, "a fresh source polls again");
+    }
+
+    @Test
     void anEmptyAnswerSettlesAfterTwoIdenticalPollsInsteadOfWaitingOutTheCap() {
         // A selector that matches nothing has no tail to reach the window's end. Without this,
         // every typo'd query cost the full maxWait — ten minutes, serially.
