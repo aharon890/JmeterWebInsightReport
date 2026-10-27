@@ -1,0 +1,54 @@
+{
+  "_comment": [
+    "G11 - the one golden with CATALOGUE components, over E27's committed payload",
+    "(test-plans/server-catalogue/server-metrics.json, collected from e27-metrics.csv against plain.jtl).",
+    "consumer.lag.max reads 676 msgs, so events FAILs and its JUnit body (component:, metric:, query:,",
+    "reduce:, criteria:, actual:) is written; orders-db PASSes on the catalogue's reducer and on an",
+    "assert that overrides it with p95 under an id of its own."
+  ],
+  "serverMetrics": {
+    "components": {
+      "orders-db": {
+        "type": "postgres",
+        "description": "Orders DB"
+      },
+      "events": {
+        "type": "kafka",
+        "description": "Event bus"
+      }
+    },
+    "asserts": [
+      {
+        "component": "orders-db",
+        "metric": "connections.used.pct",
+        "fail": {
+          "gt": 85
+        }
+      },
+      {
+        "id": "orders-db-connections-p95",
+        "component": "orders-db",
+        "metric": "connections.used.pct",
+        "reduce": {
+          "kind": "p95"
+        },
+        "warn": {
+          "gt": 60
+        },
+        "fail": {
+          "gt": 85
+        }
+      },
+      {
+        "component": "events",
+        "metric": "consumer.lag.max",
+        "warn": {
+          "gt": 300
+        },
+        "fail": {
+          "gt": 600
+        }
+      }
+    ]
+  }
+}

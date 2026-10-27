@@ -55,7 +55,14 @@ CASES=(
     "G8|gate-server-fail.json|-|server-metrics-that-does-not-exist.json"
     "G9|gate-digits.json|-|-"
     "G10|gate-server.json|-|server-metrics.csv|-Jwebinsight.report.servermetrics.step=1s"
+    "G11|gate-catalogue.json|-|../server-catalogue/server-metrics.json"
 )
+# G11 is the only golden with CATALOGUE components: a postgres and a kafka component over E27's
+# committed payload, each assert naming a catalogue metric, one overriding the catalogue's reducer.
+# Every other server golden is custom, so how a catalogue assert reaches the wire - serverAsserts[]
+# .metric, the catalogue's query, unit, reduce and across, the derived id that names its JUnit
+# testcase, and the failure body's `metric:` line (events FAILs for it) - was pinned by nothing
+# (Stage 6, the audit).
 # G10 is G4 with the CSV given straight to -g (P4): the exporter collects it in-process with the
 # collector's own code, at the step G4's payload was collected at. Its server results must read as
 # G4's - only the collection's identity (collectionId, collectedAt) may differ.
