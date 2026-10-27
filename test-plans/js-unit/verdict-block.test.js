@@ -30,7 +30,7 @@ const FULL = {
     generated: 'Generated: 16 Oct 2026, 14:02',
     asserts: { badge: 'ASSERTS FAIL', status: 'FAIL', declared: 13,
         counts: [{ n: 3, label: 'failed' }, { n: 6, label: 'passed' }, { n: 1, label: 'invalid' }] },
-    server: { word: 'FAIL', label: 'Kafka', others: 1 },
+    server: { word: 'FAIL', label: 'Kafka', others: 1, othersText: '1 warn' },
     draftDiffers: true,
     fileName: 'E25-report.html'
 };
@@ -39,7 +39,7 @@ test('AF5: every line, in order', () => {
     assert.strictEqual(text(FULL), [
         'E25 Asserts — Generated: 16 Oct 2026, 14:02',
         'Asserts: FAIL — 13 rules declared: 3 failed, 6 passed, 1 invalid',
-        'Server: FAIL — Kafka · 1 more',
+        'Server: FAIL — Kafka · 1 warn',
         'Draft differs — see Asserts',
         'E25-report.html'
     ].join('\n'));

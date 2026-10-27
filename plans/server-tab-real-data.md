@@ -258,6 +258,9 @@ registered (chip, 4.1.0 → 4.1.21):
 - Five pins of "N more" now hold the counts; Tutorial 01, 13, FEATURES and CLAUDE.md describe them. The Summary card
   prints the same text (`serverVerdict.othersText`).
 
+  **Missed at 5.5:** js-unit was not run before that commit, so `verdict-block.test.js` (AF5) stayed red on the old
+  `· 1 more`. Caught at 5.7's js-unit run and fixed in the test-only commit that follows 4.1.22.
+
 **5.6, expected (written before accepting the goldens, 4.1.22; the goldens were not in the list I wrote before the build,
 so this is after the first run and before any accept):** every golden whose `.json`/`.xml` carries a LOW_COVERAGE reason
 gains `; no point between <from>Z and <to>Z (<n> s)` on that reason, and nothing else moves. On F5, catalog-db's six
