@@ -388,6 +388,11 @@ public final class Collector {
         // query, which is the series' identity on every backend (§8b).
         String metricKey = kpi.metric() != null ? kpi.metric() : resolvedText;
         SeriesSource.Request request = new SeriesSource.Request(resolvedText, kpi.gate(), metricKey);
+        // A custom query that interpolates is named in the NEXT line and the CSV template as the file
+        // writes it: a CSV may carry either text (N5).
+        if (kpi.metric() == null && kpi.query() != null && !kpi.query().equals(resolvedText)) {
+            request = request.alsoWrittenAs(kpi.query());
+        }
         // A metric with no prometheus query has only its neutral identity to ask by: a
         // source that fetches by query says it cannot answer, and the assert is FAILED in
         // those words - SOURCE_FAILED, never a NO_MATCH nobody can explain.

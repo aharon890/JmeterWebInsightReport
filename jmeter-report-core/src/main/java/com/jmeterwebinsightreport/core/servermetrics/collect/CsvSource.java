@@ -180,6 +180,15 @@ public final class CsvSource implements SeriesSource {
         }
         String key = seriesKey(request.component(), request.metricKey());
         asked.add(key);
+        if (request.writtenKey() != null) {
+            // An interpolating query, which WIR's own NEXT line and CSV template name as the file writes
+            // it: rows under that text are this series too, when none carry the resolved one (N5).
+            String written = seriesKey(request.component(), request.writtenKey());
+            asked.add(written);
+            if (!idx.has(key) && idx.has(written)) {
+                key = written;
+            }
+        }
         ToolName readAs = null;
         ToolName toolName = null;
         if (request.tool() != null) {
@@ -549,6 +558,9 @@ public final class CsvSource implements SeriesSource {
      */
     private static String keyRead(Index idx, SeriesSource.Request request) {
         String key = seriesKey(request.component(), request.metricKey());
+        if (request.writtenKey() != null && !idx.has(key) && idx.has(seriesKey(request.component(), request.writtenKey()))) {
+            return seriesKey(request.component(), request.writtenKey());
+        }
         ToolName name = request.tool() == null ? null : request.toolName();
         if (name != null) {
             String toolKey = seriesKey(request.component(), name.metric());
