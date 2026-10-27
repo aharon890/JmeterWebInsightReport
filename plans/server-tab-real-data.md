@@ -377,6 +377,30 @@ defects in 5.1, 5.6, 5.7, 5.8 and 5.9, plus four doc lags. The full regression a
   interpolates (commons-math LEGACY, `backend_metrics_percentile_estimator`, over a 20000-sample window). Prometheus
   uses R-7. WIR's client side uses a t-digest. Recommendation: keep nearest rank and document it.
 
+## Stage 6: the Server tab's test gaps (branch `fix/server-tab-stage6-tests`)
+
+The owner asked whether the Server tab needs more tests. A 3-agent audit (feature-to-test map, real-data-only checks,
+weak tests; `tmp/standards/server-tab-test-gaps-2026-10-27.json`) found 16 gaps. The high-risk ones were checked by hand:
+- no golden has a catalogue component;
+- no test reads `serverAsserts[].metric`;
+- nothing tests the clock refusal;
+- the Copy Verdict pin takes its expected counts from the field it checks.
+The owner said go. A test-only commit needs no bump; the one code change (6.9) does.
+
+| Step | Gap | What pins it |
+|---|---|---|
+| 6.1 | Copy Verdict's pin is circular (#1) | literal E26 text |
+| 6.2 | 5.8's CSV pins check "no error" (#6) | exactly one instance with no point, and the status |
+| 6.3 | parity reasons match by `contains()` (#2) | an exact `reasonIs` in all three runners; vectors for a one-step miss (no gap) and the then-floor branch |
+| 6.4 | the mirror-vs-Java sentence twin runs on E26 only (#3) | the same on E27 and E28 |
+| 6.5 | catalogue asserts in JSON/JUnit unpinned (#7) | golden G11 from E27's inputs |
+| 6.6 | the Prometheus clock refusal untested (#9) | SourcesAndCollectorTest |
+| 6.7 | Value over time's values at a coarser rung untested (#10) | js-unit over `_aggregateServerPoints`; SF42 on E26 |
+| 6.8 | the Collection naming a custom series by its assert (#8, #16) | server-board.spec on E28/E26 |
+| 6.9 | the collector waits --max-wait on a series that stopped (#15) | a test first, then the fix |
+| 6.10 | no committed fixture has petstore's shapes (#13, #14) | a generated petstore-shaped fixture and its spec |
+| 6.11 | lower: drawn bar order (#4), the leak spec's positive control (#5), reader options through -g (#11), the interim panel for catalogue components (#12) | one each |
+
 ## Open
 
 From the Stage 4 exploration. These predate Stage 4 or are design calls, so none is in the staged plan; each needs the
