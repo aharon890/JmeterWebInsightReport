@@ -19606,6 +19606,26 @@ WIR.serverKpis = (function () {
        is the collector's business, and both stay in server-metrics.json. They are the Source
        cell's tooltip, for whoever has to find the file. What a reader needs to judge the series
        stays: the status and its error, the step, and the clock offset he asked to see here. */
+    /**
+     * What came back for an unusable series, in Grafana's words (5.7): "No data" for an empty answer,
+     * "N of M steps have a point (P%)" below the coverage floor - the steps Coverage counts over the
+     * collected window - and the status otherwise (FAILED, whose error follows).
+     */
+    function seriesStateText(s) {
+        if (s.status === 'EMPTY') return 'No data';
+        if (s.status === 'INSUFFICIENT' && s.coverage != null && !isNaN(s.coverage)) {
+            var w = state.metrics && state.metrics.window;
+            var step = stepOf(state.metrics, s.source);
+            if (w && step > 0) {
+                var expected = Math.floor((w.end - w.start) / step) + 1;
+                return Math.round(s.coverage * expected) + ' of ' + expected + ' steps have a point ('
+                    + percent(s.coverage) + ')';
+            }
+            return 'coverage ' + percent(s.coverage);
+        }
+        return s.status;
+    }
+
     function collectionHtml() {
         var sources = (state.metrics && state.metrics.sources) || [];
         if (!sources.length) return '';
@@ -19616,10 +19636,18 @@ WIR.serverKpis = (function () {
            reads (D1: collected for the picker) is listed, marked so, and opens nothing: on petstore
            F2 an INSUFFICIENT heap.live.growth nobody asserted opened the panel on every load (C6). */
         var read = [];
+        var readers = [];   /* the ids of the enabled asserts reading read[i] */
         state.declaredKpis.forEach(function (k) {
             if (k.enabled === false) return;
             var s = seriesForDeclared(k);
-            if (s && read.indexOf(s) < 0) read.push(s);
+            if (!s) return;
+            var at = read.indexOf(s);
+            if (at < 0) {
+                read.push(s);
+                readers.push([k.id]);
+            } else if (readers[at].indexOf(k.id) < 0) {
+                readers[at].push(k.id);
+            }
         });
         var unusable = ((state.metrics && state.metrics.series) || []).filter(function (s) {
             return s.status === 'EMPTY' || s.status === 'INSUFFICIENT' || s.status === 'FAILED';
@@ -19672,12 +19700,21 @@ WIR.serverKpis = (function () {
         });
         html += '</tbody></table></div>';
         if (unusable.length) {
-            /* The ones an assert reads first: they are why the panel is open. */
+            /* The ones an assert reads first: they are why the panel is open. Each in Grafana's words
+               (5.7): "No data" for an empty answer, what came back against what was asked (its query
+               inspector's rows returned), and the assert that reads it, as Grafana pins a notice to
+               the panel that used the query. A custom series by that assert's id, never its PromQL:
+               petstore F5 listed a three-line query nobody could match to a row. */
             html += '<ul class="wir-unusable-series">' + asserted.concat(extras).map(function (s) {
-                var name = (s.component ? s.component + '/' : '') + (s.metric != null ? s.metric : s.resolvedQuery);
-                return '<li><strong>' + esc(name) + '</strong> ' + esc(s.status)
+                var at = read.indexOf(s);
+                var ids = at >= 0 ? readers[at] : [];
+                var own = s.metric != null ? s.metric : ids.length ? ids[0] : s.resolvedQuery;
+                var others = ids.filter(function (id) { return id !== own; });
+                return '<li><strong>' + esc((s.component ? s.component + '/' : '') + own) + '</strong> '
+                    + esc(seriesStateText(s))
                     + (s.error ? ' ' + EM_DASH + ' ' + esc(s.error) : '')
-                    + (read.indexOf(s) < 0 ? ' <span class="wir-dim">(no assert reads it)</span>' : '') + '</li>';
+                    + (at < 0 ? ' <span class="wir-dim">(no assert reads it)</span>'
+                        : others.length ? ' · read by ' + esc(others.join(', ')) : '') + '</li>';
             }).join('') + '</ul>';
         }
         /* The collection's id, stamped into serverComponents[] — the time is on the line above. */

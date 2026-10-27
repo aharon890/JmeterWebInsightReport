@@ -277,6 +277,18 @@ name a stretch of 2+ empty steps (Grafana's two evaluation intervals) and write 
   - slowest statement: 90 s.
 - Server specs 225/225, browser parity included.
 
+**5.7, expected (written before the F-run check, 4.1.23):** F5's Collection entries read `N of M steps have a point (P%)`
+in place of `INSUFFICIENT`, its two custom series are named by the asserts that read them (`catalog-db/catalog-db-time`,
+`catalog-db/catalog-db-slowest-statement`) in place of PromQL, and the extras end `(no assert reads it)`. F2's
+heap.live.growth reads its steps, unread. The panel's open state and chart data are unchanged.
+
+**5.7, done (4.1.23).** Red first (`server-board.spec.ts` "[R] 5.7: …" on E27). Observed, as registered:
+- F5: `catalog-db/up 16 of 20 steps have a point (80%) · read by catalog-db-up`. The customs appear as `catalog-db/catalog-db-time`
+  and `…/catalog-db-slowest-statement`, and 11 extras end `(no assert reads it)`.
+- F2: `catalog-jvm/heap.live.growth 11 of 20 steps have a point (55%) (no assert reads it)`, with the panel closed.
+- 20 steps is the 299.8 s collected window at 15 s, as Coverage counts it.
+- C6's pins lost the bare `INSUFFICIENT`. Tutorial 13 describes the words and 5.6's gap.
+
 **For the owner:**
 - **Q5, the y-axis.** Grafana bounds it by the data; WIR includes every band (R3-3) so the drag handles stay on the
   plot.

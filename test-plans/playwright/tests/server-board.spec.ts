@@ -243,16 +243,42 @@ test.describe('Server tab — the component board', () => {
     await expect(page.locator('details.wir-collection')).not.toHaveAttribute('open', '');
     const items = page.locator('.wir-unusable-series li');
     await expect(items).toHaveCount(1);
-    await expect(items.first()).toContainText('orders-db/up INSUFFICIENT');
+    await expect(items.first()).toContainText('orders-db/up');
     await expect(items.first()).toContainText('(no assert reads it)');
 
     await mutate(true);
     await expect(page.locator('details.wir-collection')).toHaveAttribute('open', '');
     await expect(items).toHaveCount(2);
     // The one an assert reads first, and not marked.
-    await expect(items.nth(0)).toContainText('orders-db/connections.used.pct INSUFFICIENT');
+    await expect(items.nth(0)).toContainText('orders-db/connections.used.pct');
     await expect(items.nth(0)).not.toContainText('no assert reads it');
     await expect(items.nth(1)).toContainText('(no assert reads it)');
+  });
+
+  test('[R] 5.7: the Collection says No data, or how many steps have a point, and which assert reads it', async ({ page }) => {
+    // Petstore F5's Collection listed each series as a bare "INSUFFICIENT", custom ones as raw PromQL,
+    // with nothing to match them to a row. Grafana says "No data" for an empty result, its query
+    // inspector gives what came back against what was asked, and a notice sits on the panel that used
+    // the query. E27: 1 s steps over 48.464 s, so 49 steps; 24 of them is coverage 0.4898.
+    await loadClean(page, 'E27');
+    await switchTab(page, 'server');
+    await page.evaluate(() => {
+      const W = window as any;
+      const d = JSON.parse(JSON.stringify(W.chartData));
+      d.serverMetrics.series.forEach((x: any) => { x.status = 'OK'; delete x.error; });
+      const conn = d.serverMetrics.series.find((x: any) => x.component === 'orders-db' && x.metric === 'connections.used.pct');
+      conn.status = 'INSUFFICIENT';
+      conn.coverage = 0.4898;
+      const up = d.serverMetrics.series.find((x: any) => x.component === 'orders-db' && x.metric === 'up');
+      up.status = 'EMPTY';
+      up.coverage = 0;
+      W.WIR.serverKpis.init(d);
+    });
+    const items = page.locator('.wir-unusable-series li');
+    await expect(items).toHaveCount(2);
+    await expect(items.nth(0)).toHaveText('orders-db/connections.used.pct 24 of 49 steps have a point (49%)'
+      + ' · read by orders-db-connections-used-pct');
+    await expect(items.nth(1)).toHaveText('orders-db/up No data (no assert reads it)');
   });
 
   test('[U] SF26: a catalogue assert is named by its label, with its id the dim line under it — on the board and in the editor', async ({ page }) => {

@@ -519,7 +519,7 @@ reason, and the board shows the reason with the sentence that explains it undern
 | `NO VALUE` | `NO_VALUE` | No point fell inside the judged window, the reducer had nothing to say, or a `divideBy` divisor measured zero | No |
 | `INVALID` | `INVALID_RULE` | The file is wrong, or the payload was collected for another version of it. In the file: an unknown component, component type or catalogue metric; `metric` and `query` both or neither; a `custom` component with no `query`; no band at all, or an unreadable one; an unknown reducer, or a tolerance it cannot take; a [refused key](16-Server-Reference.md#retired-and-refused-keys). Against the run: a `requiresLoad` or `divideBy` that names no client rule, or a rule that is not a throughput rule; a `divideBy` rule that matched more than one sampler; a `sustainedFor` longer than one step that is not a whole number of the collection's steps. Against the payload: no series was collected for this assert's query (the file changed after `wir-collect` ran). The sentence names which | No by default; **yes** under `webinsight.report.server.failonerror` |
 | `SOURCE FAILED` | `SOURCE_FAILED` | The series could not be fetched: authentication, DNS, timeout, a 5xx, a placeholder the collector could not resolve, a catalogue metric with no Prometheus query asked of Prometheus or a recording, or a CSV row of this series that could not be read | No by default; **yes** under `webinsight.report.server.failonerror` |
-| `LOW COVERAGE` | `LOW_COVERAGE` | Data came back, but below the coverage floor | No by default; **yes** under `webinsight.report.server.failonerror` |
+| `LOW COVERAGE` | `LOW_COVERAGE` | Data came back, but below the coverage floor. The reason names the longest stretch with no point from any instance, when two or more steps in a row are empty: `no point between 2026-10-25T17:03:09Z and 2026-10-25T17:04:24Z (75 s)`, which is how a target that went away with its exporter shows (it writes no 0) | No by default; **yes** under `webinsight.report.server.failonerror` |
 | `LOAD NOT ACHIEVED` | `LOAD_NOT_ACHIEVED` | The client load rule it `requiresLoad` FAILED or was not judged, or the rule it `divideBy` was not judged. A `divideBy` rule that FAILED still divides | Not by itself. A load rule that FAILED: that FAIL is the client verdict, and exits 1 only under `failonassert`. A load rule that was not judged: that rule's own reason decides, so an `INVALID` client rule exits 1 under `failonerror`, and a disabled, unmatched or unmeasurable one fails nothing |
 
 On a report with no collected metrics (step 1's report, or one whose payload was refused), a server
@@ -639,8 +639,10 @@ stamp.
 
 The line is **open by default when the source did not answer in full** (any status but `OK`), or
 when a series an enabled server assert reads came back with nothing usable (`EMPTY`, `INSUFFICIENT`
-or `FAILED`): that is when you need the error. Those series are listed under the table with their
-reason. A catalogue metric no assert reads (collected for the picker) that came back unusable is
+or `FAILED`): that is when you need the error. Those series are listed under the table in an
+alerting tool's words: `No data` for an empty answer, `16 of 20 steps have a point (80%)` under the
+coverage floor, or the error of a failed one, each with the server assert that reads it (`read by
+catalog-db-up`); a custom query is named by that assert, not by its PromQL. A catalogue metric no assert reads (collected for the picker) that came back unusable is
 listed too, marked `(no assert reads it)`, and does not open the line. On a clean collection it
 stays one line.
 
