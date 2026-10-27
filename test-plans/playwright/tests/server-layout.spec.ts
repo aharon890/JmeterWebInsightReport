@@ -595,6 +595,39 @@ test.describe('SF37: the Server tab\'s charts reach contrast in both themes', ()
     }).toBe('ok');
   });
 
+  test('[R] C2: Per instance names every bar of a capped row, inside the canvas, however long the names', async ({ page }) => {
+    // Petstore's slowest-statement row (27 instances, 20 drawn, each named by its SQL text) showed
+    // four labels, clipped off both edges, and no bars: ECharts' auto interval skipped the labels that
+    // did not fit 260px, and containLabel cannot fit one wider than the canvas.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await loadClean(page, 'E26');
+    await switchTab(page, 'server');
+    await page.evaluate(() => {
+      const W = window as any;
+      const d = JSON.parse(JSON.stringify(W.chartData));
+      const k = d.serverKpis.find((x: any) => x.id === 'many-instances');
+      const s = d.serverMetrics.series.find((x: any) => x.query === k.query);
+      s.instances.forEach((inst: any, i: number) => {
+        inst.labels = { instance: 'host-' + i + '-' + 'x'.repeat(110) };
+      });
+      W.WIR.serverKpis.init(d);
+    });
+    await openRows(page, ['many-instances']);
+    let c: Paint | null = null;
+    await expect.poll(async () => {
+      c = await rowChart(page, 'many-instances', 'instances');
+      return !!c;
+    }, { message: 'the Per instance chart is drawn' }).toBe(true);
+    const labels = c!.texts.filter((t) => /host-\d/.test(t.t));
+    expect(labels.length, labels.map((l) => l.t.slice(0, 12)).join(' ')).toBe(20);
+    for (const l of labels) {
+      expect(l.x, `${l.t.slice(0, 12)} starts inside the canvas`).toBeGreaterThanOrEqual(0);
+      expect(l.x + l.w, `${l.t.slice(0, 12)} ends inside the canvas`).toBeLessThanOrEqual(c!.w);
+    }
+    expect(c!.grid.w, `plot ${c!.grid.w} of ${c!.w}`).toBeGreaterThanOrEqual(0.4 * c!.w);
+    expect(c!.h, 'a row of at least 18px per bar').toBeGreaterThanOrEqual(20 * 18);
+  });
+
   test('[R] SF37: a dark chart draws the high-contrast palette at 3:1 — its dark variant', async ({ page }) => {
     // High-contrast's #0000FF, #8800CC, #004400 and #880000 were 1.65 to 2.63:1 on ECharts' dark
     // canvas, and on the card a transparent chart shows (#111827) #666600 is 2.93:1 too: a series in

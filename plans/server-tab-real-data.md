@@ -124,6 +124,18 @@ from the frozen inputs, headless: 4.1.0 `open: true`, items `catalog-jvm/heap.li
 `open: false`, the same item ending `(no assert reads it)`. server-board.spec.ts 24/24 on regenerated E26/E27.
 Tutorial 13's "open by default only when the source did not answer in full" predated P3 and now says both.
 
+**4.3, C2, expected (written before the F2 check, 4.1.13):** display only, chart data unchanged. F2's slowest-statement
+row (27 instances, 20 drawn, named by SQL text): 4.1.0 draws 4 names, clipped off both edges; 4.1.13 draws all 20,
+each inside the canvas, plot at least 40% of the width.
+
+**4.3, done (4.1.13).** Red first (`server-layout.spec.ts` "[R] C2: …", E26 `many-instances` with 120-char names: 10
+of 20 names drawn). Every name is drawn (`interval: 0`), cut at the widest name's measured width or 38% of the chart,
+the panel is max(260, 22 x bars + 70) px tall, and the grid leaves the label room itself: with `containLabel` the
+estimate fell 11 px short of a cut name and every name started at x = -11. Observed on F2 (1280 px): 4.1.0 draws 10
+names, all 10 off the canvas, and the plot collapses (negative width); 4.1.13 draws 20, none outside, plot 51%, canvas
+377x510. The registered "4 names" came from the evaluation's screenshot at another width; same failure. `cmp.cjs`
+vs 4.1.12: none. server-layout, server-board and server-numbers specs: 62/62.
+
 **Outside 4.1's registered list:** that list came from a scan of S4 only. F2's catalog-db slowest-statement custom query
 (27 instances, capped) also draws a different twenty under C5 (`cmp.cjs` vs 4.1.0: 1 of 117 series, 0 asserts). The
 same rule, on a run the scan did not cover.

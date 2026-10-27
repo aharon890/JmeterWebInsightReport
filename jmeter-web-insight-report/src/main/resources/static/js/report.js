@@ -20343,6 +20343,23 @@ WIR.serverKpis = (function () {
             values.push(isNaN(value) ? null : value / frame.by);
         });
         disposeChartIn(el);
+        /* One bar and one name per instance (C2). At a fixed 260px, ECharts' auto interval skipped
+           the names that did not fit (20 bars, about every fifth named), and containLabel cannot fit
+           a name wider than the canvas: petstore's SQL-text instances ran off both edges and the
+           plot collapsed. So the panel grows with its bars, every name is drawn, cut to a share of
+           the width; the tooltip still names the bar in full. Sized before init, which reads it. The
+           grid makes room for that width itself: containLabel's estimate fell 11px short of a cut
+           name as drawn, which then started off the canvas. */
+        el.style.height = Math.max(260, 22 * names.length + 70) + 'px';
+        /* The widest name in ECharts' axis font (12px sans-serif), never more than 38% of the width:
+           short names keep the plot wide, and a long one is cut there. */
+        var labelCap = Math.round(0.38 * (el.clientWidth || 600));
+        var labelWidth = 0;
+        names.forEach(function (n) {
+            var r = echarts.format && echarts.format.getTextRect ? echarts.format.getTextRect(n, '12px sans-serif') : null;
+            labelWidth = Math.max(labelWidth, r && isFinite(r.width) ? Math.ceil(r.width) + 2 : labelCap);
+        });
+        labelWidth = Math.min(labelCap, labelWidth);
         var chart = createChart(el);
         charts[chartKey] = chart;
         /* A row that decided nothing draws its limits muted, as Value over time does (F4, SF36):
@@ -20380,7 +20397,7 @@ WIR.serverKpis = (function () {
                axis's end beside a 24px margin, so "msgs" showed as "m" and "B/min ÷
                load:throughput" ran 135px off the canvas (SF35). Under the axis, centred, it has the
                plot's width. */
-            grid: { left: 8, right: 24, top: 24, bottom: 40, containLabel: true },
+            grid: { left: labelWidth + 16, right: 24, top: 24, bottom: 44 },
             xAxis: {
                 type: 'value', name: frame.name,
                 nameLocation: 'middle',
@@ -20394,7 +20411,10 @@ WIR.serverKpis = (function () {
                     hideOverlap: true
                 }
             },
-            yAxis: { type: 'category', data: names, inverse: true },
+            yAxis: {
+                type: 'category', data: names, inverse: true,
+                axisLabel: { interval: 0, width: labelWidth, overflow: 'truncate' }
+            },
             series: [{
                 type: 'bar', data: values, barMaxWidth: 18,
                 itemStyle: { color: chartColors()[0] },
