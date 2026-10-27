@@ -194,6 +194,41 @@ class SourcesAndCollectorTest {
     }
 
     @Test
+    void aWindowEndingAfterThisMachinesClockIsRefusedBeforeAskingNamingTheOffset() {
+        // The JMeter host's clock is ahead: every query would wait out --max-wait (10 min each) and
+        // come back empty, the wait Stage 3.4 saw. Every other test here builds its clock at or past
+        // the window's end, so the refusal, its tolerance and the offset it names had no pin (Stage 6).
+        String full = matrix("a", 1_700_000_000L, 1, 1_700_000_015L, 2, 1_700_000_030L, 3, 1_700_000_045L, 4, 1_700_000_060L, 5);
+        Map<String, String> none = Collections.<String, String>emptyMap();
+
+        FakeHttp http = new FakeHttp(full);
+        SeriesSource.Answer a = new PrometheusSource(http, new FakeTiming(WINDOW.getEnd() - 300_000), none,
+                PrometheusSource.Settle.none()).collect(prom(none), "up", WINDOW);
+        assertTrue(a.failed());
+        assertEquals("the run's window ends 5m after this machine's clock - the JMeter host's clock is ahead;"
+                + " pass --clock-offset 5m or collect after the window has passed", a.error());
+        assertEquals(0, http.calls.size(), "refused before asking");
+
+        // That offset given, the same window is in the past of the source's clock, and asked for.
+        FakeHttp offset = new FakeHttp(full);
+        assertFalse(new PrometheusSource(offset, new FakeTiming(WINDOW.getEnd() - 300_000), none,
+                PrometheusSource.Settle.none())
+                .collect(ServerSource.prometheus("prom", "https://prom.corp/api/v1", 15_000, 300_000, none), "up", WINDOW)
+                .failed());
+        assertEquals(1, offset.calls.size());
+
+        // A minute ahead is tolerated (clocks drift), and asked for; a second more is not.
+        FakeHttp minute = new FakeHttp(full);
+        assertFalse(new PrometheusSource(minute, new FakeTiming(WINDOW.getEnd() - 60_000), none,
+                PrometheusSource.Settle.none()).collect(prom(none), "up", WINDOW).failed());
+        assertEquals(1, minute.calls.size());
+        FakeHttp past = new FakeHttp(full);
+        assertTrue(new PrometheusSource(past, new FakeTiming(WINDOW.getEnd() - 61_000), none,
+                PrometheusSource.Settle.none()).collect(prom(none), "up", WINDOW).failed());
+        assertEquals(0, past.calls.size());
+    }
+
+    @Test
     void theWindowIsRequestedInTheSourcesOwnClock() {
         // clockOffsetMs is what must be ADDED to a source timestamp to get JTL time, so the
         // request subtracts it; otherwise the source answers its own [start, end], which after
