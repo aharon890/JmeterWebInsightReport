@@ -231,6 +231,14 @@ F2: both tooltips on the body, about 518 px wide, at left 245, nothing clipped; 
   legend does. That is a petstore item (the other chat).
 - `cmp.cjs`: none. Server specs: 206/206.
 
+**5.3, expected (written before the F2 check, 4.1.19):** F2's `catalog-db-slowest-statement` Per instance leads with the deciding
+statement (`select setting from pg_settings…`, 0.688 ms) and no bar is higher than the one above it; `app-pods-memory-limit-used-pct`
+leads with the catalog pod at 91.27 %. `cmp.cjs` none.
+
+**5.3, done (4.1.19).** Red first (js-unit `5.3: …` over `_orderBars` for max/avg/min; `server-board.spec.ts` "[R] 5.3: …" on
+E26). Observed on F2, as registered: slowest-statement leads with `select setting from pg_settings…` = 0.687937 and no bar
+rises (7 did before); app-pods leads with 91.27 %; `cmp.cjs` none. C1's name pin compares the names as a set.
+
 **For the owner:**
 - **Q5, the y-axis.** Grafana bounds it by the data; WIR includes every band (R3-3) so the drag handles stay on the
   plot.

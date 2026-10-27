@@ -79,7 +79,8 @@ test.describe('Server tab — the component board', () => {
       const time = (window as any).echarts.getInstanceByDom(document.getElementById('serverChart-' + key)!).getOption();
       return { bars: per.yAxis[0].data, lines: (time.series as any[]).map((s) => s.name).filter((n) => n) };
     });
-    expect(named.bars).toEqual(['routeId=catalog', 'instance=plain']);
+    // The names, whatever order the values put the bars in (5.3 sorts them worst first).
+    expect([...named.bars].sort()).toEqual(['instance=plain', 'routeId=catalog']);
     expect(named.lines).toEqual(expect.arrayContaining(['routeId=catalog', 'instance=plain']));
   });
 
@@ -119,6 +120,26 @@ test.describe('Server tab — the component board', () => {
     expect(two.lines).toEqual(expect.arrayContaining(['pod=catalog-a', 'pod=catalog-b']));
     await expect.poll(() => names('lag-spike')).not.toBeNull();
     expect((await names('lag-spike'))!.bars).toEqual(['container=c, pod=p']);
+  });
+
+  test('[R] 5.3: Per instance draws its bars worst first, so the bar a verdict is about leads', async ({ page }) => {
+    // Petstore F2's capped slowest-statement row drew its twenty bars alphabetically: the deciding
+    // statement was bar 18 of 20. A Datadog top list and a sorted Grafana bar gauge put the worst first.
+    await loadClean(page, 'E26');
+    await switchTab(page, 'server');
+    await page.evaluate(() => { const S = (window as any).WIR.serverKpis; S.toggle(S._keyOf('many-instances')); });
+    await expect.poll(() => page.evaluate(() => {
+      const W = (window as any).WIR.serverKpis;
+      return !!(window as any).echarts.getInstanceByDom(document.getElementById('serverInstances-' + W._keyOf('many-instances'))!);
+    })).toBe(true);
+    const bars = await page.evaluate(() => {
+      const W = (window as any).WIR.serverKpis;
+      const o = (window as any).echarts.getInstanceByDom(document.getElementById('serverInstances-' + W._keyOf('many-instances'))!).getOption();
+      return { names: o.yAxis[0].data as string[], values: o.series[0].data as number[] };
+    });
+    // E26's values rise p0 -> p20, and across max took p20: it leads, and every bar is no higher than the one above.
+    expect(bars.names[0]).toBe('instance=p20');
+    for (let i = 1; i < bars.values.length; i++) expect(bars.values[i]).toBeLessThanOrEqual(bars.values[i - 1]);
   });
 
   test('[R] Expand all rows opens every row, and a second click closes them', async ({ page }) => {

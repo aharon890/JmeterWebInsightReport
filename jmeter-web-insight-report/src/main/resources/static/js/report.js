@@ -20360,6 +20360,26 @@ WIR.serverKpis = (function () {
         return getEffectiveVisibleRange() >= 120000 ? 60000 : undefined;
     }
 
+    /**
+     * The Per instance bars worst first (5.3), as a Datadog top list or a sorted Grafana bar gauge:
+     * the highest value first under {@code across: max} and {@code avg} (Datadog's default
+     * direction), the lowest under {@code min}; an instance with no value last; ties in the
+     * collector's order. Petstore F2's slowest-statement row drew the deciding statement as bar 18
+     * of 20. Pure.
+     */
+    function orderBars(names, values, across) {
+        var order = names.map(function (n, i) { return i; });
+        order.sort(function (a, b) {
+            var x = values[a], y = values[b];
+            if (x === null || y === null) return (x === null) - (y === null) || a - b;
+            return (across === 'min' ? x - y : y - x) || a - b;
+        });
+        return {
+            names: order.map(function (i) { return names[i]; }),
+            values: order.map(function (i) { return values[i]; })
+        };
+    }
+
     function initInstanceChartFor(k) {
         var chartKey = instanceChartKey(k.key);
         disposeChart(chartKey);
@@ -20385,6 +20405,9 @@ WIR.serverKpis = (function () {
             names.push(instanceLabels[i]);
             values.push(isNaN(value) ? null : value / frame.by);
         });
+        var ordered = orderBars(names, values, k.across);
+        names = ordered.names;
+        values = ordered.values;
         disposeChartIn(el);
         /* One bar and one name per instance (C2). At a fixed 260px, ECharts' auto interval skipped
            the names that did not fit (20 bars, about every fifth named), and containLabel cannot fit
@@ -26191,6 +26214,7 @@ WIR.serverKpis = (function () {
         _breachAreas: breachAreas,
         _breachAreasAcross: breachAreasAcross,
         _bandAxisBounds: bandAxisBounds,
+        _orderBars: orderBars,
         _chartFrame: chartFrame,
         /* How many times the board has run the mirror — once per render that can move a
            verdict, never for a chart toggle or a filter (R3-13). */

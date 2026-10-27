@@ -532,6 +532,22 @@ function rng(seed) {
     };
 }
 
+test('5.3: Per instance bars go worst first, as a Datadog top list or a sorted Grafana bar gauge', () => {
+    // Highest first under across max (and avg, Datadog's default direction), lowest first under min;
+    // an instance with no value last; ties keep the collector's order.
+    assert.strictEqual(typeof SK._orderBars, 'function', 'report.js exposes no _orderBars seam');
+    const names = ['a', 'b', 'c', 'd', 'e'];
+    const values = [10, null, 30, 10, 5];
+    // A plain copy: the arrays come from report.js's own realm.
+    const order = (across) => JSON.parse(JSON.stringify(SK._orderBars(names, values, across)));
+    assert.deepStrictEqual(order('max'),
+        { names: ['c', 'a', 'd', 'e', 'b'], values: [30, 10, 10, 5, null] });
+    assert.deepStrictEqual(order('avg'),
+        { names: ['c', 'a', 'd', 'e', 'b'], values: [30, 10, 10, 5, null] });
+    assert.deepStrictEqual(order('min'),
+        { names: ['e', 'a', 'd', 'c', 'b'], values: [5, 10, 10, 30, null] });
+});
+
 test('R3-13: the one-pass sustainedFor agrees with the rescan on random irregular series', () => {
     for (let seed = 1; seed <= 300; seed++) {
         const r = rng(seed);
