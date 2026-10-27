@@ -20120,7 +20120,9 @@ WIR.serverKpis = (function () {
         var bounds = bandAxisBounds(extent.min, extent.max, bandValues);
 
         chart.setOption({
-            tooltip: { trigger: 'axis', formatter: tooltipFormatter(frame.name) },
+            /* In a portal on the body, as Grafana renders its tooltips: the card clips its overflow, and
+               a row with long names lost the time and every name's start to it (petstore F2, 5.1). */
+            tooltip: { trigger: 'axis', formatter: tooltipFormatter(frame.name), appendTo: 'body' },
             legend: drawn.length > 1 ? { type: 'scroll', bottom: 0 } : undefined,
             grid: { left: 60, right: 24, top: 24, bottom: drawn.length > 1 ? 48 : 32 },
             /* hideOverlap, as the picker's chart has (SF35): since SF34 a row's chart is the card's
@@ -20175,7 +20177,10 @@ WIR.serverKpis = (function () {
             var html = esc(formatTimeZoned(new Date(at)));
             list.forEach(function (p) {
                 var v = p.value && p.value.length > 1 ? p.value[1] : null;
-                html += '<br>' + (p.marker || '') + esc(p.seriesName) + ': <strong>'
+                /* Each name cut at a fixed width, as Grafana's tooltip rows are: petstore's SQL-text
+                   names made a 1221px tooltip no side of the cursor could hold (5.1). */
+                html += '<br>' + (p.marker || '') + '<span class="wir-tip-name">' + esc(p.seriesName)
+                    + '</span>: <strong>'
                     + esc(v === null || v === undefined ? EM_DASH
                         : formatValue(v, unit) + (unit ? ' ' + unit : ''))
                     + '</strong>';
@@ -20406,10 +20411,13 @@ WIR.serverKpis = (function () {
             finite.length ? Math.max.apply(null, finite) : 0, bandValues);
         chart.setOption({
             tooltip: {
-                trigger: 'axis', axisPointer: { type: 'shadow' },
+                trigger: 'axis', axisPointer: { type: 'shadow' }, appendTo: 'body',
                 formatter: function (params) {
                     var p = Array.isArray(params) ? params[0] : params;
-                    return esc(p.name) + ': <strong>' + esc(p.value === null || p.value === undefined
+                    /* One row, so the name wraps rather than cut: the bar's own name is already cut, and
+                       this is where the reader reads it whole. */
+                    return '<span class="wir-tip-name wir-tip-wrap">' + esc(p.name) + '</span>: <strong>'
+                        + esc(p.value === null || p.value === undefined
                         ? EM_DASH : formatValue(p.value, frame.name) + (frame.name ? ' ' + frame.name : ''))
                         + '</strong>';
                 }
@@ -25417,7 +25425,7 @@ WIR.serverKpis = (function () {
             grid: { left: 40, right: 8, top: 8, bottom: 20 },
             xAxis: { type: 'time', minInterval: serverTimeMinInterval(), axisLabel: { formatter: formatTimeAxis, hideOverlap: true } },
             yAxis: { type: 'value' },
-            tooltip: { trigger: 'axis', formatter: tooltipFormatter(metric.unit || '') },
+            tooltip: { trigger: 'axis', formatter: tooltipFormatter(metric.unit || ''), appendTo: 'body' },
             series: [{
                 name: metric.label || dialog.focus, type: 'line', showSymbol: false, data: run.points,
                 lineStyle: { width: 1.5 }

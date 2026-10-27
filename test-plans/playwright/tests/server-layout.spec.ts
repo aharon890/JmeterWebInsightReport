@@ -628,6 +628,57 @@ test.describe('SF37: the Server tab\'s charts reach contrast in both themes', ()
     expect(c!.h, 'a row of at least 18px per bar').toBeGreaterThanOrEqual(20 * 18);
   });
 
+  test('[R] 5.1: the Value over time tooltip is never cut by the card, however long the names', async ({ page }) => {
+    // The end-of-Stage-4 session: on petstore F2 the tooltip of a row with long names sat at left -77px
+    // (617px wide) and at -590px (1220px wide), clipped by the card's overflow: the reader lost the time
+    // and the start of every name. Grafana renders its tooltips in a portal; ECharts' appendTo does it.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await loadClean(page, 'E26');
+    await switchTab(page, 'server');
+    await page.evaluate(() => {
+      const W = window as any;
+      const d = JSON.parse(JSON.stringify(W.chartData));
+      const k = d.serverKpis.find((x: any) => x.id === 'many-instances');
+      const s = d.serverMetrics.series.find((x: any) => x.query === k.query);
+      // As long as petstore's statements: a 1221px tooltip that no side of the cursor can hold.
+      s.instances.forEach((inst: any, i: number) => { inst.labels = { query: 'select ' + 'x'.repeat(200) + ' ' + i }; });
+      W.WIR.serverKpis.init(d);
+    });
+    await openRows(page, ['many-instances']);
+    const box = await page.evaluate(async () => {
+      const W = (window as any);
+      const el = document.getElementById('serverChart-' + W.WIR.serverKpis._keyOf('many-instances'))!;
+      const inst = W.echarts.getInstanceByDom(el);
+      // hover the right edge of the plot, where a wide tooltip has to flip left
+      inst.dispatchAction({ type: 'showTip', x: inst.getWidth() - 40, y: inst.getHeight() / 2 });
+      await new Promise((r) => setTimeout(r, 400));
+      const tips = [...document.querySelectorAll('div')].filter((d) => {
+        const st = getComputedStyle(d);
+        return st.position === 'absolute' && st.display !== 'none' && st.visibility !== 'hidden'
+          && Number(st.opacity) > 0 && /select x{10}/.test(d.textContent || '') && d.children.length > 0
+          && d.getBoundingClientRect().width > 100;
+      });
+      const t = tips[tips.length - 1];
+      if (!t) return null;
+      const r = t.getBoundingClientRect();
+      // the visible part: the rect cut by every ancestor that clips
+      let left = r.left, right = r.right;
+      for (let a = t.parentElement; a; a = a.parentElement) {
+        const st = getComputedStyle(a);
+        if (/(hidden|auto|scroll|clip)/.test(st.overflowX)) {
+          const ar = a.getBoundingClientRect();
+          left = Math.max(left, ar.left); right = Math.min(right, ar.right);
+        }
+      }
+      return { left: r.left, right: r.right, visibleLeft: left, visibleRight: right, vw: window.innerWidth };
+    });
+    expect(box, 'a tooltip is shown').not.toBeNull();
+    expect(box!.left, JSON.stringify(box)).toBeGreaterThanOrEqual(0);
+    expect(box!.right, JSON.stringify(box)).toBeLessThanOrEqual(box!.vw);
+    expect(box!.visibleLeft - box!.left, 'no ancestor clips its left: ' + JSON.stringify(box)).toBeLessThanOrEqual(0.5);
+    expect(box!.right - box!.visibleRight, 'no ancestor clips its right: ' + JSON.stringify(box)).toBeLessThanOrEqual(0.5);
+  });
+
   test('[R] C2: a Per instance name that fits is drawn whole, not cut', async ({ page }) => {
     // The end-of-Stage-4 session on petstore F2/F5: "routeId=catalog" read "routeId=cata…" and
     // "instance 1" read "instanc…", far under the 38% cap. The room was measured in 12px sans-serif

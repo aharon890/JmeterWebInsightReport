@@ -177,6 +177,50 @@ over F2 and F5 at 4.1.15 (EXPLORATORY-LOG 2026-10-27) found C5, C6, C2, C4 and C
 defect of 4.1.13 (names under the cap cut: measured in sans-serif, drawn in Microsoft YaHei), now **4.1.16, `2c3b98e`**,
 red first. The other seven are logged with reasons; the owner-facing ones are under Open.
 
+## Stage 5: follow the standard tools (branch `fix/server-tab-stage5-standards`)
+
+**Owner, 2026-10-27:**
+- "We do not invent some new logics here for performance reporting. All we do is laying out in one nice report both
+  client and server metrics."
+- JMeter first: the server side gets the same KPIs, by the same logic, as the client, so the two correlate.
+
+So each open item was settled by what JMeter, Grafana, Prometheus and Datadog actually do: a 3-agent research pass with
+sources (`tmp/standards/standards-2026-10-27.json`, gitignored), plus JMeter's own source for percentiles.
+
+| Step | Item | The standard | Change |
+|---|---|---|---|
+| 5.1 | the tooltip clipped (exploration) | Grafana renders tooltips in a portal; ECharts `appendTo` | Server-tab chart tooltips `appendTo: 'body'` |
+| 5.2 | colliding names (exploration) | Grafana legend "Auto": only the labels that differ (findUniqueLabels), keys sorted | with 2+ instances, drop the labels all share |
+| 5.3 | the deciding instance buried (exploration) | Datadog Top List, Grafana bar gauge sort | Per instance bars by value: worst first (ascending under min), nulls last |
+| 5.4 | C5's `avg` ranking | Datadog top/bottom rank by the reduced value | rank by value, not distance from the mean |
+| 5.5 | B2 "surface hidden WARNs" | Grafana RuleStats, the Prometheus alerts page: counts per state beside the worst | a count row beside the chip, fixed order, non-zero states only |
+| 5.6 | B1 "name the gap" | Grafana state history, Alertmanager startsAt/endsAt | name from-to of the longest stretch no instance reported; the coverage floor stays the tolerance (Datadog's "missing for N min") |
+| 5.7 | Collection says only INSUFFICIENT (exploration) | Grafana "No data", the query inspector's rows returned | "No data" or "12 of 120 points", and the assert(s) reading it |
+| 5.8 | Q1 path consistency (N2, N3, B7) | Prometheus/Grafana: NaN is a value drawn as a gap; no rows = NoData; failure = Error | the CSV path treats NaN/±Inf cells as the live path does (gaps), and keeps an all-NaN instance |
+| 5.9 | N6 the measured CSV step | Grafana's minimum interval; a sparse series does not coarsen others | the finest instance's spacing, not the widest |
+| 5.10 | restarts cannot see a replaced pod (exploration) | kube-state-metrics/Datadog: container restarts | description: "container restarts"; a replaced pod is not counted |
+
+Already matching: Q6 (the chip names the label), top-N selection (Datadog `top20` by the reducer), the palette's
+cycling, B5 (docs-only: a CSV carries no bucket bounds).
+
+**5.1, expected (written before the F2 check, 4.1.17):** on F2, the Value over time tooltips of `catalog-db-slowest-statement` and
+`app-pods-memory-limit-used-pct`, hovered at the right edge, are fully visible, where 4.1.0 cut them at left -590 and -77 px;
+`cmp.cjs` none.
+
+**5.1, done (4.1.17).** Red first (`server-layout.spec.ts` "[R] 5.1: …"). `appendTo: 'body'` alone stopped the card clipping, but F2's
+slowest-statement tooltip was 1221 px wide and still began at left -458, off the screen. The spec's names were
+lengthened to petstore's (red again: -829), and each row's name is cut at 420 px (`.wir-tip-name`), as Grafana's tooltip
+rows are. The Per instance tooltip, one row, wraps its name instead, since the bar's own name is already cut. Observed on
+F2: both tooltips on the body, about 518 px wide, at left 245, nothing clipped; `cmp.cjs` none. One spec's tooltip lookup
+(server-tab) and three HTML pins (server-numbers) follow the new markup.
+
+**For the owner:**
+- **Q5, the y-axis.** Grafana bounds it by the data; WIR includes every band (R3-3) so the drag handles stay on the
+  plot.
+- **Percentiles.** JMeter's Aggregate Report uses nearest rank, as WIR's server `pN` does. JMeter's dashboard
+  interpolates (commons-math LEGACY, `backend_metrics_percentile_estimator`, over a 20000-sample window). Prometheus
+  uses R-7. WIR's client side uses a t-digest. Recommendation: keep nearest rank and document it.
+
 ## Open
 
 From the Stage 4 exploration. These predate Stage 4 or are design calls, so none is in the staged plan; each needs the

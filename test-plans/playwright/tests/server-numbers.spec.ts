@@ -140,9 +140,10 @@ test.describe('SF15: seconds and bands are not rounded', () => {
     // Per instance bar's 2.9 s as "3 s".
     await openRow(page, 'tx-small');
     const time = (await timeChart(page, 'tx-small', 2.95))!;
-    expect(time.tooltip).toContain('probe: <strong>2.95 s</strong>');
-    expect((await timeChart(page, 'tx-small', 0.004))!.tooltip).toContain('probe: <strong>0.004 s</strong>');
-    expect((await instanceChart(page, 'tx-small'))!.tooltip).toBe('probe: <strong>2.9 s</strong>');
+    // The name sits in a span that cuts it (5.1: Grafana-style rows); the number is what this pins.
+    expect(time.tooltip).toContain('<span class="wir-tip-name">probe</span>: <strong>2.95 s</strong>');
+    expect((await timeChart(page, 'tx-small', 0.004))!.tooltip).toContain('<span class="wir-tip-name">probe</span>: <strong>0.004 s</strong>');
+    expect((await instanceChart(page, 'tx-small'))!.tooltip).toBe('<span class="wir-tip-name wir-tip-wrap">probe</span>: <strong>2.9 s</strong>');
   });
 
   test('[U] SF15: an Actual is never written onto a band it did not reach — 2.996 s is not "3 s" beside "≥ 3 s"', async ({ page }) => {

@@ -1474,14 +1474,15 @@ test.describe('Server tab — charts that agree with the board (M7c E)', () => {
         expect(raw, `${id}: no ${pick} point to hover`).not.toBeNull();
         let text = '';
         await expect.poll(async () => {
-          text = await page.evaluate((kpiId) => {
-            const W = (window as any).WIR.serverKpis;
-            const el = document.getElementById('serverChart-' + W._keyOf(kpiId))!;
-            const tip = Array.from(el.querySelectorAll('div')).find((d) =>
+          text = await page.evaluate(() => {
+            // The Server tab's tooltips sit on the body (5.1: the card clipped them), so the one
+            // showing is the visible tooltip anywhere in the document.
+            const tip = Array.from(document.querySelectorAll('div')).filter((d) =>
               /z-index:\s*9999999/.test(d.getAttribute('style') || '')
-              && (d as HTMLElement).style.display !== 'none');
+              && (d as HTMLElement).style.display !== 'none'
+              && getComputedStyle(d).visibility !== 'hidden' && Number(getComputedStyle(d).opacity) > 0).pop();
             return tip ? (tip as HTMLElement).innerText : '';
-          }, id);
+          });
           return text;
         }, { message: `${id}: the tooltip never showed` }).not.toBe('');
         return { raw: raw as number, text };
