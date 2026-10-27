@@ -321,6 +321,12 @@ another at 60 s"). Across series the widest stays, and the cross-series case is 
 - X17c's 31 and X18b's 2 differences from 4.1.0 are all 5.6's gap suffix; status, actual and coverage are identical.
 - M01 none.
 
+**5.10, done (4.1.26).** Expected before the change: none (catalogue text). Red first
+(`CatalogueTest.theRestartsSayAReplacedPodIsNotARestart`). `restarts` and `restarts.oom` say that a pod deleted and
+replaced is not a restart: kube-state-metrics counts per container, and Datadog's kubernetes.containers.restarts means
+the same. A replica-gap metric (`kube_deployment_status_replicas_unavailable`, the standard signal for a dead pod) is
+under Open for the owner.
+
 **For the owner:**
 - **Q5, the y-axis.** Grafana bounds it by the data; WIR includes every band (R3-3) so the drag handles stay on the
   plot.
