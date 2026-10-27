@@ -92,9 +92,12 @@ test.describe('AF5: Copy Verdict', () => {
     const server = lines.filter((l) => l.startsWith('Server:'));
     expect(server).toEqual([`Server: ${word}` + (v.label ? ` — ${v.label}` : '')
       + (v.othersText ? ` · ${v.othersText}` : '')]);
+    // E26 is a fixed fixture: kafka FAILs and db WARNs. Pinned as text, not from serverVerdict.othersText -
+    // the field the line is built from, so a wrong count there passed the line above (Stage 6, the audit).
+    expect(server).toEqual(['Server: FAIL — Kafka · 1 warn']);
     // The same word and component the header chip shows, and the same counts by state (5.5, B2).
     const chip = await shown(page, '.wir-server-chip');
-    if (v.othersText) expect(chip).toContain(v.othersText);
+    expect(chip).toBe('Server · Kafka FAIL · 1 warn');
     if (v.label) expect(chip).toContain(`${v.label} ${word}`);
     expect(lines[1]).toBe(await assertsLine(page));
     expect(lines.length).toBeLessThanOrEqual(6);
