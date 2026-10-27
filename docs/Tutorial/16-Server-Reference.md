@@ -131,7 +131,8 @@ time,component,metric,instance,value
 - **`metric`**: a catalogue metric's name (`connections.used.pct`), or a custom assert's `query`
   text exactly as written.
 - **`instance`**: optional. Empty is one instance; a value becomes the chart label
-  `instance=<value>`.
+  `instance=<value>`, or the value alone when it already reads as a label (`routeId=catalog`, as an
+  exporter that writes a series' own labels into the cell gives it).
 - **`value`**: a number with `.` as the decimal point and no thousands separator. Empty or `NaN` is
   a gap, not zero. Without `--from` it is the metric's value in the catalogue's unit and nothing is
   converted, so a counter must be exported as the rate the catalogue's query would have computed.
@@ -265,7 +266,8 @@ component and the metric before exporting, `component/metric` or `component/metr
 ```
 
 With a Prometheus legend, that is `orders-db/connections.used.pct/{{instance}}`. Each part is
-trimmed; the instance becomes the chart label `instance=<value>`, and without one the column is one
+trimmed; the instance becomes the chart label `instance=<value>` (the value alone when it already
+reads as a label, `routeId=catalog`), and without one the column is one
 instance with no label.
 
 **`--columns MAP`**, for a legend you cannot change, or a metric name with a `/` in it: a custom

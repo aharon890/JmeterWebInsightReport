@@ -929,7 +929,7 @@ name in any order, extra columns ignored, quoted cells and a UTF-8 BOM allowed:
 `time,component,metric,instance,value`. `time` is ISO 8601 **with** an offset or `Z`, or epoch
 milliseconds — a time with no zone is refused, never guessed. `metric` is a catalogue metric's name
 or a custom assert's `query` text. `instance` is optional (empty is one instance; a value becomes
-the chart label `instance=<value>`). `value` uses `.` as the decimal point and no thousands
+the chart label `instance=<value>`, or the value alone when it already reads `k=…`, C1). `value` uses `.` as the decimal point and no thousands
 separator; empty or `NaN` is a gap, not zero; without `--from` it is the metric's value in the
 catalogue's unit, with no counter conversion. Rows more than one step outside the run window are
 dropped. A bad row fails **only the series it belongs to**, naming the line

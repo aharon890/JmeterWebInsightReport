@@ -20281,6 +20281,15 @@ WIR.serverKpis = (function () {
     function instanceName(inst, i) {
         var labels = inst.labels;
         if (!labels) return 'instance ' + (i + 1);
+        /* A CSV's instance cell is the label {instance: <cell>}. Where the cell already reads as a
+           label list ("routeId=catalog", an exporter writing the series' own labels), it is shown
+           bare: "instance=routeId=catalog" doubled the prefix the replay of the same run did not
+           have, and took the Per instance chart's width (C1). Display only; the payload keeps it. */
+        var keys = Object.keys(labels);
+        if (keys.length === 1 && keys[0] === 'instance'
+                && /^[A-Za-z_][A-Za-z0-9_]*=/.test(String(labels.instance))) {
+            return String(labels.instance);
+        }
         var parts = [];
         for (var key in labels) {
             if (Object.prototype.hasOwnProperty.call(labels, key)) {

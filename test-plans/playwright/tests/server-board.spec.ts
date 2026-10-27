@@ -52,6 +52,37 @@ test.describe('Server tab — the component board', () => {
     expect(bars.values).toEqual([900]);
   });
 
+  test('[R] C1: an instance cell that already reads as a label is shown bare, not as instance=<label>', async ({ page }) => {
+    // A CSV's instance cell becomes the label {instance: <cell>}. Petstore's exporter wrote the
+    // series' own labels into it, so the CSV path read "instance=routeId=catalog" where the replay of
+    // the same run read "routeId=catalog", and the doubled prefix took the Per instance chart's width.
+    await loadClean(page, 'E26');
+    await switchTab(page, 'server');
+    await page.evaluate(() => {
+      const W = window as any;
+      const d = JSON.parse(JSON.stringify(W.chartData));
+      const k = d.serverKpis.find((x: any) => x.id === 'cpu-headroom');
+      const s = d.serverMetrics.series.find((x: any) => x.query === k.query);
+      s.instances[0].labels = { instance: 'routeId=catalog' };
+      s.instances[1].labels = { instance: 'plain' };
+      W.WIR.serverKpis.init(d);
+      const S = W.WIR.serverKpis; S.toggle(S._keyOf('cpu-headroom'));
+    });
+    await expect.poll(() => page.evaluate(() => {
+      const W = (window as any).WIR.serverKpis;
+      return !!(window as any).echarts.getInstanceByDom(document.getElementById('serverInstances-' + W._keyOf('cpu-headroom'))!);
+    })).toBe(true);
+    const named = await page.evaluate(() => {
+      const W = (window as any).WIR.serverKpis;
+      const key = W._keyOf('cpu-headroom');
+      const per = (window as any).echarts.getInstanceByDom(document.getElementById('serverInstances-' + key)!).getOption();
+      const time = (window as any).echarts.getInstanceByDom(document.getElementById('serverChart-' + key)!).getOption();
+      return { bars: per.yAxis[0].data, lines: (time.series as any[]).map((s) => s.name).filter((n) => n) };
+    });
+    expect(named.bars).toEqual(['routeId=catalog', 'instance=plain']);
+    expect(named.lines).toEqual(expect.arrayContaining(['routeId=catalog', 'instance=plain']));
+  });
+
   test('[R] Expand all rows opens every row, and a second click closes them', async ({ page }) => {
     await loadClean(page, 'E26');
     await switchTab(page, 'server');

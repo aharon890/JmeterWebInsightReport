@@ -150,6 +150,18 @@ value axis takes `splitNumber` from its plot width, one tick per 64 px. A first 
 toward `hideOverlap`. Observed on F2, as registered: the row reads `18:35 18:36 18:37 18:38` at 1280 and 700 px, the
 Timeline unchanged, `cmp.cjs` none. The value labels' smallest gap is 18.8 px or more from 390 to 1920 px.
 
+**4.5, C1, expected (written before the F2 check, 4.1.15):** display only, chart data unchanged. On F2's CSV rebuild, six
+rows have instance cells that read as labels (gateway-route-p95 4/4 `routeId=…`, app-pods x3 6/6, kafka-lag 1/1,
+catalog-db-slowest-statement 20/20); their Per instance names lose the `instance=` prefix and nothing else changes.
+`gateway-route-p95` reads `routeId=catalog …` as the replay of the same run does.
+
+**4.5, done (4.1.15).** Red first (`server-board.spec.ts` "[R] C1: …", E26 `cpu-headroom` with instance cells
+`routeId=catalog` and `plain`). `instanceName` shows a lone `instance` label bare when its value starts `k=`. Observed
+on F2, as registered: `cmp.cjs` none; gateway-route-p95 `instance=routeId=catalog` → `routeId=catalog`,
+kafka-lag `instance=consumergroup=catalog, topic=order-placed` → `consumergroup=catalog, topic=order-placed`, both now
+what the replay of the run shows. Aside, not WIR's: the replay carries a fifth route, `routeId=traffic-generator`,
+that the CSV export does not (petstore's exporter). Tutorial 16 (two places) and CLAUDE.md say the value can show bare.
+
 **Outside 4.1's registered list:** that list came from a scan of S4 only. F2's catalog-db slowest-statement custom query
 (27 instances, capped) also draws a different twenty under C5 (`cmp.cjs` vs 4.1.0: 1 of 117 series, 0 asserts). The
 same rule, on a run the scan did not cover.
