@@ -657,9 +657,9 @@ public final class ServerMetricsMapper {
                 + "series overlays is chosen in the report, not declared in the file.");
         // Misplaced, not retired — but ignoring either judges the KPI WITHOUT the tolerance its
         // author wrote, so a 1-second spike fails the build they tried to tolerate.
-        String overHint = " belongs under reduce.over: \"reduce\": {\"kind\": \"max\", \"over\": "
+        String overHint = " it belongs under reduce.over: \"reduce\": {\"kind\": \"max\", \"over\": "
                 + "{\"sustainedFor\": \"30s\"}} (or {\"breachBudget\": 0.02}).";
-        String atTop = " at the top level of a server assert is ignored and";
+        String atTop = " is not read at the top level of a server assert, so the assert is refused:";
         m.put("sustainedFor", "\"sustainedFor\"" + atTop + overHint);
         m.put("breachBudget", "\"breachBudget\"" + atTop + overHint);
         m.put("over", "\"over\"" + atTop + overHint);

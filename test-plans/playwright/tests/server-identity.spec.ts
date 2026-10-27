@@ -434,7 +434,7 @@ test.describe('A retired key is shown, refused and removable in the editor (R1-1
     });
     // ...is not enough while the key is still there: the form says why, and offers the way out.
     await expect(page.locator('#serverEditor .wir-retired-keys'))
-      .toContainText('"sustainedFor" at the top level of a server assert is ignored and belongs under reduce.over');
+      .toContainText('"sustainedFor" is not read at the top level of a server assert, so the assert is refused: it belongs under reduce.over');
     await expect(page.locator('#serverEditor button.wir-btn-primary')).toBeDisabled();
 
     await page.locator('#serverEditor button', { hasText: 'Remove "sustainedFor"' }).click();
