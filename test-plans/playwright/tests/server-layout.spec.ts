@@ -688,20 +688,78 @@ test.describe('SF37: the Server tab\'s charts reach contrast in both themes', ()
     await switchTab(page, 'server');
     await openRows(page, ['cpu-headroom']);
     await switchTab(page, 'timeline');
-    const leaked = await page.evaluate(async () => {
+    // Hover the Timeline's response-time chart, then count the visible tooltips: all, and those
+    // naming one of cpu-headroom's instances (a Server tooltip).
+    const hover = () => page.evaluate(() => {
       const W = window as any;
-      const el = document.getElementById('response-time-chart')!;
-      const inst = W.echarts.getInstanceByDom(el);
-      for (const x of [80, 120, 200, 400]) {
-        inst.dispatchAction({ type: 'showTip', x, y: inst.getHeight() / 2 });
-        await new Promise((r) => setTimeout(r, 150));
-      }
+      const inst = W.echarts.getInstanceByDom(document.getElementById('response-time-chart')!);
+      inst.dispatchAction({ type: 'showTip', x: 200, y: inst.getHeight() / 2 });
+      const shown = [...document.querySelectorAll('div')].filter((d) =>
+        /z-index:\s*9999999/.test(d.getAttribute('style') || '') && d.style.display !== 'none'
+        && getComputedStyle(d).visibility !== 'hidden' && Number(getComputedStyle(d).opacity) > 0
+        && d.offsetParent !== null);
+      return { all: shown.length, server: shown.filter((d) => /instance=[ab]\b/.test(d.textContent || '')).length };
+    });
+    const regroup = (group: string) => page.evaluate((g) => {
+      const W = window as any;
+      const k = W.WIR.serverKpis._keyOf('cpu-headroom');
+      const inst = W.echarts.getInstanceByDom(document.getElementById('serverChart-' + k)!);
+      inst.group = g;
+      W.echarts.connect(g);
+    }, group);
+    // Positive control (Stage 6): the detector sees a Server tooltip when the chart IS in the client's
+    // group - so the zero below is the grouping, not a hover that showed nothing or a name that moved.
+    await regroup('wir-linked');
+    await expect.poll(() => hover().then((c) => c.server), { message: 'a leaked Server tooltip is seen' })
+      .toBeGreaterThan(0);
+    await regroup('wir-server-linked');
+    await page.evaluate(() => (window as any).echarts.getInstanceByDom(document.getElementById('response-time-chart')!)
+      .dispatchAction({ type: 'hideTip' }));
+    // The Timeline's own tooltip shows, and no Server one beside it.
+    await expect.poll(() => hover().then((c) => c.all), { message: 'the Timeline\'s own tooltip' }).toBeGreaterThan(0);
+    expect((await hover()).server, 'a Server tooltip floating over the Timeline').toBe(0);
+  });
+
+  test('[R] 5.1 review: Server charts still link among themselves', async ({ page }) => {
+    // The other half of 4.1.27's promise (createServerChart: the Server tab's own connected group),
+    // which nothing tested: hovering one Server row's chart shows the other open row's tooltip too.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await loadClean(page, 'E26');
+    await switchTab(page, 'server');
+    await openRows(page, ['cpu-headroom', 'lag-spike']);
+    const tips = () => page.evaluate(() => {
+      const W = window as any;
+      const inst = W.echarts.getInstanceByDom(document.getElementById('serverChart-' + W.WIR.serverKpis._keyOf('cpu-headroom'))!);
+      inst.dispatchAction({ type: 'showTip', x: inst.getWidth() / 2, y: inst.getHeight() / 2 });
       return [...document.querySelectorAll('div')].filter((d) =>
         /z-index:\s*9999999/.test(d.getAttribute('style') || '') && d.style.display !== 'none'
         && getComputedStyle(d).visibility !== 'hidden' && Number(getComputedStyle(d).opacity) > 0
-        && d.offsetParent !== null && /instance=[ab]\b/.test(d.textContent || '')).length;
+        && d.offsetParent !== null).map((d) => d.textContent || '');
     });
-    expect(leaked, 'a Server tooltip floating over the Timeline').toBe(0);
+    // lag-spike's own tooltip (kafka's lag, in msgs) beside the hovered row's: unlinked, only the
+    // hovered one shows (checked by hand: tmp/reverify/link-check.cjs).
+    await expect.poll(() => tips().then((t) => t.some((x) => / msgs/.test(x))),
+      { message: 'the linked row\'s tooltip' }).toBe(true);
+  });
+
+  test('[R] 5.3: the worst bar is drawn on top, in the order the option holds', async ({ page }) => {
+    // server-board's 5.3 pin reads the option's data order. A category y axis draws index 0 at the
+    // BOTTOM unless inverse is set, and nothing pinned that: dropped, the worst bar is drawn last, the
+    // very complaint 5.3 fixed (F2's deciding statement was bar 18 of 20). Read off what was painted.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await loadClean(page, 'E26');
+    await switchTab(page, 'server');
+    await openRows(page, ['many-instances']);
+    const c = (await rowChart(page, 'many-instances', 'instances'))!;
+    const drawn = c.texts.filter((t) => /^instance=p[0-9]+$/.test(t.t)).sort((a, b) => a.y - b.y).map((t) => t.t);
+    expect(drawn.length, 'the instance names are painted').toBeGreaterThan(1);
+    expect(drawn[0], 'the worst bar, on top').toBe('instance=p20');
+    const order = await page.evaluate(() => {
+      const W = window as any;
+      const inst = W.echarts.getInstanceByDom(document.getElementById('serverInstances-' + W.WIR.serverKpis._keyOf('many-instances'))!);
+      return inst.getOption().yAxis[0].data as string[];
+    });
+    expect(drawn, 'drawn top to bottom as the option holds them').toEqual(order.filter((n) => drawn.includes(n)));
   });
 
   test('[R] C2: a Per instance name that fits is drawn whole, not cut', async ({ page }) => {
