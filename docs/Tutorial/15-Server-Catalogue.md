@@ -12,7 +12,9 @@ sentence for the picker), its unit, its reducer, how instances fold, which way i
 Prometheus query (with the component's `match` slotted in) and each tool's name for it. Most fold
 with `max`, the instance that is worst when higher is worse. Where lower is worse — an `up` flag, a
 hit ratio, free memory or disk, a credit balance — they fold with `min`, so one database that went
-down fails `up`'s `fail < 1` however healthy its twin was. The bands are still yours: the right
+down fails `up`'s `fail < 1` however healthy its twin was, as long as its exporter is there to say
+0. An exporter that goes with its target (a sidecar, a deleted pod) leaves no 0, only a gap: a short
+gap reads PASS, and a longer one `LOW COVERAGE`. The bands are still yours: the right
 number depends on the hardware, the workload and what "healthy" means for that service. A safe
 default ships only where a healthy machine meets it whatever it runs. For example: `up` fails below
 1 on every type that has it, and so do Kafka's active controller, Redis's replication link and EBS
