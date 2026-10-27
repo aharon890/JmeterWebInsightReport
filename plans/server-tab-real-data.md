@@ -140,6 +140,11 @@ vs 4.1.12: none. server-layout, server-board and server-numbers specs: 62/62.
 (27 instances, capped) also draws a different twenty under C5 (`cmp.cjs` vs 4.1.0: 1 of 117 series, 0 asserts). The
 same rule, on a run the scan did not cover.
 
+**Also outside 4.1's list:** I wrote that E26 `many`'s specs pin counts only. `server-tab.spec.ts` (L9-12) also
+pinned *which* twenty: p0 kept, p19 dropped, under the old collector-order fill. E26's values rise p0 → p20, so under
+C5 p0 (the lowest) gives its slot up and p19 is drawn. The pin now says that (`fd3…`, the commit after 4.1.13), found
+on the first run of that spec over fixtures regenerated after 4.1.11.
+
 ## Open
 
 - **End of Stage 2 (4.1.7):** full regression green on 2026-10-27, R01–R06 with fixtures regenerated, 1077 Playwright
