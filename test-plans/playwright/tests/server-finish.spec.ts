@@ -54,6 +54,35 @@ test.describe('Server tab — how to finish an interim report', () => {
     await expect(page.locator('#serverFinish')).toContainText('kafka');
   });
 
+  test('[R] a catalogue metric names each tool, and the template quotes a query with a comma or a quote', async ({ page }) => {
+    // E26's interim shape is custom with plain queries, so the tool column was never shown and the
+    // template's quoting could not fail its own check (Stage 6, the audit). Petstore X08's PromQL has
+    // commas: unquoted, a filled-in template is refused by line.
+    const comma = 'sum by (instance, job) (rate(x{l="v"}[1m]))';
+    await loadClean(page, 'E27');
+    await switchTab(page, 'server');
+    await page.evaluate((q) => {
+      const W = window as any;
+      const d = JSON.parse(JSON.stringify(W.chartData));
+      d.annotationsDocument.serverMetrics.asserts.push(
+        { id: 'comma', component: 'orders-db', query: q, fail: { gt: 1 } },
+        { id: 'formula', component: 'orders-db', query: '=cpu', fail: { gt: 1 } });
+      delete d.serverGates;
+      delete d.serverKpis;
+      delete d.serverMetrics;
+      d.serverEvaluated = false;
+      W.WIR.serverKpis.init(d);
+    }, comma);
+    const row = page.locator('#serverFinish tbody tr', { has: page.locator('code:text-is("connections.used.pct")') });
+    await expect(row.locator('td').last()).toContainText('datadog: postgresql.percent_usage_connections');
+    await expect(row.locator('td').last()).toContainText('telegraf: (computed)');
+    const text: string = await page.evaluate(() => (window as any).WIR.serverKpis._csvTemplateText());
+    const start = await page.evaluate(() => new Date((window as any).chartData.runWindow.start).toISOString());
+    const lines = text.trim().split('\n');
+    expect(lines).toContain(start + ',orders-db,"sum by (instance, job) (rate(x{l=""v""}[1m]))",,');
+    expect(lines, 'a leading = is written as it is, never prefixed').toContain(start + ',orders-db,=cpu,,');
+  });
+
   test('[R] the CSV template has the header and one row per series at the run start', async ({ page }) => {
     await interim(page);
     const text: string = await page.evaluate(() => (window as any).WIR.serverKpis._csvTemplateText());

@@ -611,8 +611,9 @@ fi
 #  four-hour JTL and 24 instances of 1 s server data, so the runId and every
 #  number are the same on every machine. It exercises what no committed fixture
 #  can: the instance cap (20 of 24 drawn), thinning (14,401 points an instance),
-#  an hours-long axis, a sidecar payload, and a 3-second spike the build judged
-#  that the thinned line must still reach.
+#  an hours-long axis, a sidecar payload, a 3-second spike the build judged
+#  that the thinned line must still reach, and a capped series with a half-hour
+#  outage (judgedGap on a real page; a thinned line that breaks there only).
 # -----------------------------------------------------------------------------
 if should_run E29; then
     E29_DIR="$RESULTS_DIR/E29"

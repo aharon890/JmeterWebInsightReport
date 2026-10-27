@@ -377,6 +377,53 @@ defects in 5.1, 5.6, 5.7, 5.8 and 5.9, plus four doc lags. The full regression a
   interpolates (commons-math LEGACY, `backend_metrics_percentile_estimator`, over a 20000-sample window). Prometheus
   uses R-7. WIR's client side uses a t-digest. Recommendation: keep nearest rank and document it.
 
+## Stage 6: the Server tab's test gaps (branch `fix/server-tab-stage6-tests`)
+
+The owner asked whether the Server tab needs more tests. A 3-agent audit (feature-to-test map, real-data-only checks,
+weak tests; `tmp/standards/server-tab-test-gaps-2026-10-27.json`) found 16 gaps. The high-risk ones were checked by hand:
+- no golden has a catalogue component;
+- no test reads `serverAsserts[].metric`;
+- nothing tests the clock refusal;
+- the Copy Verdict pin takes its expected counts from the field it checks.
+The owner said go. A test-only commit needs no bump; the one code change (6.9) does.
+
+| Step | Gap | What pins it |
+|---|---|---|
+| 6.1 | Copy Verdict's pin is circular (#1) | literal E26 text |
+| 6.2 | 5.8's CSV pins check "no error" (#6) | exactly one instance with no point, and the status |
+| 6.3 | parity reasons match by `contains()` (#2) | an exact `reasonIs` in all three runners; vectors for a one-step miss (no gap) and the then-floor branch |
+| 6.4 | the mirror-vs-Java sentence twin runs on E26 only (#3) | the same on E27 and E28 |
+| 6.5 | catalogue asserts in JSON/JUnit unpinned (#7) | golden G11 from E27's inputs |
+| 6.6 | the Prometheus clock refusal untested (#9) | SourcesAndCollectorTest |
+| 6.7 | Value over time's values at a coarser rung untested (#10) | js-unit over `_aggregateServerPoints`; SF42 on E26 |
+| 6.8 | the Collection naming a custom series by its assert (#8, #16) | server-board.spec on E28/E26 |
+| 6.9 | the collector waits --max-wait on a series that stopped (#15) | a test first, then the fix |
+| 6.10 | no committed fixture has petstore's shapes (#13, #14) | a generated petstore-shaped fixture and its spec |
+| 6.11 | lower: drawn bar order (#4), the leak spec's positive control (#5), reader options through -g (#11), the interim panel for catalogue components (#12) | one each |
+
+**Results.** Each test was made to fail for the right reason: either red first (6.9), or a
+mutation of the code it pins, run and reverted (6.6, 6.7, 6.11a, 6.11b).
+
+| Step | Commit | Result |
+|---|---|---|
+| 6.1 | `9af0535` | Literal E26 line and chip |
+| 6.2 | `fa09549` | Each instance's points (b none, a its numbers, -Inf one instance with no point) |
+| 6.3 | `fdf059b` | Exact sentences on the gap vectors and the then-floor one; one-miss (no gap) and late (gap from the start) added; Java 237, node 236 |
+| 6.4 | `901e8dd` | judgeTwice on E27 and E28: page = Java, sentence for sentence (no drift found) |
+| 6.5 | `a747c39` | G11 (`gate-catalogue.json` over E27's payload): metric, catalogue-resolved query/unit/reduce/across, a p95 override, the JUnit `metric:` line (events FAILs) |
+| 6.6 | `28c1387` | Refused before asking, the offset named, 60 s tolerated; mutations (10 min tolerance, offset dropped) fail it |
+| 6.7 | `dab5d76` | js-unit max/min/avg in one bucket (mutation: max as mean fails); E26 at 10s: lag-spike = bucket max, lag-p50-warns = bucket mean |
+| 6.8 | `f655214` | app/heap (not heap.used); db/sparse-coverage; db/lag-p50-warns ... read by lag-sustained |
+| 6.9 | `b267669` **4.1.33** | --max-wait is per source: red first (1,800,000 ms for three series under 600,000), then one deadline per source (id + url). The docs already said so |
+| 6.10a | `e17c74e` | E29 + fleet/up db-1 with a half-hour hole (JTL identical, old CSV a prefix): judgedGap on a real page = the JSON's reason (1801 s); cpu lines break nowhere, db-up once inside the outage |
+| 6.10b | `4988cb9` | R06 compares `<id>.server.json` (the page's server chart data) for G4/G5/G7/G10/G11/G12; G12 = E26's inputs. G4 and G10 draw byte-identical data |
+| 6.11a | `12893ba` | Painted bar order (inverse dropped paints p1 on top, checked); the leak spec's positive control; Server charts link among themselves (unlinked shows one tooltip, checked) |
+| 6.11b | `fa7cd03` | CSV_OPTIONS flags held to WirCollect.OPTIONS (mutation --timezone fails); from=datadog through properties = --from datadog, whole payload |
+| 6.11c | `4b4bf1f` | Interim panel over E27: datadog and telegraf (computed) names; the template quotes a comma/quote query and leaves =cpu; CsvSourceTest reads both back |
+
+No deviation from the registered expectations: no golden moved except by adding G11/G12 and the
+`.server.json` set, and 6.9 is the only change to what the product does.
+
 ## Open
 
 From the Stage 4 exploration. These predate Stage 4 or are design calls, so none is in the staged plan; each needs the

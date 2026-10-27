@@ -38,7 +38,7 @@ usage: wir-collect --jtl <results.jtl> --annotations <report-annotations.json> -
 | `--env NAME` | The `serverMetrics.environments` entry to resolve `${env.*}` from. Default: the file's `defaultEnv` |
 | `--test-name NAME` | The same text as `-Jwebinsight.report.title` when step 3 sets one. Default: `JMeter Web Insight Report` |
 | `--rampup MILLIS` | Leave the first MILLIS of the run out of the judged window. The same number as `-Jwebinsight.report.rampup` |
-| `--max-wait DURATION` | How long a source may take to settle. Default `10m` |
+| `--max-wait DURATION` | How long a source may take to settle, all its series together. Default `10m` |
 | `--no-wait` | Take what the source holds now. Right for a re-collection long after the run, a recording or a CSV |
 | `--help`, `-h` | The options, the exit codes and the plain `java -jar` command |
 
@@ -49,8 +49,9 @@ paths are relative to where the command runs, and are written into the payload a
 
 **Settling.** Straight after a run, Prometheus may not yet hold the last scrapes. Unless told
 `--no-wait`, the collector polls until each series reaches the end of the window and two polls
-agree, for up to `--max-wait`, then takes what arrived. The coverage floor decides what that was
-worth.
+agree, for up to `--max-wait` in all for the source, then takes what arrived. A target that went away
+before the run's end leaves every series of it short of the end; they share one `--max-wait`, rather
+than waiting it out one after another. The coverage floor decides what that was worth.
 
 **Exit codes.**
 

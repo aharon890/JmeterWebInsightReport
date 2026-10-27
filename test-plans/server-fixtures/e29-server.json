@@ -1,5 +1,5 @@
 {
-  "_comment": "E29: a generated four-hour soak (gen-soak.js), 24 instances at 1 s - the page's instance and point caps, thinning, an hours-long axis and a sidecar payload.",
+  "_comment": "E29: a generated four-hour soak (gen-soak.js), 24 instances at 1 s - the page's instance and point caps, thinning, an hours-long axis and a sidecar payload, and a capped series with a half-hour outage (db-up, LOW_COVERAGE naming the gap).",
   "serverMetrics": {
     "components": {
       "fleet": {"type": "custom", "description": "Fleet"}
@@ -7,7 +7,8 @@
     "asserts": [
       {"id": "cpu-spike", "description": "one 3-second spike on node-17, 2.5 h in", "component": "fleet", "query": "cpu", "unit": "%", "reduce": {"kind": "max"}, "across": "max", "warn": {"gt": 80}, "fail": {"gt": 95}},
       {"id": "cpu-held", "description": "no level held for a minute near the spike", "component": "fleet", "query": "cpu", "unit": "%", "reduce": {"kind": "max", "over": {"sustainedFor": "60s"}}, "across": "max", "fail": {"gt": 95}},
-      {"id": "mem-growth", "description": "memory climbing 2 %/h is 0.033 %/min", "component": "fleet", "query": "mem", "unit": "%", "reduce": {"kind": "slope"}, "across": "max", "warn": {"gt": 0.02}, "fail": {"gt": 0.5}}
+      {"id": "mem-growth", "description": "memory climbing 2 %/h is 0.033 %/min", "component": "fleet", "query": "mem", "unit": "%", "reduce": {"kind": "slope"}, "across": "max", "warn": {"gt": 0.02}, "fail": {"gt": 0.5}},
+      {"id": "db-up", "description": "db-1's exporter went with it for half an hour: a hole, not a 0", "component": "fleet", "query": "up", "reduce": {"kind": "min"}, "fail": {"lt": 1}}
     ]
   }
 }

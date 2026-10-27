@@ -305,6 +305,33 @@ test.describe('Server tab — the component board', () => {
     await expect(items.nth(1)).toHaveText('orders-db/up No data (no assert reads it)');
   });
 
+  test('[R] 5.7: a custom series is named by the assert that reads it, never its query, and every other reader is listed', async ({ page }) => {
+    // The petstore F5 fix (4.1.23): a custom query is named by its first reader's id. The pins above
+    // use catalogue series only, where the name is the metric either way, and E28's blank assert has
+    // id == query. E28's heap reads heap.used, E26's sparse-coverage reads sparse, and E26's db/lag is
+    // read by two asserts (Stage 6).
+    await loadClean(page, 'E28');
+    await switchTab(page, 'server');
+    const e28 = await page.locator('.wir-unusable-series li').allTextContents();
+    expect(e28.filter((t) => t.startsWith('app/heap FAILED')), 'heap named by its assert').toHaveLength(1);
+    expect(e28.filter((t) => t.startsWith('app/heap.used')), 'never by its query').toEqual([]);
+
+    await loadClean(page, 'E26');
+    await switchTab(page, 'server');
+    const items = page.locator('.wir-unusable-series li');
+    await expect(items.first()).toHaveText('db/sparse-coverage 3 of 49 steps have a point (6%)');
+    await page.evaluate(() => {
+      const W = window as any;
+      const d = JSON.parse(JSON.stringify(W.chartData));
+      const lag = d.serverMetrics.series.find((x: any) => x.component === 'db' && x.query === 'lag');
+      lag.status = 'INSUFFICIENT';
+      lag.coverage = 0.4898;
+      W.WIR.serverKpis.init(d);
+    });
+    await expect(items.filter({ hasText: /^db\/lag/ })).toHaveText(
+      ['db/lag-p50-warns 24 of 49 steps have a point (49%) · read by lag-sustained']);
+  });
+
   test('[R] 5.7 review: past 10,000 steps the Collection says the coverage, never a step count it cannot know', async ({ page }) => {
     // Coverage reaches the page rounded to four places, so N = coverage x M is exact only below 10,000
     // steps; past that it was off by one or more (the Stage 5 review). 20,001 one-second steps here.
@@ -629,6 +656,53 @@ test.describe('Server tab — Value over time has its own granularity (SF39, SF4
         await expect(s).toHaveValue('30000');
       }
       await expect.poll(() => overTime(page, 'lag-p50-warns').then((c) => c && c.points)).toBe(3);
+    });
+});
+
+test.describe('Server tab — what a coarser rung draws (REV-10)', () => {
+  // The drawn line is the verdict's reducer at every rung: a max assert's bucket is the highest point
+  // in it, any other reducer's the mean. SF42 counts the points at each rung and nothing read their
+  // values, so a max drawn as a mean - the spike the build judged washed out - passed (Stage 6).
+  const line = (page: Page, id: string) => page.evaluate((assertId) => {
+    const W = (window as any).WIR.serverKpis;
+    const el = document.getElementById('serverChart-' + W._keyOf(assertId));
+    const inst = el && (window as any).echarts.getInstanceByDom(el);
+    return inst ? inst.getOption().series[0].data.map((p: any) => [p[0], p[1]]) : null;
+  }, id);
+
+  test('[U] at 10s lag-spike (max) draws the highest point of each bucket and lag-p50-warns (p50) its mean',
+    async ({ page }) => {
+      await loadClean(page, 'E26');
+      await switchTab(page, 'server');
+      await page.evaluate(() => {
+        const W = (window as any).WIR.serverKpis;
+        W.toggle(W._keyOf('lag-spike'));
+        W.toggle(W._keyOf('lag-p50-warns'));
+      });
+      await expect.poll(() => overTime(page, 'lag-spike').then((c) => c && c.points)).toBe(49);
+      // Both read `lag` across max: one line at the step, which each rung buckets by its own mode.
+      const atStep = (await line(page, 'lag-spike'))!;
+      expect(await line(page, 'lag-p50-warns'), 'one series, one line at the step').toEqual(atStep);
+
+      await page.locator('.wir-chart-row .wir-server-granularity').first().selectOption('10000');
+      await expect.poll(() => overTime(page, 'lag-spike').then((c) => c && c.points)).toBe(6);
+      const maxed = (await line(page, 'lag-spike'))!;
+      const meaned = (await line(page, 'lag-p50-warns'))!;
+      const inBucket = (b: number) => atStep.filter((p: number[]) => p[1] !== null && p[0] >= b && p[0] < b + 10000)
+        .map((p: number[]) => p[1]);
+      let differ = 0;
+      maxed.forEach((p: number[], i: number) => {
+        const vs = inBucket(p[0]);
+        expect(vs.length, `bucket ${p[0]} holds points`).toBeGreaterThan(0);
+        expect(p[1], `lag-spike at ${p[0]}: the bucket's highest`).toBe(Math.max(...vs));
+        const mean = vs.reduce((a: number, v: number) => a + v, 0) / vs.length;
+        expect(meaned[i][0]).toBe(p[0]);
+        expect(Math.abs(meaned[i][1] - mean), `lag-p50-warns at ${p[0]}: the bucket's mean`).toBeLessThan(1e-9);
+        if (p[1] !== meaned[i][1]) differ++;
+      });
+      expect(differ, 'the spike is in a bucket where the two modes part').toBeGreaterThan(0);
+      expect(Math.max(...maxed.map((p: number[]) => p[1])), 'the drawn max reaches the step-level spike')
+        .toBe(Math.max(...atStep.filter((p: number[]) => p[1] !== null).map((p: number[]) => p[1])));
     });
 });
 

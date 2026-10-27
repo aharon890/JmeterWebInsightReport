@@ -11,6 +11,10 @@
  * holds a thinned copy and says so), CPU near 50 % with one 3-second spike to 97.5 on instance
  * node-17 at 02:30 into the run - the max the build judges, which a thinned line must still reach.
  * Memory climbs slowly on every node, so a slope assert has something to measure.
+ * Last, one more series, written after the others so every byte above is unchanged: fleet's "up" on
+ * db-1, 1 at every second but for a half-hour hole from 2 h in - petstore F5's database outage, where
+ * the exporter went with its target and left no row, not a 0. It is capped (12,601 points thinned to
+ * 4000), so Java's judgedGap is what the page names, and its thinned line must break there only.
  */
 const fs = require('fs');
 const path = require('path');
@@ -63,4 +67,11 @@ for (let n = 1; n <= 24; n++) {
   csv.write(lines.join('\n') + '\n');
   lines.length = 0;
 }
+const OUTAGE_FROM = START + 2 * 3600000;
+const OUTAGE_TO = OUTAGE_FROM + 30 * 60000;
+for (let t = START; t <= END; t += 1000) {
+  if (t >= OUTAGE_FROM && t < OUTAGE_TO) continue;
+  lines.push(t + ',fleet,up,db-1,1');
+}
+csv.write(lines.join('\n') + '\n');
 csv.end();

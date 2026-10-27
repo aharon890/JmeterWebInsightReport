@@ -33,7 +33,11 @@ import java.util.Map;
  *       identical empty polls after the floor settle it as EMPTY: a selector that matches
  *       nothing is an answer, and waiting {@code maxWait} for it would cost ten minutes per
  *       typo, serially;</li>
- *   <li>cap at {@code maxWait}, then return what arrived. Whether that is PARTIAL or
+ *   <li>cap at {@code maxWait}, then return what arrived. The cap is the source's, not each
+ *       series': it runs from the first series this reader collects from a source, so a target
+ *       that went away before the run's end (every series of it short of the end, none settling)
+ *       costs {@code maxWait} once, not once per asserted series - ten minutes each, serially, as
+ *       Stage 3.4 saw. Whether that is PARTIAL or
  *       INSUFFICIENT is the collector's call against the coverage floor. A poll that fails
  *       <em>after</em> an earlier one answered returns that earlier answer for the same reason
  *       — what arrived is not discarded because the network blinked once.</li>
@@ -112,6 +116,8 @@ public final class PrometheusSource implements SeriesSource {
     private final Timing timing;
     private final Map<String, String> secrets;
     private final Settle settle;
+    /** Each source's deadline, set by the first series collected from it: --max-wait is the source's. */
+    private final Map<String, Long> deadlines = new java.util.concurrent.ConcurrentHashMap<>();
 
     public PrometheusSource(Http http, Timing timing, Map<String, String> secrets, Settle settle) {
         this.http = http;
@@ -210,7 +216,8 @@ public final class PrometheusSource implements SeriesSource {
 
         long floor = Math.max(2 * source.stepMillis(), Settle.MIN_FLOOR_MILLIS);
         long started = timing.nowMillis();
-        long deadline = started + settle.maxWaitMillis;
+        long deadline = deadlines.computeIfAbsent(source.id() + ' ' + source.url(),
+                k -> started + settle.maxWaitMillis);
         List<ServerMetricsPayload.InstanceRecord> last = null;   // the latest answer, kept across a failed poll
         try {
             // 1. The floor: below one scrape interval after the window there is nothing to fetch.

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="JMeter Web Insight Report" tests="3" failures="0">
+  <testsuite name="JMeter Web Insight Report" tests="3" failures="0">
+    <properties>
+      <property name="webinsight.runId" value="967a1b397b7fb1d2"/>
+    </properties>
+    <testcase name="GET /api/products" classname="performance">
+    </testcase>
+    <testcase name="GET /api/search" classname="performance">
+    </testcase>
+    <testcase name="POST /api/checkout" classname="performance">
+    </testcase>
+  </testsuite>
+  <testsuite name="JMeter Web Insight Report - orders-db" tests="2" failures="0" skipped="0">
+    <properties>
+      <property name="webinsight.runId" value="967a1b397b7fb1d2"/>
+    </properties>
+    <testcase name="orders-db-connections-used-pct" classname="server-metrics">
+    </testcase>
+    <testcase name="orders-db-connections-p95" classname="server-metrics">
+      <system-out>WARN: Server assert &apos;orders-db-connections-p95&apos;: p95 68 % breached &gt; 60 %</system-out>
+    </testcase>
+  </testsuite>
+  <testsuite name="JMeter Web Insight Report - events" tests="1" failures="1" skipped="0">
+    <properties>
+      <property name="webinsight.runId" value="967a1b397b7fb1d2"/>
+    </properties>
+    <testcase name="events-consumer-lag-max" classname="server-metrics">
+      <failure message="Server assert &apos;events-consumer-lag-max&apos;: max 676 msgs breached &gt; 600 msgs">
+component: events
+metric:    consumer.lag.max
+query:     max by (consumergroup, topic) (kafka_consumergroup_lag)
+reduce:    max across max
+criteria:  warn &gt; 300 msgs  ·  fail &gt; 600 msgs
+actual:    676 msgs
+coverage:  100% of the collected window
+instances: 1
+      </failure>
+    </testcase>
+  </testsuite>
+</testsuites>

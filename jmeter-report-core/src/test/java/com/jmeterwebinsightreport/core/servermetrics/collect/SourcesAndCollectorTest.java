@@ -161,6 +161,38 @@ class SourcesAndCollectorTest {
     }
 
     @Test
+    void maxWaitIsTheSourcesWholeBudgetNotEachSeriess() {
+        // A target that goes away before the run's end (petstore F2's deleted pod, F5's database
+        // outage) leaves every series of it short of the window's end, so none settles. With the cap
+        // per series the collection waited --max-wait once per asserted series - 10 min each, serially:
+        // Stage 3.4 stopped one. The docs promise "how long a source may take to settle" (Stage 6).
+        String early = matrix("a", 1_700_000_000L, 1, 1_700_000_015L, 2, 1_700_000_030L, 3);
+        FakeHttp http = new FakeHttp(early);
+        FakeTiming timing = new FakeTiming(WINDOW.getEnd() + 300_000);   // five minutes after the run
+        PrometheusSource src = new PrometheusSource(http, timing, Collections.<String, String>emptyMap(),
+                new PrometheusSource.Settle(600_000, 15_000, 2));
+        ServerSource source = prom(Collections.<String, String>emptyMap());
+
+        for (String query : new String[] {"a", "b", "c"}) {
+            SeriesSource.Answer a = src.collect(source, query, WINDOW);
+            assertFalse(a.failed(), query);
+            assertEquals(3, a.instances().get(0).getPoints().size(), "what arrived, for " + query);
+        }
+        long waited = 0;
+        for (long s : timing.sleeps) waited += s;
+        assertTrue(waited <= 600_000, "three series waited " + waited + " ms in all; --max-wait is 600000");
+
+        // Another source has its own budget.
+        FakeHttp other = new FakeHttp(early);
+        int before = timing.sleeps.size();
+        new PrometheusSource(other, timing, Collections.<String, String>emptyMap(),
+                new PrometheusSource.Settle(600_000, 15_000, 2))
+                .collect(ServerSource.prometheus("other", "https://other.corp/api/v1", 15_000, 0,
+                        Collections.<String, String>emptyMap()), "a", WINDOW);
+        assertTrue(timing.sleeps.size() > before, "a fresh source polls again");
+    }
+
+    @Test
     void anEmptyAnswerSettlesAfterTwoIdenticalPollsInsteadOfWaitingOutTheCap() {
         // A selector that matches nothing has no tail to reach the window's end. Without this,
         // every typo'd query cost the full maxWait — ten minutes, serially.
@@ -191,6 +223,41 @@ class SourcesAndCollectorTest {
         assertTrue(new PrometheusSource(dead, new FakeTiming(WINDOW.getEnd() + 60_000), Collections.<String, String>emptyMap(),
                 PrometheusSource.Settle.none()).collect(prom(Collections.<String, String>emptyMap()), "up", WINDOW)
                 .error().contains("connection reset"));
+    }
+
+    @Test
+    void aWindowEndingAfterThisMachinesClockIsRefusedBeforeAskingNamingTheOffset() {
+        // The JMeter host's clock is ahead: every query would wait out --max-wait (10 min each) and
+        // come back empty, the wait Stage 3.4 saw. Every other test here builds its clock at or past
+        // the window's end, so the refusal, its tolerance and the offset it names had no pin (Stage 6).
+        String full = matrix("a", 1_700_000_000L, 1, 1_700_000_015L, 2, 1_700_000_030L, 3, 1_700_000_045L, 4, 1_700_000_060L, 5);
+        Map<String, String> none = Collections.<String, String>emptyMap();
+
+        FakeHttp http = new FakeHttp(full);
+        SeriesSource.Answer a = new PrometheusSource(http, new FakeTiming(WINDOW.getEnd() - 300_000), none,
+                PrometheusSource.Settle.none()).collect(prom(none), "up", WINDOW);
+        assertTrue(a.failed());
+        assertEquals("the run's window ends 5m after this machine's clock - the JMeter host's clock is ahead;"
+                + " pass --clock-offset 5m or collect after the window has passed", a.error());
+        assertEquals(0, http.calls.size(), "refused before asking");
+
+        // That offset given, the same window is in the past of the source's clock, and asked for.
+        FakeHttp offset = new FakeHttp(full);
+        assertFalse(new PrometheusSource(offset, new FakeTiming(WINDOW.getEnd() - 300_000), none,
+                PrometheusSource.Settle.none())
+                .collect(ServerSource.prometheus("prom", "https://prom.corp/api/v1", 15_000, 300_000, none), "up", WINDOW)
+                .failed());
+        assertEquals(1, offset.calls.size());
+
+        // A minute ahead is tolerated (clocks drift), and asked for; a second more is not.
+        FakeHttp minute = new FakeHttp(full);
+        assertFalse(new PrometheusSource(minute, new FakeTiming(WINDOW.getEnd() - 60_000), none,
+                PrometheusSource.Settle.none()).collect(prom(none), "up", WINDOW).failed());
+        assertEquals(1, minute.calls.size());
+        FakeHttp past = new FakeHttp(full);
+        assertTrue(new PrometheusSource(past, new FakeTiming(WINDOW.getEnd() - 61_000), none,
+                PrometheusSource.Settle.none()).collect(prom(none), "up", WINDOW).failed());
+        assertEquals(0, past.calls.size());
     }
 
     @Test

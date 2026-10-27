@@ -667,12 +667,20 @@ with `wir-collect --csv` from the committed `server-metrics.csv` (how to rebuild
 over a LOW_COVERAGE) and G8, G5's file with the payload missing; and G9 `gate-digits.json`, client
 rules only, whose bands sit within a hundredth of `plain.jtl`'s measured values (the one golden
 that can see a number written on or across its band: every other one's nearest client actual is
-24 away). G6, the observe-only gate, was retired with `failsBuild` (C6) and its id is not reused —
-and diffs the canonicalised `.json` and `.xml` against `test-plans/goldens/expected/`. Because the
+24 away); G10, G4's inputs given to `-g` as the CSV; G11 `gate-catalogue.json`, the one golden with
+catalogue components (postgres and kafka over E27's payload, one assert overriding the catalogue's
+reducer, `events` FAILing so the JUnit body's `metric:` line is written); and G12, E26's committed
+inputs (every Server-tab state, and the capped 21-instance `many` series). G6, the observe-only
+gate, was retired with `failsBuild` (C6) and its id is not reused — and diffs the canonicalised
+`.json` and `.xml` against `test-plans/goldens/expected/`, plus, for every case whose page carries
+server series, `<id>.server.json`: the page's server chart data, summarised from the HTML's
+`chartData` (each series' status, coverage, caps and judged numbers; each drawn instance's counts,
+first and last point, range and a hash of every shipped point). That is what the Server tab draws,
+which nothing in the repo compared before Stage 6. Because the
 input is fixed, every number is a constant and a diff means the code moved a status, a count, a
 message, a wire name or a key order on an unedited file. `--accept` regenerates the baselines; commit
 them **with** the change that caused them and say which in the message. Three semantics bite
-immediately: it compares the `.json` and `.xml` only, never the HTML (the comparison block lives
+immediately: it compares the `.json` and `.xml` and, of the HTML, only the server chart data (the comparison block lives
 only there, which is why the *first* G4 — `gate-mixed` against a baseline JTL — was removed; the
 G4 that exists now is the server-metrics case and has nothing to do with it); a comparison that
 passes while `expected/` is **dirty in the working tree is a FAIL** — "the baselines were
@@ -1481,7 +1489,7 @@ docs/FEATURES.md             Feature reference, by area (not numbered; E-ids nam
 docs/TEST-COVERAGE-GAPS.md   Coverage tracker
 test-plans/*.jmx             Scenario test plans
 test-plans/annotations/      Assert/annotation fixtures used by E10-E13
-test-plans/goldens/          R06: plain.jtl, the G1-G10 annotation cases (no G6; G10 = G4 through the in-process CSV route), server-metrics.csv, expected/, jq-gate.txt
+test-plans/goldens/          R06: plain.jtl, the G1-G12 annotation cases (no G6; G10 = G4 through the in-process CSV route; G11 catalogue; G12 E26's inputs), server-metrics.csv, expected/, jq-gate.txt
 test-plans/server-metrics/   E26's committed annotations, CSV server data and payload
 test-plans/server-catalogue/ E27's: two catalogue components (postgres, kafka) with D1 data, the picker's fixture
 test-plans/server-fixtures/  E28 (a CSV that does not line up, plus real interim and refused pages) and E29 (a generated 4 h soak)
