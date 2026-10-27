@@ -293,6 +293,11 @@ class CsvSourceTest {
         SeriesSource.Answer a = ask(new CsvSource(), s, "app", "cpu");
         assertNull(a.error(), a.error());
         assertEquals(2, a.instances().size());
+        // Which is which, and b with no point: a zero-filled gap or a dropped b would read otherwise (6.2).
+        assertEquals(Collections.singletonMap("instance", "a"), a.instances().get(0).getLabels());
+        assertEquals(1, points(a, 0).size());
+        assertEquals(Collections.singletonMap("instance", "b"), a.instances().get(1).getLabels());
+        assertTrue(points(a, 1).isEmpty(), "b's NaN and blank rows are gaps, not points");
     }
 
     @Test
@@ -932,6 +937,9 @@ class CsvSourceTest {
                 + every15s("web", "shop.drops", "b", i -> "NaN"), shopKpi("drops"));
         ServerMetricsPayload.SeriesRecord both = seriesOf(mixed, "web", "drops");
         assertEquals(2, both.getInstances().size(), both.getInstances().toString());
+        // a's five points, b none (6.2): a zero-filled NaN would give b five as well.
+        assertEquals(5, both.getInstances().get(0).getPoints().size());
+        assertTrue(both.getInstances().get(1).getPoints().isEmpty(), both.getInstances().get(1).getPoints().toString());
         ServerMetricsPayload blank = collectFrom("datadog", every15s("web", "shop.drops", "", i -> "NaN"), shopKpi("drops"));
         ServerMetricsPayload.SeriesRecord none = seriesOf(blank, "web", "drops");
         assertNull(none.getError(), none.getError());
@@ -947,6 +955,9 @@ class CsvSourceTest {
                 wide("\"Time\",\"c/x/a\",\"c/x/b\"\n1700000000000,1,\n1700000015000,2,NaN\n"), "c", "x");
         assertNull(mixed.error(), mixed.error());
         assertEquals(2, mixed.instances().size());
+        // a's two numbers, b none (6.2).
+        assertEquals(2, points(mixed, 0).size());
+        assertTrue(points(mixed, 1).isEmpty());
         SeriesSource.Answer gaps = ask(new CsvSource(),
                 wide("\"Time\",\"c/x\"\n1700000000000,+Inf\n1700000015000,Infinity\n"), "c", "x");
         assertNull(gaps.error(), gaps.error());
@@ -1104,7 +1115,11 @@ class CsvSourceTest {
         assertNull(x.error(), x.error());
         assertEquals(1, x.instances().get(0).getPoints().size(), "+Inf left a gap beside the 5");
         assertEquals(5.0, x.instances().get(0).getPoints().get(0).getValue(), 0.0);
-        assertNull(ask(reader, s, "c", "y").error());
+        SeriesSource.Answer y = ask(reader, s, "c", "y");
+        assertNull(y.error(), y.error());
+        // Its one row is -Inf: one instance, no point (6.2) - not a dropped series, not a point at -Infinity.
+        assertEquals(1, y.instances().size());
+        assertTrue(points(y, 0).isEmpty(), points(y, 0).toString());
         assertEquals(1, ask(reader, s, "c", "z").instances().get(0).getPoints().size());
         // The wide layout reads its cells the same way.
         ServerSource w = wide("\"Time\",\"c/x\"\n1700000000000,+Inf\n1700000015000,3\n");
