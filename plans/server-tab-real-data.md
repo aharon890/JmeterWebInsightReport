@@ -366,6 +366,10 @@ defects in 5.1, 5.6, 5.7, 5.8 and 5.9, plus four doc lags. The full regression a
   number), Tutorial 13's Per instance paragraph (worst first, the labels that tell instances apart), and the chip's
   template comment (counts by state). The template is under `src/main`, hence the bump.
 
+- The full regression on 4.1.32 failed one test, the "5.6 review" spec from 4.1.28. It checked the assert's own row, but the
+  board writes a not-judged reason in the row under it (`tr.wir-reason-row`); its earlier pass is unexplained. Fixed to
+  read that row. Checked by hand on E26: with `judgedGap` the reason names the gap, without it there is none.
+
 **For the owner:**
 - **Q5, the y-axis.** Grafana bounds it by the data; WIR includes every band (R3-3) so the drag handles stay on the
   plot.

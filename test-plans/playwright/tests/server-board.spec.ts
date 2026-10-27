@@ -159,8 +159,11 @@ test.describe('Server tab — the component board', () => {
       W.WIR.serverKpis.init(d);
       return new Date(d.serverMetrics.window.start - d.serverMetrics.window.start % 1000).toISOString().replace('.000Z', 'Z');
     });
-    await expect(page.locator('tr.wir-kpi-row', { has: page.locator('.wir-kpi-name:text-is("many-instances")') }))
-      .toContainText('no point between ' + said);
+    // The reason is the row under the assert's (tr.wir-reason-row), not the assert's own row.
+    const reason = page.locator('tr.wir-kpi-row', { has: page.locator('.wir-kpi-name:text-is("many-instances")') })
+      .locator('xpath=following-sibling::tr[1]');
+    await expect(reason).toHaveClass(/wir-reason-row/);
+    await expect(reason).toContainText('no point between ' + said);
   });
 
   test('[R] Expand all rows opens every row, and a second click closes them', async ({ page }) => {
