@@ -305,6 +305,33 @@ test.describe('Server tab — the component board', () => {
     await expect(items.nth(1)).toHaveText('orders-db/up No data (no assert reads it)');
   });
 
+  test('[R] 5.7: a custom series is named by the assert that reads it, never its query, and every other reader is listed', async ({ page }) => {
+    // The petstore F5 fix (4.1.23): a custom query is named by its first reader's id. The pins above
+    // use catalogue series only, where the name is the metric either way, and E28's blank assert has
+    // id == query. E28's heap reads heap.used, E26's sparse-coverage reads sparse, and E26's db/lag is
+    // read by two asserts (Stage 6).
+    await loadClean(page, 'E28');
+    await switchTab(page, 'server');
+    const e28 = await page.locator('.wir-unusable-series li').allTextContents();
+    expect(e28.filter((t) => t.startsWith('app/heap FAILED')), 'heap named by its assert').toHaveLength(1);
+    expect(e28.filter((t) => t.startsWith('app/heap.used')), 'never by its query').toEqual([]);
+
+    await loadClean(page, 'E26');
+    await switchTab(page, 'server');
+    const items = page.locator('.wir-unusable-series li');
+    await expect(items.first()).toHaveText('db/sparse-coverage 3 of 49 steps have a point (6%)');
+    await page.evaluate(() => {
+      const W = window as any;
+      const d = JSON.parse(JSON.stringify(W.chartData));
+      const lag = d.serverMetrics.series.find((x: any) => x.component === 'db' && x.query === 'lag');
+      lag.status = 'INSUFFICIENT';
+      lag.coverage = 0.4898;
+      W.WIR.serverKpis.init(d);
+    });
+    await expect(items.filter({ hasText: /^db\/lag/ })).toHaveText(
+      ['db/lag-p50-warns 24 of 49 steps have a point (49%) · read by lag-sustained']);
+  });
+
   test('[R] 5.7 review: past 10,000 steps the Collection says the coverage, never a step count it cannot know', async ({ page }) => {
     // Coverage reaches the page rounded to four places, so N = coverage x M is exact only below 10,000
     // steps; past that it was off by one or more (the Stage 5 review). 20,001 one-second steps here.
