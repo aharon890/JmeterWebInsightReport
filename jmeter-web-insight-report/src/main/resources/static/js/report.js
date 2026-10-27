@@ -20047,6 +20047,7 @@ WIR.serverKpis = (function () {
         var row = byKey(boardRows(), k.key);
         var undecided = !!(row && row.verdict && row.verdict.status === 'NOT_JUDGED');
 
+        var instanceLabels = instanceNames(series.instances);
         var drawn = series.instances.map(function (inst, i) {
             /* A thinned instance's points are several steps apart by construction; told what the
                collector saw, the gap test measures against the thinning's spacing (gapUnit), not
@@ -20068,7 +20069,7 @@ WIR.serverKpis = (function () {
             islandIndices(pts).forEach(function (j) { lone[j] = true; });
             var hasLone = Object.keys(lone).length > 0;
             return {
-                name: instanceName(inst, i),
+                name: instanceLabels[i],
                 type: 'line',
                 showSymbol: hasLone,
                 symbol: hasLone
@@ -20283,25 +20284,41 @@ WIR.serverKpis = (function () {
         return warn <= fail ? { warn: 'right', fail: 'left' } : { warn: 'left', fail: 'right' };
     }
 
-    function instanceName(inst, i) {
-        var labels = inst.labels;
-        if (!labels) return 'instance ' + (i + 1);
-        /* A CSV's instance cell is the label {instance: <cell>}. Where the cell already reads as a
-           label list ("routeId=catalog", an exporter writing the series' own labels), it is shown
-           bare: "instance=routeId=catalog" doubled the prefix the replay of the same run did not
-           have, and took the Per instance chart's width (C1). Display only; the payload keeps it. */
-        var keys = Object.keys(labels);
-        if (keys.length === 1 && keys[0] === 'instance'
-                && /^[A-Za-z_][A-Za-z0-9_]*=/.test(String(labels.instance))) {
-            return String(labels.instance);
+    /**
+     * Every instance's name in one series, as Grafana's legend "Auto" mode names series: with two or
+     * more instances, only the labels whose values tell them apart (a label every instance carries
+     * with one value is left out), keys in alphabetical order; one instance keeps all its labels.
+     * Petstore F2's app-pods rows wrote the shared namespace and container first, and two catalog
+     * pods read "container=catalog, n..." twice once cut (5.2).
+     */
+    function instanceNames(instances) {
+        var shared = Object.create(null);
+        if (instances.length > 1) {
+            var first = instances[0].labels || {};
+            Object.keys(first).forEach(function (key) {
+                var same = instances.every(function (inst) {
+                    var labels = inst.labels || {};
+                    return Object.prototype.hasOwnProperty.call(labels, key) && labels[key] === first[key];
+                });
+                if (same) shared[key] = true;
+            });
         }
-        var parts = [];
-        for (var key in labels) {
-            if (Object.prototype.hasOwnProperty.call(labels, key)) {
-                parts.push(key + '=' + labels[key]);
+        return instances.map(function (inst, i) {
+            var labels = inst.labels;
+            if (!labels) return 'instance ' + (i + 1);
+            var keys = Object.keys(labels).filter(function (key) { return !shared[key]; }).sort();
+            if (!keys.length) keys = Object.keys(labels).sort();
+            /* A CSV's instance cell is the label {instance: <cell>}. Where the cell already reads as a
+               label list ("routeId=catalog", an exporter writing the series' own labels), it is shown
+               bare: "instance=routeId=catalog" doubled the prefix the replay of the same run did not
+               have, and took the Per instance chart's width (C1). Display only; the payload keeps it. */
+            if (keys.length === 1 && keys[0] === 'instance'
+                    && /^[A-Za-z_][A-Za-z0-9_]*=/.test(String(labels.instance))) {
+                return String(labels.instance);
             }
-        }
-        return parts.length ? parts.join(', ') : 'instance ' + (i + 1);
+            var parts = keys.map(function (key) { return key + '=' + labels[key]; });
+            return parts.length ? parts.join(', ') : 'instance ' + (i + 1);
+        });
     }
 
     /** Rebuild every open chart — called by refreshAllCharts after it disposes them all. */
@@ -20361,10 +20378,11 @@ WIR.serverKpis = (function () {
         var step = stepOf(state.metrics, k.source);
         var names = [];
         var values = [];
+        var instanceLabels = instanceNames(series.instances);
         series.instances.forEach(function (inst, i) {
             var points = inWindow(inst.points || [], window);
             var value = points.length ? reduceOne(k.reducer, points, step) : NaN;
-            names.push(instanceName(inst, i));
+            names.push(instanceLabels[i]);
             values.push(isNaN(value) ? null : value / frame.by);
         });
         disposeChartIn(el);

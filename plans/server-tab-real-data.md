@@ -214,6 +214,23 @@ rows are. The Per instance tooltip, one row, wraps its name instead, since the b
 F2: both tooltips on the body, about 518 px wide, at left 245, nothing clipped; `cmp.cjs` none. One spec's tooltip lookup
 (server-tab) and three HTML pins (server-numbers) follow the new markup.
 
+**5.2, expected (written before the F2 check, 4.1.18):**
+- F2's app-pods rows lose `namespace=petstorems` from every name. `container` differs between the deployments, so it
+  stays, and the two catalog pods may still read alike once cut.
+- gateway-route-p95 and kafka-lag (one label each) are unchanged, and so is catalog-db-slowest-statement (`query` and
+  `queryid` both differ).
+- `cmp.cjs`: none.
+
+**5.2, done (4.1.18).** Red first (`server-board.spec.ts` "[R] 5.2: …"). `instanceNames` names a series' instances together.
+- **Deviation:** F2's CSV app-pods names did **not** change. Petstore's exporter writes the whole label set into the one
+  `instance` cell (`container=catalog, namespace=petstorems, pod=…`), so on the CSV path there is no separate label to
+  leave out. Parsing the cell back was rejected in C1, because label values (SQL text) hold `, ` and `=`.
+- On F2's **replay**, the names went from `container=catalog, namespace=petstorems, pod=catalog-5d4bd757bd-2rf5p` to
+  `container=catalog, pod=catalog-5d4bd757bd-2rf5p`.
+- The CSV half belongs to the exporter: write only the labels that differ into the `instance` cell, as Grafana's Auto
+  legend does. That is a petstore item (the other chat).
+- `cmp.cjs`: none. Server specs: 206/206.
+
 **For the owner:**
 - **Q5, the y-axis.** Grafana bounds it by the data; WIR includes every band (R3-3) so the drag handles stay on the
   plot.

@@ -83,6 +83,44 @@ test.describe('Server tab — the component board', () => {
     expect(named.lines).toEqual(expect.arrayContaining(['routeId=catalog', 'instance=plain']));
   });
 
+  test('[R] 5.2: instances are named by the labels that tell them apart, as Grafana\'s Auto legend names series', async ({ page }) => {
+    // Petstore F2's app-pods rows named two catalog pods "container=catalog, n…" twice: every label
+    // was written, the shared namespace and container first, and the pod that tells them apart was cut.
+    // Grafana's legend Auto mode writes only the labels whose values differ; one series keeps them all.
+    await loadClean(page, 'E26');
+    await switchTab(page, 'server');
+    await page.evaluate(() => {
+      const W = window as any;
+      const d = JSON.parse(JSON.stringify(W.chartData));
+      const series = (id: string) => {
+        const k = d.serverKpis.find((x: any) => x.id === id);
+        return d.serverMetrics.series.find((x: any) => x.query === k.query);
+      };
+      const two = series('cpu-headroom');
+      two.instances[0].labels = { namespace: 'petstorems', pod: 'catalog-a', container: 'catalog' };
+      two.instances[1].labels = { namespace: 'petstorems', pod: 'catalog-b', container: 'catalog' };
+      series('lag-spike').instances[0].labels = { pod: 'p', container: 'c' };
+      W.WIR.serverKpis.init(d);
+      const S = W.WIR.serverKpis;
+      S.toggle(S._keyOf('cpu-headroom'));
+      S.toggle(S._keyOf('lag-spike'));
+    });
+    const names = (id: string) => page.evaluate((kid) => {
+      const W = (window as any).WIR.serverKpis;
+      const key = W._keyOf(kid);
+      const per = (window as any).echarts.getInstanceByDom(document.getElementById('serverInstances-' + key)!);
+      const time = (window as any).echarts.getInstanceByDom(document.getElementById('serverChart-' + key)!);
+      if (!per || !time) return null;
+      return { bars: per.getOption().yAxis[0].data, lines: (time.getOption().series as any[]).map((s) => s.name).filter((n) => n) };
+    }, id);
+    await expect.poll(() => names('cpu-headroom')).not.toBeNull();
+    const two = (await names('cpu-headroom'))!;
+    expect([...two.bars].sort()).toEqual(['pod=catalog-a', 'pod=catalog-b']);
+    expect(two.lines).toEqual(expect.arrayContaining(['pod=catalog-a', 'pod=catalog-b']));
+    await expect.poll(() => names('lag-spike')).not.toBeNull();
+    expect((await names('lag-spike'))!.bars).toEqual(['container=c, pod=p']);
+  });
+
   test('[R] Expand all rows opens every row, and a second click closes them', async ({ page }) => {
     await loadClean(page, 'E26');
     await switchTab(page, 'server');
