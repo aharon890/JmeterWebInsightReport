@@ -27,8 +27,10 @@ import java.util.Set;
  * whose source is usable and whose query resolves. A KPI refused for a reason unrelated to
  * collection — an unreadable band, say — still gets its series, because the chart is useful
  * even when the verdict is not, and because M7's "Validate query" is to answer from what was
- * collected (D22). A KPI parked with {@code enabled: false} is not collected: the author said
- * not to.
+ * collected (D22). A KPI parked with {@code enabled: false} is not collected for itself: the
+ * author said not to. A parked custom query is therefore not collected at all, while a parked
+ * catalogue metric still is, as every metric of each declared catalogue component is, for the
+ * picker (D1).
  *
  * <p>What is never written: a secret's value. The collector is the one place that knows which
  * values were secrets — it substituted the {@code ${secret.*}} placeholders and read the

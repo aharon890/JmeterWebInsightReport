@@ -592,6 +592,41 @@ class SourcesAndCollectorTest {
     }
 
     @Test
+    void aParkedCatalogueAssertsMetricIsStillCollectedOnceAndCostsTheSourceNothing() throws Exception {
+        // "enabled": false parks an assert, never judged. Its catalogue metric is collected all the
+        // same, as every metric of a declared component is (D1), for the picker; a parked custom
+        // query is not (the TEST collection above), which is what the docs say of DISABLED.
+        Catalogue acme = acme();
+        CatalogueMetric conns = acme.type("acme").metric("conns");
+        ServerMetricsConfig config = ServerMetricsConfig.builder()
+                .source(ServerSource.prometheus(ServerSource.COLLECTION_ID, "https://prom.corp/api/v1", 15_000, 0,
+                        Collections.<String, String>emptyMap()))
+                .gate(ServerGate.component("db", null, "acme", DB_MATCH))
+                .kpi(ServerKpi.builder(ServerSource.COLLECTION_ID, conns.identity(DB_MATCH)).id("db-conns")
+                        .metric(conns.name()).unit(conns.unit()).reducer(conns.reducer()).gate("db").enabled(false)
+                        .fail(Predicate.of(Predicate.Op.GT, 90)).build())
+                .build();
+        FakeHttp http = new FakeHttp(matrix("a", 1_700_000_000L, 1, 1_700_000_015L, 2, 1_700_000_030L, 3,
+                1_700_000_045L, 4, 1_700_000_060L, 5));
+        Map<ServerSource.Type, SeriesSource> readers = new EnumMap<>(ServerSource.Type.class);
+        readers.put(ServerSource.Type.PROMETHEUS, new PrometheusSource(http, new FakeTiming(WINDOW.getEnd() + 60_000),
+                Collections.<String, String>emptyMap(), PrometheusSource.Settle.none()));
+
+        ServerMetricsPayload p = new Collector(readers, Collections.<String, String>emptyMap(), acme)
+                .collect(config, null, new Collector.Run("abcdef0123456789", "Checkout", WINDOW), "now");
+
+        assertEquals(1, http.calls.size(), http.calls.toString());
+        assertTrue(http.calls.get(0).toString().contains("query=acme_conns%7Binstance%3D%22db-1%22%7D&"),
+                http.calls.get(0).toString());
+        assertEquals(1, p.getSeries().size(), p.getSeries().toString());
+        assertEquals("conns", p.getSeries().get(0).getMetric());
+        assertEquals("OK", p.getSources().get(0).getStatus(), p.getSources().get(0).getError());
+
+        List<KpiResult> judged = new ServerKpiEvaluator().evaluate(config, p, null);
+        assertEquals(NotJudged.DISABLED, judged.get(0).notJudged());
+    }
+
+    @Test
     void aRecordingCannotAnswerAKpiWithNoPrometheusQueryEvenUnderItsIdentitysDigest() throws IOException {
         // --recording replays what Prometheus answered a query. A neutral identity was never a
         // query, so a file named after its digest is not a recording of it.

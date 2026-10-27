@@ -114,8 +114,9 @@ jmeter -g run/results.jtl -o run/report -q run/run.properties
 ```properties
 webinsight.report.annotations=C:/runs/checkout/report-annotations.json
 webinsight.report.servermetrics=server.csv
-# only when the file needs it - each is the collector's flag of the same name
-# (the step and a Grafana wide layout are read from the file when left out):
+# only when the file needs it - each is a collector flag, spelt as the property
+# table in Tutorial 16 says (timezone is --time-zone, clockoffset --clock-offset);
+# the step and a Grafana wide layout are read from the file when left out:
 # webinsight.report.servermetrics.step=1s
 # webinsight.report.servermetrics.timezone=Europe/Berlin
 # webinsight.report.servermetrics.clockoffset=-30s
@@ -430,7 +431,9 @@ The card's header reads, left to right:
     is removed from the file.
   - **Delete component** removes the component and every server assert on it, as one draft with an
     **Undo**. The button says how many go with it (`Delete component and its 3 server asserts`).
-    Left behind, those asserts would name nothing the file declares, and the next run would exit 1.
+    Left behind, those asserts would name nothing the file declares: the next run reads them
+    `INVALID` under `(no component)` and says `SERVER NOT JUDGED`, and exits 1 only with
+    `webinsight.report.server.failonerror=true` (see [Gating a pipeline](#gating-a-pipeline)).
 
   Only a component the document declares has a ⋯ and a **+ metric**. The `(no component)` card has
   neither. A component the run judged and the document no longer declares (after **Delete
@@ -448,8 +451,10 @@ neither does a file that declares components and no server asserts yet: the next
 nothing there.
 
 Asserts that name no declared component get a `(no component)` card of their own. They still build,
-and still exit 1, as the `(no gate)` entry in the CI/CD JSON — `(no gate)` is that entry's id, and
-its label, the header chip and the console verdict line all say `(no component)`. A component with no server asserts yet
+as the `(no gate)` entry in the CI/CD JSON — `(no gate)` is that entry's id, and
+its label, the header chip and the console verdict line all say `(no component)`. Each of them is `INVALID`,
+a server assert the file got wrong: the run says `SERVER NOT JUDGED` and exits 0, or 1 with
+`webinsight.report.server.failonerror=true`, as the [gating table](#gating-a-pipeline) says. A component with no server asserts yet
 says `No server asserts on <id> yet — add one with + metric.`
 
 ### The board
@@ -509,7 +514,7 @@ reason, and the board shows the reason with the sentence that explains it undern
 
 | Board reads | Reason | Cause | Fails the run? |
 |---|---|---|---|
-| `DISABLED` | `DISABLED` | `"enabled": false`. Not collected either | No |
+| `DISABLED` | `DISABLED` | `"enabled": false`. A custom `query` is not collected either; a catalogue metric still is, as every metric of the component is, for the picker | No |
 | `UNMATCHED` | `NO_MATCH` | The source answered and the query matched no series (for a CSV: no row of the file names this component and metric — a file whose rows for it are all outside the run, or named with another case, is `SOURCE FAILED` instead, with the reason) | No, it is counted and reported |
 | `NO VALUE` | `NO_VALUE` | No point fell inside the judged window, the reducer had nothing to say, or a `divideBy` divisor measured zero | No |
 | `INVALID` | `INVALID_RULE` | The file is wrong, or the payload was collected for another version of it. In the file: an unknown component, component type or catalogue metric; `metric` and `query` both or neither; a `custom` component with no `query`; no band at all, or an unreadable one; an unknown reducer, or a tolerance it cannot take; a [refused key](16-Server-Reference.md#retired-and-refused-keys). Against the run: a `requiresLoad` or `divideBy` that names no client rule, or a rule that is not a throughput rule; a `divideBy` rule that matched more than one sampler; a `sustainedFor` longer than one step that is not a whole number of the collection's steps. Against the payload: no series was collected for this assert's query (the file changed after `wir-collect` ran). The sentence names which | No by default; **yes** under `webinsight.report.server.failonerror` |
@@ -544,6 +549,12 @@ The judged window can be shorter: a ramp-up is cut from the front. On a run with
 that makes coverage **optimistic**. A source that died two thirds of the way through can show 90%
 coverage of the collected window while the judged window holds much less. When an assert's numbers
 look thin, open its row and look at the gaps.
+
+It can be **pessimistic** too. A series that starts late (a rate, which needs two scrapes, or a
+histogram before its first request) misses steps in the ramp-up, and those count against the floor
+although the verdict never reads them. Such an assert can sit at the floor, or read `LOW COVERAGE`,
+with its judged window fully covered. Open the row: when its gaps all lie in the ramp-up, the
+judged numbers are whole.
 
 The floor (`collection.coverageFloor`, default `0.9`) is applied at collection time too. Change it
 and re-collect: a raised floor applies only from the next collection. The payload does not record
@@ -1049,6 +1060,9 @@ client rule that declares the load, and the server assert is judged only when th
   `LOAD_NOT_ACHIEVED`, worded "was not judged" and never "missed".
 - Naming no rule, or a rule that is not about throughput, is `INVALID_RULE`. That is checked with
   or without a payload, so a typo shows up on step 1's report and not only at step 3.
+- An empty `"requiresLoad": ""` reads as no key at all, not as a rule named nothing: the assert
+  takes the block's `requiresLoad` when the block sets one, and is judged without one when it does
+  not. So an empty string cannot opt one assert out of the block's default.
 
 ### `divideBy`: per unit of load
 
@@ -1057,7 +1071,8 @@ cores per request/s and heap bytes per request/s become comparable between runs 
 loads. The rule must be a throughput rule that matches exactly one target, because a rule over many
 samplers has many measured values and none of them is *the* divisor. Anything else is
 `INVALID_RULE`. A load rule that decided nothing leaves the server assert `LOAD_NOT_ACHIEVED`, and a
-measured zero leaves it `NO_VALUE`. The board, the Summary card and JUnit write the unit as
+measured zero leaves it `NO_VALUE`. An empty `"divideBy": ""` reads as no key at all: the reduced
+number is judged undivided, against a band written for a ratio. The board, the Summary card and JUnit write the unit as
 `cores ÷ load:throughput`, and JUnit's testcase body names the rule on a `divideBy:` line.
 
 ---
@@ -1099,7 +1114,10 @@ as far as the JSON can show it: `INVALID_RULE` on the client gate and on any ser
 `SOURCE_FAILED` or `LOW_COVERAGE` on any server component (every component builds, and so does the
 `(no gate)` entry, so asserts in no declared component are counted); and any ERROR finding, which
 covers an annotations file that could not be read and a refused payload a server assert needed. It
-is the line to use when server data must be there and complete. It cannot see an artifact that failed to be written. Only the exit
+is the line to use when server data must have been collected and read: complete as far as the
+collection and the file go. A query that matched nothing, an assert with no point in the judged
+window, a parked assert and a load that was not established still pass it, as DEFAULT's paragraph
+says. It cannot see an artifact that failed to be written. Only the exit
 code reports that:
 
 ```bash

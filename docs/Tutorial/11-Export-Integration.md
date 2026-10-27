@@ -857,7 +857,7 @@ They get one suite instead, `<testName> - serverMetrics`, that says why:
 - **One `<failure>` per server assert the file makes unrunnable whatever is collected** (an
   unreadable reducer, a `requiresLoad` naming no client rule, a component of unknown type): the
   testcase step 3 writes for it, message and body alike. A component of unknown type counts once in
-  the console's `CONFIG ERROR`, but each assert on it gets its own `<failure>`, as at step 3.
+  the console's `SERVER NOT JUDGED` line, but each assert on it gets its own `<failure>`, as at step 3.
 
 The example is the same JTL exported again with its payload missing, so it carries the same
 `runId`:

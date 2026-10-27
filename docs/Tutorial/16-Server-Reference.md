@@ -169,6 +169,28 @@ time,component,metric,instance,value
 
 Whichever flag is used, the payload names the collection's one source `metrics`.
 
+#### The reader options as properties
+
+`jmeter -g` and the GUI's **Rebuild report with server data** read a CSV themselves, and take the
+reader options as JMeter properties. Three of them are not spelled as the flag is:
+
+| Property | Flag |
+|---|---|
+| `webinsight.report.servermetrics.step` | `--step` |
+| `webinsight.report.servermetrics.clockoffset` | `--clock-offset` |
+| `webinsight.report.servermetrics.timezone` | `--time-zone` |
+| `webinsight.report.servermetrics.from` | `--from` |
+| `webinsight.report.servermetrics.layout` | `--layout` |
+| `webinsight.report.servermetrics.columns` | `--columns` |
+| `webinsight.report.servermetrics.csvcolumns` | `--csv-columns` |
+| `webinsight.report.servermetrics.component` | `--component` |
+| `webinsight.report.servermetrics.env` | `--env` |
+
+The reader's sentences name the flag on both paths: under `jmeter -g`, `move the rows with
+--clock-offset -3h` means `webinsight.report.servermetrics.clockoffset=-3h`. A property spelt as
+the flag (`webinsight.report.servermetrics.time-zone`) does nothing, and the console's WARNING says
+so, with `did you mean webinsight.report.servermetrics.timezone?`.
+
 #### `--from`: a file exported from another tool
 
 Every monitoring tool names a metric its own way and hands over its own kind of number: Telegraf
@@ -743,7 +765,7 @@ no declared environment is a configuration error.
 |---|---|---|
 | `id` | Names the JUnit testcase and every message | derived from the component and the metric or query |
 | `description` | Free text | — |
-| `enabled` | `false` parks it: `DISABLED`, and not collected | `true` |
+| `enabled` | `false` parks it: `DISABLED`, never judged. A custom `query` is not collected; a catalogue `metric` still is, as every metric of the component is, for the picker | `true` |
 | `component` | A declared component id | required |
 | `metric` | A catalogue metric of the component's type. Supplies the query, `unit`, `reduce` and `across` | one of `metric` or `query` |
 | `query` | PromQL (or a CSV `metric` text), with `${env.*}` / `${run.*}`. Required on a `custom` component. Read trimmed of surrounding spaces, tabs and newlines, as every other text field is; an invisible character at either end (a no-break or zero-width space, a bidi or tag character, a C1 control) is not trimmed and raises a warning, because nothing will match it. One that an `${env.*}` value brings is invisible to the file's checks, so `wir-collect` prints the warning for the query it resolved | one of `metric` or `query` |
@@ -752,8 +774,8 @@ no declared environment is a configuration error.
 | `reduce.over` | `max` and `min` only, one of: `{"sustainedFor": "30s"}`, the highest (lowest) level held for at least that long; `{"breachBudget": 0.02}`, the level exceeded at most that fraction of the time | — |
 | `across` | How instances fold into one number: `max` (the worst instance when higher is worse), `min` (the worst when lower is worse) or `avg` | the catalogue's for a `metric` (`min` on most metrics where lower is worse, such as `up` or a hit ratio, else `max`); otherwise `max` |
 | `warn`, `fail` | One operator each, `gt`, `gte`, `lt` or `lte`, and a literal number. `fail` is tested first | at least one |
-| `requiresLoad` | A client throughput rule id ([Advanced](13-Server-Tab.md#advanced)) | the block's `requiresLoad` |
-| `divideBy` | A client load rule id ([Advanced](13-Server-Tab.md#advanced)) | — |
+| `requiresLoad` | A client throughput rule id ([Advanced](13-Server-Tab.md#advanced)). An empty string reads as no key, so it takes the block's | the block's `requiresLoad` |
+| `divideBy` | A client load rule id ([Advanced](13-Server-Tab.md#advanced)). An empty string reads as no key: the number is judged undivided | — |
 
 `metric` and `query` together, or neither, is `INVALID_RULE`.
 

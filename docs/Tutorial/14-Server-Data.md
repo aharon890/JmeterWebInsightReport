@@ -39,6 +39,9 @@ time,component,metric,instance,value
 - `component`, `metric`: as the annotations file writes them (a catalogue metric's name, or a custom
   assert's query text).
 - `instance`: optional; `value`: a number with a `.` decimal point.
+- A row is matched by its `component` and `metric` names, never by the component's `match` or the
+  query: after editing a component's `match`, export the file again. The old file still reads, and
+  is judged as the data the old `match` selected.
 
 Grafana's "Series joined by time" download, InfluxDB 2's annotated CSV and exports in Datadog's,
 Telegraf's, OpenTelemetry's or CloudWatch's own metric names are read too: see
@@ -80,7 +83,7 @@ What the button reads:
   `Overridden by webinsight.report.servermetrics = D:/other/server.csv - this is the file Rebuild reads`.
 - **The reader options** (`webinsight.report.servermetrics.timezone`, `.clockoffset` and the rest)
   come from JMeter's properties, as for `jmeter -g`: see
-  [Where the metrics come from](16-Server-Reference.md#where-the-metrics-come-from).
+  [The reader options as properties](16-Server-Reference.md#the-reader-options-as-properties).
 
 The field also takes the `server-metrics.json` payload `wir-collect` writes. The button is refused
 while a test is running, because the JTL is still being written. A CSV saved before the run ended is
@@ -168,6 +171,16 @@ flock "$RUN/.rebuild.lock" sh -c "jmeter -g '$RUN/results.jtl' -o '$RUN/report.n
   `EXPORT_CMD` (called as `EXPORT_CMD <startMillis> <endMillis> server.csv`; it is split on
   whitespace, so a path containing spaces is not supported). It needs no `jq`, and the
   PowerShell one runs JMeter as `java -jar …/ApacheJMeter.jar`, so the exit code is JMeter's.
+- **A title computed at run time** (a `${__time()}` or `${__groovy(…)}` in the plan's report title)
+  exists only in the first JVM. `jmeter -g` runs in another one and names the run otherwise: another
+  `runId`, so a separately collected `server-metrics.json` is refused as another run's, and the Server
+  tab's drafts are not restored. Pass the first report's own title, and the ramp-up it judged by:
+
+  ```bash
+  TITLE=$(jq -r .testName "$RUN/web-insight-report.json")
+  RAMPUP=$(jq '(.window.rampUpEndMillis // .window.startMillis) - .window.startMillis' "$RUN/web-insight-report.json")
+  jmeter -g "$RUN/results.jtl" -o "$RUN/report.new" -q "$RUN/run.properties" \n    -Jwebinsight.report.title="$TITLE" -Jwebinsight.report.rampup="$RAMPUP"
+  ```
 - Gate with the DEFAULT or STRICT line of the [Server tab's gating section](13-Server-Tab.md#gating-a-pipeline).
 - Prometheus: run `wir-collect --prometheus-url …` in place of the export and name its
   `server-metrics.json` in `webinsight.report.servermetrics` (see [wir-collect](16-Server-Reference.md#wir-collect)).
