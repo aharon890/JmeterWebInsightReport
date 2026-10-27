@@ -3531,9 +3531,62 @@ body.dark-mode .wir-status-menu { box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5); }
     border: 1px solid var(--color-border);
 }
 
-.wir-color-anchor > .color-picker-popup {
+.wir-server-line-color .wir-color-anchor > .color-picker-popup {
     left: auto;
     right: 0;
+}
+
+/* Value over time's legend (legendHtml): one entry per instance, a colour dot and a name. Not a
+   scroll box: the picker opens inside it, and a scroll box would clip it. */
+.wir-server-legend {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px 16px;
+    padding: 2px 4px 0;
+}
+
+/* A legend dot's picker opens upward, over the chart: the card scrolls sideways (SF34), so it clips
+   anything below its edge. keepPickerInside shifts it sideways to stay in the card. */
+.wir-server-legend .wir-color-anchor > .color-picker-popup {
+    top: auto;
+    bottom: calc(100% + 6px);
+}
+
+.wir-server-legend:empty {
+    display: none;
+}
+
+.wir-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 280px;
+    min-width: 0;
+}
+
+.wir-legend-name {
+    border: 0;
+    background: none;
+    padding: 2px 0;
+    font: inherit;
+    font-size: 0.8rem;
+    color: var(--color-text);
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+/* A hidden line, as the canvas legend greyed its entry. */
+.wir-legend-off .wir-legend-name {
+    color: var(--color-text-secondary);
+    text-decoration: line-through;
+}
+
+.wir-legend-off .sampler-color-dot {
+    opacity: 0.35;
 }
 
 .wir-filter-label {

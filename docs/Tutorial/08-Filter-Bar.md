@@ -163,5 +163,6 @@ Presets are stored in localStorage under the key `wir_filterPresets`.
   - Native `<input type="color">` (**Custom...**) for any other colour
 - **Select a color** → dot updates, chart line color updates
 - **Persistence:** Custom colors saved to localStorage; choosing a palette clears them
-- The Server tab opens the same picker from its **Line colour** dot, for the line of every server
-  chart (see [Server tab](13-Server-Tab.md#the-header-and-filters)); choosing a palette clears that one too
+- The Server tab opens the same picker from its **Line colour** dot, for the first line of every
+  server chart (see [Server tab](13-Server-Tab.md#the-header-and-filters)), and from the dot on each
+  entry of a chart's legend, for that instance; choosing a palette clears those too

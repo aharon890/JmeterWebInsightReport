@@ -54,6 +54,21 @@ async function chartOf(page: Page, id: string) {
   }, id);
 }
 
+/** Each Per instance bar's drawn colour, by its instance name. */
+async function barColors(page: Page, id: string): Promise<Record<string, string> | null> {
+  return page.evaluate((kpiId) => {
+    const W = (window as any).WIR.serverKpis;
+    const el = document.getElementById('serverInstances-' + W._keyOf(kpiId));
+    const inst = el && (window as any).echarts.getInstanceByDom(el);
+    if (!inst) return null;
+    const names: string[] = inst.getOption().yAxis[0].data;
+    const data = inst.getModel().getSeriesByIndex(0).getData();
+    const out: Record<string, string> = {};
+    names.forEach((n, i) => { out[n] = (data.getItemVisual(i, 'style') || {}).fill; });
+    return out;
+  }, id);
+}
+
 async function openChart(page: Page, id: string) {
   await page.click(`.wir-kpi-name:text-is("${id}")`);
   await expect.poll(async () => (await chartOf(page, id))?.canvas ?? false).toBe(true);
@@ -1168,12 +1183,7 @@ test.describe('Server tab — charts that agree with the board (M7c E)', () => {
     await openChart(page, 'lag-spike');
     await openChart(page, 'cpu-headroom');
     const palette: string[] = await page.evaluate(() => (window as any).chartColors());
-    const bar = (id: string) => page.evaluate((kpiId) => {
-      const W = (window as any).WIR.serverKpis;
-      const el = document.getElementById('serverInstances-' + W._keyOf(kpiId));
-      const inst = el && (window as any).echarts.getInstanceByDom(el);
-      return inst ? inst.getOption().series[0].itemStyle.color : null;
-    }, id);
+    const bar = (id: string) => barColors(page, id).then((m) => m && Object.values(m)[0]);
     const dot = page.locator('#serverLineColorDot');
     await expect(dot).toHaveCSS('background-color', await page.evaluate((c) => {
       const s = document.createElement('span');
@@ -1219,6 +1229,140 @@ test.describe('Server tab — charts that agree with the board (M7c E)', () => {
     const okabe: string[] = await page.evaluate(() => (window as any).chartColors());
     await expect.poll(async () => (await chartOf(page, 'lag-spike'))!.series[0].color).toBe(okabe[0]);
     await expect(page.locator('#serverLineColorDot')).not.toHaveCSS('background-color', 'rgb(255, 0, 0)');
+  });
+
+  test('[R] each instance\'s legend dot opens the colour picker, and its name shows or hides the line', async ({ page }) => {
+    // The owner, 2026-10-27 (option A): the one Line colour changed only the first line. Every
+    // legend entry carries a dot, as a sampler's entry in the filter bar does, and its bar follows.
+    await loadClean(page, 'E26');
+    await switchTab(page, 'server');
+    await openChart(page, 'cpu-headroom');
+    const palette: string[] = await page.evaluate(() => (window as any).chartColors());
+    const key = await page.evaluate(() => (window as any).WIR.serverKpis._keyOf('cpu-headroom'));
+    const legend = page.locator('#serverLegend-' + key);
+    await expect(legend.locator('.wir-legend-name')).toHaveText(['instance=a', 'instance=b']);
+    const card = await page.locator('#serverChart-' + key).evaluate((el) => {
+      const r = el.closest('.table-wrapper')!.getBoundingClientRect();
+      return { left: r.left, right: r.right };
+    });
+
+    // instance=b, its own colour: the line and the bar, and nothing of instance=a's.
+    await legend.locator('.sampler-color-dot').nth(1).click();
+    const popup = legend.locator('.color-picker-popup.open');
+    await expect(popup).toBeVisible();
+    const box = (await popup.boundingBox())!;
+    expect(box.x, 'the picker stays inside the card, which clips').toBeGreaterThanOrEqual(card.left);
+    expect(box.x + box.width).toBeLessThanOrEqual(card.right);
+    await popup.locator('.color-swatch[data-color="#8800CC"]').click();
+    await expect.poll(async () => (await chartOf(page, 'cpu-headroom'))!.series[1].color).toBe('#8800CC');
+    expect((await chartOf(page, 'cpu-headroom'))!.series[0].color).toBe(palette[0]);
+    expect(await barColors(page, 'cpu-headroom')).toEqual({ 'instance=b': '#8800CC', 'instance=a': palette[0] });
+    await expect(legend.locator('.sampler-color-dot').nth(1)).toHaveCSS('background-color', 'rgb(136, 0, 204)');
+
+    // The tab's Line colour still sets every first line; an instance's own colour stays its own.
+    await page.click('#serverLineColorDot');
+    await page.locator('.wir-server-filters .color-picker-popup.open .color-swatch[data-color="#FF0000"]').click();
+    await expect.poll(async () => (await chartOf(page, 'cpu-headroom'))!.series[0].color).toBe('#FF0000');
+    expect((await chartOf(page, 'cpu-headroom'))!.series[1].color).toBe('#8800CC');
+
+    // The name hides the line and says so; a second click shows it again.
+    const name = legend.locator('.wir-legend-name').nth(0);
+    await name.click();
+    await expect(name).toHaveAttribute('aria-pressed', 'false');
+    expect(await page.evaluate((k) => {
+      const inst = (window as any).echarts.getInstanceByDom(document.getElementById('serverChart-' + k));
+      return inst.getOption().legend[0].selected['instance=a'];
+    }, key)).toBe(false);
+    await name.click();
+    await expect(name).toHaveAttribute('aria-pressed', 'true');
+
+    // Kept across a reload, as a sampler's colour is.
+    await loadDirty(page, 'E26');
+    await switchTab(page, 'server');
+    await openChart(page, 'cpu-headroom');
+    const again = (await chartOf(page, 'cpu-headroom'))!;
+    expect([again.series[0].color, again.series[1].color]).toEqual(['#FF0000', '#8800CC']);
+  });
+
+  test('[R] a hidden line stays hidden, and every open legend says so, through a colour pick', async ({ page }) => {
+    // The line-colour review, 2026-10-27. The server charts are linked, so hiding instance=a on one
+    // hides the line of that name on every open chart: the other legend went on saying it was
+    // shown. And a colour pick rebuilds every chart, which brought every hidden line back.
+    await loadClean(page, 'E26');
+    await switchTab(page, 'server');
+    await openChart(page, 'cpu-headroom');
+    await openChart(page, 'cpu-per-rps');
+    const keys = await page.evaluate(() => {
+      const W = (window as any).WIR.serverKpis;
+      return [W._keyOf('cpu-headroom'), W._keyOf('cpu-per-rps')];
+    });
+    const entry = (key: string, i: number) => page.locator('#serverLegend-' + key + ' .wir-legend-name').nth(i);
+    const hiddenOn = (key: string) => page.evaluate((k) => {
+      const inst = (window as any).echarts.getInstanceByDom(document.getElementById('serverChart-' + k));
+      return inst.getOption().legend[0].selected['instance=a'] === false;
+    }, key);
+
+    await entry(keys[0], 0).click();
+    for (const key of keys) {
+      await expect(entry(key, 0), 'every open legend says instance=a is hidden').toHaveAttribute('aria-pressed', 'false');
+      expect(await hiddenOn(key)).toBe(true);
+    }
+
+    await page.locator('#serverLegend-' + keys[1] + ' .sampler-color-dot').nth(1).click();
+    await page.locator('#serverLegend-' + keys[1] + ' .color-picker-popup.open .color-swatch[data-color="#8800CC"]').click();
+    await expect.poll(async () => (await chartOf(page, 'cpu-per-rps'))!.series[1].color).toBe('#8800CC');
+    for (const key of keys) {
+      await expect(entry(key, 0), 'still hidden after the pick').toHaveAttribute('aria-pressed', 'false');
+      expect(await hiddenOn(key)).toBe(true);
+    }
+  });
+
+  test('[R] dark mode: a legend dot\'s picker marks the palette colour, and picking it changes nothing', async ({ page }) => {
+    // SF37 for the samplers' picker: a dark chart draws a palette's dark variant, the swatches show
+    // the palette itself. The instance picker took the dark variant as the line's own colour, so no
+    // swatch was marked, and picking #0000FF stored it: drawn at 1.7:1 on the dark card.
+    await loadClean(page, 'E26');
+    await page.evaluate(() => localStorage.setItem('wir_palette', 'high-contrast'));
+    await loadDirty(page, 'E26');
+    await page.evaluate(() => (window as any).toggleDarkMode());
+    await switchTab(page, 'server');
+    await openChart(page, 'cpu-headroom');
+    const key = await page.evaluate(() => (window as any).WIR.serverKpis._keyOf('cpu-headroom'));
+    const drawn = (await chartOf(page, 'cpu-headroom'))!.series[0].color;
+    await page.locator('#serverLegend-' + key + ' .sampler-color-dot').nth(0).click();
+    const popup = page.locator('#serverLegend-' + key + ' .color-picker-popup.open');
+    await expect(popup.locator('.color-swatch.selected')).toHaveAttribute('data-color', '#0000FF');
+    await popup.locator('.color-swatch[data-color="#0000FF"]').click();
+    await expect(popup).toBeHidden();
+    expect((await chartOf(page, 'cpu-headroom'))!.series[0].color, 'still the dark variant').toBe(drawn);
+    expect(await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('wir_customColors') || '{}'))))
+      .toEqual([]);
+  });
+
+  test('[R] the Line colour picker reads the palette at the click, not when it was first opened', async ({ page }) => {
+    // Its popup is kept in the header, which a palette change does not redraw; its swatches compared
+    // a pick with the palette of its first opening, so after Default → High contrast the old first
+    // colour read as "no change" and the pick was dropped.
+    await loadClean(page, 'E26');
+    await switchTab(page, 'server');
+    await openChart(page, 'lag-spike');
+    await page.click('#serverLineColorDot');
+    await page.mouse.click(5, 5);
+    await switchTab(page, 'timeline');
+    await page.click('#paletteToggle [data-palette="high-contrast"]');
+    await switchTab(page, 'server');
+    await page.click('#serverLineColorDot');
+    await page.locator('.wir-server-filters .color-picker-popup.open .color-swatch[data-color="#5470c6"]').click();
+    await expect.poll(async () => (await chartOf(page, 'lag-spike'))!.series[0].color).toBe('#5470c6');
+  });
+
+  test('[U] a chart of one instance has a legend entry with its dot too', async ({ page }) => {
+    await loadClean(page, 'E26');
+    await switchTab(page, 'server');
+    await openChart(page, 'lag-spike');
+    const key = await page.evaluate(() => (window as any).WIR.serverKpis._keyOf('lag-spike'));
+    await expect(page.locator('#serverLegend-' + key + ' .wir-legend-item')).toHaveCount(1);
+    await expect(page.locator('#serverLegend-' + key + ' .sampler-color-dot')).toBeVisible();
   });
 
   test('[U] the chart note names the reducer of the declared assert (L3-13)', async ({ page }) => {
