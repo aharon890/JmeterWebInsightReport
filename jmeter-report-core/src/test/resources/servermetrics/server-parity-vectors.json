@@ -864,6 +864,111 @@
    },
    {
     "source": "metrics",
+    "query": "one-miss",
+    "resolvedQuery": "one-miss",
+    "status": "INSUFFICIENT",
+    "coverage": 0.85,
+    "instances": [
+     {
+      "labels": {
+       "pod": "a"
+      },
+      "points": [
+       [0, 1],
+       [15000, 1],
+       [30000, 1],
+       [45000, 1],
+       [60000, 1],
+       [75000, 1],
+       [90000, 1],
+       [105000, 1],
+       [120000, 1],
+       [135000, 1],
+       [165000, 1],
+       [180000, 1],
+       [195000, 1],
+       [210000, 1],
+       [225000, 1],
+       [240000, 1],
+       [255000, 1],
+       [270000, 1],
+       [285000, 1],
+       [300000, 1],
+       [315000, 1],
+       [330000, 1],
+       [345000, 1],
+       [360000, 1],
+       [375000, 1],
+       [390000, 1],
+       [405000, 1],
+       [420000, 1],
+       [435000, 1],
+       [450000, 1],
+       [465000, 1],
+       [480000, 1],
+       [495000, 1],
+       [510000, 1],
+       [525000, 1],
+       [540000, 1],
+       [555000, 1],
+       [570000, 1],
+       [585000, 1],
+       [600000, 1]
+      ]
+     }
+    ]
+   },
+   {
+    "source": "metrics",
+    "query": "late",
+    "resolvedQuery": "late",
+    "status": "INSUFFICIENT",
+    "coverage": 0.8,
+    "instances": [
+     {
+      "labels": {
+       "pod": "a"
+      },
+      "points": [
+       [120000, 1],
+       [135000, 1],
+       [150000, 1],
+       [165000, 1],
+       [180000, 1],
+       [195000, 1],
+       [210000, 1],
+       [225000, 1],
+       [240000, 1],
+       [255000, 1],
+       [270000, 1],
+       [285000, 1],
+       [300000, 1],
+       [315000, 1],
+       [330000, 1],
+       [345000, 1],
+       [360000, 1],
+       [375000, 1],
+       [390000, 1],
+       [405000, 1],
+       [420000, 1],
+       [435000, 1],
+       [450000, 1],
+       [465000, 1],
+       [480000, 1],
+       [495000, 1],
+       [510000, 1],
+       [525000, 1],
+       [540000, 1],
+       [555000, 1],
+       [570000, 1],
+       [585000, 1],
+       [600000, 1]
+      ]
+     }
+    ]
+   },
+   {
+    "source": "metrics",
     "query": "spaced-4s",
     "resolvedQuery": "spaced-4s",
     "status": "OK",
@@ -2448,6 +2553,7 @@
     "status": "NOT_JUDGED",
     "notJudged": "LOW_COVERAGE",
     "reason": "coverage 40% of the collected window is below the floor 90%; no point between 1970-01-01T00:01:15Z and 1970-01-01T00:10:00Z (525 s)",
+    "detail": "coverage 40% of the collected window is below the floor 90%; no point between 1970-01-01T00:01:15Z and 1970-01-01T00:10:00Z (525 s)",
     "coverage": 0.4,
     "instances": 1
    }
@@ -3156,7 +3262,46 @@
    "expect": {
     "status": "NOT_JUDGED",
     "notJudged": "LOW_COVERAGE",
-    "reason": "coverage 40% of the collected window was below the floor in force when this series was collected"
+    "reason": "coverage 40% of the collected window was below the floor in force when this series was collected",
+    "detail": "coverage 40% of the collected window was below the floor in force when this series was collected; the file now asks for 1% - re-run wir-collect to judge it against the current floor; no point between 1970-01-01T00:01:15Z and 1970-01-01T00:10:00Z (525 s)"
+   }
+  },
+  {
+   "name": "a single missed step names no gap: Grafana waits two evaluation intervals before NoData (Stage 6)",
+   "kpi": {
+    "id": "one-miss",
+    "component": "c",
+    "query": "one-miss",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 1
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "LOW_COVERAGE",
+    "detail": "coverage 85% of the collected window is below the floor 90%"
+   }
+  },
+  {
+   "name": "a gap at the window's start is named from the window's start (Stage 6)",
+   "kpi": {
+    "id": "late",
+    "component": "c",
+    "query": "late",
+    "reduce": {
+     "kind": "max"
+    },
+    "fail": {
+     "gt": 1
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "LOW_COVERAGE",
+    "detail": "coverage 80% of the collected window is below the floor 90%; no point between 1970-01-01T00:00:00Z and 1970-01-01T00:02:00Z (120 s)"
    }
   },
   {
