@@ -239,6 +239,12 @@ leads with the catalog pod at 91.27 %. `cmp.cjs` none.
 E26). Observed on F2, as registered: slowest-statement leads with `select setting from pg_settings…` = 0.687937 and no bar
 rises (7 did before); app-pods leads with 91.27 %; `cmp.cjs` none. C1's name pin compares the names as a set.
 
+**5.4, expected (written before the build, 4.1.20):** none anywhere. Only a capped series under `across: avg` can draw another
+set, and no S4 variant or F-run has one (C08's and F2's capped series fold `max`).
+
+**5.4, done (4.1.20).** Red first (`ServerKpiEvaluatorTest`'s ranking case, avg now `[5, 1, 3, 0, 4, 2]`). Observed, as
+registered: C08 vs 4.1.11 and F2 vs 4.1.19, `cmp.cjs` none.
+
 **For the owner:**
 - **Q5, the y-axis.** Grafana bounds it by the data; WIR includes every band (R3-3) so the drag handles stay on the
   plot.

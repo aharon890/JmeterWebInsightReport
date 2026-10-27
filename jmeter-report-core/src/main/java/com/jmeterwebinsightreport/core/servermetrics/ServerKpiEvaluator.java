@@ -607,8 +607,10 @@ public final class ServerKpiEvaluator {
 
     /**
      * Every instance of the KPI's series that reduces to a number, worst first: the highest reduced
-     * value first under {@code across: max}, the lowest under {@code min}, the furthest from the
-     * instances' mean under {@code avg}; ties in index order. Computed by the reduction, window and
+     * value first under {@code across: max} and {@code avg}, the lowest under {@code min}; ties in
+     * index order. Datadog's top() and bottom() rank by the reduced value; {@code avg} takes their
+     * default direction (5.4: it was the distance from the instances' mean, which no tool offers,
+     * and under {@code avg} the payload writer keeps both deciding instances first anyway). Computed by the reduction, window and
      * step {@link #decidingInstances} uses, so under {@code max} and {@code min} its first is the
      * deciding instance.
      *
@@ -664,12 +666,9 @@ public final class ServerKpiEvaluator {
             }
         }
         Across direction = across == null ? Across.defaultValue() : across;
-        double mean = values.values().stream().mapToDouble(Double::doubleValue).average().orElse(0);
         // A stable sort over ascending indices: ties stay in index order.
         if (direction == Across.MIN) {
             ranked.sort((a, b) -> Double.compare(values.get(a), values.get(b)));
-        } else if (direction == Across.AVG) {
-            ranked.sort((a, b) -> Double.compare(Math.abs(values.get(b) - mean), Math.abs(values.get(a) - mean)));
         } else {
             ranked.sort((a, b) -> Double.compare(values.get(b), values.get(a)));
         }
