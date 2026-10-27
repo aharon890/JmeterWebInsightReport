@@ -301,6 +301,24 @@ class CsvSourceTest {
     }
 
     @Test
+    void theInterimTemplatesQuotedRowsFilledInReadBackAsTheirQueries() throws IOException {
+        // The rows csvTemplateText writes for a query with a comma and a quote, and for one starting
+        // with '=' (server-finish.spec.ts pins the page's side), with a value typed in: each reads back
+        // as the series of that exact query text (Stage 6, the audit; petstore X08's PromQL has commas).
+        String comma = "sum by (instance, job) (rate(x{l=\"v\"}[1m]))";
+        ServerSource s = csv("time,component,metric,instance,value\n"
+                + "1700000000000,orders-db,\"sum by (instance, job) (rate(x{l=\"\"v\"\"}[1m]))\",,42\n"
+                + "1700000000000,orders-db,=cpu,,7\n");
+        SeriesSource.Answer quoted = ask(new CsvSource(), s, "orders-db", comma);
+        assertNull(quoted.error(), quoted.error());
+        assertEquals(1, points(quoted, 0).size());
+        assertEquals(42.0, points(quoted, 0).get(0).getValue(), 0.0);
+        SeriesSource.Answer formula = ask(new CsvSource(), s, "orders-db", "=cpu");
+        assertNull(formula.error(), formula.error());
+        assertEquals(7.0, points(formula, 0).get(0).getValue(), 0.0);
+    }
+
+    @Test
     void columnsAreFoundByNameAndTheRestIsTolerated() throws IOException {
         ServerSource s = csv("﻿Value,Metric,note,Component,TIME\r\n"
                 + "\"1,5\",x,\"quoted, with a comma\",c,1700000000000\r\n"
