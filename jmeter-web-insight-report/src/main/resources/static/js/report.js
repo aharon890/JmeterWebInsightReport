@@ -19608,14 +19608,24 @@ WIR.serverKpis = (function () {
     function collectionHtml() {
         var sources = (state.metrics && state.metrics.sources) || [];
         if (!sources.length) return '';
-        /* A series that came back with nothing usable opens the panel too: a source reads OK while one
-           of its series was EMPTY (a name or a time window that did not match), and that series is
-           the one a reader needs to see (research H2). Server data never changes the exit code, so
-           the page is where it has to be said. */
+        /* A series an enabled assert reads that came back with nothing usable opens the panel too: a
+           source reads OK while one of its series was EMPTY (a name or a time window that did not
+           match), and that series is the one a reader needs to see (research H2). Server data never
+           changes the exit code, so the page is where it has to be said. A catalogue extra no assert
+           reads (D1: collected for the picker) is listed, marked so, and opens nothing: on petstore
+           F2 an INSUFFICIENT heap.live.growth nobody asserted opened the panel on every load (C6). */
+        var read = [];
+        state.declaredKpis.forEach(function (k) {
+            if (k.enabled === false) return;
+            var s = seriesForDeclared(k);
+            if (s && read.indexOf(s) < 0) read.push(s);
+        });
         var unusable = ((state.metrics && state.metrics.series) || []).filter(function (s) {
             return s.status === 'EMPTY' || s.status === 'INSUFFICIENT' || s.status === 'FAILED';
         });
-        var failing = unusable.length > 0 || sources.some(function (s) { return s.status !== 'OK'; });
+        var asserted = unusable.filter(function (s) { return read.indexOf(s) >= 0; });
+        var extras = unusable.filter(function (s) { return read.indexOf(s) < 0; });
+        var failing = asserted.length > 0 || sources.some(function (s) { return s.status !== 'OK'; });
         var summary = sources.map(function (s) {
             return s.id + ' ' + s.status;
         }).join(' · ');
@@ -19661,10 +19671,12 @@ WIR.serverKpis = (function () {
         });
         html += '</tbody></table></div>';
         if (unusable.length) {
-            html += '<ul class="wir-unusable-series">' + unusable.map(function (s) {
+            /* The ones an assert reads first: they are why the panel is open. */
+            html += '<ul class="wir-unusable-series">' + asserted.concat(extras).map(function (s) {
                 var name = (s.component ? s.component + '/' : '') + (s.metric != null ? s.metric : s.resolvedQuery);
                 return '<li><strong>' + esc(name) + '</strong> ' + esc(s.status)
-                    + (s.error ? ' ' + EM_DASH + ' ' + esc(s.error) : '') + '</li>';
+                    + (s.error ? ' ' + EM_DASH + ' ' + esc(s.error) : '')
+                    + (read.indexOf(s) < 0 ? ' <span class="wir-dim">(no assert reads it)</span>' : '') + '</li>';
             }).join('') + '</ul>';
         }
         /* The collection's id, stamped into serverComponents[] — the time is on the line above. */

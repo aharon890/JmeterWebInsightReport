@@ -1021,7 +1021,8 @@ WARNING (`duplicateNotes`). `wir-collect` prints the run window, the long file's
 `--csv` with exit 1, and turns an OutOfMemoryError into a sentence. A CSV source's `resolvedUrl` is its
 file name only, and its NO_MATCH reason reads "no row of the CSV names component X, metric Y" on both
 sides (`ServerKpiEvaluator.collectionDetail`, report.js `collectionDetail`). The Collection panel opens
-on any EMPTY/INSUFFICIENT/FAILED series and lists them. The tests that used to pin the silence
+on any EMPTY/INSUFFICIENT/FAILED series an enabled assert reads and lists them; an unusable catalogue extra
+no assert reads (D1) is listed after them, marked "(no assert reads it)", and opens nothing (C6). The tests that used to pin the silence
 (`CsvSourceTest` out-of-window, the DST case) now pin the sentence.
 
 `--from TOOL` (telegraf, datadog, otel, cloudwatch; `--csv` only) reads a file exported from that

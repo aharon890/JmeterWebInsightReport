@@ -112,6 +112,22 @@ registered: C08 vs 4.1.0, asserts 35/35 equal, 1 of 104 series differs (`memory.
 tails-realtime x2, traffic-generator, tails-web, web drawn in place of the six lowest, redis 6.0 among them);
 `restarts` and `restarts.oom` unchanged. M01 vs 4.1.10: none.
 
+**4.2, C6, expected (written before the build, 4.1.12):** F2 (CSV and replay; inputs read from the Stage 0 harness's
+frozen `runs/F2`): its source is OK and its only unusable series is `catalog-jvm/heap.live.growth` INSUFFICIENT, which
+no assert reads. So on 4.1.0 the Collection panel opens by itself; on 4.1.12 it stays closed and lists heap.live.growth
+marked `(no assert reads it)`. Chart data unchanged (report.js only), so `cmp.cjs` shows none anywhere.
+
+**4.2, done (4.1.12).** Red first (`server-board.spec.ts` "[R] C6: …" on E27: an unasserted INSUFFICIENT `up` opened
+the panel). The first cut read `state.kpis`, the baked results, which carry no `source`, so no series counted as
+asserted and P3's spec went red; it reads `state.declaredKpis`, as the board does. Observed, as registered: F2 rebuilt
+from the frozen inputs, headless: 4.1.0 `open: true`, items `catalog-jvm/heap.live.growth INSUFFICIENT`; 4.1.12
+`open: false`, the same item ending `(no assert reads it)`. server-board.spec.ts 24/24 on regenerated E26/E27.
+Tutorial 13's "open by default only when the source did not answer in full" predated P3 and now says both.
+
+**Outside 4.1's registered list:** that list came from a scan of S4 only. F2's catalog-db slowest-statement custom query
+(27 instances, capped) also draws a different twenty under C5 (`cmp.cjs` vs 4.1.0: 1 of 117 series, 0 asserts). The
+same rule, on a run the scan did not cover.
+
 ## Open
 
 - **End of Stage 2 (4.1.7):** full regression green on 2026-10-27, R01–R06 with fixtures regenerated, 1077 Playwright
