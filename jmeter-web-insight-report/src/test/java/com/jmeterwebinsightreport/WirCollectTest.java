@@ -693,6 +693,83 @@ class WirCollectTest {
         assertFalse(console.contains("pass --step 30s"), console);
     }
 
+    @Test
+    void aTemplateQuerysBlankRowsAreCountedUnderTheTextTheFileWritesAndNotAdvisedAsACoarserStep() throws Exception {
+        // N5 reads an interpolating query's rows under the text the file writes, ${env.ns} and all; the
+        // blank-row count asked the resolved text, found no rows, and a half-blank 5 s export was told
+        // "pass --step 10s" - the advice that reads half-missing data as covered (the 4.1.33 review, finding 3).
+        ReportData run = new JtlParser().parse(PLAIN_JTL, WirCollect.DEFAULT_TEST_NAME);
+        long start = run.getMetadata().getStartTime().toEpochMilli();
+        long end = run.getMetadata().getEndTime().toEpochMilli();
+        StringBuilder csv = new StringBuilder("time,component,metric,instance,value\n");
+        int i = 0;
+        for (long t = start - 5_000; t <= end + 5_000; t += 5_000, i++) {
+            csv.append(t).append(",app,\"up{ns=\"\"${env.ns}\"\"}\",,").append(i % 2 == 0 ? "1" : "").append('\n');
+        }
+        Path file = dir.resolve("template.csv");
+        Files.write(file, csv.toString().getBytes(StandardCharsets.UTF_8));
+        Path annotations = dir.resolve("template.json");
+        Files.write(annotations, ("{\"serverMetrics\":{\"components\":{\"app\":{\"type\":\"custom\"}},"
+                + "\"environments\":{\"e\":{\"vars\":{\"ns\":\"shop\"}}},\"defaultEnv\":\"e\",\"asserts\":["
+                + "{\"id\":\"up\",\"component\":\"app\",\"query\":\"up{ns=\\\"${env.ns}\\\"}\",\"reduce\":{\"kind\":\"min\"},"
+                + "\"fail\":{\"lt\":1}}]}}").getBytes(StandardCharsets.UTF_8));
+        File out = dir.resolve("template-out.json").toFile();
+        Streams s = new Streams();
+        assertEquals(0, WirCollect.run(new String[] {"--jtl", PLAIN_JTL.getPath(), "--annotations", annotations.toString(),
+                "--out", out.getPath(), "--csv", file.toString(), "--step", "5s", "--no-wait"},
+                s.outStream(), s.errStream(), Collections.<String, String>emptyMap()), s.out() + s.err());
+        String console = s.out() + s.err();
+        assertTrue(console.contains("app/up{ns=\"shop\"} has ") && console.contains("with no value (an empty cell or NaN)"
+                + " - gaps in the export, not a coarser interval"), console);
+        assertFalse(console.contains("pass --step 10s"), console);
+    }
+
+    @Test
+    void aLeftoverSeriesOfAnotherPeriodMovesNoShiftHint() throws Exception {
+        // The shift is measured over one export, the series outside the run whose spans join: a leftover 20 h
+        // after the run or 20 h before it made the hint for a series written 3 h late "690m" or took it away
+        // (the 4.1.33 review, finding 4). Asserted by a custom query, and on a catalogue component whose
+        // leftover is one of its own catalogue metrics, which the collection reads too (D1).
+        ReportData run = new JtlParser().parse(PLAIN_JTL, WirCollect.DEFAULT_TEST_NAME);
+        long start = run.getMetadata().getStartTime().toEpochMilli() / 1000 * 1000;
+        long end = run.getMetadata().getEndTime().toEpochMilli();
+        String[][] cases = {
+            {"{\"serverMetrics\":{\"components\":{\"app\":{\"type\":\"custom\"}},\"asserts\":["
+                + "{\"id\":\"aligned\",\"component\":\"app\",\"query\":\"aligned\",\"reduce\":{\"kind\":\"max\"},\"fail\":{\"gt\":100}},"
+                + "{\"id\":\"shifted\",\"component\":\"app\",\"query\":\"shifted\",\"reduce\":{\"kind\":\"max\"},\"fail\":{\"gt\":100}}]}}",
+                "app,aligned", "app,shifted", "app,leftover", "app/shifted"},
+            {"{\"serverMetrics\":{\"components\":{\"db\":{\"type\":\"postgres\"}},\"asserts\":["
+                + "{\"id\":\"up\",\"component\":\"db\",\"metric\":\"up\",\"fail\":{\"lt\":1}},"
+                + "{\"id\":\"conns\",\"component\":\"db\",\"metric\":\"connections.used.pct\",\"fail\":{\"gt\":90}}]}}",
+                "db,up", "db,connections.used.pct", "db,deadlocks", "db/connections.used.pct"},
+        };
+        for (String[] c : cases) {
+            Path annotations = dir.resolve("shift.json");
+            Files.write(annotations, c[0].getBytes(StandardCharsets.UTF_8));
+            for (long leftover : new long[] {20 * 3_600_000L, -20 * 3_600_000L}) {
+                StringBuilder csv = new StringBuilder("time,component,metric,instance,value\n");
+                for (long t = start; t <= end + 1_000; t += 1_000) {
+                    csv.append(t).append(',').append(c[1]).append(",,1\n");
+                    csv.append(t + 3 * 3_600_000L).append(',').append(c[2]).append(",,55\n");
+                }
+                for (long t = start; t <= start + 60_000; t += 1_000) {
+                    csv.append(t + leftover).append(',').append(c[3]).append(",,1\n");
+                }
+                Path file = dir.resolve("shift.csv");
+                Files.write(file, csv.toString().getBytes(StandardCharsets.UTF_8));
+                Streams s = new Streams();
+                assertEquals(0, WirCollect.run(new String[] {"--jtl", PLAIN_JTL.getPath(), "--annotations", annotations.toString(),
+                        "--out", dir.resolve("shift-out.json").toString(), "--csv", file.toString(), "--step", "1s", "--no-wait"},
+                        s.outStream(), s.errStream(), Collections.<String, String>emptyMap()), s.out() + s.err());
+                String console = s.out() + s.err();
+                String line = java.util.Arrays.stream(console.split("\r?\n"))
+                        .filter(l -> l.startsWith("wir-collect: FAILED " + c[4] + " - ")).findFirst().orElse(console);
+                assertTrue(line.endsWith("They start 3h late, which is usually a time zone: were local times written with Z?"
+                        + " Give the file's zone with --time-zone, or move the rows with --clock-offset -3h"), line);
+            }
+        }
+    }
+
     // ---- --layout wide, --columns, --time-zone: Grafana's export --------------------------------
 
     @Test

@@ -380,9 +380,11 @@ public final class WirCollect {
             }
             // A file's rows are at the interval it was exported at, which the step must match.
             if (csv) {
-                // The name the rows are under: under --from, the tool's, when the series was read as it.
+                // The name the rows are under: under --from, the tool's, when the series was read as it; an
+                // interpolating query's, the text the file writes when only it has rows (N5).
                 String key = s.getReadAs() != null ? s.getReadAs().getMetric()
-                        : s.getMetric() != null ? s.getMetric() : s.getResolvedQuery();
+                        : s.getMetric() != null ? s.getMetric()
+                        : csvReader.metricRead(s.getComponent(), s.getResolvedQuery(), s.getQuery());
                 int blank = s.getComponent() != null ? csvReader.blankRows(source, window, s.getComponent(), key) : 0;
                 long rowSpacing = blank > 0 ? csvReader.rowSpacingMillis(source, window, s.getComponent(), key) : 0;
                 for (String line : spacingLines(name, s, blank, rowSpacing, source.stepMillis())) {

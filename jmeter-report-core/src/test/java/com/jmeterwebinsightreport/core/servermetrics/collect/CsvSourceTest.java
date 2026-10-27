@@ -145,6 +145,37 @@ class CsvSourceTest {
         assertNull(ask(new CsvSource(), s, "db", "max(x{app=c})").error());
     }
 
+    /** A custom query that interpolates, as the collection asks for it: resolved, and as the file writes it (N5). */
+    private static SeriesSource.Request template(String component, String written, String resolved) {
+        return new SeriesSource.Request(resolved, component, resolved).alsoWrittenAs(written);
+    }
+
+    @Test
+    void aTemplateQuerysRowsWrittenUnquotedAreSaidByTheTextTheFileWrites() throws IOException {
+        // N5 reads a template query's rows under the text the file writes, ${env.ns} and all. The diagnoses
+        // asked only the resolved text: a split cell's fragment is no prefix of it when the placeholder comes
+        // before the ',', and a cell that lost its '"' is not it without them, so both read EMPTY with nothing
+        // said - the NO_MATCH 4.1.1 was made to name (the 4.1.33 review, finding 2).
+        String written = "max(x{ns=\"${env.ns}\"}) by (pod, ns)";
+        ServerSource split = csv("time,component,metric,instance,value\n"
+                + "1700000000000,app," + written + ",,5\n");
+        assertEquals("m.csv line 2: metric \"max(x{ns=${env.ns}}) by (pod\" is the start of " + written + ", split at"
+                + " its ',' - a metric with ',' in it must be quoted: \"...\", each '\"' inside doubled",
+                new CsvSource().collect(split, template("app", written, "max(x{ns=\"shop\"}) by (pod, ns)"), WINDOW).error());
+
+        ServerSource lostQuotes = csv("time,component,metric,instance,value\n"
+                + "1700000000000,app,up{ns=\"${env.ns}\"},,1\n");
+        assertEquals("no row names component app, metric up{ns=\"${env.ns}\"}; 1 row name app/up{ns=${env.ns}} - the same"
+                + " text without its '\"': a cell holding '\"' must be quoted, \"...\", with each '\"' inside doubled",
+                new CsvSource().collect(lostQuotes, template("app", "up{ns=\"${env.ns}\"}", "up{ns=\"shop\"}"), WINDOW).error());
+
+        // Rows under the written text and all outside the run are named by that text, the one the file holds.
+        ServerSource late = csv("time,component,metric,instance,value\n"
+                + "1700010800000,app,\"up{ns=\"\"${env.ns}\"\"}\",,1\n1700010815000,app,\"up{ns=\"\"${env.ns}\"\"}\",,1\n");
+        String e = new CsvSource().collect(late, template("app", "up{ns=\"${env.ns}\"}", "up{ns=\"shop\"}"), WINDOW).error();
+        assertTrue(e.startsWith("m.csv has 2 rows for app/up{ns=\"${env.ns}\"} and none inside the run"), e);
+    }
+
     @Test
     void aShiftedExportWithALeadInIsToldItsWholeShiftTheSameForEverySeries() throws IOException {
         // A real export (petstore_ms, 2026-10-25): the run's window and a minute either side, every row 400 s
@@ -174,6 +205,36 @@ class CsvSourceTest {
                 + "1700010800000,app,late,,1\n1700010860000,app,late,,1\n");
         String e = ask(new CsvSource(), s, "app", "late").error();
         assertTrue(e.endsWith("move the rows with --clock-offset -3h"), e);
+    }
+
+    @Test
+    void aLeftoverOfAnotherPeriodMovesNoShift() throws IOException {
+        // The shift is measured over the series outside the run whose spans join this one's: one export. A
+        // leftover of another period in the same file (two exports appended) put the middle of the span 690m
+        // off when it lay 20 h after the run, and took the hint away when it lay 20 h before it - whatever it
+        // is called, an asserted metric, a catalogue one or neither (the 4.1.33 review, finding 4).
+        for (long leftover : new long[] {20 * 3_600_000L, -20 * 3_600_000L}) {
+            ServerSource s = csv("time,component,metric,instance,value\n"
+                    + "1700000000000,app,ok,,1\n1700000060000,app,ok,,1\n"
+                    + "1700010800000,app,late,,1\n1700010860000,app,late,,1\n"
+                    + (1_700_000_000_000L + leftover) + ",app,leftover,,1\n"
+                    + (1_700_000_060_000L + leftover) + ",app,leftover,,1\n");
+            String e = ask(new CsvSource(), s, "app", "late").error();
+            assertTrue(e.endsWith("They start 3h late, which is usually a time zone: were local times written with Z?"
+                    + " Give the file's zone with --time-zone, or move the rows with --clock-offset -3h"), e);
+        }
+        // A series of the same export joins it: the lead-in export above (400 s late, rate starting 75 s in)
+        // still tells rate 400s when the file also holds a period 20 h off.
+        StringBuilder text = new StringBuilder("time,component,metric,instance,value\n");
+        for (long t = 1_700_000_000_000L - 60_000 + 400_000; t <= 1_700_000_060_000L + 60_000 + 400_000; t += 15_000) {
+            text.append(t).append(",app,cpu,,40\n");
+            if (t >= 1_700_000_000_000L + 15_000 + 400_000) {
+                text.append(t).append(",app,rate,,7\n");
+            }
+        }
+        text.append(1_700_000_000_000L + 20 * 3_600_000L).append(",app,old,,1\n");
+        String e = ask(new CsvSource(), csv(text.toString()), "app", "rate").error();
+        assertTrue(e.endsWith("if the server's clock is off by about 400s, move the rows with --clock-offset -400s"), e);
     }
 
     @Test

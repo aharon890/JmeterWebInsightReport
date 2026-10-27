@@ -59,7 +59,9 @@ test('XLOG-1: every time axis written with the client formatter hides overlappin
         axes.push({ line: source.slice(0, m.index).split('\n').length, text: source.slice(m.index, end + 1) });
     }
     const client = axes.filter((a) => /formatter:\s*formatTimeAxis\b/.test(a.text));
-    assert.ok(client.length >= 2, 'found ' + client.length + ' time axes with formatTimeAxis: is this still report.js?');
+    // timelineXAxis's own; the Server tab's two are built by serverTimeAxis over their own span since the
+    // 4.1.33 review (server-chart.test.js holds that one to hideOverlap).
+    assert.ok(client.length >= 1, 'found ' + client.length + ' time axes with formatTimeAxis: is this still report.js?');
     const bare = client.filter((a) => !/hideOverlap:\s*true/.test(a.text)).map((a) => 'line ' + a.line);
     assert.deepStrictEqual(bare, [], 'a time axis that prints its labels over one another');
     // ...and the three that built their own take the shared one.

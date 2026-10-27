@@ -815,6 +815,61 @@ test.describe('SF37: the Server tab\'s charts reach contrast in both themes', ()
     }
   });
 
+  test('[R] C4, the 4.1.33 review: a row drawn while the Timeline was zoomed keeps its labels after a reset', async ({ page }) => {
+    // The tick floor read the Timeline's visible range when the row was drawn, and formatClock read it again
+    // at every render: drawn zoomed under two minutes, the row ticked every 30s with seconds, and after the
+    // zoom was reset the same ticks printed "15:48 15:49 15:49 15:50" (petstore R1, 4.1.33, finding 8). A
+    // Server row's labels follow its own window, which the Timeline's zoom never moves.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await loadClean(page, 'E26');
+    await switchTab(page, 'server');
+    await page.evaluate(() => {
+      const W = window as any;
+      const d = JSON.parse(JSON.stringify(W.chartData));
+      // C4's shape above: a 300s window with a 60s ramp-up, so the row charts the 240s judged window.
+      const start = Math.floor(d.serverMetrics.window.start / 60000) * 60000 + 39650;
+      const shift = start - d.serverMetrics.window.start;
+      d.serverMetrics.window = { start, end: start + 300000, rampUpEnd: start + 60000 };
+      d.serverMetrics.series.forEach((s: any) => s.instances.forEach((i: any) =>
+        i.points.forEach((p: any) => { p[0] += shift; })));
+      W.visibleTimeRangeMs = 95000;   // the Timeline zoomed to 95s
+      W.WIR.serverKpis.init(d);
+    });
+    await openRows(page, ['cpu-headroom']);
+    const clock = async () => (await rowChart(page, 'cpu-headroom'))!.texts
+      .filter((t) => /^\d{2}:\d{2}(:\d{2})?$/.test(t.t)).sort((a, b) => a.x - b.x).map((t) => t.t);
+    const zoomed = await clock();
+    // The zoom reset, and the charts rendered again, as a tab switch renders them.
+    await page.evaluate(() => { (window as any).visibleTimeRangeMs = 300000; });
+    await switchTab(page, 'timeline');
+    await switchTab(page, 'server');
+    const reset = await clock();
+    for (const [when, labels] of [['zoomed', zoomed], ['after the reset', reset]] as const) {
+      expect(labels.length, `${when}: ${labels.join(' ')}`).toBeGreaterThanOrEqual(3);
+      for (let i = 1; i < labels.length; i++) {
+        expect(labels[i], `${when}: ${labels.join(' ')}`).not.toBe(labels[i - 1]);
+      }
+      // A 240s window ticks by the minute, at whatever the Timeline shows.
+      expect(labels.every((t) => /^\d{2}:\d{2}$/.test(t)), `${when}: ${labels.join(' ')}`).toBe(true);
+    }
+    expect(reset, 'the same labels before and after the reset').toEqual(zoomed);
+    // The clock / elapsed toggle, there and back: the row keeps its own formatter (toggleTimeMode wrote the
+    // Timeline's onto every chart), and Per instance's value axis is not given a time formatter at all.
+    // Zoomed again, so a row given the Timeline's formatter would print seconds.
+    await switchTab(page, 'timeline');
+    await page.evaluate(() => { const W = window as any; W.visibleTimeRangeMs = 95000; W.toggleTimeMode(); W.toggleTimeMode(); });
+    await switchTab(page, 'server');
+    expect(await clock(), 'the same labels after the clock / elapsed toggle').toEqual(zoomed);
+    // Read off the option, not the paint: hideOverlap hides most of a run of "02:00:00"s.
+    const perInstance = await page.evaluate(() => {
+      const W = window as any;
+      const inst = W.echarts.getInstanceByDom(document.getElementById('serverInstances-' + W.WIR.serverKpis._keyOf('cpu-headroom'))!);
+      const f = inst.getOption().xAxis[0].axisLabel.formatter;
+      return { clock: f === W.formatTimeAxis, sixty: typeof f === 'function' ? String(f(60)) : String(f) };
+    });
+    expect(perInstance.clock, `Per instance's value axis prints 60 as ${perInstance.sixty}`).toBe(false);
+  });
+
   test('[R] C4: Per instance value labels keep a gap, not only no overlap', async ({ page }) => {
     // hideOverlap hides a label whose box intersects another; two that only touch both stay, and
     // read as one number ("1,0001,200" on petstore's catalog-db rows). At 1024 the chart is 303px

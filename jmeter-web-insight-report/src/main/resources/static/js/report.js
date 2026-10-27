@@ -3173,13 +3173,14 @@ function getEffectiveVisibleRange() {
     return visibleTimeRangeMs > 0 ? visibleTimeRangeMs : getTestDurationMs();
 }
 
-function formatElapsed(ms) {
+/* rangeMs: the span the label is read against; the visible range when not given. */
+function formatElapsed(ms, rangeMs) {
     if (ms < 0) ms = 0;
     var totalSec = Math.floor(ms / 1000);
     var h = Math.floor(totalSec / 3600);
     var m = Math.floor((totalSec % 3600) / 60);
     var s = totalSec % 60;
-    var range = getEffectiveVisibleRange();
+    var range = rangeMs === undefined ? getEffectiveVisibleRange() : rangeMs;
 
     if (range < 120000) {
         /* Visible < 2 min: always show seconds */
@@ -3196,9 +3197,9 @@ function formatElapsed(ms) {
     }
 }
 
-function formatClock(value) {
+function formatClock(value, rangeMs) {
     var d = new Date(value);
-    var range = getEffectiveVisibleRange();
+    var range = rangeMs === undefined ? getEffectiveVisibleRange() : rangeMs;
     var showDate = testSpansMidnight();
     var prefix = showDate ? pad(d.getMonth() + 1) + '/' + pad(d.getDate()) + ' ' : '';
 
@@ -3214,6 +3215,21 @@ function formatTimeAxis(value) {
         return formatElapsed(value - getTestStart());
     }
     return formatClock(value);
+}
+
+/**
+ * formatTimeAxis over an axis's own span, for a chart the Timeline's zoom never moves - a Server-tab one.
+ * Its tick floor was set from the Timeline's visible range when it was drawn and its labels read that range
+ * again at every render, so a zoom reset printed "15:48 15:49 15:49 15:50" (the 4.1.33 review, finding 8).
+ * An undefined span reads the visible range, as formatTimeAxis does.
+ */
+function timeAxisFormatterOver(spanMs) {
+    return function (value) {
+        if (timeDisplayMode === 'timer') {
+            return formatElapsed(value - getTestStart(), spanMs);
+        }
+        return formatClock(value, spanMs);
+    };
 }
 
 function formatMiniTimeAxis(value) {
@@ -3242,9 +3258,12 @@ function toggleTimeMode() {
         btn.innerHTML = timeDisplayMode === 'clock' ? '&#128339;' : '&#9201;';
         btn.title = timeDisplayMode === 'clock' ? 'Showing wall-clock time (click for elapsed)' : 'Showing elapsed time (click for wall-clock)';
     }
-    /* Re-render all chart axis labels */
+    /* Re-render all chart axis labels; a chart whose labels follow its own span keeps its formatter. A
+       Server-tab chart with none has no time axis - Per instance's is a value axis, which the clock /
+       elapsed formatter printed as "02:00" and "0:00" - and is left alone. */
     chartInstances.forEach(function (c) {
-        try { c.setOption({ xAxis: { axisLabel: { formatter: formatTimeAxis } } }); } catch (e) { /* ignore */ }
+        if ((c.group === serverChartGroup || c.group === serverPickChartGroup) && !c.__wirTimeAxisFormatter) return;
+        try { c.setOption({ xAxis: { axisLabel: { formatter: c.__wirTimeAxisFormatter || formatTimeAxis } } }); } catch (e) { /* ignore */ }
     });
     /* Update time range display */
     if (globalChartData) updateTimeRangeDisplay();
@@ -3514,10 +3533,14 @@ var chartGroup = 'wir-linked';
    window on a tab of their own, and once their tooltips sat on the body (5.1) hovering a Timeline
    chart showed a hidden Server chart's tooltip over the Timeline (the Stage 5 review). */
 var serverChartGroup = 'wir-server-linked';
+/* The metric picker's chart links with nothing: it sits in a dialog over the board, and in the board's
+   group hovering it showed every open row's tooltip on the body, above the dialog (the 4.1.33 review,
+   finding 7). A group no echarts.connect names. */
+var serverPickChartGroup = 'wir-server-pick';
 
 function connectCharts() {
     chartInstances.forEach(function (c) {
-        if (c.group !== serverChartGroup) c.group = chartGroup;
+        if (c.group !== serverChartGroup && c.group !== serverPickChartGroup) c.group = chartGroup;
     });
     if (typeof echarts !== 'undefined') {
         echarts.connect(chartGroup);
@@ -20259,13 +20282,10 @@ WIR.serverKpis = (function () {
             /* hideOverlap, as the picker's chart has (SF35): since SF34 a row's chart is the card's
                width, and below about 700px its nine time labels printed over one another —
                "22:1226:2…" at 390. */
-            xAxis: {
-                type: 'time',
+            xAxis: serverTimeAxis(chart, w ? w.end - w.start : pointsSpan(series.instances), {
                 min: w ? w.start : undefined,
-                max: w ? w.end : undefined,
-                minInterval: serverTimeMinInterval(),
-                axisLabel: { formatter: formatTimeAxis, hideOverlap: true }
-            },
+                max: w ? w.end : undefined
+            }),
             /* Bounded so every band, and the handle that drags it, is on the plot (R3-3).
                The name sits 8px above the plot and runs right from the axis: with ECharts' default
                15px gap and centring, its 12px box started 3px above the canvas on every row chart,
@@ -20582,10 +20602,41 @@ WIR.serverKpis = (function () {
      * The finest tick a Server-tab time axis may take (C4). formatClock drops the seconds once the
      * visible range reaches two minutes, whatever tick ECharts chose, and on a 240s judged window
      * it chose 30s: "18:35 18:35 18:36 18:36". The client Timeline of the same run ticked by the
-     * minute at every width (N9, petstore F2), so the floor is this tab's alone.
+     * minute at every width (N9, petstore F2), so the floor is this tab's alone. Taken from the axis's own
+     * span, as its labels are (timeAxisFormatterOver): from the Timeline's visible range it was fixed when the
+     * chart was drawn while the labels followed the range, and after a zoom reset the 30 s ticks printed
+     * "15:48 15:49 15:49 15:50" (the 4.1.33 review, finding 8).
      */
-    function serverTimeMinInterval() {
-        return getEffectiveVisibleRange() >= 120000 ? 60000 : undefined;
+    function serverTimeMinInterval(spanMs) {
+        return spanMs >= 120000 ? 60000 : undefined;
+    }
+
+    /** The time the instances' points cover, ms: the last minus the first over all of them; 0 with fewer than two. */
+    function pointsSpan(instances) {
+        var lo = Infinity;
+        var hi = -Infinity;
+        (instances || []).forEach(function (inst) {
+            (inst.points || []).forEach(function (p) {
+                if (p[0] < lo) lo = p[0];
+                if (p[0] > hi) hi = p[0];
+            });
+        });
+        return hi > lo ? hi - lo : 0;
+    }
+
+    /**
+     * A Server-tab time axis over {@code spanMs}: its tick floor and its labels from that one span, the
+     * formatter kept on the chart for the clock/elapsed toggle (toggleTimeMode). {@code axis} carries the rest.
+     * Every Server chart hands it a number - a row its judged window, or its points' span with none; the
+     * picker its points' span - so none reads the Timeline's visible range.
+     */
+    function serverTimeAxis(chart, spanMs, axis) {
+        var formatter = timeAxisFormatterOver(spanMs);
+        chart.__wirTimeAxisFormatter = formatter;
+        axis.type = 'time';
+        axis.minInterval = serverTimeMinInterval(spanMs);
+        axis.axisLabel = { formatter: formatter, hideOverlap: true };
+        return axis;
     }
 
     /**
@@ -20608,11 +20659,14 @@ WIR.serverKpis = (function () {
         };
     }
 
-    /** A chart of this tab: createChart's, in the Server tab's own connected group (serverChartGroup). */
-    function createServerChart(el) {
+    /**
+     * A chart of this tab: createChart's, in the Server tab's own connected group (serverChartGroup) - or,
+     * {@code alone}, in a group of its own that nothing connects (serverPickChartGroup), as the picker's is.
+     */
+    function createServerChart(el, alone) {
         var chart = createChart(el);
-        chart.group = serverChartGroup;
-        echarts.connect(serverChartGroup);
+        chart.group = alone ? serverPickChartGroup : serverChartGroup;
+        if (!alone) echarts.connect(serverChartGroup);
         return chart;
     }
 
@@ -25739,7 +25793,7 @@ WIR.serverKpis = (function () {
         }
         if (!chart) {
             el.innerHTML = '';
-            chart = createServerChart(el);
+            chart = createServerChart(el, true);
         }
         /* Replaces the option outright, so it says the background again (createChart). The time
            labels hide where they would overlap: on the 300px pane nine of them printed over one
@@ -25750,7 +25804,7 @@ WIR.serverKpis = (function () {
         chart.setOption({
             backgroundColor: 'transparent',
             grid: { left: 40, right: 8, top: 8, bottom: 20 },
-            xAxis: { type: 'time', minInterval: serverTimeMinInterval(), axisLabel: { formatter: formatTimeAxis, hideOverlap: true } },
+            xAxis: serverTimeAxis(chart, run.points.length > 1 ? run.points[run.points.length - 1][0] - run.points[0][0] : 0, {}),
             yAxis: { type: 'value' },
             tooltip: { trigger: 'axis', formatter: tooltipFormatter(metric.unit || ''), appendTo: 'body' },
             series: [{
@@ -26533,6 +26587,7 @@ WIR.serverKpis = (function () {
         _breachAreas: breachAreas,
         _breachAreasAcross: breachAreasAcross,
         _bandAxisBounds: bandAxisBounds,
+        _serverTimeAxis: serverTimeAxis,
         _orderBars: orderBars,
         _longestGap: longestGap,
         _chartFrame: chartFrame,

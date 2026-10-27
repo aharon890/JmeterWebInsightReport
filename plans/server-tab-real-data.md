@@ -424,6 +424,68 @@ mutation of the code it pins, run and reverted (6.6, 6.7, 6.11a, 6.11b).
 No deviation from the registered expectations: no golden moved except by adding G11/G12 and the
 `.server.json` set, and 6.9 is the only change to what the product does.
 
+## Stage 7: the 4.1.0..4.1.33 code review (branch `fix/server-tab-review-findings`)
+
+**The review (2026-10-27).** A code review of `v4.1.0..4c17817` reported 15 findings, each then tested before anything was
+fixed (petstore `tmp/server-eval/code-review-4.1.0-to-4.1.33-2026-10-27.md`). All 15 held. The owner chose to fix 1-4, 7
+and 8; the rest are edge cases or cleanup (below).
+
+| Step | Finding | Version, commit | Red first | Observed |
+|---|---|---|---|---|
+| 7.1 | 2: an interpolating query's split or quote-less row read EMPTY | 4.1.40 `f07f03b` | `CsvSourceTest.aTemplateQuerysRowsWrittenUnquotedAreSaidByTheTextTheFileWrites` | the placeholder-before-comma query FAILS naming its line |
+| 7.2 | 3: its blank rows were counted under the resolved text, so "pass --step 10s" | 4.1.41 `7ab6578` | `WirCollectTest.aTemplateQuerysBlankRowsAre…` | "gaps in the export, not a coarser interval" |
+| 7.3 | 4: a leftover of another period moved the shift hint (690m, or none) | 4.1.42 `c5c1acd` | `CsvSourceTest.aLeftoverOfAnotherPeriodMovesNoShift`, `WirCollectTest.aLeftoverSeriesOfAnotherPeriodMovesNoShiftHint` | "3h late" with the leftover on either side, custom or catalogue |
+| 7.4 | 1: locks.waiting's pg_up fallback read 0 on exporters before 0.17 | 4.1.43 `80c79c4` | `CatalogueTest.theLocksWaitingReadsZeroWhileNobodyWaitsOnlyWhereTheExporterWritesWaitEvents` | petstore Prometheus, 12 h: same 3 series, 0 at the same 2672 steps; old-exporter stand-in: no series |
+| 7.5 | 7: the picker's chart was in the board's group, row tooltips over the dialog | 4.1.44 `813c336` | server-dialogs.spec.ts "hovering the picker's chart…" | one tooltip, the picker's; connectCharts keeps its group (mutation checked) |
+| 7.6 | 8: Server time axes read the Timeline's zoom (duplicate minutes after a reset) | 4.1.45 `c733a72` | server-layout.spec.ts "a row drawn while the Timeline was zoomed…", server-dialogs.spec.ts "the picker's time axis follows its own points" | labels from the axis's own span; the toggle keeps them; Per instance not given a time formatter (mutations checked) |
+
+**Expected re-verify diff (written before the first JAR ran; `reverify/expected/review-F1.json`):**
+- The 59 S4/R fixtures that assert `catalog-db-locks-waiting` change only the query text and what quotes it.
+- The other 34 are identical, the time-shift variants' 31 hints each included.
+
+**Observed:** PASS on `c733a72`, as registered; X12, X14, X15 and X16's hints byte-identical.
+
+**The full regression (R01-R06, fixtures regenerated) failed once, in Compare.** `docs-check-bugs.spec.ts` "a removed
+sampler stays a regression after Apply…":
+- The test appends a removed sampler and expects What Changed to name it.
+- What Changed lists three regressions and "…and N more", and that CMP run measured five real regressions, so the
+  removed one was among the hidden.
+- CMP is a timed JMeter run. Regenerated, all 12 tests of the file pass, and no line of this branch touches the Compare
+  path.
+- So this is a data-dependent flake, older than this branch, and not fixed here. The re-run regression was green.
+
+**The branch was cut twice.**
+- 7.3 first measured the shift over "the series the collection asks for" (a `SeriesSource.willAsk` the Collector called).
+- An adversarial review of the branch, before any push, showed what that missed:
+  - a leftover under a catalogue metric's name is asked for too (D1);
+  - a same-export series the lead-in's centring depends on is not.
+- It also found:
+  - test gaps in 7.5 and 7.6: the toggle, connectCharts, the picker's span;
+  - Per instance's value axis taking the time formatter on the toggle;
+  - a misplaced javadoc;
+  - two wrong version references in commit messages.
+- All of these went into the second cut. 7.3 now joins series by their spans and adds no interface.
+
+**Upgrade effect of 7.4, as of 4.1.10:**
+- A Prometheus or `--recording` payload collected with 4.1.10-4.1.42 holds the old query. Rebuilt, its locks.waiting
+  assert reads INVALID_RULE, asking to re-run wir-collect.
+- The cure is right. The cause it names ("collected against a file that did not declare this server assert") is not,
+  because the catalogue's query changed. Not changed here.
+
+**Not fixed, the owner's call (2026-10-27).** Finding by number:
+- 5: `Infinity` is a gap and `1e400` fails the series, and the javadoc above `infinityText` is stale.
+- 6: a non-ASCII local path survives `refusalOf`, after a collector crash only.
+- 9: the schema refuses `"query": ""`, which Java reads as absent.
+- 10-15: cleanup with no behaviour change:
+  - a per-cell regex (about 0.4 s per million cells);
+  - `outsideSpan` recomputed per series;
+  - dead code in `emptySeries`;
+  - the stale "finest over its instances" in `WirCollect.spacingWarning` and CLAUDE.md;
+  - a doubled per-instance reduction;
+  - `refusalOf` scraping text.
+- Also seen, older than 4.1.0: `updateTimeRangeFromChart` can store a category-index span in `visibleTimeRangeMs`; after
+  7.6 it no longer reaches the Server tab.
+
 ## Open
 
 From the Stage 4 exploration. These predate Stage 4 or are design calls, so none is in the staged plan; each needs the
