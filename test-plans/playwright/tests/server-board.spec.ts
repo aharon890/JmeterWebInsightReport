@@ -302,6 +302,25 @@ test.describe('Server tab — the component board', () => {
     await expect(items.nth(1)).toHaveText('orders-db/up No data (no assert reads it)');
   });
 
+  test('[R] 5.7 review: past 10,000 steps the Collection says the coverage, never a step count it cannot know', async ({ page }) => {
+    // Coverage reaches the page rounded to four places, so N = coverage x M is exact only below 10,000
+    // steps; past that it was off by one or more (the Stage 5 review). 20,001 one-second steps here.
+    await loadClean(page, 'E27');
+    await switchTab(page, 'server');
+    await page.evaluate(() => {
+      const W = window as any;
+      const d = JSON.parse(JSON.stringify(W.chartData));
+      d.serverMetrics.window.end = d.serverMetrics.window.start + 20_000_000;
+      d.serverMetrics.series.forEach((x: any) => { x.status = 'OK'; delete x.error; });
+      const conn = d.serverMetrics.series.find((x: any) => x.component === 'orders-db' && x.metric === 'connections.used.pct');
+      conn.status = 'INSUFFICIENT';
+      conn.coverage = 0.1234;
+      W.WIR.serverKpis.init(d);
+    });
+    await expect(page.locator('.wir-unusable-series li').first())
+      .toHaveText('orders-db/connections.used.pct coverage 12% · read by orders-db-connections-used-pct');
+  });
+
   test('[U] SF26: a catalogue assert is named by its label, with its id the dim line under it — on the board and in the editor', async ({ page }) => {
     await loadClean(page, 'E27');
     await switchTab(page, 'server');

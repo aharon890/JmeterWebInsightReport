@@ -358,6 +358,10 @@ defects in 5.1, 5.6, 5.7, 5.8 and 5.9, plus four doc lags. The full regression a
   reviewer's short-lived dense pod (5 s → 15 s) and sparse-instance rows (60 s → 15 s). Observed: X17c and X18b identical
   to 4.1.25. 5.9's two pins hold under the pooled rule.
 
+- **4.1.31 (5.7's count):** coverage reaches the page rounded to four places, so "N of M steps" is exact only below
+  10,000 steps; from there the Collection says `coverage P%`. Red first: `server-board.spec.ts` "5.7 review" (20,001
+  steps read `2468 of 20001`). Display only.
+
 **For the owner:**
 - **Q5, the y-axis.** Grafana bounds it by the data; WIR includes every band (R3-3) so the drag handles stay on the
   plot.

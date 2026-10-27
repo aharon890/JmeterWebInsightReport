@@ -19612,7 +19612,7 @@ WIR.serverKpis = (function () {
        stays: the status and its error, the step, and the clock offset he asked to see here. */
     /**
      * What came back for an unusable series, in Grafana's words (5.7): "No data" for an empty answer,
-     * "N of M steps have a point (P%)" below the coverage floor - the steps Coverage counts over the
+     * "N of M steps have a point (P%)" below the coverage floor (the percentage alone from 10,000 steps) - the steps Coverage counts over the
      * collected window - and the status otherwise (FAILED, whose error follows).
      */
     function seriesStateText(s) {
@@ -19620,8 +19620,10 @@ WIR.serverKpis = (function () {
         if (s.status === 'INSUFFICIENT' && s.coverage != null && !isNaN(s.coverage)) {
             var w = state.metrics && state.metrics.window;
             var step = stepOf(state.metrics, s.source);
-            if (w && step > 0) {
-                var expected = Math.floor((w.end - w.start) / step) + 1;
+            /* Coverage reaches the page rounded to four places (Collector.round4), so the count it gives
+               back is exact only below 10,000 steps; past that, the percentage alone (the Stage 5 review). */
+            var expected = w && step > 0 ? Math.floor((w.end - w.start) / step) + 1 : 0;
+            if (expected > 0 && expected < 10000) {
                 return Math.round(s.coverage * expected) + ' of ' + expected + ' steps have a point ('
                     + percent(s.coverage) + ')';
             }
