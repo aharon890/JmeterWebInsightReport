@@ -724,6 +724,52 @@ class WirCollectTest {
         assertFalse(console.contains("pass --step 10s"), console);
     }
 
+    @Test
+    void aLeftoverSeriesOfAnotherPeriodMovesNoShiftHint() throws Exception {
+        // The shift is measured over one export, the series outside the run whose spans join: a leftover 20 h
+        // after the run or 20 h before it made the hint for a series written 3 h late "690m" or took it away
+        // (the 4.1.33 review, finding 4). Asserted by a custom query, and on a catalogue component whose
+        // leftover is one of its own catalogue metrics, which the collection reads too (D1).
+        ReportData run = new JtlParser().parse(PLAIN_JTL, WirCollect.DEFAULT_TEST_NAME);
+        long start = run.getMetadata().getStartTime().toEpochMilli() / 1000 * 1000;
+        long end = run.getMetadata().getEndTime().toEpochMilli();
+        String[][] cases = {
+            {"{\"serverMetrics\":{\"components\":{\"app\":{\"type\":\"custom\"}},\"asserts\":["
+                + "{\"id\":\"aligned\",\"component\":\"app\",\"query\":\"aligned\",\"reduce\":{\"kind\":\"max\"},\"fail\":{\"gt\":100}},"
+                + "{\"id\":\"shifted\",\"component\":\"app\",\"query\":\"shifted\",\"reduce\":{\"kind\":\"max\"},\"fail\":{\"gt\":100}}]}}",
+                "app,aligned", "app,shifted", "app,leftover", "app/shifted"},
+            {"{\"serverMetrics\":{\"components\":{\"db\":{\"type\":\"postgres\"}},\"asserts\":["
+                + "{\"id\":\"up\",\"component\":\"db\",\"metric\":\"up\",\"fail\":{\"lt\":1}},"
+                + "{\"id\":\"conns\",\"component\":\"db\",\"metric\":\"connections.used.pct\",\"fail\":{\"gt\":90}}]}}",
+                "db,up", "db,connections.used.pct", "db,deadlocks", "db/connections.used.pct"},
+        };
+        for (String[] c : cases) {
+            Path annotations = dir.resolve("shift.json");
+            Files.write(annotations, c[0].getBytes(StandardCharsets.UTF_8));
+            for (long leftover : new long[] {20 * 3_600_000L, -20 * 3_600_000L}) {
+                StringBuilder csv = new StringBuilder("time,component,metric,instance,value\n");
+                for (long t = start; t <= end + 1_000; t += 1_000) {
+                    csv.append(t).append(',').append(c[1]).append(",,1\n");
+                    csv.append(t + 3 * 3_600_000L).append(',').append(c[2]).append(",,55\n");
+                }
+                for (long t = start; t <= start + 60_000; t += 1_000) {
+                    csv.append(t + leftover).append(',').append(c[3]).append(",,1\n");
+                }
+                Path file = dir.resolve("shift.csv");
+                Files.write(file, csv.toString().getBytes(StandardCharsets.UTF_8));
+                Streams s = new Streams();
+                assertEquals(0, WirCollect.run(new String[] {"--jtl", PLAIN_JTL.getPath(), "--annotations", annotations.toString(),
+                        "--out", dir.resolve("shift-out.json").toString(), "--csv", file.toString(), "--step", "1s", "--no-wait"},
+                        s.outStream(), s.errStream(), Collections.<String, String>emptyMap()), s.out() + s.err());
+                String console = s.out() + s.err();
+                String line = java.util.Arrays.stream(console.split("\r?\n"))
+                        .filter(l -> l.startsWith("wir-collect: FAILED " + c[4] + " - ")).findFirst().orElse(console);
+                assertTrue(line.endsWith("They start 3h late, which is usually a time zone: were local times written with Z?"
+                        + " Give the file's zone with --time-zone, or move the rows with --clock-offset -3h"), line);
+            }
+        }
+    }
+
     // ---- --layout wide, --columns, --time-zone: Grafana's export --------------------------------
 
     @Test

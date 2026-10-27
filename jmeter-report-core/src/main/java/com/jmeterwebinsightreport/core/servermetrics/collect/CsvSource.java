@@ -328,7 +328,7 @@ public final class CsvSource implements SeriesSource {
             // time problem - a local time written with Z, a wrong --time-zone, an export of
             // another range, a skewed server clock - and never "the query matched no series":
             // say so, with both spans and the shift between them.
-            long[] span = outsideSpan(idx, source.clockOffsetMs(), window, slack);
+            long[] span = outsideSpan(idx, fileFirst, fileLast, source.clockOffsetMs(), window, slack);
             return Answer.failed(outsideWindow(file, component, metric, rowsRead,
                     fileFirst, fileLast, span[0], span[1], window, slack));
         }
@@ -350,13 +350,19 @@ public final class CsvSource implements SeriesSource {
     }
 
     /**
-     * The earliest and latest row, clock offset applied, of every series in the file with no row inside
-     * the run: the rows a shift would have to move. Rows of series the run does contain are left out, so
-     * one series shifted beside in-window ones is measured on its own (E28).
+     * The earliest and latest row, clock offset applied, of the rows a shift would have to move with the
+     * series spanning {@code first..last}: the series in the file with no row inside the run whose spans
+     * join that one's - overlapping, or less than {@link #joinMillis} apart, chained. Rows of series the
+     * run does contain are left out, so one series shifted beside in-window ones is measured on its own
+     * (E28). A series of the same export that started late joins the export's span, asked for or not (S4
+     * X14), and one that straddles the run still shows the file lies before and after it (S4 X16). A
+     * leftover of another period further off does not: two exports appended, one 20 h after the run, put a
+     * 3 h shift's middle 690m off, and one 20 h before it took the hint away (the 4.1.33 review, finding 4).
+     * Two periods appended under one series' own name are still one span.
      */
-    static long[] outsideSpan(Index idx, long offset, ServerMetricsPayload.Window window, long slack) {
-        long first = Long.MAX_VALUE;
-        long last = Long.MIN_VALUE;
+    static long[] outsideSpan(Index idx, long first, long last, long offset, ServerMetricsPayload.Window window,
+                              long slack) {
+        List<long[]> spans = new ArrayList<>();
         for (Map<String, TreeMap<Long, Double>> series : idx.series.values()) {
             long sFirst = Long.MAX_VALUE;
             long sLast = Long.MIN_VALUE;
@@ -377,11 +383,39 @@ public final class CsvSource implements SeriesSource {
                 }
             }
             if (!inside && sFirst <= sLast) {
-                first = Math.min(first, sFirst);
-                last = Math.max(last, sLast);
+                spans.add(new long[] {sFirst, sLast});
             }
         }
-        return new long[] {first, last};
+        spans.sort((a, b) -> Long.compare(a[0], b[0]));
+        long joins = joinMillis(window);
+        long cFirst = 0;
+        long cLast = 0;
+        boolean open = false;
+        for (long[] s : spans) {
+            if (open && s[0] - cLast > joins) {
+                if (cFirst <= first && last <= cLast) {
+                    return new long[] {cFirst, cLast};
+                }
+                open = false;
+            }
+            if (!open) {
+                cFirst = s[0];
+                cLast = s[1];
+                open = true;
+            } else {
+                cLast = Math.max(cLast, s[1]);
+            }
+        }
+        return open && cFirst <= first && last <= cLast ? new long[] {cFirst, cLast} : new long[] {first, last};
+    }
+
+    /**
+     * How far apart two series outside the run may lie and still be one export: an hour, or the run's length
+     * when that is longer. The series of one export cover its window give or take a lead-in; another period
+     * appended to the file lies hours or days off.
+     */
+    static long joinMillis(ServerMetricsPayload.Window window) {
+        return Math.max(3_600_000L, window.getEnd() - window.getStart());
     }
 
     /**
@@ -390,7 +424,7 @@ public final class CsvSource implements SeriesSource {
      * hours named as a likely time zone, anything else as clock skew, each with the flag that moves
      * it. A hint only: nothing is shifted without being asked.
      *
-     * <p>One shift for the file: measured over {@code spanFirst..spanLast}, every series that lies
+     * <p>One shift for the export: measured over {@code spanFirst..spanLast}, every series of it that lies
      * wholly outside the run ({@link #outsideSpan}), so each of them is told the same offset. When that
      * span is at least as long as the run, its middle is matched with the run's: an export takes a
      * lead-in before the run and as much after it ("a minute either side"), which start to start counted

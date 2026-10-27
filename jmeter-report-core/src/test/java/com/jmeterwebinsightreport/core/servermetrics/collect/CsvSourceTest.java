@@ -208,6 +208,36 @@ class CsvSourceTest {
     }
 
     @Test
+    void aLeftoverOfAnotherPeriodMovesNoShift() throws IOException {
+        // The shift is measured over the series outside the run whose spans join this one's: one export. A
+        // leftover of another period in the same file (two exports appended) put the middle of the span 690m
+        // off when it lay 20 h after the run, and took the hint away when it lay 20 h before it - whatever it
+        // is called, an asserted metric, a catalogue one or neither (the 4.1.33 review, finding 4).
+        for (long leftover : new long[] {20 * 3_600_000L, -20 * 3_600_000L}) {
+            ServerSource s = csv("time,component,metric,instance,value\n"
+                    + "1700000000000,app,ok,,1\n1700000060000,app,ok,,1\n"
+                    + "1700010800000,app,late,,1\n1700010860000,app,late,,1\n"
+                    + (1_700_000_000_000L + leftover) + ",app,leftover,,1\n"
+                    + (1_700_000_060_000L + leftover) + ",app,leftover,,1\n");
+            String e = ask(new CsvSource(), s, "app", "late").error();
+            assertTrue(e.endsWith("They start 3h late, which is usually a time zone: were local times written with Z?"
+                    + " Give the file's zone with --time-zone, or move the rows with --clock-offset -3h"), e);
+        }
+        // A series of the same export joins it: the lead-in export above (400 s late, rate starting 75 s in)
+        // still tells rate 400s when the file also holds a period 20 h off.
+        StringBuilder text = new StringBuilder("time,component,metric,instance,value\n");
+        for (long t = 1_700_000_000_000L - 60_000 + 400_000; t <= 1_700_000_060_000L + 60_000 + 400_000; t += 15_000) {
+            text.append(t).append(",app,cpu,,40\n");
+            if (t >= 1_700_000_000_000L + 15_000 + 400_000) {
+                text.append(t).append(",app,rate,,7\n");
+            }
+        }
+        text.append(1_700_000_000_000L + 20 * 3_600_000L).append(",app,old,,1\n");
+        String e = ask(new CsvSource(), csv(text.toString()), "app", "rate").error();
+        assertTrue(e.endsWith("if the server's clock is off by about 400s, move the rows with --clock-offset -400s"), e);
+    }
+
+    @Test
     void aSeriesOnOneSideOfAFileThatStraddlesTheRunIsToldToExportTheRunNotAShift() throws IOException {
         // An export of two other periods (S4 X16): most series have rows before and after the run; one
         // starts late and has rows only after it. No shift lines the file up, so that one is not given
