@@ -127,6 +127,11 @@ Click the **color dot** next to any sampler name in the filter bar to open a col
 - Grid of swatches from all palettes
 - Native color input (`<input type="color">`) for any custom color
 - Custom colors persist in **localStorage** across page reloads; choosing a palette clears them
+- The Server tab's **Line colour** dot opens the same picker for the first line of every server chart
+  (and the metric picker's chart), and the dot on each legend entry under a server chart opens it for
+  that instance, on every chart of its component whose legend shows the same name; a Per instance
+  bar takes its instance's colour.
+  Kept and cleared as sampler colours are
 
 ### Line Thickness
 Toggle between **Thin** (1px), **Medium** (2px), and **Thick** (3px) line widths for all chart lines.

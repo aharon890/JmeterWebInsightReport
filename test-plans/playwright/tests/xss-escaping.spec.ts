@@ -453,6 +453,11 @@ test.describe('XSS — Asserts inline handlers', () => {
 
     await loadClean(page, 'E26');
     await page.click('.tab-btn[data-tab="server"]');
+    // Every row open, so the charts' legends are swept too: each entry carries two handlers, and a
+    // sweep over collapsed rows passed without seeing one (the line-colour review, 2026-10-27).
+    await page.evaluate(() => (window as any).WIR.serverKpis.expandAll());
+    await expect.poll(() => page.locator('#tab-server .wir-legend-item').count(),
+      { message: 'no legend was drawn: the sweep would not reach its handlers' }).toBeGreaterThan(0);
 
     const handlers = await page.evaluate(() =>
       Array.from(document.querySelectorAll('#tab-server [onclick]'))

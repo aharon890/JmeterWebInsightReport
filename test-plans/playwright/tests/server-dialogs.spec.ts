@@ -335,6 +335,21 @@ test.describe('SF28: a server dialog stays the dialog wireDialog wired', () => {
     await expect(page.locator(PANEL)).toHaveCount(0);
     expect(await chartRegistry(page)).toEqual({ count: baseline.count, detached: 0 });
   });
+
+  test('[R] the picker\'s chart draws in the server line colour the reader picked', async ({ page }) => {
+    // The picker's run chart is a server line like a row's: it drew in ECharts' own default blue,
+    // neither the palette nor the colour picked for the tab.
+    await openServer(page);
+    await page.click('#serverLineColorDot');
+    await page.locator('.wir-server-filters .color-picker-popup.open .color-swatch[data-color="#FF0000"]').click();
+    await page.click(ORDERS_ADD);
+    await page.locator('.wir-pick-name', { hasText: 'Cache hit ratio' }).click();
+    await expect.poll(() => page.evaluate(() => {
+      const chart = (window as any).echarts.getInstanceByDom(document.getElementById('serverPickChart'));
+      const s = chart && chart.getOption().series[0];
+      return s && s.lineStyle ? s.lineStyle.color : null;
+    })).toBe('#FF0000');
+  });
 });
 
 /*

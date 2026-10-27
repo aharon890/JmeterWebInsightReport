@@ -399,6 +399,12 @@ Then one filter row:
   on the Asserts tab. The counts follow the other filters, the text you are typing included, so the
   chips always add up to what `All` says. A screen reader hears which chip is on.
 - **Clear filters**, shown when any filter is on, as soon as you type.
+- **Line colour**, at the end of the row: the colour of the first line on every server chart, and
+  of the metric picker's chart. Click the dot to open the colour picker the samplers' dots open in
+  the filter bar (which is hidden on this tab). The other instances keep the palette's next colours,
+  so the lines stay apart; to change one of them, use its dot in the chart's legend (see
+  [Opening a row](#opening-a-row-two-panels)). Colours are saved in your browser beside the sampler colours,
+  and choosing a palette clears them, as it clears theirs.
 
 A filter narrows the board to the cards it found something in. With no filter on, every declared
 component has a card, an empty one included.
@@ -588,6 +594,13 @@ An open row has two panels:
 - A server assert that was **not judged** draws no breach shading. Its band lines are dashed and
   muted, so the declared limit stays visible, and the note reads `not judged — <reason>`.
 - Gaps in the data are drawn as gaps, not bridged with a straight line.
+- The legend under the chart has one entry per instance, a chart of one instance included. Click an
+  entry's **colour dot** to give that instance its own colour, in the colour picker the samplers'
+  dots open. The colour goes with the name the legend shows: every chart of the same component
+  whose legend shows that name draws it, and its Per instance bar takes it too. (A chart of one
+  instance names it by all its labels, so its name can differ from the same instance's on a chart
+  of several.) Click the **name** to hide or show the line. The server charts are linked, so the
+  line of that name hides on every chart, open or opened later, and stays hidden when a chart is drawn again.
 - Above the draw cap, the extra instances are listed as "and N more instance(s) not drawn". Every instance was still judged.
 - A series `wir-collect` read under another tool's name (`--csv FILE --from TOOL`) says which, in the
   note under the panels: `read as postgresql.percent_usage_connections (datadog, gauge, x100)`, the
@@ -597,7 +610,7 @@ An open row has two panels:
 **Per instance** is one bar per instance: the assert's own reducer applied to that instance's
 points in the judged window, against the warn and fail lines. The bars run worst first (the highest
 first, the lowest under `across: min`), as a top list does, so the bar the verdict came from leads.
-Each instance is named, there and in the Value over time legend, by the labels that tell it apart
+Each bar is drawn in its instance's line colour. Each instance is named, there and in the Value over time legend, by the labels that tell it apart
 from the others (`pod=catalog-a`): a label every instance shares is left out, as Grafana's legend
 does; with one instance every label is written. Its axis is in the unit the verdict
 compares in, so a slope's bars are per minute and a `divideBy` ratio's are divided by the load. The
