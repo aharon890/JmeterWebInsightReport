@@ -20371,8 +20371,10 @@ WIR.serverKpis = (function () {
            grid makes room for that width itself: containLabel's estimate fell 11px short of a cut
            name as drawn, which then started off the canvas. */
         el.style.height = Math.max(260, 22 * names.length + 70) + 'px';
-        /* The widest name in ECharts' axis font (12px sans-serif), never more than 38% of the width:
-           short names keep the plot wide, and a long one is cut there. */
+        /* The widest name, never more than 38% of the width: short names keep the plot wide, and a
+           long one is cut there. Measured in the font the axis is told to draw in below: left to
+           ECharts' platform default (12px Microsoft YaHei on Windows) the names drew 3-6% wider than
+           measured, and "instance 1" read "instanc..." (end-of-Stage-4 session, petstore F2/F5). */
         var labelCap = Math.round(0.38 * (el.clientWidth || 600));
         var labelWidth = 0;
         names.forEach(function (n) {
@@ -20437,7 +20439,10 @@ WIR.serverKpis = (function () {
             },
             yAxis: {
                 type: 'category', data: names, inverse: true,
-                axisLabel: { interval: 0, width: labelWidth, overflow: 'truncate' }
+                axisLabel: {
+                    interval: 0, width: labelWidth, overflow: 'truncate',
+                    fontSize: 12, fontFamily: 'sans-serif'
+                }
             },
             series: [{
                 type: 'bar', data: values, barMaxWidth: 18,

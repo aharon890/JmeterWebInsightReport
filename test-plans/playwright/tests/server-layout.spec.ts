@@ -628,6 +628,29 @@ test.describe('SF37: the Server tab\'s charts reach contrast in both themes', ()
     expect(c!.h, 'a row of at least 18px per bar').toBeGreaterThanOrEqual(20 * 18);
   });
 
+  test('[R] C2: a Per instance name that fits is drawn whole, not cut', async ({ page }) => {
+    // The end-of-Stage-4 session on petstore F2/F5: "routeId=catalog" read "routeId=cata…" and
+    // "instance 1" read "instanc…", far under the 38% cap. The room was measured in 12px sans-serif
+    // and the axis drew in ECharts' platform default (12px Microsoft YaHei on Windows), 3-6% wider.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await loadClean(page, 'E26');
+    await switchTab(page, 'server');
+    await page.evaluate(() => {
+      const W = window as any;
+      const d = JSON.parse(JSON.stringify(W.chartData));
+      const k = d.serverKpis.find((x: any) => x.id === 'cpu-headroom');
+      const s = d.serverMetrics.series.find((x: any) => x.query === k.query);
+      s.instances[0].labels = { instance: 'routeId=identity' };
+      s.instances[1].labels = {};
+      W.WIR.serverKpis.init(d);
+    });
+    await openRows(page, ['cpu-headroom']);
+    let c: Paint | null = null;
+    await expect.poll(async () => { c = await rowChart(page, 'cpu-headroom', 'instances'); return !!c; }).toBe(true);
+    const names = c!.texts.filter((t) => /routeId|instance/.test(t.t)).map((t) => t.t).sort();
+    expect(names).toEqual(['instance 2', 'routeId=identity']);
+  });
+
   test('[R] C4: a five-minute row never prints one minute twice on its time axis', async ({ page }) => {
     // formatClock drops the seconds once the visible range reaches two minutes, whatever tick ECharts
     // chose: petstore's 300s rows ticked every 30s and read "18:35 18:35 18:36 18:36". The client
