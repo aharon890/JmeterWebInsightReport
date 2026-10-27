@@ -169,7 +169,8 @@ class GuiRebuildTest {
         assertNotNull(result.html(), result.text());
         String text = result.text();
         assertTrue(text.contains("\nServer side not judged\n"), text);
-        assertTrue(text.contains("could not be collected - the wir-collect lines in the Rebuild dialog say why"), text);
+        // The collector's own reason (D5); its lines are in the dialog as well.
+        assertTrue(text.contains("could not be collected: --step must be a duration such as \"30s\""), text);
         assertFalse(text.contains("on the console"), text);
         assertFalse(result.collectorLines().isEmpty(), "the lines the sentence points at are in the dialog: " + text);
     }

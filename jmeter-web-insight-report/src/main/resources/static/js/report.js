@@ -20705,9 +20705,9 @@ WIR.serverKpis = (function () {
      * here WITHOUT the tolerance its author wrote, failing on the spike they tried to tolerate.
      * Present with any value, null included: Java's any-setter records the key either way.
      */
-    var OVER_HINT = ' belongs under reduce.over: "reduce": {"kind": "max", "over": '
+    var OVER_HINT = ' it belongs under reduce.over: "reduce": {"kind": "max", "over": '
         + '{"sustainedFor": "30s"}} (or {"breachBudget": 0.02}).';
-    var AT_TOP = ' at the top level of a server assert is ignored and';
+    var AT_TOP = ' is not read at the top level of a server assert, so the assert is refused:';
     var RETIRED_KPI_KEYS = {
         'assert': '"assert" is not a key of a server assert. A server assert is a reducer '
             + 'and a band: write '

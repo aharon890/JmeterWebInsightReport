@@ -113,18 +113,19 @@ public interface SeriesSource {
         private final String catalogueMetric;
         private final ToolName toolName;
         private final boolean toolDeclaresNone;
+        private final String writtenKey;
 
         public Request(String resolvedQuery, String component, String metricKey) {
             this(resolvedQuery, component, metricKey, false);
         }
 
         public Request(String resolvedQuery, String component, String metricKey, boolean oneShot) {
-            this(resolvedQuery, component, metricKey, oneShot, null, null, null, null, false);
+            this(resolvedQuery, component, metricKey, oneShot, null, null, null, null, false, null);
         }
 
         private Request(String resolvedQuery, String component, String metricKey, boolean oneShot,
                         String neutralFor, String tool, String catalogueMetric, ToolName toolName,
-                        boolean toolDeclaresNone) {
+                        boolean toolDeclaresNone, String writtenKey) {
             this.resolvedQuery = resolvedQuery;
             this.component = component;
             this.metricKey = metricKey;
@@ -134,6 +135,7 @@ public interface SeriesSource {
             this.catalogueMetric = catalogueMetric;
             this.toolName = toolName;
             this.toolDeclaresNone = toolDeclaresNone;
+            this.writtenKey = writtenKey;
         }
 
         /**
@@ -144,7 +146,7 @@ public interface SeriesSource {
          */
         public Request asNeutral(String catalogueMetric) {
             return new Request(resolvedQuery, component, metricKey, oneShot, catalogueMetric, tool,
-                    this.catalogueMetric, toolName, toolDeclaresNone);
+                    this.catalogueMetric, toolName, toolDeclaresNone, writtenKey);
         }
 
         /**
@@ -157,8 +159,23 @@ public interface SeriesSource {
          */
         public Request fromTool(String tool, CatalogueMetric metric) {
             return new Request(resolvedQuery, component, metricKey, oneShot, neutralFor, tool,
-                    metric.qualifiedName(), metric.name(tool), metric.declaresNone(tool));
+                    metric.qualifiedName(), metric.name(tool), metric.declaresNone(tool), writtenKey);
         }
+
+        /**
+         * This request, for a custom query whose text interpolates ({@code ${env.*}}, {@code ${run.*}}):
+         * {@code written} is the query as the file writes it. The NEXT line, {@code serverData.series[]}
+         * and the page's CSV template name the series that way, and the docs say to write it exactly so,
+         * so a CSV may name its rows by either text: {@link #metricKey()} (resolved) first, then this one
+         * (N5). Every other source asks by the resolved query alone.
+         */
+        public Request alsoWrittenAs(String written) {
+            return new Request(resolvedQuery, component, metricKey, oneShot, neutralFor, tool, catalogueMetric,
+                    toolName, toolDeclaresNone, written);
+        }
+
+        /** The query as the file writes it, when it differs from {@link #metricKey()}; null otherwise. */
+        public String writtenKey() { return writtenKey; }
 
         /** The tool the file was exported from, or null: no {@code --from}, or not a catalogue metric. */
         public String tool() { return tool; }

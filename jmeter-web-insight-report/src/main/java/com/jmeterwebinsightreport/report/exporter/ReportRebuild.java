@@ -290,26 +290,54 @@ public final class ReportRebuild {
             args.add("--rampup");
             args.add(String.valueOf(config.getRampUpDurationMillis()));
         }
+        // The files the collector is handed, which its refusal may name by a local path (D5).
+        List<String> paths = new ArrayList<>(Arrays.asList(jtlFile.getAbsolutePath(),
+                config.getAnnotationsFile().getPath(), given.getPath(), payload.getPath()));
         for (String[] option : CSV_OPTIONS) {
             String value = props.apply("webinsight.report.servermetrics." + option[0]);
             if (value != null && !value.trim().isEmpty()) {
                 args.add(option[1]);
                 args.add(value.trim());
+                if ("columns".equals(option[0])) {
+                    paths.add(value.trim());
+                }
             }
         }
+        // Its lines still go to err as they come; a copy is kept for the refusal.
+        java.io.ByteArrayOutputStream said = new java.io.ByteArrayOutputStream();
+        PrintStream collectorErr = new PrintStream(new java.io.OutputStream() {
+            @Override
+            public void write(int b) {
+                err.write(b);
+                said.write(b);
+            }
+
+            @Override
+            public void write(byte[] b, int off, int len) {
+                err.write(b, off, len);
+                said.write(b, off, len);
+            }
+
+            @Override
+            public void flush() {
+                err.flush();
+            }
+        }, true);
         int code;
         try {
-            code = WirCollect.run(args.toArray(new String[0]), parsed, out, err, env);
+            code = WirCollect.run(args.toArray(new String[0]), parsed, out, collectorErr, env);
         } catch (OutOfMemoryError e) {
-            err.println("wir-collect: ran out of memory reading " + given.getName()
+            collectorErr.println("wir-collect: ran out of memory reading " + given.getName()
                     + " - give JMeter more heap (JVM_ARGS=-Xmx2g) or export a narrower window");
             code = 1;
         } catch (RuntimeException e) {
             // A fault in the collector costs the Server tab, never the client report (decision B):
             // uncaught, it reached the exporter as an ExportException and no report was written.
-            err.println("wir-collect: could not collect " + given.getName() + " - " + ReportArtifacts.describe(e));
+            collectorErr.println("wir-collect: could not collect " + given.getName() + " - "
+                    + ReportArtifacts.describe(e));
             code = 1;
         }
+        collectorErr.flush();
         if (code == 0) {
             config.setServerMetricsFile(payload);
             config.setCollectedServerPayload(payload);
@@ -318,9 +346,59 @@ public final class ReportRebuild {
             // made goes now rather than at the JVM's exit, which in a GUI JMeter is hours away.
             payload.delete();
             config.setServerMetricsFile(null);
-            config.setServerDataProblem("the server CSV " + given.getName() + " could not be collected - "
-                    + route.whyCollectionWasRefused);
+            String refusal = refusalOf(new String(said.toByteArray(), java.nio.charset.Charset.defaultCharset()), paths);
+            config.setServerDataProblem("the server CSV " + given.getName() + " could not be collected"
+                    + (refusal != null ? ": " + refusal : " - " + route.whyCollectionWasRefused));
         }
+    }
+
+    /**
+     * The collector's refusal in what it wrote on err: its last {@code wir-collect:} line (findings come
+     * before it, and a flag refusal's usage lines after it are not the collector's), without that prefix,
+     * and with every one of {@code paths} it names reduced to its file name (D5). It becomes the refused
+     * payload's reason, which the page, the CI/CD JSON and JUnit print, and the published page names no
+     * local path ({@code report_local_path}); the console line keeps the path. Null when no line is the
+     * collector's: the caller then points at where its lines went.
+     *
+     * @param paths the files the collector was handed, as handed: each is matched as written, absolute,
+     *              and canonical, in either separator, spelt as the console spells it
+     */
+    static String refusalOf(String said, List<String> paths) {
+        String last = null;
+        for (String line : said.split("\r?\n")) {
+            if (line.startsWith("wir-collect: ")) {
+                last = line.substring("wir-collect: ".length());
+            }
+        }
+        if (last == null) {
+            return null;
+        }
+        Map<String, String> names = new java.util.TreeMap<>((a, b) -> a.length() != b.length()
+                ? b.length() - a.length() : a.compareTo(b));   // longest first: a path before its own tail
+        for (String path : paths) {
+            if (path == null || path.isEmpty()) {
+                continue;
+            }
+            String name = path.substring(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1);
+            List<String> forms = new ArrayList<>(Arrays.asList(path, new File(path).getAbsolutePath()));
+            try {
+                forms.add(new File(path).getCanonicalPath());
+            } catch (IOException e) {
+                // the other spellings still apply
+            }
+            for (String form : forms) {
+                for (String spelt : Arrays.asList(form, form.replace('\\', '/'), form.replace('/', '\\'))) {
+                    String ascii = WirCollect.ascii(spelt);
+                    if (!ascii.equals(name)) {
+                        names.put(ascii, WirCollect.ascii(name));
+                    }
+                }
+            }
+        }
+        for (Map.Entry<String, String> e : names.entrySet()) {
+            last = last.replace(e.getKey(), e.getValue());
+        }
+        return last;
     }
 
     /** True when the file's first non-blank character (after a BOM) opens a JSON object. */

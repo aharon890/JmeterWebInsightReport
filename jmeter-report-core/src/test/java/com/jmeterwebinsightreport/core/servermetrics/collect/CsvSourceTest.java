@@ -107,6 +107,90 @@ class CsvSourceTest {
     }
 
     @Test
+    void anUnquotedQueryWithACommaFailsByLineNeverASilentNoMatch() throws IOException {
+        // A PromQL query in an unquoted cell splits at its ',': the row is refused under the fragment's key,
+        // and the query the assert asks for found no rows and no error - NO_MATCH, which STRICT does not
+        // count (S4 X08, 2026-10-25).
+        ServerSource s = csv("time,component,metric,instance,value\n"
+                + "1700000000000,db,sum by (a, b) (x),,5\n"
+                + "1700000015000,db,sum by (a, b) (x),,6\n");
+        assertEquals("m.csv line 2: metric \"sum by (a\" is the start of sum by (a, b) (x), split at its ',' - a"
+                + " metric with ',' in it must be quoted: \"...\", each '\"' inside doubled",
+                ask(new CsvSource(), s, "db", "sum by (a, b) (x)").error());
+        // Quoted as RFC 4180 says, it reads.
+        ServerSource quoted = csv("time,component,metric,instance,value\n"
+                + "1700000000000,db,\"sum by (a, b) (x{app=\"\"c\"\"})\",,5\n");
+        assertNull(ask(new CsvSource(), quoted, "db", "sum by (a, b) (x{app=\"c\"})").error());
+        // A query that only shares the fragment's start with no ',' after it is not blamed.
+        assertNull(ask(new CsvSource(), s, "db", "sum by (abc)").error());
+        // A '"' before the ',' is lost too in an unquoted cell (it toggles quoting), so the fragment is the
+        // query's start without it - still that query's row (S4 X08's fourth query).
+        ServerSource quotes = csv("time,component,metric,instance,value\n"
+                + "1700000000000,db,max(x{app=\"c\"}) * topk(1, y),,5\n");
+        assertEquals("m.csv line 2: metric \"max(x{app=c}) * topk(1\" is the start of max(x{app=\"c\"}) * topk(1, y),"
+                + " split at its ',' - a metric with ',' in it must be quoted: \"...\", each '\"' inside doubled",
+                ask(new CsvSource(), quotes, "db", "max(x{app=\"c\"}) * topk(1, y)").error());
+    }
+
+    @Test
+    void anUnquotedQueryThatLostItsQuotesIsSaidNotEmpty() throws IOException {
+        // No ',' to split it, but each '"' toggles quoting instead of being text: the row names the query
+        // without them, and the assert read NO_MATCH with nothing said (S4 X08's other 7).
+        ServerSource s = csv("time,component,metric,instance,value\n"
+                + "1700000000000,db,max(x{app=\"c\"}),,5\n");
+        assertEquals("no row names component db, metric max(x{app=\"c\"}); 1 row name db/max(x{app=c}) - the same"
+                + " text without its '\"': a cell holding '\"' must be quoted, \"...\", with each '\"' inside doubled",
+                ask(new CsvSource(), s, "db", "max(x{app=\"c\"})").error());
+        // Only when the series is otherwise empty: the row's own name still reads.
+        assertNull(ask(new CsvSource(), s, "db", "max(x{app=c})").error());
+    }
+
+    @Test
+    void aShiftedExportWithALeadInIsToldItsWholeShiftTheSameForEverySeries() throws IOException {
+        // A real export (petstore_ms, 2026-10-25): the run's window and a minute either side, every row 400 s
+        // late. Measured start to start the hint said -340s (the lead-in counted into the shift), and more for a
+        // rate series whose first rows were missing; followed, it gave a report silently a minute off (S4 X14).
+        StringBuilder text = new StringBuilder("time,component,metric,instance,value\n");
+        for (long t = 1_700_000_000_000L - 60_000 + 400_000; t <= 1_700_000_060_000L + 60_000 + 400_000; t += 15_000) {
+            text.append(t).append(",app,cpu,,40\n");
+            if (t >= 1_700_000_000_000L + 15_000 + 400_000) {
+                text.append(t).append(",app,rate,,7\n");   // starts 75 s into the export
+            }
+        }
+        ServerSource s = csv(text.toString());
+        CsvSource reader = new CsvSource();
+        for (String metric : new String[] {"cpu", "rate"}) {
+            String e = ask(reader, s, "app", metric).error();
+            assertTrue(e.endsWith("if the server's clock is off by about 400s, move the rows with --clock-offset -400s"), e);
+        }
+    }
+
+    @Test
+    void theShiftIsMeasuredOverTheSeriesOutsideTheRunNotTheWholeFile() throws IOException {
+        // One series shifted 3 h beside another inside the run (E28): the whole file's span would put the
+        // middle 90 minutes off; the shifted series alone says 3h.
+        ServerSource s = csv("time,component,metric,instance,value\n"
+                + "1700000000000,app,ok,,1\n1700000060000,app,ok,,1\n"
+                + "1700010800000,app,late,,1\n1700010860000,app,late,,1\n");
+        String e = ask(new CsvSource(), s, "app", "late").error();
+        assertTrue(e.endsWith("move the rows with --clock-offset -3h"), e);
+    }
+
+    @Test
+    void aSeriesOnOneSideOfAFileThatStraddlesTheRunIsToldToExportTheRunNotAShift() throws IOException {
+        // An export of two other periods (S4 X16): most series have rows before and after the run; one
+        // starts late and has rows only after it. No shift lines the file up, so that one is not given
+        // the middle of the file's rows as a clock offset (it read "off by about 7s").
+        ServerSource s = csv("time,component,metric,instance,value\n"
+                + "1699999900000,app,cpu,,40\n1700000160000,app,cpu,,43\n"
+                + "1700000160000,app,late,,1\n1700000175000,app,late,,2\n");
+        assertEquals("m.csv has 2 rows for app/late and none inside the run: they run 2023-11-14T22:16:00Z .."
+                + " 2023-11-14T22:16:15Z, after the run (2023-11-14T22:13:20Z .. 2023-11-14T22:14:20Z) - export the"
+                + " run's window: the file's rows lie before and after it, so no shift lines them up",
+                ask(new CsvSource(), s, "app", "late").error());
+    }
+
+    @Test
     void aNameThatDiffersOnlyByCaseOrPunctuationIsSaidNotEmpty() throws IOException {
         ServerSource s = csv("time,component,metric,instance,value\n"
                 + "1700000000000,App,cpu_pct,,40\n1700000015000,App,cpu_pct,,41\n");
@@ -953,6 +1037,31 @@ class CsvSourceTest {
     }
 
     @Test
+    void aTimeInScientificNotationIsSaidSoNotJustCalledNotATime() throws IOException {
+        // D6 (S4 X04): Excel re-saves an epoch-ms column as 1.79294E+12, its last digits gone.
+        ServerSource s = csv("time,component,metric,instance,value\n1.79294E+12,c,x,,1\n");
+        assertEquals("m.csv line 2: time \"1.79294E+12\" is in scientific notation, as a spreadsheet re-saves a"
+                + " number, and has lost its last digits - write epoch milliseconds in full, or ISO 8601 with a zone"
+                + " (2026-10-02T14:02:15+03:00)", ask(new CsvSource(), s, "c", "x").error());
+    }
+
+    @Test
+    void prometheusInfIsNotAFiniteNumberNotADecimalPointSlip() throws IOException {
+        // D6 (S4 X07): histogram_quantile into the +Inf bucket reads +Inf, Prometheus' own spelling, which
+        // Double.parseDouble does not take: it was told to use a '.' decimal point.
+        ServerSource s = csv("time,component,metric,instance,value\n"
+                + "1700000000000,c,x,,+Inf\n1700000000000,c,y,,-Inf\n1700000000000,c,z,,Infinity\n");
+        CsvSource reader = new CsvSource();
+        assertEquals("m.csv line 2: value \"+Inf\" is not a finite number", ask(reader, s, "c", "x").error());
+        assertEquals("m.csv line 3: value \"-Inf\" is not a finite number", ask(reader, s, "c", "y").error());
+        assertEquals("m.csv line 4: value \"Infinity\" is not a finite number", ask(reader, s, "c", "z").error());
+        // The wide layout reads its cells the same way.
+        ServerSource w = wide("\"Time\",\"c/x\"\n1700000000000,+Inf\n");
+        assertEquals("grafana.csv line 2: column \"c/x\": value \"+Inf\" is not a finite number",
+                ask(new CsvSource(), w, "c", "x").error());
+    }
+
+    @Test
     void aZoneLessTimeADaylightSavingChangeRepeatsOrSkipsIsRefusedNeverResolvedInSilence() throws IOException {
         // Berlin's clocks went back at 03:00 on 2023-10-29, so 02:30 happened twice; they went forward
         // at 02:00 on 2023-03-26, so 02:30 never happened. Resolved to one offset, an hour of rows
@@ -963,12 +1072,14 @@ class CsvSourceTest {
                 + "2023-03-26 02:30:00,c,y,,3\n"
                 + "2023-10-29 03:30:00,c,z,,4\n", "Europe/Berlin");
         CsvSource reader = new CsvSource();
+        // Both offsets (D6): the hint named the one before the change, which for a file written in the
+        // repeated hour's second pass is the wrong one.
         assertEquals("m.csv line 3: time \"2023-10-29 02:30:00\" is not one moment in Europe/Berlin, whose clocks"
-                + " change then - give --time-zone as the offset the file was written in (such as +02:00), or write"
-                + " epoch milliseconds", ask(reader, s, "c", "x").error());
+                + " change then - give --time-zone as the offset the file was written in (+02:00 before the change,"
+                + " +01:00 after it), or write epoch milliseconds", ask(reader, s, "c", "x").error());
         assertEquals("m.csv line 4: time \"2023-03-26 02:30:00\" is not one moment in Europe/Berlin, whose clocks"
-                + " change then - give --time-zone as the offset the file was written in (such as +01:00), or write"
-                + " epoch milliseconds", ask(reader, s, "c", "y").error());
+                + " change then - give --time-zone as the offset the file was written in (+01:00 before the change,"
+                + " +02:00 after it), or write epoch milliseconds", ask(reader, s, "c", "y").error());
         // Either side of the change the zone reads as ever. This row is outside the test's window,
         // and a series whose every row is outside the run is said, with both spans - never EMPTY.
         assertTrue(ask(reader, s, "c", "z").error().startsWith("m.csv has 1 row for c/z and none inside the run:"

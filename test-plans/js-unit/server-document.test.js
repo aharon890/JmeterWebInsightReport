@@ -479,7 +479,7 @@ test('R1-11: a KPI-level sustainedFor is refused in the mapper\'s words and kept
         sustainedFor: '30s', fail: { gt: 500 } };
     const { kpi, written } = noOpSave(blockWith(declared));
     assert.ok(plain(kpi.problems).some((p) => p.indexOf(
-        '"sustainedFor" at the top level of a server assert is ignored and belongs under reduce.over') === 0),
+        '"sustainedFor" is not read at the top level of a server assert, so the assert is refused: it belongs under reduce.over') === 0),
         plain(kpi.problems));
     assert.strictEqual(written.sustainedFor, '30s', 'a no-op save must not repair the file either');
 });

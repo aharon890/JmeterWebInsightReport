@@ -803,7 +803,7 @@ public final class WirCollect {
      * escape. A multi-line PromQL query - which the U7 trim leaves alone inside - printed a raw line
      * break and split one outcome over two lines of a console that promises one line per outcome.
      */
-    static String ascii(String text) {
+    public static String ascii(String text) {
         StringBuilder sb = null;
         for (int i = 0; i < text.length(); i++) {
             char c = text.charAt(i);

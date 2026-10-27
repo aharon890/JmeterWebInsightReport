@@ -180,6 +180,15 @@ public final class CsvSource implements SeriesSource {
         }
         String key = seriesKey(request.component(), request.metricKey());
         asked.add(key);
+        if (request.writtenKey() != null) {
+            // An interpolating query, which WIR's own NEXT line and CSV template name as the file writes
+            // it: rows under that text are this series too, when none carry the resolved one (N5).
+            String written = seriesKey(request.component(), request.writtenKey());
+            asked.add(written);
+            if (!idx.has(key) && idx.has(written)) {
+                key = written;
+            }
+        }
         ToolName readAs = null;
         ToolName toolName = null;
         if (request.tool() != null) {
@@ -226,6 +235,10 @@ public final class CsvSource implements SeriesSource {
             if (near != null) {
                 return Answer.failed(near);
             }
+            String split = splitAt(idx, request.component(), request.metricKey());
+            if (split != null) {
+                return Answer.failed(split);
+            }
             return Answer.of(instances, readAs);
         }
         // Rows outside the run are dropped, with one step of slack at each edge: a range query on
@@ -258,7 +271,7 @@ public final class CsvSource implements SeriesSource {
             instances.add(inst);
         }
         if (instances.isEmpty()) {
-            return emptySeries(source, request, window, slack, byInstance, readAs);
+            return emptySeries(source, request, window, slack, byInstance, readAs, idx);
         }
         return Answer.of(instances, readAs);
     }
@@ -269,7 +282,7 @@ public final class CsvSource implements SeriesSource {
      * holding a number. The span and the counts are taken only here, where they are said.
      */
     private Answer emptySeries(ServerSource source, Request request, ServerMetricsPayload.Window window, long slack,
-                               Map<String, TreeMap<Long, Double>> byInstance, ToolName readAs) {
+                               Map<String, TreeMap<Long, Double>> byInstance, ToolName readAs, Index idx) {
         long fileFirst = Long.MAX_VALUE;
         long fileLast = Long.MIN_VALUE;
         int rowsRead = 0;
@@ -299,8 +312,9 @@ public final class CsvSource implements SeriesSource {
             // time problem - a local time written with Z, a wrong --time-zone, an export of
             // another range, a skewed server clock - and never "the query matched no series":
             // say so, with both spans and the shift between them.
+            long[] span = outsideSpan(idx, source.clockOffsetMs(), window, slack);
             return Answer.failed(outsideWindow(file, request.component(), request.metricKey(), rowsRead,
-                    fileFirst, fileLast, window, slack));
+                    fileFirst, fileLast, span[0], span[1], window, slack));
         }
         String rowsInside = file + " has " + inside + " row" + (inside == 1 ? "" : "s") + " for "
                 + request.component() + "/" + request.metricKey() + (inside < rowsRead ? " inside the run" : "");
@@ -320,15 +334,59 @@ public final class CsvSource implements SeriesSource {
     }
 
     /**
+     * The earliest and latest row, clock offset applied, of every series in the file with no row inside
+     * the run: the rows a shift would have to move. Rows of series the run does contain are left out, so
+     * one series shifted beside in-window ones is measured on its own (E28).
+     */
+    static long[] outsideSpan(Index idx, long offset, ServerMetricsPayload.Window window, long slack) {
+        long first = Long.MAX_VALUE;
+        long last = Long.MIN_VALUE;
+        for (Map<String, TreeMap<Long, Double>> series : idx.series.values()) {
+            long sFirst = Long.MAX_VALUE;
+            long sLast = Long.MIN_VALUE;
+            boolean inside = false;
+            for (TreeMap<Long, Double> rows : series.values()) {
+                for (Long t : rows.keySet()) {
+                    if (inRun(t + offset, window, slack)) {
+                        inside = true;
+                        break;
+                    }
+                }
+                if (inside) {
+                    break;
+                }
+                if (!rows.isEmpty()) {
+                    sFirst = Math.min(sFirst, rows.firstKey() + offset);
+                    sLast = Math.max(sLast, rows.lastKey() + offset);
+                }
+            }
+            if (!inside && sFirst <= sLast) {
+                first = Math.min(first, sFirst);
+                last = Math.max(last, sLast);
+            }
+        }
+        return new long[] {first, last};
+    }
+
+    /**
      * The sentence for a series whose every row is outside the run window: how many rows, the span
      * they cover against the run's, and the shift between them - a whole number of hours or quarter
      * hours named as a likely time zone, anything else as clock skew, each with the flag that moves
      * it. A hint only: nothing is shifted without being asked.
+     *
+     * <p>One shift for the file: measured over {@code spanFirst..spanLast}, every series that lies
+     * wholly outside the run ({@link #outsideSpan}), so each of them is told the same offset. When that
+     * span is at least as long as the run, its middle is matched with the run's: an export takes a
+     * lead-in before the run and as much after it ("a minute either side"), which start to start counted
+     * into the shift - a file 400 s late was told 340 s, and a series that started late more - and the
+     * hint says "about". A shorter span is matched start to start.
      */
     static String outsideWindow(String file, String component, String metric, int rows, long first, long last,
-                                ServerMetricsPayload.Window window, long slack) {
-        // Start to start: a file shifted whole keeps its distance from the run at both ends.
-        long shift = Math.round((first - window.getStart()) / 1000.0) * 1000L;
+                                long spanFirst, long spanLast, ServerMetricsPayload.Window window, long slack) {
+        boolean centred = spanFirst <= spanLast && spanLast - spanFirst >= window.getEnd() - window.getStart();
+        long raw = centred ? (spanFirst + spanLast) / 2 - (window.getStart() + window.getEnd()) / 2
+                : (spanFirst <= spanLast ? spanFirst : first) - window.getStart();
+        long shift = Math.round(raw / 1000.0) * 1000L;
         boolean before = last < window.getStart();
         // Rows on both sides and none inside: an export of other runs, the run falling between them.
         // No shift lines that up.
@@ -341,6 +399,12 @@ public final class CsvSource implements SeriesSource {
         if (around) {
             return sb.append(" - export the run's window").toString();
         }
+        if (spanFirst < window.getStart() && spanLast > window.getEnd()) {
+            // This series lies on one side, but the file's rows outside the run lie on both (an export of
+            // other periods): the middle of those is no clock offset.
+            return sb.append(" - export the run's window: the file's rows lie before and after it, so no shift"
+                    + " lines them up").toString();
+        }
         long quarter = 15 * 60_000L;
         long rounded = Math.round((double) shift / quarter) * quarter;
         long tolerance = Math.max(2 * 60_000L, 2 * slack);
@@ -351,7 +415,9 @@ public final class CsvSource implements SeriesSource {
                     .append(" zone with --time-zone, or move the rows with --clock-offset ").append(rounded > 0 ? "-" : "")
                     .append(Durations.format(Math.abs(rounded)));
         } else if (shift != 0 && Math.abs(shift) <= 14 * 3_600_000L) {
-            sb.append(". Export the run's window; if the server's clock is off, move the rows with --clock-offset ")
+            sb.append(". Export the run's window; if the server's clock is off")
+                    .append(centred ? " by about " + Durations.format(Math.abs(shift)) : "")
+                    .append(", move the rows with --clock-offset ")
                     .append(shift > 0 ? "-" : "").append(Durations.format(Math.abs(shift)));
         } else {
             sb.append(". The file covers another period: export the run's window");
@@ -375,18 +441,49 @@ public final class CsvSource implements SeriesSource {
             return null;
         }
         String wanted = loose(component) + "\u0000" + loose(metric);
+        // Each '"' in a cell that is not quoted opens or closes quoting instead of being text, so the row
+        // names a query without them (N4).
+        String unquoted = metric.indexOf('"') >= 0 ? component + "\u0000" + metric.replace("\"", "") : null;
         for (Map.Entry<String, Map<String, TreeMap<Long, Double>>> e : idx.series.entrySet()) {
             int sep = e.getKey().indexOf('\u0000');
             String c = e.getKey().substring(0, sep);
             String m = e.getKey().substring(sep + 1);
-            if ((loose(c) + "\u0000" + loose(m)).equals(wanted)) {
+            boolean lostQuotes = e.getKey().equals(unquoted);
+            if (lostQuotes || (loose(c) + "\u0000" + loose(m)).equals(wanted)) {
                 int rows = 0;
                 for (TreeMap<Long, Double> r : e.getValue().values()) {
                     rows += r.size();
                 }
                 return "no row names component " + component + ", metric " + metric + "; " + rows + " row"
-                        + (rows == 1 ? "" : "s") + " name " + c + "/" + m + " - component and metric must be "
-                        + "written exactly as the annotations file writes them";
+                        + (rows == 1 ? "" : "s") + " name " + c + "/" + m + (lostQuotes
+                            ? " - the same text without its '\"': a cell holding '\"' must be quoted, \"...\","
+                              + " with each '\"' inside doubled"
+                            : " - component and metric must be written exactly as the annotations file writes them");
+            }
+        }
+        return null;
+    }
+
+    /**
+     * When no row names {@code component/metric} because a row with more cells than its header was read
+     * under the start of that metric - the text before its ',' - the sentence naming that row, or null.
+     * A metric with a ',' in it, a PromQL query's, splits that way when its cell is not quoted, and the
+     * query it was asked by found no rows and no error: a NO_MATCH that said nothing (S4 X08).
+     */
+    static String splitAt(Index idx, String component, String metric) {
+        if (component == null || metric == null || metric.indexOf(',') < 0) {
+            return null;
+        }
+        // An unquoted cell loses its '"' as well (each one toggles quoting), so the fragment is compared
+        // with the metric written without them.
+        String bare = metric.replace("\"", "");
+        for (Map.Entry<String, String> e : idx.wideRows.entrySet()) {
+            int sep = e.getKey().indexOf('\u0000');
+            String fragment = e.getKey().substring(sep + 1);
+            if (e.getKey().substring(0, sep).equals(component) && !fragment.isEmpty() && bare.startsWith(fragment)
+                    && bare.substring(fragment.length()).trim().startsWith(",")) {
+                return e.getValue() + ": metric \"" + fragment + "\" is the start of " + metric + ", split at its ','"
+                        + " - a metric with ',' in it must be quoted: \"...\", each '\"' inside doubled";
             }
         }
         return null;
@@ -461,6 +558,9 @@ public final class CsvSource implements SeriesSource {
      */
     private static String keyRead(Index idx, SeriesSource.Request request) {
         String key = seriesKey(request.component(), request.metricKey());
+        if (request.writtenKey() != null && !idx.has(key) && idx.has(seriesKey(request.component(), request.writtenKey()))) {
+            return seriesKey(request.component(), request.writtenKey());
+        }
         ToolName name = request.tool() == null ? null : request.toolName();
         if (name != null) {
             String toolKey = seriesKey(request.component(), name.metric());
@@ -731,6 +831,7 @@ public final class CsvSource implements SeriesSource {
                 written--;
             }
             if (written > header.width) {
+                idx.wideRows.putIfAbsent(key, name + " line " + row.line);
                 idx.errors.put(key, where + "has " + written + " cells where the header has " + header.width
                         + " - an unquoted ',' inside a value? Write numbers with a '.' decimal point and no"
                         + " thousands separator, or quote the cell");
@@ -755,8 +856,8 @@ public final class CsvSource implements SeriesSource {
                 try {
                     value = Double.parseDouble(v);
                 } catch (NumberFormatException e) {
-                    idx.errors.put(key, where + "value \"" + v + "\" is not a number - write it with a"
-                            + " '.' decimal point and no thousands separator");
+                    idx.errors.put(key, where + "value \"" + v + "\" " + (infinityText(v) ? "is not a finite number"
+                            : "is not a number - write it with a '.' decimal point and no thousands separator"));
                     continue;
                 }
                 if (value.isInfinite()) {
@@ -1010,12 +1111,32 @@ public final class CsvSource implements SeriesSource {
             }
             LocalDateTime local = localTime(t);
             if (local != null && zone.getRules().getValidOffsets(local).size() != 1) {
+                // Both offsets (D6): the one before the change alone is wrong for a file written in a
+                // repeated hour's second pass.
+                java.time.zone.ZoneOffsetTransition change = zone.getRules().getTransition(local);
                 return "is not one moment in " + zone.getId() + ", whose clocks change then - give --time-zone as"
-                        + " the offset the file was written in (such as " + zone.getRules().getOffset(local).getId()
+                        + " the offset the file was written in (" + (change != null
+                            ? change.getOffsetBefore().getId() + " before the change, " + change.getOffsetAfter().getId()
+                              + " after it"
+                            : "such as " + zone.getRules().getOffset(local).getId())
                         + "), or write epoch milliseconds";
             }
         }
+        // A spreadsheet re-saves a long number in E notation, keeping its first digits only (D6).
+        if (t.matches("[+-]?\\d+(\\.\\d+)?[eE][+-]?\\d+")) {
+            return "is in scientific notation, as a spreadsheet re-saves a number, and has lost its last digits"
+                    + " - write epoch milliseconds in full, or ISO 8601 with a zone (2026-10-02T14:02:15+03:00)";
+        }
         return "is not a time - write ISO 8601 with a zone (2026-10-02T14:02:15+03:00) or epoch milliseconds";
+    }
+
+    /**
+     * An infinity in a spelling {@code Double.parseDouble} does not take - Prometheus' {@code +Inf} and
+     * {@code -Inf}, as histogram_quantile writes into the +Inf bucket - which is a number, not a
+     * decimal-point slip (D6). {@code Infinity} parses, and is refused as infinite where it is read.
+     */
+    static boolean infinityText(String v) {
+        return v.matches("[+-]?(?i:inf|infinity)");
     }
 
     static String seriesKey(String component, String metric) {
@@ -1152,6 +1273,12 @@ public final class CsvSource implements SeriesSource {
         final List<String> mapMissing = new ArrayList<>();
         /** By series key, the first line that repeated a time with another value: said, never fatal. */
         final Map<String, String> duplicates = new LinkedHashMap<>();
+        /**
+         * By the key a row with more cells than its header was read under, that row ("m.csv line 5"). When
+         * the ',' was inside the metric cell - an unquoted PromQL query - that key holds only the query's
+         * start, and the lookup of the whole query is pointed here ({@link #splitAt}).
+         */
+        final Map<String, String> wideRows = new LinkedHashMap<>();
         String fileError;
 
         static Index failed(String error) {

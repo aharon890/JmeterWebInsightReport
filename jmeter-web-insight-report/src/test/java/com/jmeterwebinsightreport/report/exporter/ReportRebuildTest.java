@@ -207,14 +207,51 @@ class ReportRebuildTest {
                 PROPS, captured.out, captured.err, NO_ENV, ReportRebuild.Route.COMMAND_LINE);
 
         assertTrue(captured.err().contains("wir-collect: "), captured.err());
-        // -g's sentence, byte for byte: its lines went to the console it names.
-        assertEquals("the server CSV server-metrics.csv could not be collected - the wir-collect lines on the"
-                + " console say why", config.getServerDataProblem());
+        // D5. The collector's reason, carried into the problem the page, the JSON and JUnit print - it was
+        // "the wir-collect lines on the console say why", and a CI artifact may keep no console. The
+        // line names the annotations file by its absolute path; the problem names it by its file name,
+        // as the published page names no local path.
+        String problem = config.getServerDataProblem();
+        assertTrue(problem.startsWith("the server CSV server-metrics.csv could not be collected: gate-mixed.json"
+                + " declares no serverMetrics.asserts and no component of a catalogue type ("), problem);
+        assertTrue(problem.endsWith(") - nothing to collect"), problem);
+        assertTrue(captured.err().contains(clientOnly.getAbsolutePath()), "the console keeps the path: " + captured.err());
+        assertFalse(problem.contains(clientOnly.getAbsoluteFile().getParent()), problem);
         assertNull(config.getServerMetricsFile());
         assertNull(config.getCollectedServerPayload());
         Set<String> after = scratchPayloads();
         after.removeAll(before);
         assertEquals(Collections.emptySet(), after, "the refused collection's temporary file was left behind");
+    }
+
+    @Test
+    void aCollectorRefusalNamesItsReasonInTheProblemText() throws Exception {
+        // D5 (S4 W3): a long CSV given webinsight.report.servermetrics.columns without .layout. The
+        // collector refuses on the console; the page, the JSON finding and JUnit said only that its
+        // lines say why.
+        File columns = work.resolve("columns.csv").toFile();
+        Files.write(columns.toPath(), "header,series\n".getBytes(StandardCharsets.UTF_8));
+        Function<String, String> props = name -> "webinsight.report.servermetrics.columns".equals(name)
+                ? columns.getAbsolutePath() : PROPS.apply(name);
+        ReportConfiguration config = config("columns-no-layout", CSV, ANNOTATIONS);
+        Captured captured = new Captured();
+        ReportRebuild.collectServerCsvIfGiven(config, JTL, null, props, captured.out, captured.err, NO_ENV,
+                ReportRebuild.Route.COMMAND_LINE);
+        assertTrue(captured.err().contains("wir-collect: --columns goes with --layout wide"), captured.err());
+        assertEquals("the server CSV server-metrics.csv could not be collected: --columns goes with --layout wide"
+                + " - a long file's column names are --csv-columns", config.getServerDataProblem());
+        assertNull(config.getServerMetricsFile());
+    }
+
+    @Test
+    void theRefusalIsTheCollectorsLastLineWithEveryPathItWasGivenReducedToItsFileName() {
+        List<String> paths = Arrays.asList("D:\\runs\\r1\\annotations.json", "/home/ci/run/results.jtl");
+        // Findings come first, the refusal last; the usage lines that follow a flag refusal are not ours.
+        assertEquals("annotations.json declares nothing, results.jtl has samples",
+                ReportRebuild.refusalOf("wir-collect: WARNING a finding\n"
+                        + "wir-collect: D:\\runs\\r1\\annotations.json declares nothing, /home/ci/run/results.jtl has samples\r\n"
+                        + "usage: wir-collect --jtl <results.jtl>\n", paths));
+        assertNull(ReportRebuild.refusalOf("usage: wir-collect\n", paths), "no line of the collector's: none");
     }
 
     @Test
@@ -225,9 +262,10 @@ class ReportRebuildTest {
         ReportRebuild.readCompanionFiles(refused, refused.getOutputDirectory(), JTL,
                 ReportRebuild.parse(JTL, refused, PROPS), PROPS, captured.out, captured.err, NO_ENV,
                 ReportRebuild.Route.LISTENER_PANEL);
-        // The button captured the collector's lines for its dialog: no console ever showed them.
-        assertEquals("the server CSV server-metrics.csv could not be collected - the wir-collect lines in the"
-                + " Rebuild dialog say why", refused.getServerDataProblem());
+        // The button captured the collector's lines for its dialog, and the problem carries the reason
+        // itself, as -g's does.
+        assertTrue(refused.getServerDataProblem().startsWith("the server CSV server-metrics.csv could not be"
+                + " collected: gate-mixed.json declares no serverMetrics.asserts"), refused.getServerDataProblem());
 
         // A CSV with no annotations file anywhere: -g names the property, the button its own field.
         ReportConfiguration g = config("g-no-annotations", CSV, null);

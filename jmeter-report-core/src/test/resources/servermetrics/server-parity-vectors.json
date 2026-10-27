@@ -3706,7 +3706,7 @@
    "expect": {
     "status": "NOT_JUDGED",
     "notJudged": "INVALID_RULE",
-    "reason": "\"sustainedFor\" at the top level of a server assert is ignored and belongs under reduce.over"
+    "reason": "\"sustainedFor\" is not read at the top level of a server assert, so the assert is refused: it belongs under reduce.over"
    }
   },
   {
@@ -5084,7 +5084,7 @@
    "expect": {
     "status": "NOT_JUDGED",
     "notJudged": "INVALID_RULE",
-    "detail": "\"breachBudget\" at the top level of a server assert is ignored and belongs under reduce.over: \"reduce\": {\"kind\": \"max\", \"over\": {\"sustainedFor\": \"30s\"}} (or {\"breachBudget\": 0.02})."
+    "detail": "\"breachBudget\" is not read at the top level of a server assert, so the assert is refused: it belongs under reduce.over: \"reduce\": {\"kind\": \"max\", \"over\": {\"sustainedFor\": \"30s\"}} (or {\"breachBudget\": 0.02})."
    }
   },
   {
@@ -5106,7 +5106,7 @@
    "expect": {
     "status": "NOT_JUDGED",
     "notJudged": "INVALID_RULE",
-    "detail": "\"over\" at the top level of a server assert is ignored and belongs under reduce.over: \"reduce\": {\"kind\": \"max\", \"over\": {\"sustainedFor\": \"30s\"}} (or {\"breachBudget\": 0.02})."
+    "detail": "\"over\" is not read at the top level of a server assert, so the assert is refused: it belongs under reduce.over: \"reduce\": {\"kind\": \"max\", \"over\": {\"sustainedFor\": \"30s\"}} (or {\"breachBudget\": 0.02})."
    }
   },
   {

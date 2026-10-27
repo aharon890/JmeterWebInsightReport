@@ -557,6 +557,39 @@ class WirCollectTest {
     }
 
     @Test
+    void aCsvWrittenWithTheQueryAsTheFileWritesItIsFoundWhenTheQueryInterpolates() throws Exception {
+        // N5 (real-backend review, 2026-10-27). The NEXT line, serverData.series[] and the page's CSV template
+        // name a custom series by its query as the file writes it - ${env.app} and all - and the docs say to
+        // write it exactly so; the CSV was looked up by the resolved text only, so a CSV written as WIR says
+        // read NO_MATCH.
+        ReportData run = new JtlParser().parse(PLAIN_JTL, WirCollect.DEFAULT_TEST_NAME);
+        long start = run.getMetadata().getStartTime().toEpochMilli() / 1000 * 1000;
+        long end = run.getMetadata().getEndTime().toEpochMilli();
+        StringBuilder rows = new StringBuilder("time,component,metric,instance,value\n");
+        for (long t = start - 1000; t <= end + 1000; t += 1000) {
+            rows.append(t).append(",bus,\"up{app=\"\"${env.app}\"\"}\",,1\n");
+        }
+        Path csv = dir.resolve("as-written.csv");
+        Files.write(csv, rows.toString().getBytes(StandardCharsets.UTF_8));
+        Path file = dir.resolve("interpolated.json");
+        Files.write(file, ("{\"serverMetrics\":{\"environments\":{\"dev\":{\"vars\":{\"app\":\"catalog\"}}},"
+                + "\"defaultEnv\":\"dev\",\"components\":{\"bus\":{\"type\":\"custom\"}},"
+                + "\"asserts\":[{\"id\":\"up\",\"component\":\"bus\",\"query\":\"up{app=\\\"${env.app}\\\"}\","
+                + "\"reduce\":{\"kind\":\"min\"},\"fail\":{\"lt\":1}}]}}").getBytes(StandardCharsets.UTF_8));
+        File out = dir.resolve("interpolated-out.json").toFile();
+        Streams s = new Streams();
+        assertEquals(0, WirCollect.run(new String[] {"--jtl", PLAIN_JTL.getPath(), "--annotations", file.toString(),
+                "--out", out.getPath(), "--csv", csv.toString(), "--step", "1s", "--no-wait"},
+                s.outStream(), s.errStream(), Collections.<String, String>emptyMap()), s.out() + s.err());
+        ServerMetricsPayload p = new ServerMetricsPayloadLoader()
+                .read(out, RunIdentity.of(run)).payload();
+        assertNotNull(p, s.out());
+        assertEquals(1, p.getSeries().size(), s.out());
+        assertEquals("OK", p.getSeries().get(0).getStatus(), s.out());
+        assertFalse(s.out().contains("not asked for"), "the rows were asked for, by the file's own text: " + s.out());
+    }
+
+    @Test
     void fromNamesTheToolACsvWasExportedFromAndGoesWithCsvOnly() throws Exception {
         String[] base = {"--jtl", "a", "--annotations", "b", "--out", "c"};
         // Only a CSV has a metric column to read by another tool's names.
