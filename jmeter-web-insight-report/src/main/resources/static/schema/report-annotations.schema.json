@@ -319,6 +319,11 @@
       "required": [
         "component"
       ],
+      "dependencies": {
+        "query": [
+          "reduce"
+        ]
+      },
       "additionalProperties": true,
       "properties": {
         "id": {

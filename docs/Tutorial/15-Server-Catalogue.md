@@ -12,7 +12,9 @@ sentence for the picker), its unit, its reducer, how instances fold, which way i
 Prometheus query (with the component's `match` slotted in) and each tool's name for it. Most fold
 with `max`, the instance that is worst when higher is worse. Where lower is worse — an `up` flag, a
 hit ratio, free memory or disk, a credit balance — they fold with `min`, so one database that went
-down fails `up`'s `fail < 1` however healthy its twin was. The bands are still yours: the right
+down fails `up`'s `fail < 1` however healthy its twin was, as long as its exporter is there to say
+0. An exporter that goes with its target (a sidecar, a deleted pod) leaves no 0, only a gap: a short
+gap reads PASS, and a longer one `LOW COVERAGE`. The bands are still yours: the right
 number depends on the hardware, the workload and what "healthy" means for that service. A safe
 default ships only where a healthy machine meets it whatever it runs. For example: `up` fails below
 1 on every type that has it, and so do Kafka's active controller, Redis's replication link and EBS
@@ -208,8 +210,11 @@ renamed (`management.observations.http.server.requests.name`) names these otherw
 - **`latency.p95` needs the request histogram**, which Spring Boot leaves off. Without
   `management.metrics.distribution.percentiles-histogram.http.server.requests=true` there is no
   `http_server_requests_seconds_bucket` series and the assert is NOT_JUDGED (no match). The
-  histogram stops at 30 s unless `maximum-expected-value` raises it, so the p95 never reads past its
-  top bucket.
+  histogram's top bucket is `maximum-expected-value`, 30 s unless the service sets it lower or
+  higher, and the p95 never reads past it: a p95 at that bound means at least that (10000 ms under a
+  10 s maximum is 10 s or more). Below `minimum-expected-value` it reads a fraction of the first
+  bucket, so 0.95 ms means under about 1 ms. The report sees only the computed p95, never the
+  buckets, so it cannot mark either end.
 - **`latency.max` and `gc.pause.max` are Micrometer's `_max`**, the largest value in a window that
   decays over 2 minutes: every scrape sees the slowest request, or the longest pause, since about two
   minutes before it, so the run's first scrapes can carry one from before the run.
@@ -229,6 +234,10 @@ renamed (`management.observations.http.server.requests.name`) names these otherw
   no data (NOT_JUDGED, no match), and a run with none reads flat: judge a leak on a soak.
 - Prometheus' own scrapes of `/actuator/prometheus` are requests too, a few per minute beside the
   load.
+- **A service's own `errors.5xx.pct` misses what fails in front of it.** Requests to a pod that was
+  killed or is restarting fail at the gateway or the load balancer, and the service counts none. To
+  see them, assert `errors.5xx.pct` and `latency.p95` on the component in front of it: a Spring Cloud
+  Gateway is an `http-service` too, and records every exchange it proxies in the same timer.
 - In-flight requests are not in the catalogue: whether Spring Boot publishes
   `http.server.requests.active` depends on the Spring Boot and Micrometer versions.
 

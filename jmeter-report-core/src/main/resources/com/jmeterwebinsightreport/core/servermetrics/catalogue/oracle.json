@@ -10,7 +10,7 @@
       "name": "up",
       "label": "Exporter can reach the database",
       "category": "Availability",
-      "description": "1 while the exporter can reach the database, 0 when it cannot. Any 0 during the run means the database was unreachable for at least one scrape.",
+      "description": "1 while the exporter can reach the database, 0 when it cannot. Any 0 during the run means the database was unreachable for at least one scrape. An exporter that goes with its target (a sidecar, a deleted pod) leaves no 0, only a gap: a short gap reads PASS, and one longer than the coverage floor allows reads LOW COVERAGE.",
       "unit": "",
       "reduce": "min",
       "across": "min",

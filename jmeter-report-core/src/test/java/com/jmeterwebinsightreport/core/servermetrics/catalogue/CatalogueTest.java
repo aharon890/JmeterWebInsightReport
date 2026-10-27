@@ -1523,6 +1523,44 @@ class CatalogueTest {
     }
 
     /**
+     * A timer's histogram ends at the service's maximum-expected-value, which it may set lower than
+     * 30 s (petstore set 10 s), and starts at its minimum-expected-value: a p95 on either bound is
+     * a bound, not a measurement. WIR sees only the computed p95, so the source says it.
+     */
+    @Test
+    void theHttpSourceNamesBothEndsOfTheRequestHistogram() {
+        String source = catalogue.type("http-service").source();
+        assertTrue(source.contains("unless the service sets it"), source);
+        assertTrue(source.contains("a quantile at that bound means at least that"), source);
+        assertTrue(source.contains("below minimum-expected-value"), source);
+    }
+
+    /**
+     * {@code up} reads 0 only while its exporter runs. An exporter that goes with its target (a
+     * sidecar, a deleted pod) leaves a gap, and a gap the coverage floor allows reads PASS: the
+     * evaluation saw it on petstore (F5, a 75 s gap and no 0 row). Each type's description says so.
+     */
+    @Test
+    void anUpWhoseExporterVanishesWithItsTargetIsSaidToLeaveNoZero() {
+        for (String type : new String[] {"postgres", "mysql", "redis", "oracle"}) {
+            String said = catalogue.type(type).metric("up").description();
+            assertTrue(said.contains("leaves no 0"), type + ": " + said);
+            assertTrue(said.contains("a short gap reads PASS"), type + ": " + said);
+        }
+    }
+
+    /** Three metrics that read a number which cannot mean what the name suggests in a common setup. */
+    @Test
+    void threeDescriptionsSayWhereTheirMetricCannotReadWhatItsNameSays() {
+        String lag = catalogue.type("postgres").metric("replication.lag.seconds").description();
+        assertTrue(lag.contains("A primary reports 0"), lag);
+        String fd = catalogue.type("host-linux").metric("fd.used.pct").description();
+        assertTrue(fd.contains("LONG_MAX"), fd);
+        String tcp = catalogue.type("host-linux").metric("tcp.retransmit.pct").description();
+        assertTrue(tcp.contains("network namespace"), tcp);
+    }
+
+    /**
      * A pod's KPIs are per container, and three divide a cAdvisor series by a kube-state-metrics
      * one. The two exporters share namespace, pod and container and little else, so every query
      * groups by exactly those, and the source says to match on them.

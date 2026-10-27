@@ -236,6 +236,25 @@ class AnnotationsSchemaTest {
         assertEquals(List.of("kind"), required, "serverReduce does not require kind");
     }
 
+    /**
+     * A {@code query} assert has no catalogue metric to take a reducer from, so one that writes no
+     * {@code reduce} is NOT_JUDGED / INVALID_RULE ("reduce.kind is missing"). The schema makes
+     * {@code query} depend on {@code reduce}, so the editor says so before the run does.
+     */
+    @Test
+    void aQueryAssertMustWriteItsReduce() throws Exception {
+        String document = "{\"serverMetrics\":{\"components\":{\"app\":{\"type\":\"custom\"}},\"asserts\":["
+                + "{\"component\":\"app\",\"query\":\"up\",\"fail\":{\"lt\":1}}]}}";
+        ServerMetricsMapper.Result r = new ServerMetricsMapper().map(
+                new ObjectMapper().readValue(document, ReportAnnotations.class).getServerMetrics());
+        assertEquals(1, r.config().kpis().size(), r.findings().toString());
+        assertNotNull(KpiUsability.refusal(r.config().kpis().get(0)),
+                "the control: the mapper judged a query assert that writes no reduce");
+        List<String> needs = new ArrayList<>();
+        definition("serverAssert").path("dependencies").path("query").forEach(n -> needs.add(n.asText()));
+        assertEquals(List.of("reduce"), needs, "serverAssert does not make query depend on reduce");
+    }
+
     private static ServerKpi catalogueAssertWithReduce(String reduce) throws IOException {
         String document = "{\"serverMetrics\":{\"components\":{\"db\":{\"type\":\"postgres\"}},\"asserts\":["
                 + "{\"component\":\"db\",\"metric\":\"connections.used.pct\","

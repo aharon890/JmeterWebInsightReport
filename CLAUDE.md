@@ -1191,7 +1191,7 @@ the editor's "If saved" line (`editorVerdict`, under the edited row's own key, s
 keeps the build's verdict until edited and then reads NOT RE-JUDGED). A component card's ⋯ edits
 its description and match, or deletes it **with every assert naming it**, through
 `WIR.document.replace` as "+ Add component" writes; an assert left on a deleted component would be
-the `(no gate)` entry and a CONFIG ERROR. The Summary
+the `(no gate)` entry, `INVALID_RULE`: SERVER NOT JUDGED, a CONFIG ERROR only under `server.failonerror`. The Summary
 tab carries a server card under the Asserts card, read from the verdict the run was gated on.
 A server assert is named by one rule wherever a reader sees it, `assertNaming` (Q11): a catalogue
 assert by its metric's label with its id as a dim line under it (the id is the JUnit testcase

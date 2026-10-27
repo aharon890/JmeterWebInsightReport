@@ -10,7 +10,7 @@
       "name": "up",
       "label": "Exporter can reach Redis",
       "category": "Availability",
-      "description": "1 while redis_exporter can reach Redis, 0 when it cannot. Any 0 means Redis was unreachable for at least one scrape, and every other metric is blind for that span.",
+      "description": "1 while redis_exporter can reach Redis, 0 when it cannot. Any 0 means Redis was unreachable for at least one scrape, and every other metric is blind for that span. An exporter that goes with its target (a sidecar, a deleted pod) leaves no 0, only a gap: a short gap reads PASS, and one longer than the coverage floor allows reads LOW COVERAGE.",
       "unit": "",
       "reduce": "min",
       "across": "min",

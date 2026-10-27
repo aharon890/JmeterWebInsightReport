@@ -37,6 +37,16 @@ own JMeter (`tmp/reverify/rebuild.sh <variant>`, compared with S4's 4.1.0 report
 | 2.5 | E4: top-level `sustainedFor` message | **Done, 4.1.6, `a5f218b`.** Vectors first (Java 3 and node 3 red). Observed: C04 1 of 42 differs, reason only. |
 | 2.6 | D6 (a, b, d): message wording | **Done, 4.1.7, `7a66da5`.** Observed: X04 31 and X07 1, reason only; **also X11** (16, the DST case, not in the registered "X04/X07" list) names both offsets. |
 
+## Stage 1: words only (branch `fix/server-tab-stage1-words`)
+
+Stage 2 merged first (PR #23, `684dea1`). Re-read before starting (rule 5): nothing in Stage 1 was made moot; the
+docs' CSV hint descriptions (16 "Where the metrics come from", 14 "Lining up") already match 4.1.3's wording.
+
+| Step | Items | Expected re-verify diff (written before the build) | Status |
+|---|---|---|---|
+| 1a | E1, E5, N1 (B6's note), E2 + Collector javadoc (N8's first half), E3 + N7, B3, B5, D2, D4, B8's sentence; plus E1's two other copies (CLAUDE.md, 11:860) | **None.** Docs and a javadoc only: M01, X08, X14 rebuilt with 4.1.8 equal the 4.1.7 rebuilds. | **Done, 4.1.8.** Observed: none. X08 and X14 have no 4.1.7 rebuild, so the four that do were compared instead: M01, X04, X07, X11, all asserts and payload series identical, and the console differs only in the temp payload's name. One pin added (`SourcesAndCollectorTest.aParkedCatalogueAssertsMetricIsStillCollectedOnceAndCostsTheSourceNothing`, green: it holds E2's new sentence). |
+| 1b | E7 (3 descriptions), B1 (`up` on postgres/mysql/redis/oracle), B5 (http-service `source`), E6 (schema `dependencies`) | **No verdict or value change.** Catalogue text is not in the snapshot `cmp.cjs` compares, so M01, X08, X14 equal the 4.1.8 rebuilds; the fixture stamp moves, so the full regression regenerates every fixture. | **Done, 4.1.9.** Red first: 3 CatalogueTest pins and `AnnotationsSchemaTest.aQueryAssertMustWriteItsReduce` (its control, the mapper refusing a query assert with no reduce, passed on 4.1.8). Observed: none. M01, X04, X07, X11 equal their 4.1.8 rebuilds, and the new text reaches the page (`chartData.serverCatalogue`). No committed annotations file has a `query` assert without `reduce`. B1's caveat also went into 15's "one database that went down fails `up`" sentence. |
+
 ## Open
 
 - **End of Stage 2 (4.1.7):** full regression green on 2026-10-27, R01–R06 with fixtures regenerated, 1077 Playwright
