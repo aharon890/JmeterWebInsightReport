@@ -8,8 +8,8 @@ itself. This directory is in the fixture stamp, so editing anything here regener
 | `e28-server.json` | E28's annotations: one custom component `app`, one assert per way an export goes wrong, plus one that lines up |
 | `gen-e28.js` | writes `e28-metrics.csv`; its header comment maps each series to the assert and the verdict it gets |
 | `e28-metrics.csv` | E28's server data over the goldens' `plain.jtl` window, committed (`node gen-e28.js > e28-metrics.csv`) |
-| `e29-server.json` | E29's annotations: component `fleet`, a spike (FAIL), a sustained level (PASS), a slope (WARN) |
-| `gen-soak.js` | writes E29's `soak.jtl` and `soak.csv` (four hours, 24 instances at 1 s, a fixed seed) into `test-results/E29-inputs/` at fixture time; not committed, because the CSV is ~25 MB |
+| `e29-server.json` | E29's annotations: component `fleet`, a spike (FAIL), a sustained level (PASS), a slope (WARN), and `db-up` over a capped series with a half-hour outage (LOW_COVERAGE, naming the gap) |
+| `gen-soak.js` | writes E29's `soak.jtl` and `soak.csv` (four hours, 24 instances at 1 s, a fixed seed, then `up` on db-1 with no row for half an hour) into `test-results/E29-inputs/` at fixture time; not committed, because the CSV is ~25 MB |
 
 E28 is three pages: `E28/E28-report.html` (the misaligned CSV, collected at an explicit 15 s step -
 the step measured from this file would be 1 s), and beside it

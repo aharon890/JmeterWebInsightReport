@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import * as fs from 'fs';
 import * as path from 'path';
 import { loadClean, switchTab } from './helpers';
 
@@ -119,7 +120,7 @@ test.describe('E29 — a four-hour soak at the page caps', () => {
     await expect(row(page, 'cpu-spike')).toContainText('24 (20 drawn)');
     const drawn = await page.evaluate(() => (window as any).chartData.serverMetrics.series
       .map((s: any) => [s.query, s.instanceCount, s.instances.length]));
-    expect(drawn).toEqual([['cpu', 24, 20], ['mem', 24, 20]]);
+    expect(drawn).toEqual([['cpu', 24, 20], ['mem', 24, 20], ['up', 1, 1]]);
   });
 
   test('[R] a thinned instance still reaches the 3-second spike the build judged', async ({ page }) => {
@@ -132,6 +133,55 @@ test.describe('E29 — a four-hour soak at the page caps', () => {
     expect(node17.kept).toBe(4000);
     expect(node17.of).toBeGreaterThan(14000);
     expect(node17.max).toBe(97.5);
+  });
+
+  // db-up: db-1's exporter went with its target for half an hour (petstore F5's shape), 12,601 points
+  // thinned to 4000. The writer puts judgedGap on a capped series, and nothing but an injected one
+  // reached a page before (the Stage 6 audit), so a rename on the Java side left that spec green.
+  const OUTAGE = 'no point between 2027-01-15T09:59:59Z and 2027-01-15T10:30:00Z (1801 s)';
+
+  test('[R] a capped series with an outage names the gap Java found, as the CI/CD JSON does', async ({ page }) => {
+    const reason = page.locator('tr.wir-kpi-row', { has: page.locator('.wir-kpi-name:text-is("db-up")') })
+      .locator('xpath=following-sibling::tr[1]');
+    await expect(reason).toHaveClass(/wir-reason-row/);
+    await expect(reason).toContainText(OUTAGE);
+    const json = JSON.parse(fs.readFileSync(path.join(RESULTS, 'E29', 'E29-report.json'), 'utf8'));
+    const built = json.serverAsserts.find((a: any) => a.id === 'db-up');
+    expect(built.notJudged).toBe('LOW_COVERAGE');
+    expect(built.reason).toContain(OUTAGE);
+    const series = await page.evaluate(() => (window as any).chartData.serverMetrics.series
+      .find((s: any) => s.query === 'up'));
+    expect(series.instances[0].pointsCapped).toBe(true);
+    expect(series.judgedGap).toEqual([1800007199000, 1800009000000]);
+  });
+
+  // The page breaks a line where a point is missing, measured against the shape thin() keeps (gapUnit).
+  // Only a hand copy of thin() tied the two (server-chart.test.js), and 7200 points thinned to 4000 once
+  // drew 3200 markers (R3-11): on a real thinned page, a line breaks at its outage and nowhere else.
+  const markers = (page: Page, id: string) => page.evaluate((assertId) => {
+    const W = (window as any).WIR.serverKpis;
+    const el = document.getElementById('serverChart-' + W._keyOf(assertId));
+    const inst = el && (window as any).echarts.getInstanceByDom(el);
+    if (!inst) return null;
+    const lines = inst.getOption().series.filter((s: any) => Array.isArray(s.data) && s.data.length);
+    return { lines: lines.length, at: [].concat(...lines.map((s: any) =>
+      s.data.filter((p: any) => p[1] === null || p[1] === undefined).map((p: any) => p[0]))) };
+  }, id);
+
+  test('[R] a thinned line breaks at its outage and nowhere else', async ({ page }) => {
+    await page.evaluate(() => {
+      const W = (window as any).WIR.serverKpis;
+      W.toggle(W._keyOf('cpu-spike'));
+      W.toggle(W._keyOf('db-up'));
+    });
+    await expect.poll(() => markers(page, 'cpu-spike').then((m) => m && m.lines)).toBeGreaterThan(0);
+    expect((await markers(page, 'cpu-spike'))!.at, 'cpu missed nothing: no break on any thinned line')
+      .toEqual([]);
+    await expect.poll(() => markers(page, 'db-up').then((m) => m && m.lines)).toBeGreaterThan(0);
+    const up = (await markers(page, 'db-up'))!;
+    expect(up.at, 'one break, inside the outage').toHaveLength(1);
+    expect(up.at[0]).toBeGreaterThan(1800007199000);
+    expect(up.at[0]).toBeLessThan(1800009000000);
   });
 
   test('[R] the axis spans the four hours', async ({ page }) => {
