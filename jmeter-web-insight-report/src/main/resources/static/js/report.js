@@ -394,6 +394,47 @@ function chartColors() {
 var customColors = {}; // samplerName -> color override
 var lineThickness = 2;
 
+/* The Server tab's line colour, picked with the samplers' own picker and kept in customColors
+   beside theirs, so a palette change or Reset clears it as it clears theirs. A JMeter label cannot
+   hold U+0000 (the JTL is XML or a CSV a sampler wrote), so no sampler can be this key. */
+var SERVER_LINE_COLOR_KEY = '\u0000server-line';
+
+/* One colour for every server chart's line (the owner, 2026-10-27): the picked one, else the
+   palette's first, as the charts drew before a reader picked anything. */
+function serverLineColor() {
+    return customColors[SERVER_LINE_COLOR_KEY] || chartColors()[0];
+}
+
+/* A server chart's colours by instance: the line colour first, the palette after it, so a second
+   instance is still told from the first. */
+function serverLineColors() {
+    var colors = chartColors().slice();
+    colors[0] = serverLineColor();
+    return colors;
+}
+
+/* One instance's own colour, picked from its legend dot (the owner's option A, 2026-10-27): kept
+   by component and the name the legend shows, so an instance is one colour on every chart of its
+   component that names it so — as a sampler is one colour on every chart, and as Grafana keeps a
+   series' colour override by its display name. Not by the full label set: a raw selector keeps
+   __name__ where a rate() drops it, and the same pod would be two keys. */
+function serverInstanceColorKey(component, name) {
+    return SERVER_LINE_COLOR_KEY + ' ' + JSON.stringify([component == null ? '' : String(component), String(name)]);
+}
+
+/* What an instance draws in: its own colour, else its place in serverLineColors. */
+function serverInstanceColor(component, name, idx) {
+    var colors = serverLineColors();
+    return customColors[serverInstanceColorKey(component, name)] || colors[idx % colors.length];
+}
+
+/* The swatch an instance's line is, with no colour of its own: the tab's line colour in the first
+   slot, else the palette's colour for its place — the palette as the swatches show it, as
+   paletteSlotColor is for a sampler, never its dark variant (SF37). */
+function serverSlotSwatch(idx) {
+    return (idx % CHART_COLORS.length === 0 && customColors[SERVER_LINE_COLOR_KEY]) || paletteSlotColor(idx);
+}
+
 /* Track which samplers are visible */
 var samplerVisibility = {};
 
@@ -901,21 +942,30 @@ function initFilterBar(data) {
 
 }
 
-function openColorPicker(parent, samplerName, samplerIdx, dotEl) {
+/* `slotColor`: the colour the line draws in with no colour picked, where that is not its palette
+   slot — a server instance's place in serverLineColors. Picking it then changes nothing, as
+   picking a sampler's own slot does. */
+function openColorPicker(parent, samplerName, samplerIdx, dotEl, slotColor) {
     // Close any open pickers
     document.querySelectorAll('.color-picker-popup.open').forEach(function (p) {
         p.classList.remove('open');
     });
+    var slot = slotColor || paletteSlotColor(samplerIdx);
 
+    /* A kept popup is asked again for its slot: the palette may have changed since it was built,
+       and the Server tab's header, which keeps the Line colour's, is not redrawn by a palette. */
     var existing = parent.querySelector('.color-picker-popup');
     if (existing) {
-        markSelectedSwatch(existing, samplerName, samplerIdx);
+        existing.__wirSlot = slot;
+        markSelectedSwatch(existing, samplerName, samplerIdx, slot);
         existing.classList.add('open');
+        closeOnClickElsewhere(existing, dotEl);
         return;
     }
 
     var popup = document.createElement('div');
     popup.className = 'color-picker-popup open';
+    popup.__wirSlot = slot;
 
     // Build swatches from all palettes
     var allColors = [];
@@ -948,7 +998,7 @@ function openColorPicker(parent, samplerName, samplerIdx, dotEl) {
             /* The palette's own colour for this sampler is no custom colour: picking it clears the
                override, so a dark chart goes on drawing the slot's dark variant. Stored as custom,
                high-contrast's #0000FF was drawn on the dark chart at 1.70:1. */
-            if (!customColors[samplerName] && color.toUpperCase() === paletteSlotColor(samplerIdx).toUpperCase()) {
+            if (!customColors[samplerName] && color.toUpperCase() === String(popup.__wirSlot).toUpperCase()) {
                 popup.classList.remove('open');
                 return;
             }
@@ -956,14 +1006,14 @@ function openColorPicker(parent, samplerName, samplerIdx, dotEl) {
         });
         popup.appendChild(swatch);
     });
-    markSelectedSwatch(popup, samplerName, samplerIdx);
+    markSelectedSwatch(popup, samplerName, samplerIdx, slot);
 
     // Native color input for full custom
     var customRow = document.createElement('div');
     customRow.style.cssText = 'grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; margin-top: 4px;';
     var colorInput = document.createElement('input');
     colorInput.type = 'color';
-    colorInput.value = getColorForSampler(samplerName, samplerIdx);
+    colorInput.value = slotColor ? (customColors[samplerName] || slotColor) : getColorForSampler(samplerName, samplerIdx);
     colorInput.style.cssText = 'width: 28px; height: 28px; border: none; cursor: pointer; padding: 0;';
     colorInput.addEventListener('input', function () {
         applyCustomColor(samplerName, colorInput.value, dotEl, popup);
@@ -976,15 +1026,25 @@ function openColorPicker(parent, samplerName, samplerIdx, dotEl) {
     popup.appendChild(customRow);
 
     parent.appendChild(popup);
+    closeOnClickElsewhere(popup, dotEl);
+}
 
-    // Close on outside click
+/* A click outside an open picker closes it — on every opening, a kept popup's second included: the
+   handler removes itself when it closes the popup, and was only ever added when the popup was
+   built, so from the second opening a click elsewhere left it open over the page. One handler per
+   popup: an earlier one still waiting (the popup was closed by a pick) is replaced. */
+function closeOnClickElsewhere(popup, dotEl) {
+    if (popup.__wirClose) document.removeEventListener('click', popup.__wirClose);
+    var closeHandler = function (e) {
+        if (!popup.contains(e.target) && e.target !== dotEl) {
+            popup.classList.remove('open');
+            document.removeEventListener('click', closeHandler);
+            if (popup.__wirClose === closeHandler) popup.__wirClose = null;
+        }
+    };
+    popup.__wirClose = closeHandler;
     setTimeout(function () {
-        document.addEventListener('click', function closeHandler(e) {
-            if (!popup.contains(e.target) && e.target !== dotEl) {
-                popup.classList.remove('open');
-                document.removeEventListener('click', closeHandler);
-            }
-        });
+        if (popup.__wirClose === closeHandler) document.addEventListener('click', closeHandler);
     }, 10);
 }
 
@@ -997,8 +1057,8 @@ function paletteSlotColor(idx) {
 
 /* Mark the swatch that is this sampler's colour: its custom colour, else its palette slot. Asked
    on every opening, since the palette or the theme may have changed since the popup was built. */
-function markSelectedSwatch(popup, samplerName, samplerIdx) {
-    var current = String(customColors[samplerName] || paletteSlotColor(samplerIdx)).toUpperCase();
+function markSelectedSwatch(popup, samplerName, samplerIdx, slotColor) {
+    var current = String(customColors[samplerName] || slotColor || paletteSlotColor(samplerIdx)).toUpperCase();
     Array.prototype.forEach.call(popup.querySelectorAll('.color-swatch'), function (s) {
         s.classList.toggle('selected', String(s.getAttribute('data-color')).toUpperCase() === current);
     });
@@ -18214,8 +18274,27 @@ WIR.serverKpis = (function () {
                 : '')
             + '</div>';
         html += restoredDraftHtml() + droppedDraftHtml();
-        html += '<div class="wir-server-filters">' + filterRowHtml() + '</div>';
+        html += '<div class="wir-server-filters">' + filterRowHtml() + lineColorHtml() + '</div>';
         return html + '</div>';
+    }
+
+    /* The tab's one line colour (the owner, 2026-10-27), at the end of the filter row: the filter
+       bar holding the palette and the samplers' dots is hidden on this tab (D4). The dot opens the
+       samplers' own picker (pickLineColor), anchored in a span of its own as theirs is. */
+    function lineColorHtml() {
+        return '<span class="wir-server-line-color"><span class="wir-filter-label">Line colour</span>'
+            + '<span class="wir-color-anchor"><button type="button" class="sampler-color-dot"'
+            + ' id="serverLineColorDot" aria-label="Line colour of every server chart"'
+            + ' title="Line colour of every server chart"'
+            + ' style="background:' + esc(serverLineColor()) + '"'
+            + '\n                onclick="WIR.serverKpis.pickLineColor()"></button></span></span>';
+    }
+
+    /* The dot shows what the charts draw. A palette change or Reset clears the picked colour, and a
+       theme change moves the palette's first to its dark variant; neither renders this header. */
+    function syncLineColorDot() {
+        var dot = document.getElementById('serverLineColorDot');
+        if (dot) dot.style.background = serverLineColor();
     }
 
     /* The document's count, as the Asserts tab's pill shows it (U1); nothing when nothing is
@@ -19298,7 +19377,8 @@ WIR.serverKpis = (function () {
                 + '<div class="wir-server-panel"><div class="wir-panel-head">'
                 + '<div class="wir-panel-title">Value over time</div>' + granularitySelectHtml(k, row.key)
                 + '</div>'
-                + '<div class="wir-server-chart" id="' + esc(chartDomId(row.key)) + '"></div></div>'
+                + '<div class="wir-server-chart" id="' + esc(chartDomId(row.key)) + '"></div>'
+                + '<div class="wir-server-legend" id="' + esc(legendDomId(row.key)) + '"></div></div>'
                 + '<div class="wir-server-panel"><div class="wir-panel-title">Per instance</div>'
                 + '<div class="wir-instance-chart" id="' + esc(instanceChartDomId(row.key)) + '"></div></div>'
                 + '</div>'
@@ -20082,6 +20162,8 @@ WIR.serverKpis = (function () {
         var el = document.getElementById(chartDomId(k.key));
         if (!el || typeof echarts === 'undefined') return;
         var series = seriesForDeclared(k);
+        var legendBox = document.getElementById(legendDomId(k.key));
+        if (legendBox) legendBox.innerHTML = '';
         if (!series || !series.instances || !series.instances.length) {
             el.innerHTML = '<div class="no-data">No series was collected for this query.</div>';
             return;
@@ -20126,9 +20208,9 @@ WIR.serverKpis = (function () {
             }
             /* The reader's palette and line weight, as every other chart takes them (R3-12): a
                colour-blind-safe palette chosen in the header is a promise about EVERY chart. In
-               its dark variant on a dark chart (SF37). */
-            var palette = chartColors();
-            var color = palette[i % palette.length];
+               its dark variant on a dark chart (SF37). The first instance takes the tab's line
+               colour, and an instance its own, when the reader picked one. */
+            var color = serverInstanceColor(seriesComponent(series, k), instanceLabels[i], i);
             /* A symbol on each lone point and on nothing else. showSymbol has to be on for any
                symbol to be drawn, so the rest of the series says 'none' per point; a series with
                no lone point keeps ECharts' plain line, hover dot included. */
@@ -20191,8 +20273,12 @@ WIR.serverKpis = (function () {
             /* In a portal on the body, as Grafana renders its tooltips: the card clips its overflow, and
                a row with long names lost the time and every name's start to it (petstore F2, 5.1). */
             tooltip: { trigger: 'axis', formatter: tooltipFormatter(frame.name), appendTo: 'body' },
-            legend: drawn.length > 1 ? { type: 'scroll', bottom: 0 } : undefined,
-            grid: { left: 60, right: 24, top: 24, bottom: drawn.length > 1 ? 48 : 32 },
+            /* The legend is the page's own, under the chart (legendHtml): an entry there carries the
+               colour dot the samplers' entries carry, which a canvas legend cannot. ECharts' stays,
+               unshown, because it holds which lines are shown (toggleInstance), and it starts from
+               the lines the reader hid, which a rebuild (a colour pick, a theme) used to bring back. */
+            legend: { show: false, selected: legendSelected(instanceLabels) },
+            grid: { left: 60, right: 24, top: 24, bottom: 32 },
             /* hideOverlap, as the picker's chart has (SF35): since SF34 a row's chart is the card's
                width, and below about 700px its nine time labels printed over one another —
                "22:1226:2…" at 390. */
@@ -20225,6 +20311,104 @@ WIR.serverKpis = (function () {
         /* After resize, not before: convertToPixel needs the grid to have been laid out, and a
            handle positioned against a zero-width chart lands off-screen. */
         drawDragHandles(chart, k);
+        var legendEl = document.getElementById(legendDomId(k.key));
+        if (legendEl) {
+            legendEl.innerHTML = legendHtml(k.key, seriesComponent(series, k), instanceLabels,
+                drawn.map(function (d) { return d.lineStyle.color; }));
+        }
+        /* The server charts are linked (serverChartGroup), so a line hidden on one is hidden on every
+           open chart naming an instance alike: each legend follows its own chart, whichever chart
+           the click was on. */
+        LEGEND_EVENTS.forEach(function (name) {
+            chart.on(name, function () { syncLegend(k.key, chart, instanceLabels); });
+        });
+    }
+
+    var LEGEND_EVENTS = HANDLE_REDRAW_EVENTS.filter(function (name) { return /^legend/.test(name); });
+
+    /* The names of the lines the reader hid, kept across a rebuild (a colour pick, a theme). One set
+       for the tab, not one per row: the server charts are linked, so a name hidden on one chart is
+       hidden on every chart, an open one and one opened later alike. Kept per row, a row opened
+       after the hide drew the line, and from then on each click flipped the two charts apart. */
+    var hiddenNames = Object.create(null);
+
+    /* Every legend entry by its dot's id, the one literal its two handlers carry (D20). */
+    var legendEntries = Object.create(null);
+
+    /* ECharts' legend.selected for a chart: false for each line the reader hid. */
+    function legendSelected(names) {
+        var selected = {};
+        names.forEach(function (n) { if (hiddenNames[n]) selected[n] = false; });
+        return selected;
+    }
+
+    /* After a legend action reached this chart, its own or a linked chart's: say on its legend what
+       it now draws. */
+    function syncLegend(key, chart, names) {
+        if (!chart || chart.isDisposed()) return;
+        var legend = (chart.getOption().legend || [])[0] || {};
+        var selected = legend.selected || {};
+        var hidden = Object.create(null);
+        names.forEach(function (n) { if (selected[n] === false) hidden[n] = true; });
+        var box = document.getElementById(legendDomId(key));
+        if (!box) return;
+        names.forEach(function (n, i) {
+            var item = box.children[i];
+            if (!item) return;
+            item.classList.toggle('wir-legend-off', !!hidden[n]);
+            var btn = item.querySelector('.wir-legend-name');
+            if (btn) btn.setAttribute('aria-pressed', hidden[n] ? 'false' : 'true');
+        });
+    }
+
+    function legendDomId(key) {
+        return 'serverLegend-' + key;
+    }
+
+    /* Slide an open picker sideways until it is inside the card that scrolls (or the page): from a
+       dot near either end of a wide legend it ran past the card's edge, which clips it. */
+    function keepPickerInside(popup, box) {
+        if (!popup || !popup.getBoundingClientRect) return;
+        popup.style.left = '0px';
+        popup.style.right = 'auto';
+        var r = popup.getBoundingClientRect();
+        var b = box ? box.getBoundingClientRect()
+            : { left: 0, right: document.documentElement.clientWidth };
+        var shift = 0;
+        if (r.right > b.right - 4) shift = b.right - 4 - r.right;
+        if (r.left + shift < b.left + 4) shift = b.left + 4 - r.left;
+        popup.style.left = shift + 'px';
+    }
+
+    function legendDotId(key, i) {
+        return 'serverLegendDot-' + key + '-' + i;
+    }
+
+    /* The component a series belongs to: the payload's, else the assert's (a series collected before
+       payloads carried one). Part of an instance's colour key. */
+    function seriesComponent(series, k) {
+        return series && series.component != null ? series.component : (k ? k.component : null);
+    }
+
+    /* Value over time's legend, as the samplers' entries in the filter bar are drawn: a colour dot
+       that opens the colour picker, and the name, which shows or hides the line as the canvas
+       legend's did. A name is cut at the entry's width; its title says it whole. */
+    function legendHtml(key, component, names, colors) {
+        var hidden = hiddenNames;
+        return names.map(function (name, i) {
+            var id = legendDotId(key, i);
+            legendEntries[id] = { key: key, i: i, name: name, component: component };
+            return '<span class="wir-legend-item' + (hidden[name] ? ' wir-legend-off' : '') + '">'
+                + '<span class="wir-color-anchor"><button type="button" class="sampler-color-dot"'
+                + ' id="' + esc(id) + '"'
+                + ' aria-label="' + esc('Colour of ' + name) + '" title="' + esc('Colour of ' + name) + '"'
+                + ' style="background:' + esc(colors[i]) + '"'
+                + '\n                onclick="WIR.serverKpis.pickInstanceColor(' + jsArg(id) + ')"></button></span>'
+                + '<button type="button" class="wir-legend-name"'
+                + ' aria-pressed="' + (hidden[name] ? 'false' : 'true') + '" title="' + esc(name) + '"'
+                + '\n                onclick="WIR.serverKpis.toggleInstance(' + jsArg(id) + ')">'
+                + esc(name) + '</button></span>';
+        }).join('');
     }
 
     /* The hover text, written the way the board writes the same number (M5 exploratory F6). The
@@ -20505,15 +20689,20 @@ WIR.serverKpis = (function () {
         var names = [];
         var values = [];
         var instanceLabels = instanceNames(series.instances);
+        /* Each bar in its instance's line colour, so a bar and its line read as one instance. */
+        var colorOf = Object.create(null);
+        var component = seriesComponent(series, k);
         series.instances.forEach(function (inst, i) {
             var points = inWindow(inst.points || [], window);
             var value = points.length ? reduceOne(k.reducer, points, step) : NaN;
             names.push(instanceLabels[i]);
             values.push(isNaN(value) ? null : value / frame.by);
+            colorOf[instanceLabels[i]] = serverInstanceColor(component, instanceLabels[i], i);
         });
         var ordered = orderBars(names, values, k.across);
         names = ordered.names;
         values = ordered.values;
+        var barColors = names.map(function (n) { return colorOf[n]; });
         disposeChartIn(el);
         /* One bar and one name per instance (C2). At a fixed 260px, ECharts' auto interval skipped
            the names that did not fit (20 bars, about every fifth named), and containLabel cannot fit
@@ -20601,7 +20790,7 @@ WIR.serverKpis = (function () {
             },
             series: [{
                 type: 'bar', data: values, barMaxWidth: 18,
-                itemStyle: { color: chartColors()[0] },
+                itemStyle: { color: function (p) { return barColors[p.dataIndex]; } },
                 markLine: marks.length ? { silent: true, symbol: 'none', data: marks } : undefined
             }]
         });
@@ -25620,7 +25809,8 @@ WIR.serverKpis = (function () {
             tooltip: { trigger: 'axis', formatter: tooltipFormatter(metric.unit || ''), appendTo: 'body' },
             series: [{
                 name: metric.label || dialog.focus, type: 'line', showSymbol: false, data: run.points,
-                lineStyle: { width: 1.5 }
+                itemStyle: { color: serverLineColor() },
+                lineStyle: { width: 1.5, color: serverLineColor() }
             }]
         }, true);
         chart.resize();
@@ -26214,7 +26404,39 @@ WIR.serverKpis = (function () {
             its facts above an empty box until the next redraw of the dialog. */
         refresh: function () {
             reinitOpenCharts();
+            syncLineColorDot();
             if (dialog && dialog.kind === 'picker' && dialog.step === 'pick') drawFocusChart();
+        },
+
+        /** The line colour's dot: the samplers' picker (openColorPicker), over the tab's own key. */
+        pickLineColor: function () {
+            var dot = document.getElementById('serverLineColorDot');
+            if (dot) openColorPicker(dot.parentNode, SERVER_LINE_COLOR_KEY, 0, dot);
+        },
+
+        /** A legend entry's dot (by its id): the same picker, over that instance's own key. */
+        pickInstanceColor: function (id) {
+            var entry = hasOwn(legendEntries, id) ? legendEntries[id] : null;
+            var dot = document.getElementById(id);
+            if (!entry || !dot) return;
+            openColorPicker(dot.parentNode, serverInstanceColorKey(entry.component, entry.name),
+                entry.i, dot, serverSlotSwatch(entry.i));
+            keepPickerInside(dot.parentNode.querySelector('.color-picker-popup.open'),
+                dot.closest('.table-wrapper'));
+        },
+
+        /** A legend entry's name (by its dot's id): shows or hides that line, as the canvas legend
+         *  did. A select or an unselect, never a toggle: the link passes the action to every other
+         *  chart, and a toggle there flipped each chart's own state, which need not be this one's.
+         *  Every legend follows through syncLegend. */
+        toggleInstance: function (id) {
+            var entry = hasOwn(legendEntries, id) ? legendEntries[id] : null;
+            var chart = entry ? charts[entry.key] : null;
+            if (!chart || chart.isDisposed()) return;
+            var hide = !hiddenNames[entry.name];
+            if (hide) hiddenNames[entry.name] = true;
+            else delete hiddenNames[entry.name];
+            chart.dispatchAction({ type: hide ? 'legendUnSelect' : 'legendSelect', name: entry.name });
         },
 
         /** Called by switchTab once the tab is shown and its charts resized (R3-4). */
