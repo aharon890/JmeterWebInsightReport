@@ -179,6 +179,9 @@ public final class CsvSource implements SeriesSource {
             return Answer.failed(idx.fileError);
         }
         String key = seriesKey(request.component(), request.metricKey());
+        // An interpolating query's rows may be under the text the file writes (N5): the sentences about them
+        // name that text, the one the file holds.
+        String metricRead = request.metricKey();
         asked.add(key);
         if (request.writtenKey() != null) {
             // An interpolating query, which WIR's own NEXT line and CSV template name as the file writes
@@ -187,6 +190,7 @@ public final class CsvSource implements SeriesSource {
             asked.add(written);
             if (!idx.has(key) && idx.has(written)) {
                 key = written;
+                metricRead = request.writtenKey();
             }
         }
         ToolName readAs = null;
@@ -232,10 +236,19 @@ public final class CsvSource implements SeriesSource {
             if (near == null) {
                 near = nearMiss(idx, request.component(), request.metricKey());
             }
+            // An interpolating query's rows may be under the text the file writes (N5), so a row that
+            // lost its '"' or split at its ',' may be a fragment of that text and of no other: asked by
+            // the resolved text alone, it read EMPTY with nothing said (the 4.1.33 review, finding 2).
+            if (near == null && request.writtenKey() != null) {
+                near = nearMiss(idx, request.component(), request.writtenKey());
+            }
             if (near != null) {
                 return Answer.failed(near);
             }
             String split = splitAt(idx, request.component(), request.metricKey());
+            if (split == null && request.writtenKey() != null) {
+                split = splitAt(idx, request.component(), request.writtenKey());
+            }
             if (split != null) {
                 return Answer.failed(split);
             }
@@ -274,7 +287,7 @@ public final class CsvSource implements SeriesSource {
             instances.add(inst);
         }
         if (instances.isEmpty()) {
-            return emptySeries(source, request, window, slack, byInstance, readAs, idx);
+            return emptySeries(source, request.component(), metricRead, window, slack, byInstance, readAs, idx);
         }
         return Answer.of(instances, readAs);
     }
@@ -284,8 +297,8 @@ public final class CsvSource implements SeriesSource {
      * rows inside it holding numbers a {@code --from} conversion left nothing of, or none of them
      * holding a number. The span and the counts are taken only here, where they are said.
      */
-    private Answer emptySeries(ServerSource source, Request request, ServerMetricsPayload.Window window, long slack,
-                               Map<String, TreeMap<Long, Double>> byInstance, ToolName readAs, Index idx) {
+    private Answer emptySeries(ServerSource source, String component, String metric, ServerMetricsPayload.Window window,
+                               long slack, Map<String, TreeMap<Long, Double>> byInstance, ToolName readAs, Index idx) {
         long fileFirst = Long.MAX_VALUE;
         long fileLast = Long.MIN_VALUE;
         int rowsRead = 0;
@@ -316,11 +329,11 @@ public final class CsvSource implements SeriesSource {
             // another range, a skewed server clock - and never "the query matched no series":
             // say so, with both spans and the shift between them.
             long[] span = outsideSpan(idx, source.clockOffsetMs(), window, slack);
-            return Answer.failed(outsideWindow(file, request.component(), request.metricKey(), rowsRead,
+            return Answer.failed(outsideWindow(file, component, metric, rowsRead,
                     fileFirst, fileLast, span[0], span[1], window, slack));
         }
         String rowsInside = file + " has " + inside + " row" + (inside == 1 ? "" : "s") + " for "
-                + request.component() + "/" + request.metricKey() + (inside < rowsRead ? " inside the run" : "");
+                + component + "/" + metric + (inside < rowsRead ? " inside the run" : "");
         if (insideWithValue > 0 && readAs != null) {
             // Numbers in the run that the --from conversion left nothing of: a counter's rate is
             // the difference from the row before, and the export holds no row before them. Told

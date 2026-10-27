@@ -145,6 +145,37 @@ class CsvSourceTest {
         assertNull(ask(new CsvSource(), s, "db", "max(x{app=c})").error());
     }
 
+    /** A custom query that interpolates, as the collection asks for it: resolved, and as the file writes it (N5). */
+    private static SeriesSource.Request template(String component, String written, String resolved) {
+        return new SeriesSource.Request(resolved, component, resolved).alsoWrittenAs(written);
+    }
+
+    @Test
+    void aTemplateQuerysRowsWrittenUnquotedAreSaidByTheTextTheFileWrites() throws IOException {
+        // N5 reads a template query's rows under the text the file writes, ${env.ns} and all. The diagnoses
+        // asked only the resolved text: a split cell's fragment is no prefix of it when the placeholder comes
+        // before the ',', and a cell that lost its '"' is not it without them, so both read EMPTY with nothing
+        // said - the NO_MATCH 4.1.1 was made to name (the 4.1.33 review, finding 2).
+        String written = "max(x{ns=\"${env.ns}\"}) by (pod, ns)";
+        ServerSource split = csv("time,component,metric,instance,value\n"
+                + "1700000000000,app," + written + ",,5\n");
+        assertEquals("m.csv line 2: metric \"max(x{ns=${env.ns}}) by (pod\" is the start of " + written + ", split at"
+                + " its ',' - a metric with ',' in it must be quoted: \"...\", each '\"' inside doubled",
+                new CsvSource().collect(split, template("app", written, "max(x{ns=\"shop\"}) by (pod, ns)"), WINDOW).error());
+
+        ServerSource lostQuotes = csv("time,component,metric,instance,value\n"
+                + "1700000000000,app,up{ns=\"${env.ns}\"},,1\n");
+        assertEquals("no row names component app, metric up{ns=\"${env.ns}\"}; 1 row name app/up{ns=${env.ns}} - the same"
+                + " text without its '\"': a cell holding '\"' must be quoted, \"...\", with each '\"' inside doubled",
+                new CsvSource().collect(lostQuotes, template("app", "up{ns=\"${env.ns}\"}", "up{ns=\"shop\"}"), WINDOW).error());
+
+        // Rows under the written text and all outside the run are named by that text, the one the file holds.
+        ServerSource late = csv("time,component,metric,instance,value\n"
+                + "1700010800000,app,\"up{ns=\"\"${env.ns}\"\"}\",,1\n1700010815000,app,\"up{ns=\"\"${env.ns}\"\"}\",,1\n");
+        String e = new CsvSource().collect(late, template("app", "up{ns=\"${env.ns}\"}", "up{ns=\"shop\"}"), WINDOW).error();
+        assertTrue(e.startsWith("m.csv has 2 rows for app/up{ns=\"${env.ns}\"} and none inside the run"), e);
+    }
+
     @Test
     void aShiftedExportWithALeadInIsToldItsWholeShiftTheSameForEverySeries() throws IOException {
         // A real export (petstore_ms, 2026-10-25): the run's window and a minute either side, every row 400 s
