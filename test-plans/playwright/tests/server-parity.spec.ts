@@ -300,55 +300,61 @@ function checkOne(got: any, expected: any, where: string, name: string) {
   }
 }
 
+/**
+ * The page re-judges every server assert of the loaded report and pairs each with the verdict Java baked
+ * in, by position: the end-to-end twin's one comparison, on every fixture it runs over (Stage 6).
+ */
+const judgeTwice = () => {
+    const W = (window as any).WIR;
+    const data = (window as any).globalChartData;
+    const SK = W.serverKpis;
+    const A = W.asserts;
+
+    const block = data.annotationsDocument && data.annotationsDocument.serverMetrics;
+    const kpis = SK.kpisFromDocument(block);
+    const config = SK.configFromDocument(block);
+
+    // The client half re-judged too, so requiresLoad and divideBy resolve against live
+    // results — from a payload whose throughput is now carried at full precision (R2-1).
+    const rules = (data.annotationsDocument.assertions || [])
+      .map((r: any, i: number) => A._ruleFromJson(r, i));
+    const clientResults = A.evaluate(rules, data).rules;
+
+    const mine = SK.evaluate(kpis, config, data.serverMetrics, clientResults);
+    const baked = data.serverKpis || [];
+
+    // By POSITION, the way the board looks a baked verdict up: serverKpis[i] is the verdict
+    // on the file's i-th KPI. Matching by id would pair two KPIs that share one.
+    return baked.map((b: any, i: number) => {
+      const m = mine[i];
+      const kpi = kpis[i];
+      const series = kpi ? SK._seriesFor2(data.serverMetrics, kpi.source, kpi.query) : null;
+      return {
+        id: b.id,
+        mineId: m ? m.id : 'MISSING',
+        recomputable: SK.recomputable(series),
+        bakedStatus: b.status,
+        mineStatus: m ? m.status : 'MISSING',
+        bakedReason: b.notJudged || null,
+        mineReason: m ? m.notJudged : null,
+        bakedActual: b.actual === null || b.actual === undefined ? null : b.actual,
+        mineActual: m && !isNaN(m.actual) ? m.actual : null,
+        bakedDetail: b.reason || null,
+        mineDetail: m ? m.notJudgedDetail || null : null,
+        bakedInstances: b.instances,
+        mineInstances: m ? m.instances : null,
+        bakedCoverage: b.coverage === null || b.coverage === undefined ? null : b.coverage,
+        mineCoverage: m && !isNaN(m.coverage) ? m.coverage : null,
+      };
+    });
+  };
+
 test.describe('Server parity — the end-to-end twin', () => {
   test('[U] E26 re-judged in the browser matches the verdicts Java baked into the page',
     async ({ page }) => {
       await loadClean(page, 'E26');
 
-      const compared = await page.evaluate(() => {
-        const W = (window as any).WIR;
-        const data = (window as any).globalChartData;
-        const SK = W.serverKpis;
-        const A = W.asserts;
-
-        const block = data.annotationsDocument && data.annotationsDocument.serverMetrics;
-        const kpis = SK.kpisFromDocument(block);
-        const config = SK.configFromDocument(block);
-
-        // The client half re-judged too, so requiresLoad and divideBy resolve against live
-        // results — from a payload whose throughput is now carried at full precision (R2-1).
-        const rules = (data.annotationsDocument.assertions || [])
-          .map((r: any, i: number) => A._ruleFromJson(r, i));
-        const clientResults = A.evaluate(rules, data).rules;
-
-        const mine = SK.evaluate(kpis, config, data.serverMetrics, clientResults);
-        const baked = data.serverKpis || [];
-
-        // By POSITION, the way the board looks a baked verdict up: serverKpis[i] is the verdict
-        // on the file's i-th KPI. Matching by id would pair two KPIs that share one.
-        return baked.map((b: any, i: number) => {
-          const m = mine[i];
-          const kpi = kpis[i];
-          const series = kpi ? SK._seriesFor2(data.serverMetrics, kpi.source, kpi.query) : null;
-          return {
-            id: b.id,
-            mineId: m ? m.id : 'MISSING',
-            recomputable: SK.recomputable(series),
-            bakedStatus: b.status,
-            mineStatus: m ? m.status : 'MISSING',
-            bakedReason: b.notJudged || null,
-            mineReason: m ? m.notJudged : null,
-            bakedActual: b.actual === null || b.actual === undefined ? null : b.actual,
-            mineActual: m && !isNaN(m.actual) ? m.actual : null,
-            bakedDetail: b.reason || null,
-            mineDetail: m ? m.notJudgedDetail || null : null,
-            bakedInstances: b.instances,
-            mineInstances: m ? m.instances : null,
-            bakedCoverage: b.coverage === null || b.coverage === undefined ? null : b.coverage,
-            mineCoverage: m && !isNaN(m.coverage) ? m.coverage : null,
-          };
-        });
-      });
+      const compared = await page.evaluate(judgeTwice);
 
       // A guard, so an empty payload cannot make this pass by comparing nothing.
       expect(compared.length, 'E26 carried no server KPIs to compare').toBeGreaterThan(5);
@@ -468,4 +474,37 @@ test.describe('Server parity — the end-to-end twin', () => {
       expect(got!.actual, 'the evaluator read the 2dp figure').toBe(got!.exact);
       expect(got!.status).toBe('FAIL');
     });
+
+  // E26 has only custom components and none of the CSV path's sentences. E27 is the catalogue fixture
+  // (a query, unit, reduce and across the page resolves from chartData.serverCatalogue); E28 is a real
+  // jmeter -g CSV collection carrying Stage 2's and 5.8's reasons. The board shows the mirror's detail
+  // beside every live row and the CI/CD JSON Java's: a drift between them is caught here (Stage 6).
+  for (const fixture of ['E27', 'E28']) {
+    test(`[U] ${fixture} re-judged in the browser matches Java's verdicts, sentence for sentence`, async ({ page }) => {
+      await loadClean(page, fixture);
+      const compared = await page.evaluate(judgeTwice);
+      expect(compared.length, `${fixture} carried no server KPIs to compare`).toBeGreaterThan(1);
+      const live = compared.filter((c) => c.recomputable);
+      expect(live.length, `${fixture}: nothing the page re-judges`).toBeGreaterThan(0);
+      compared.forEach((c) => expect(c.mineId, 'the baked list is the file, one for one').toBe(c.id));
+      live.forEach((c) => {
+        expect(c.mineStatus, `status for ${c.id}`).toBe(c.bakedStatus);
+        expect(c.mineReason, `reason for ${c.id}`).toBe(c.bakedReason);
+        expect(c.mineDetail, `detail for ${c.id}`).toBe(c.bakedDetail);
+        expect(c.mineInstances, `instances for ${c.id}`).toBe(c.bakedInstances);
+        if (c.bakedCoverage !== null) {
+          expect(Math.abs(c.mineCoverage! - c.bakedCoverage), `coverage for ${c.id}`).toBeLessThanOrEqual(5e-5);
+        } else {
+          expect(c.mineCoverage, `coverage for ${c.id}`).toBeNull();
+        }
+        if (c.bakedActual !== null) {
+          expect(Math.abs(c.mineActual! - c.bakedActual), `actual for ${c.id}: mine ${c.mineActual}, baked ${c.bakedActual}`)
+            .toBeLessThanOrEqual(1e-9 * Math.max(1, Math.abs(c.bakedActual)));
+        } else {
+          expect(c.mineActual, `actual for ${c.id}`).toBeNull();
+        }
+      });
+    });
+  }
+
 });
