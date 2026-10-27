@@ -302,6 +302,57 @@ test.describe('SF28: a server dialog stays the dialog wireDialog wired', () => {
     expect(await chartRegistry(page)).toEqual({ count: baseline.count, detached: 0 });
   });
 
+  test('[R] the 4.1.33 review: hovering the picker\'s chart shows no board row\'s tooltip over the dialog', async ({ page }) => {
+    // The picker's focus chart was made in the board's connected group (createServerChart), so with rows
+    // open, hovering it ran every row chart's axis tooltip, and since 4.1.27 those sit on the body, above
+    // the dialog (petstore R1 on 4.1.33: two row tooltips over the picker on 8 of 11 hover steps, finding 7).
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await openServer(page);
+    const ROWS = ['orders-db-connections-used-pct', 'events-consumer-lag-max'];
+    for (const id of ROWS) {
+      await page.evaluate((k) => { const W = (window as any).WIR.serverKpis; W.toggle(W._keyOf(k)); }, id);
+      await expect.poll(() => page.evaluate((k) => {
+        const W = window as any;
+        const el = document.getElementById('serverChart-' + W.WIR.serverKpis._keyOf(k));
+        return !!el && !!W.echarts.getInstanceByDom(el);
+      }, id), { message: `${id}'s chart is drawn` }).toBe(true);
+    }
+    await page.click(ORDERS_ADD);
+    await page.locator('.wir-pick-name', { hasText: 'Cache hit ratio' }).click();
+    // Hide every tooltip, hover the picker's chart, and count the tooltips shown on the body.
+    const hover = () => page.evaluate((rows) => {
+      const W = window as any;
+      const pick = W.echarts.getInstanceByDom(document.getElementById('serverPickChart')!);
+      rows.map((k: string) => W.echarts.getInstanceByDom(document.getElementById('serverChart-' + W.WIR.serverKpis._keyOf(k))!))
+        .concat([pick]).forEach((c: any) => c.dispatchAction({ type: 'hideTip' }));
+      pick.dispatchAction({ type: 'showTip', x: pick.getWidth() / 2, y: pick.getHeight() / 2 });
+      return [...document.querySelectorAll('div')].filter((d) =>
+        /z-index:\s*9999999/.test(d.getAttribute('style') || '') && d.style.display !== 'none'
+        && getComputedStyle(d).visibility !== 'hidden' && Number(getComputedStyle(d).opacity) > 0
+        && d.offsetParent !== null).length;
+    }, ROWS);
+    const group = (g: string | null) => page.evaluate((to) => {
+      const W = window as any;
+      const pick = W.echarts.getInstanceByDom(document.getElementById('serverPickChart')!);
+      const was = pick.group;
+      if (to !== null) { pick.group = to; W.echarts.connect(to); }
+      return was;
+    }, g);
+    const own = await group(null);
+    expect(own, 'the picker\'s chart in the board\'s group').not.toBe('wir-server-linked');
+    // Positive control: in the board's group the detector sees the rows' tooltips beside the picker's own,
+    // so the one below is the grouping, not a hover that showed nothing.
+    await group('wir-server-linked');
+    await expect.poll(hover, { message: 'the rows\' tooltips, linked' }).toBeGreaterThan(1);
+    await group(own);
+    await expect.poll(hover, { message: 'the picker\'s own tooltip, and no row\'s' }).toBe(1);
+    // connectCharts (every tab switch and chart rebuild runs it) leaves the picker's group as it is: it
+    // regrouped every chart not in the board's group into the client's.
+    await page.evaluate(() => (window as any).connectCharts());
+    expect(await group(null), 'the picker\'s group after connectCharts').toBe(own);
+    await expect.poll(hover, { message: 'still only the picker\'s own tooltip' }).toBe(1);
+  });
+
   test('[U] U2: the picker\'s chart is drawn again when the page rebuilds every chart — dark mode, colour-blind mode, refreshAllCharts', async ({ page }) => {
     // refreshAllCharts disposes every registered instance — the picker's focus chart included,
     // since createChart registers it — and rebuilt only the board's, so the detail pane kept its

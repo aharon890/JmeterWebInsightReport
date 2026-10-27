@@ -3454,10 +3454,14 @@ var chartGroup = 'wir-linked';
    window on a tab of their own, and once their tooltips sat on the body (5.1) hovering a Timeline
    chart showed a hidden Server chart's tooltip over the Timeline (the Stage 5 review). */
 var serverChartGroup = 'wir-server-linked';
+/* The metric picker's chart links with nothing: it sits in a dialog over the board, and in the board's
+   group hovering it showed every open row's tooltip on the body, above the dialog (the 4.1.33 review,
+   finding 7). A group no echarts.connect names. */
+var serverPickChartGroup = 'wir-server-pick';
 
 function connectCharts() {
     chartInstances.forEach(function (c) {
-        if (c.group !== serverChartGroup) c.group = chartGroup;
+        if (c.group !== serverChartGroup && c.group !== serverPickChartGroup) c.group = chartGroup;
     });
     if (typeof echarts !== 'undefined') {
         echarts.connect(chartGroup);
@@ -20424,11 +20428,14 @@ WIR.serverKpis = (function () {
         };
     }
 
-    /** A chart of this tab: createChart's, in the Server tab's own connected group (serverChartGroup). */
-    function createServerChart(el) {
+    /**
+     * A chart of this tab: createChart's, in the Server tab's own connected group (serverChartGroup) - or,
+     * {@code alone}, in a group of its own that nothing connects (serverPickChartGroup), as the picker's is.
+     */
+    function createServerChart(el, alone) {
         var chart = createChart(el);
-        chart.group = serverChartGroup;
-        echarts.connect(serverChartGroup);
+        chart.group = alone ? serverPickChartGroup : serverChartGroup;
+        if (!alone) echarts.connect(serverChartGroup);
         return chart;
     }
 
@@ -25550,7 +25557,7 @@ WIR.serverKpis = (function () {
         }
         if (!chart) {
             el.innerHTML = '';
-            chart = createServerChart(el);
+            chart = createServerChart(el, true);
         }
         /* Replaces the option outright, so it says the background again (createChart). The time
            labels hide where they would overlap: on the 300px pane nine of them printed over one
