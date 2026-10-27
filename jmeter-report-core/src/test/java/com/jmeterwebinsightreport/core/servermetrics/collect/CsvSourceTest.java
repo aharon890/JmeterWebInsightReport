@@ -1037,6 +1037,31 @@ class CsvSourceTest {
     }
 
     @Test
+    void aTimeInScientificNotationIsSaidSoNotJustCalledNotATime() throws IOException {
+        // D6 (S4 X04): Excel re-saves an epoch-ms column as 1.79294E+12, its last digits gone.
+        ServerSource s = csv("time,component,metric,instance,value\n1.79294E+12,c,x,,1\n");
+        assertEquals("m.csv line 2: time \"1.79294E+12\" is in scientific notation, as a spreadsheet re-saves a"
+                + " number, and has lost its last digits - write epoch milliseconds in full, or ISO 8601 with a zone"
+                + " (2026-10-02T14:02:15+03:00)", ask(new CsvSource(), s, "c", "x").error());
+    }
+
+    @Test
+    void prometheusInfIsNotAFiniteNumberNotADecimalPointSlip() throws IOException {
+        // D6 (S4 X07): histogram_quantile into the +Inf bucket reads +Inf, Prometheus' own spelling, which
+        // Double.parseDouble does not take: it was told to use a '.' decimal point.
+        ServerSource s = csv("time,component,metric,instance,value\n"
+                + "1700000000000,c,x,,+Inf\n1700000000000,c,y,,-Inf\n1700000000000,c,z,,Infinity\n");
+        CsvSource reader = new CsvSource();
+        assertEquals("m.csv line 2: value \"+Inf\" is not a finite number", ask(reader, s, "c", "x").error());
+        assertEquals("m.csv line 3: value \"-Inf\" is not a finite number", ask(reader, s, "c", "y").error());
+        assertEquals("m.csv line 4: value \"Infinity\" is not a finite number", ask(reader, s, "c", "z").error());
+        // The wide layout reads its cells the same way.
+        ServerSource w = wide("\"Time\",\"c/x\"\n1700000000000,+Inf\n");
+        assertEquals("grafana.csv line 2: column \"c/x\": value \"+Inf\" is not a finite number",
+                ask(new CsvSource(), w, "c", "x").error());
+    }
+
+    @Test
     void aZoneLessTimeADaylightSavingChangeRepeatsOrSkipsIsRefusedNeverResolvedInSilence() throws IOException {
         // Berlin's clocks went back at 03:00 on 2023-10-29, so 02:30 happened twice; they went forward
         // at 02:00 on 2023-03-26, so 02:30 never happened. Resolved to one offset, an hour of rows
@@ -1047,12 +1072,14 @@ class CsvSourceTest {
                 + "2023-03-26 02:30:00,c,y,,3\n"
                 + "2023-10-29 03:30:00,c,z,,4\n", "Europe/Berlin");
         CsvSource reader = new CsvSource();
+        // Both offsets (D6): the hint named the one before the change, which for a file written in the
+        // repeated hour's second pass is the wrong one.
         assertEquals("m.csv line 3: time \"2023-10-29 02:30:00\" is not one moment in Europe/Berlin, whose clocks"
-                + " change then - give --time-zone as the offset the file was written in (such as +02:00), or write"
-                + " epoch milliseconds", ask(reader, s, "c", "x").error());
+                + " change then - give --time-zone as the offset the file was written in (+02:00 before the change,"
+                + " +01:00 after it), or write epoch milliseconds", ask(reader, s, "c", "x").error());
         assertEquals("m.csv line 4: time \"2023-03-26 02:30:00\" is not one moment in Europe/Berlin, whose clocks"
-                + " change then - give --time-zone as the offset the file was written in (such as +01:00), or write"
-                + " epoch milliseconds", ask(reader, s, "c", "y").error());
+                + " change then - give --time-zone as the offset the file was written in (+01:00 before the change,"
+                + " +02:00 after it), or write epoch milliseconds", ask(reader, s, "c", "y").error());
         // Either side of the change the zone reads as ever. This row is outside the test's window,
         // and a series whose every row is outside the run is said, with both spans - never EMPTY.
         assertTrue(ask(reader, s, "c", "z").error().startsWith("m.csv has 1 row for c/z and none inside the run:"

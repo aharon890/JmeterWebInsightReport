@@ -856,8 +856,8 @@ public final class CsvSource implements SeriesSource {
                 try {
                     value = Double.parseDouble(v);
                 } catch (NumberFormatException e) {
-                    idx.errors.put(key, where + "value \"" + v + "\" is not a number - write it with a"
-                            + " '.' decimal point and no thousands separator");
+                    idx.errors.put(key, where + "value \"" + v + "\" " + (infinityText(v) ? "is not a finite number"
+                            : "is not a number - write it with a '.' decimal point and no thousands separator"));
                     continue;
                 }
                 if (value.isInfinite()) {
@@ -1111,12 +1111,32 @@ public final class CsvSource implements SeriesSource {
             }
             LocalDateTime local = localTime(t);
             if (local != null && zone.getRules().getValidOffsets(local).size() != 1) {
+                // Both offsets (D6): the one before the change alone is wrong for a file written in a
+                // repeated hour's second pass.
+                java.time.zone.ZoneOffsetTransition change = zone.getRules().getTransition(local);
                 return "is not one moment in " + zone.getId() + ", whose clocks change then - give --time-zone as"
-                        + " the offset the file was written in (such as " + zone.getRules().getOffset(local).getId()
+                        + " the offset the file was written in (" + (change != null
+                            ? change.getOffsetBefore().getId() + " before the change, " + change.getOffsetAfter().getId()
+                              + " after it"
+                            : "such as " + zone.getRules().getOffset(local).getId())
                         + "), or write epoch milliseconds";
             }
         }
+        // A spreadsheet re-saves a long number in E notation, keeping its first digits only (D6).
+        if (t.matches("[+-]?\\d+(\\.\\d+)?[eE][+-]?\\d+")) {
+            return "is in scientific notation, as a spreadsheet re-saves a number, and has lost its last digits"
+                    + " - write epoch milliseconds in full, or ISO 8601 with a zone (2026-10-02T14:02:15+03:00)";
+        }
         return "is not a time - write ISO 8601 with a zone (2026-10-02T14:02:15+03:00) or epoch milliseconds";
+    }
+
+    /**
+     * An infinity in a spelling {@code Double.parseDouble} does not take - Prometheus' {@code +Inf} and
+     * {@code -Inf}, as histogram_quantile writes into the +Inf bucket - which is a number, not a
+     * decimal-point slip (D6). {@code Infinity} parses, and is refused as infinite where it is read.
+     */
+    static boolean infinityText(String v) {
+        return v.matches("[+-]?(?i:inf|infinity)");
     }
 
     static String seriesKey(String component, String metric) {

@@ -198,7 +198,8 @@ final class WideCsv {
                     value = Double.parseDouble(v);
                 } catch (NumberFormatException ex) {
                     idx.errors.put(key, where + "column \"" + headers.get(e.getKey()) + "\": value \"" + v + "\" "
-                            + (looksFormatted(v)
+                            + (CsvSource.infinityText(v) ? "is not a finite number"
+                                    : looksFormatted(v)
                                     ? "is not a plain number - it looks formatted, with a unit or a thousands separator:"
                                             + " export it with Formatted data off"
                                     : "is not a number - write it with a '.' decimal point and no thousands separator"));
