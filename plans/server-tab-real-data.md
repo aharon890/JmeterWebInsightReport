@@ -258,6 +258,22 @@ registered (chip, 4.1.0 → 4.1.21):
 - Five pins of "N more" now hold the counts; Tutorial 01, 13, FEATURES and CLAUDE.md describe them. The Summary card
   prints the same text (`serverVerdict.othersText`).
 
+**5.6, expected (written before accepting the goldens, 4.1.22; the goldens were not in the list I wrote before the build,
+so this is after the first run and before any accept):** every golden whose `.json`/`.xml` carries a LOW_COVERAGE reason
+gains `; no point between <from>Z and <to>Z (<n> s)` on that reason, and nothing else moves. On F5, catalog-db's six
+LOW_COVERAGE asserts name the outage, 75 s.
+
+**5.6, done (4.1.22).** Vectors first: the two "below the floor 90%" vectors gain the gap, and the Java and node runners
+went red on exactly those two. `Coverage.longestGap` (Java) and `longestGap`/`gapText` (the mirror) use Coverage's slots,
+name a stretch of 2+ empty steps (Grafana's two evaluation intervals) and write UTC to the second.
+- **Goldens, as registered:** G4, G7 and G10 each gain the suffix on their `sparse` assert (`… (46 s)`), and nothing else
+  moved in 18 baselines. Accepted.
+- **F5 vs 4.1.15:** six reasons differ, reason text only; payload identical.
+  - `up` and connections: `no point between 2026-10-25T17:03:09Z and 2026-10-25T17:04:24Z (75 s)`;
+  - cache hit, deadlocks, DB time: 60 s (a rate needs two scrapes after the DB returns);
+  - slowest statement: 90 s.
+- Server specs 225/225, browser parity included.
+
 **For the owner:**
 - **Q5, the y-axis.** Grafana bounds it by the data; WIR includes every band (R3-3) so the drag handles stay on the
   plot.

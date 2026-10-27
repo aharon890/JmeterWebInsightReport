@@ -50,6 +50,55 @@ public final class Coverage {
     }
 
     /**
+     * The longest stretch of the window in which no instance has a point, by {@link #of}'s slots:
+     * from the last covered slot before it (or the window's start) to the first covered slot after
+     * it (or the window's end), as two epoch-millisecond times; null when no two slots in a row are
+     * empty. Two, as Grafana's alerting waits two evaluation intervals before it calls a series
+     * NoData: one missed scrape is noise. What a LOW_COVERAGE reason names (B1, "name the gap"): a
+     * target that went away with its exporter writes no 0, only a hole, and Grafana's state history
+     * and Alertmanager give such a stretch as its start and end.
+     */
+    public static long[] longestGap(List<ServerMetricsPayload.InstanceRecord> instances,
+                                    ServerMetricsPayload.Window window, long stepMillis) {
+        if (stepMillis <= 0 || window == null || window.durationMillis() < 0) {
+            return null;
+        }
+        int expected = (int) (window.durationMillis() / stepMillis + 1);
+        boolean[] covered = new boolean[expected];
+        for (ServerMetricsPayload.InstanceRecord inst : instances) {
+            for (ServerMetricsPayload.Point p : inst.getPoints()) {
+                long slot = Math.round((p.getTs() - window.getStart()) / (double) stepMillis);
+                if (slot >= 0 && slot < expected) {
+                    covered[(int) slot] = true;
+                }
+            }
+        }
+        int bestStart = -1;
+        int bestLength = 0;
+        int runStart = -1;
+        for (int i = 0; i < expected; i++) {
+            if (covered[i]) {
+                runStart = -1;
+                continue;
+            }
+            if (runStart < 0) {
+                runStart = i;
+            }
+            if (i - runStart + 1 > bestLength) {
+                bestLength = i - runStart + 1;
+                bestStart = runStart;
+            }
+        }
+        if (bestLength < 2) {
+            return null;
+        }
+        long from = bestStart == 0 ? window.getStart() : window.getStart() + (bestStart - 1) * stepMillis;
+        long to = bestStart + bestLength >= expected ? window.getEnd()
+                : window.getStart() + (long) (bestStart + bestLength) * stepMillis;
+        return new long[] {from, to};
+    }
+
+    /**
      * How far apart a series' points are, in milliseconds: each instance's
      * {@linkplain #mostCommonSpacing most common spacing} between consecutive points, and the
      * largest of those over the instances; 0 when no instance has two points. What

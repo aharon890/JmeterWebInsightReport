@@ -22193,6 +22193,43 @@ WIR.serverKpis = (function () {
         OK: true, PARTIAL: true, INSUFFICIENT: true, EMPTY: true, FAILED: true, NOT_REQUESTED: true
     };
 
+    /**
+     * Coverage.longestGap, mirrored (B1, "name the gap"): the longest stretch of the collected window
+     * with no point from any instance, by Coverage's slots - from the last covered slot before it (or
+     * the window's start) to the first covered slot after it (or the window's end) - or null when no
+     * two slots in a row are empty. Pure.
+     */
+    function longestGap(instances, window, step) {
+        if (!(step > 0) || !window || window.end - window.start < 0) return null;
+        var expected = Math.floor((window.end - window.start) / step) + 1;
+        var covered = new Array(expected);
+        (instances || []).forEach(function (inst) {
+            (inst.points || []).forEach(function (p) {
+                var slot = Math.round((p[0] - window.start) / step);
+                if (slot >= 0 && slot < expected) covered[slot] = true;
+            });
+        });
+        var bestStart = -1, bestLength = 0, runStart = -1;
+        for (var i = 0; i < expected; i++) {
+            if (covered[i]) { runStart = -1; continue; }
+            if (runStart < 0) runStart = i;
+            if (i - runStart + 1 > bestLength) { bestLength = i - runStart + 1; bestStart = runStart; }
+        }
+        if (bestLength < 2) return null;
+        var from = bestStart === 0 ? window.start : window.start + (bestStart - 1) * step;
+        var to = bestStart + bestLength >= expected ? window.end : window.start + (bestStart + bestLength) * step;
+        return [from, to];
+    }
+
+    /** ServerKpiEvaluator.gapText's words: "; no point between <from> and <to> (<n> s)", or "". */
+    function gapText(series, payload) {
+        var gap = longestGap(series.instances, payload && payload.window, stepOf(payload, series.source));
+        if (!gap) return '';
+        var utc = function (ms) { return new Date(Math.floor(ms / 1000) * 1000).toISOString().replace(/\.000Z$/, 'Z'); };
+        return '; no point between ' + utc(gap[0]) + ' and ' + utc(gap[1])
+            + ' (' + Math.round((gap[1] - gap[0]) / 1000) + ' s)';
+    }
+
     function collectionDetail(status, series, config, payload) {
         if (status === 'FAILED') {
             if (series.error) return series.error;
@@ -22217,14 +22254,15 @@ WIR.serverKpis = (function () {
                and "coverage 40% is below the floor 30%" is arithmetic that cannot be true.
                "of the collected window" because D28 says it wherever coverage is shown: the
                verdicts are taken over the judged window, and the two can disagree. */
+            var gap = gapText(series, payload);
             if (got !== null && got !== undefined && !isNaN(got) && got >= config.coverageFloor) {
                 return 'coverage ' + percent(got) + ' of the collected window was below the floor '
                     + 'in force when this series was collected; the file now asks for '
                     + percent(config.coverageFloor)
-                    + ' - re-run wir-collect to judge it against the current floor';
+                    + ' - re-run wir-collect to judge it against the current floor' + gap;
             }
             return 'coverage ' + percent(got) + ' of the collected window is below the floor '
-                + percent(config.coverageFloor);
+                + percent(config.coverageFloor) + gap;
         }
         if (status === 'NOT_REQUESTED') return 'no series was collected for this server assert - re-run wir-collect';
         return null;
