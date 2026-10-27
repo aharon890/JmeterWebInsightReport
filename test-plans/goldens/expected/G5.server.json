@@ -1,0 +1,106 @@
+{
+  "window": {
+    "start": 1700000000026,
+    "end": 1700000048490,
+    "rampUpEnd": null
+  },
+  "series": [
+    {
+      "source": "metrics",
+      "component": "kafka",
+      "query": "up",
+      "resolvedQuery": "up",
+      "status": "OK",
+      "coverage": 1.0,
+      "instanceCount": 1,
+      "instances": [
+        {
+          "labels": {
+            "instance": "a"
+          },
+          "pointCount": 50,
+          "shipped": 50,
+          "first": [
+            1700000000000,
+            1.0
+          ],
+          "last": [
+            1700000049000,
+            50.0
+          ],
+          "min": 1.0,
+          "max": 50.0,
+          "pointsSha": "a089a1b375082835"
+        }
+      ]
+    },
+    {
+      "source": "metrics",
+      "component": "db",
+      "query": "up",
+      "resolvedQuery": "up",
+      "status": "OK",
+      "coverage": 1.0,
+      "instanceCount": 1,
+      "instances": [
+        {
+          "labels": {
+            "instance": "a"
+          },
+          "pointCount": 50,
+          "shipped": 50,
+          "first": [
+            1700000000000,
+            1.0
+          ],
+          "last": [
+            1700000049000,
+            50.0
+          ],
+          "min": 1.0,
+          "max": 50.0,
+          "pointsSha": "a089a1b375082835"
+        }
+      ]
+    },
+    {
+      "source": "metrics",
+      "component": "db",
+      "query": "sparse",
+      "resolvedQuery": "sparse",
+      "status": "INSUFFICIENT",
+      "coverage": 0.0612,
+      "instanceCount": 1,
+      "instances": [
+        {
+          "labels": {
+            "instance": "a"
+          },
+          "pointCount": 3,
+          "shipped": 3,
+          "first": [
+            1700000000000,
+            1.0
+          ],
+          "last": [
+            1700000002000,
+            3.0
+          ],
+          "min": 1.0,
+          "max": 3.0,
+          "pointsSha": "04a01d18a85b45a3"
+        }
+      ]
+    },
+    {
+      "source": "metrics",
+      "component": "db",
+      "query": "nothing",
+      "resolvedQuery": "nothing",
+      "status": "EMPTY",
+      "coverage": 0.0,
+      "instanceCount": 0,
+      "instances": []
+    }
+  ]
+}

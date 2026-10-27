@@ -1,0 +1,329 @@
+{
+  "window": {
+    "start": 1700000000026,
+    "end": 1700000048490,
+    "rampUpEnd": null
+  },
+  "series": [
+    {
+      "source": "metrics",
+      "component": "orders-db",
+      "metric": "connections.used.pct",
+      "query": "100 * sum by (instance) (pg_stat_activity_count) / max by (instance) (pg_settings_max_connections)",
+      "resolvedQuery": "100 * sum by (instance) (pg_stat_activity_count) / max by (instance) (pg_settings_max_connections)",
+      "status": "OK",
+      "coverage": 1.0,
+      "instanceCount": 2,
+      "instances": [
+        {
+          "labels": {
+            "instance": "pg-1"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            40.0
+          ],
+          "last": [
+            1700000048000,
+            51.0
+          ],
+          "min": 20.0,
+          "max": 60.0,
+          "pointsSha": "02019c38c9255b0a"
+        },
+        {
+          "labels": {
+            "instance": "pg-2"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            48.0
+          ],
+          "last": [
+            1700000048000,
+            59.0
+          ],
+          "min": 28.0,
+          "max": 68.0,
+          "pointsSha": "360179cc5646771a"
+        }
+      ]
+    },
+    {
+      "source": "metrics",
+      "component": "events",
+      "metric": "consumer.lag.max",
+      "query": "max by (consumergroup, topic) (kafka_consumergroup_lag)",
+      "resolvedQuery": "max by (consumergroup, topic) (kafka_consumergroup_lag)",
+      "status": "OK",
+      "coverage": 1.0,
+      "instanceCount": 1,
+      "instances": [
+        {
+          "labels": {
+            "instance": "orders"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            100.0
+          ],
+          "last": [
+            1700000048000,
+            676.0
+          ],
+          "min": 100.0,
+          "max": 676.0,
+          "pointsSha": "04921eb324ba7104"
+        }
+      ]
+    },
+    {
+      "source": "metrics",
+      "component": "orders-db",
+      "metric": "up",
+      "query": "min by (instance) (pg_up)",
+      "resolvedQuery": "min by (instance) (pg_up)",
+      "status": "OK",
+      "coverage": 1.0,
+      "instanceCount": 2,
+      "instances": [
+        {
+          "labels": {
+            "instance": "pg-1"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            1.0
+          ],
+          "last": [
+            1700000048000,
+            1.0
+          ],
+          "min": 0.0,
+          "max": 1.0,
+          "pointsSha": "4f770e5ae83f19dd"
+        },
+        {
+          "labels": {
+            "instance": "pg-2"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            1.0
+          ],
+          "last": [
+            1700000048000,
+            1.0
+          ],
+          "min": 1.0,
+          "max": 1.0,
+          "pointsSha": "dc84e5d03a5e7938"
+        }
+      ]
+    },
+    {
+      "source": "metrics",
+      "component": "orders-db",
+      "metric": "transaction.longest.seconds",
+      "query": "max by (instance) (pg_stat_activity_max_tx_duration)",
+      "resolvedQuery": "max by (instance) (pg_stat_activity_max_tx_duration)",
+      "status": "OK",
+      "coverage": 1.0,
+      "instanceCount": 1,
+      "instances": [
+        {
+          "labels": {
+            "instance": "pg-1"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            0.5
+          ],
+          "last": [
+            1700000048000,
+            1.4
+          ],
+          "min": 0.5,
+          "max": 2.9,
+          "pointsSha": "a957144e728ce2f5"
+        }
+      ]
+    },
+    {
+      "source": "metrics",
+      "component": "orders-db",
+      "metric": "deadlocks",
+      "query": "sum by (instance) (increase(pg_stat_database_deadlocks[1m]))",
+      "resolvedQuery": "sum by (instance) (increase(pg_stat_database_deadlocks[1m]))",
+      "status": "OK",
+      "coverage": 1.0,
+      "instanceCount": 1,
+      "instances": [
+        {
+          "labels": {
+            "instance": "pg-1"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            0.0
+          ],
+          "last": [
+            1700000048000,
+            0.0
+          ],
+          "min": 0.0,
+          "max": 1.0,
+          "pointsSha": "7180e9bd2f3bbeec"
+        }
+      ]
+    },
+    {
+      "source": "metrics",
+      "component": "orders-db",
+      "metric": "cache.hit.pct",
+      "query": "100 * sum by (instance) (rate(pg_stat_database_blks_hit[1m])) / (sum by (instance) (rate(pg_stat_database_blks_hit[1m])) + sum by (instance) (rate(pg_stat_database_blks_read[1m])))",
+      "resolvedQuery": "100 * sum by (instance) (rate(pg_stat_database_blks_hit[1m])) / (sum by (instance) (rate(pg_stat_database_blks_hit[1m])) + sum by (instance) (rate(pg_stat_database_blks_read[1m])))",
+      "status": "OK",
+      "coverage": 1.0,
+      "instanceCount": 1,
+      "instances": [
+        {
+          "labels": {
+            "instance": "pg-1"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            97.0
+          ],
+          "last": [
+            1700000048000,
+            98.2
+          ],
+          "min": 97.0,
+          "max": 98.6,
+          "pointsSha": "3f301fbbd6e760e6"
+        }
+      ]
+    },
+    {
+      "source": "metrics",
+      "component": "orders-db",
+      "metric": "database.size.growth",
+      "query": "sum by (instance) (pg_database_size_bytes)",
+      "resolvedQuery": "sum by (instance) (pg_database_size_bytes)",
+      "status": "OK",
+      "coverage": 1.0,
+      "instanceCount": 2,
+      "instances": [
+        {
+          "labels": {
+            "instance": "pg-1"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            5000000000.0
+          ],
+          "last": [
+            1700000048000,
+            5048000000.0
+          ],
+          "min": 5000000000.0,
+          "max": 5048000000.0,
+          "pointsSha": "7798c98d81e6cff9"
+        },
+        {
+          "labels": {
+            "instance": "pg-2"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            2000000000.0
+          ],
+          "last": [
+            1700000048000,
+            2009600000.0
+          ],
+          "min": 2000000000.0,
+          "max": 2009600000.0,
+          "pointsSha": "0703832c777cf504"
+        }
+      ]
+    },
+    {
+      "source": "metrics",
+      "component": "events",
+      "metric": "brokers",
+      "query": "min(kafka_brokers)",
+      "resolvedQuery": "min(kafka_brokers)",
+      "status": "OK",
+      "coverage": 1.0,
+      "instanceCount": 1,
+      "instances": [
+        {
+          "labels": {},
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            3.0
+          ],
+          "last": [
+            1700000048000,
+            3.0
+          ],
+          "min": 3.0,
+          "max": 3.0,
+          "pointsSha": "a2c4da385ef8822e"
+        }
+      ]
+    },
+    {
+      "source": "metrics",
+      "component": "events",
+      "metric": "messages.in.rate",
+      "query": "sum(rate(kafka_server_brokertopicmetrics_messagesin_total{topic!=\"\"}[1m]))",
+      "resolvedQuery": "sum(rate(kafka_server_brokertopicmetrics_messagesin_total{topic!=\"\"}[1m]))",
+      "status": "OK",
+      "coverage": 1.0,
+      "instanceCount": 1,
+      "instances": [
+        {
+          "labels": {},
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            800.0
+          ],
+          "last": [
+            1700000048000,
+            920.0
+          ],
+          "min": 800.0,
+          "max": 935.0,
+          "pointsSha": "83f695c5da97d8c9"
+        }
+      ]
+    }
+  ]
+}

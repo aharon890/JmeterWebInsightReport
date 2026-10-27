@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="JMeter Web Insight Report" tests="3" failures="1">
+  <testsuite name="JMeter Web Insight Report" tests="3" failures="1">
+    <properties>
+      <property name="webinsight.runId" value="967a1b397b7fb1d2"/>
+    </properties>
+    <testcase name="GET /api/products" classname="performance">
+    </testcase>
+    <testcase name="GET /api/search" classname="performance">
+    </testcase>
+    <testcase name="POST /api/checkout" classname="performance">
+      <failure message="ASSERT FAIL: Mean 374ms exceeds threshold">
+Mean: 374ms (FAIL)
+      </failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="JMeter Web Insight Report - assertions" tests="6" failures="2" skipped="0">
+    <properties>
+      <property name="webinsight.runId" value="967a1b397b7fb1d2"/>
+    </properties>
+    <testcase name="load:throughput" classname="assertions">
+    </testcase>
+    <testcase name="load:unreachable" classname="assertions">
+      <failure message="Assertion &apos;load:unreachable&apos;: throughput 24.76 /s on Whole run breached &lt; 100000 /s - a load target this run misses, so its dependants are LOAD_NOT_ACHIEVED">
+target:   Whole run
+metric:   throughput
+criteria: fail &lt; 100000 /s
+  [FAIL] Whole run = 24.76 /s
+      </failure>
+    </testcase>
+    <testcase name="checkout-mean-on-band" classname="assertions">
+      <failure message="Assertion &apos;checkout-mean-on-band&apos;: mean 373.863 ms on POST /api/checkout breached &gt; 373.86 ms - N3: a FAIL two decimals put on its band (373.8625 over gt 373.86)">
+target:   POST /api/checkout
+metric:   mean
+criteria: fail &gt; 373.86 ms
+  [FAIL] POST /api/checkout = 373.863 ms
+      </failure>
+    </testcase>
+    <testcase name="run-mean-whole-ms" classname="assertions">
+    </testcase>
+    <testcase name="search-mean-gte-on-band" classname="assertions">
+    </testcase>
+    <testcase name="products-mean-warns" classname="assertions">
+      <system-out>WARN: Assertion &apos;products-mean-warns&apos;: mean 119.47 ms on GET /api/products breached &gt; 119.46 ms - N3: a WARN whole ms put across its warn band (119.4675 over warn gt 119.46); fail 1000, not higher, so the mean chart&apos;s axis keeps its lines</system-out>
+    </testcase>
+  </testsuite>
+  <testsuite name="JMeter Web Insight Report - kafka" tests="4" failures="1" skipped="2">
+    <properties>
+      <property name="webinsight.runId" value="967a1b397b7fb1d2"/>
+    </properties>
+    <testcase name="cpu-headroom" classname="server-metrics">
+    </testcase>
+    <testcase name="lag-spike" classname="server-metrics">
+      <failure message="Server assert &apos;lag-spike&apos;: max 900 msgs breached &gt; 500 msgs - breaches for a stretch in the middle of the window">
+component: kafka
+query:     lag
+reduce:    max across max
+criteria:  warn &gt; 300 msgs  ·  fail &gt; 500 msgs
+actual:    900 msgs
+coverage:  100% of the collected window
+instances: 1
+      </failure>
+    </testcase>
+    <testcase name="needs-load" classname="server-metrics">
+      <skipped message="Server assert was not judged because the load it depends on was not established: load rule &apos;load:unreachable&apos; FAILED: throughput 24.76/s breached &lt; 100000 /s"/>
+    </testcase>
+    <testcase name="parked" classname="server-metrics">
+      <skipped message="Server assert was parked with enabled: false"/>
+    </testcase>
+  </testsuite>
+  <testsuite name="JMeter Web Insight Report - db" tests="8" failures="3" skipped="1">
+    <properties>
+      <property name="webinsight.runId" value="967a1b397b7fb1d2"/>
+    </properties>
+    <testcase name="lag-p50-warns" classname="server-metrics">
+      <system-out>WARN: Server assert &apos;lag-p50-warns&apos;: p50 120 msgs breached &gt; 100 msgs - over warn, under fail</system-out>
+    </testcase>
+    <testcase name="lag-sustained" classname="server-metrics">
+    </testcase>
+    <testcase name="cpu-per-rps" classname="server-metrics">
+    </testcase>
+    <testcase name="many-instances" classname="server-metrics">
+    </testcase>
+    <testcase name="sparse-coverage" classname="server-metrics">
+      <failure message="Server assert was collected below the coverage floor: coverage 6% of the collected window is below the floor 90%; no point between 2023-11-14T22:13:40Z and 2023-11-14T22:14:08Z (28 s)">
+component: db
+query:     sparse
+reduce:    max across max
+criteria:  fail &gt; 1
+problem:   Server assert was collected below the coverage floor: coverage 6% of the collected window is below the floor 90%; no point between 2023-11-14T22:13:40Z and 2023-11-14T22:14:08Z (28 s)
+coverage:  6% of the collected window
+instances: 1
+      </failure>
+    </testcase>
+    <testcase name="nothing-recorded" classname="server-metrics">
+      <skipped message="Server assert matched nothing in this run: no row of the CSV names component db, metric nothing"/>
+    </testcase>
+    <testcase name="source-never-answered" classname="server-metrics">
+      <failure message="Server assert could not be collected: e26-metrics.csv line 1328: time &quot;2023-11-14 22:13:20&quot; has no time zone - add one (2026-10-02T14:02:15+03:00, or a Z for UTC), write epoch milliseconds, or give the file&apos;s zone with --time-zone">
+component: db
+query:     up
+reduce:    max across max
+criteria:  fail &gt; 1
+problem:   Server assert could not be collected: e26-metrics.csv line 1328: time &quot;2023-11-14 22:13:20&quot; has no time zone - add one (2026-10-02T14:02:15+03:00, or a Z for UTC), write epoch milliseconds, or give the file&apos;s zone with --time-zone
+instances: 0
+      </failure>
+    </testcase>
+    <testcase name="typo-reducer" classname="server-metrics">
+      <failure message="Server assert could not run: reduce.kind &apos;maxx&apos; is not a reducer — valid here: max, min, avg, last, slope, pN (e.g. p95)">
+component: db
+query:     cpu
+criteria:  fail &gt; 1 %
+problem:   Server assert could not run: reduce.kind &apos;maxx&apos; is not a reducer — valid here: max, min, avg, last, slope, pN (e.g. p95)
+instances: 0
+      </failure>
+    </testcase>
+  </testsuite>
+</testsuites>

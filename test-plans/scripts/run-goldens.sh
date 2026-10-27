@@ -56,6 +56,7 @@ CASES=(
     "G9|gate-digits.json|-|-"
     "G10|gate-server.json|-|server-metrics.csv|-Jwebinsight.report.servermetrics.step=1s"
     "G11|gate-catalogue.json|-|../server-catalogue/server-metrics.json"
+    "G12|../server-metrics/e26-server.json|-|../server-metrics/server-metrics.json"
 )
 # G11 is the only golden with CATALOGUE components: a postgres and a kafka component over E27's
 # committed payload, each assert naming a catalogue metric, one overriding the catalogue's reducer.
@@ -63,6 +64,16 @@ CASES=(
 # .metric, the catalogue's query, unit, reduce and across, the derived id that names its JUnit
 # testcase, and the failure body's `metric:` line (events FAILs for it) - was pinned by nothing
 # (Stage 6, the audit).
+#
+# G12 is E26's committed inputs: every state the Server tab has, and its 21-instance `many` series,
+# capped to the 20 the page draws. With G4-G11 it feeds the third artifact below.
+#
+# Every case whose page carries server series also gets <id>.server.json: the page's chart data,
+# summarised by canonicalise-artifact.py (each series' status, coverage, caps and judged numbers;
+# each drawn instance's counts, first and last point, range and a hash of every shipped point).
+# The .json and .xml are the verdicts; this is what the Server tab DRAWS, which only petstore's
+# gitignored cmp.cjs compared before (6.10b). A case with no server series has no such file, and
+# a baseline beside a page that lost its series is a FAIL.
 # G10 is G4 with the CSV given straight to -g (P4): the exporter collects it in-process with the
 # collector's own code, at the step G4's payload was collected at. Its server results must read as
 # G4's - only the collection's identity (collectionId, collectedAt) may differ.
@@ -158,6 +169,38 @@ for case in "${CASES[@]}"; do
             fail=1
         fi
     done
+
+    expected="$EXPECTED_DIR/$id.server.json"
+    actual="$WORK_DIR/$id.canonical.server.json"
+    rm -f "$actual"
+    if [[ ! -f "$out/$id-report.html" ]]; then
+        echo "[GOLDEN] $id: no .html was written (jmeter rc=$rc) — see $log" >&2
+        fail=1
+        continue
+    fi
+    "$PY" "$CANON" "$out/$id-report.html" "$actual" || { echo "[GOLDEN] $id: the page's server data could not be read" >&2; fail=1; continue; }
+    if [[ $ACCEPT -eq 1 ]]; then
+        if [[ -f "$actual" ]]; then
+            cp "$actual" "$expected"
+            accepted=$((accepted + 1))
+        else
+            rm -f "$expected"
+        fi
+        continue
+    fi
+    if [[ -f "$actual" && ! -f "$expected" ]]; then
+        echo "[GOLDEN] $id.server.json has no baseline. Run: $0 --accept" >&2
+        fail=1
+    elif [[ ! -f "$actual" && -f "$expected" ]]; then
+        echo "[GOLDEN] $id: the page carries no server series, and $id.server.json says it did" >&2
+        fail=1
+    elif [[ -f "$actual" ]] && ! diff -u "$expected" "$actual" > "$WORK_DIR/$id.server.diff"; then
+        echo "[GOLDEN] $id.server.json CHANGED:" >&2
+        head -40 "$WORK_DIR/$id.server.diff" >&2
+        echo "[GOLDEN] full diff: $WORK_DIR/$id.server.diff" >&2
+        echo "[GOLDEN] if this change is intended: $0 --accept" >&2
+        fail=1
+    fi
 done
 
 if [[ $ACCEPT -eq 1 ]]; then

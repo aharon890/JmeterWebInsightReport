@@ -1,0 +1,584 @@
+{
+  "window": {
+    "start": 1700000000026,
+    "end": 1700000048490,
+    "rampUpEnd": null
+  },
+  "series": [
+    {
+      "source": "metrics",
+      "component": "kafka",
+      "query": "cpu",
+      "resolvedQuery": "cpu",
+      "status": "OK",
+      "coverage": 1.0,
+      "instanceCount": 2,
+      "instances": [
+        {
+          "labels": {
+            "instance": "a"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            46.0
+          ],
+          "last": [
+            1700000048000,
+            45.0
+          ],
+          "min": 40.0,
+          "max": 46.0,
+          "pointsSha": "6063cb1330ae6f6e"
+        },
+        {
+          "labels": {
+            "instance": "b"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            61.0
+          ],
+          "last": [
+            1700000048000,
+            64.0
+          ],
+          "min": 61.0,
+          "max": 65.0,
+          "pointsSha": "02a142021ad452a0"
+        }
+      ]
+    },
+    {
+      "source": "metrics",
+      "component": "kafka",
+      "query": "lag",
+      "resolvedQuery": "lag",
+      "status": "OK",
+      "coverage": 1.0,
+      "instanceCount": 1,
+      "instances": [
+        {
+          "labels": {
+            "instance": "a"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            120.0
+          ],
+          "last": [
+            1700000048000,
+            120.0
+          ],
+          "min": 120.0,
+          "max": 900.0,
+          "pointsSha": "26611c65807deb7e"
+        }
+      ]
+    },
+    {
+      "source": "metrics",
+      "component": "db",
+      "query": "lag",
+      "resolvedQuery": "lag",
+      "status": "OK",
+      "coverage": 1.0,
+      "instanceCount": 1,
+      "instances": [
+        {
+          "labels": {
+            "instance": "a"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            120.0
+          ],
+          "last": [
+            1700000048000,
+            120.0
+          ],
+          "min": 120.0,
+          "max": 900.0,
+          "pointsSha": "26611c65807deb7e"
+        }
+      ]
+    },
+    {
+      "source": "metrics",
+      "component": "db",
+      "query": "cpu",
+      "resolvedQuery": "cpu",
+      "status": "OK",
+      "coverage": 1.0,
+      "instanceCount": 2,
+      "instances": [
+        {
+          "labels": {
+            "instance": "a"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            46.0
+          ],
+          "last": [
+            1700000048000,
+            45.0
+          ],
+          "min": 40.0,
+          "max": 46.0,
+          "pointsSha": "6063cb1330ae6f6e"
+        },
+        {
+          "labels": {
+            "instance": "b"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            61.0
+          ],
+          "last": [
+            1700000048000,
+            64.0
+          ],
+          "min": 61.0,
+          "max": 65.0,
+          "pointsSha": "02a142021ad452a0"
+        }
+      ]
+    },
+    {
+      "source": "metrics",
+      "component": "db",
+      "query": "many",
+      "resolvedQuery": "many",
+      "status": "OK",
+      "coverage": 1.0,
+      "instanceCount": 21,
+      "instancesCapped": true,
+      "judgedMax": 32.0,
+      "instances": [
+        {
+          "labels": {
+            "instance": "p1"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            13.0
+          ],
+          "last": [
+            1700000048000,
+            13.0
+          ],
+          "min": 11.0,
+          "max": 13.0,
+          "pointsSha": "1df3a7c12095901e"
+        },
+        {
+          "labels": {
+            "instance": "p2"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            14.0
+          ],
+          "last": [
+            1700000048000,
+            14.0
+          ],
+          "min": 12.0,
+          "max": 14.0,
+          "pointsSha": "273afd11218fa77d"
+        },
+        {
+          "labels": {
+            "instance": "p3"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            15.0
+          ],
+          "last": [
+            1700000048000,
+            15.0
+          ],
+          "min": 13.0,
+          "max": 15.0,
+          "pointsSha": "09e547daaca13335"
+        },
+        {
+          "labels": {
+            "instance": "p4"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            16.0
+          ],
+          "last": [
+            1700000048000,
+            16.0
+          ],
+          "min": 14.0,
+          "max": 16.0,
+          "pointsSha": "892c1f10b2fc0803"
+        },
+        {
+          "labels": {
+            "instance": "p5"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            17.0
+          ],
+          "last": [
+            1700000048000,
+            17.0
+          ],
+          "min": 15.0,
+          "max": 17.0,
+          "pointsSha": "0ed47e9d2cc148b4"
+        },
+        {
+          "labels": {
+            "instance": "p6"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            18.0
+          ],
+          "last": [
+            1700000048000,
+            18.0
+          ],
+          "min": 16.0,
+          "max": 18.0,
+          "pointsSha": "d991b4aa8b533043"
+        },
+        {
+          "labels": {
+            "instance": "p7"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            19.0
+          ],
+          "last": [
+            1700000048000,
+            19.0
+          ],
+          "min": 17.0,
+          "max": 19.0,
+          "pointsSha": "f36901744a7c8872"
+        },
+        {
+          "labels": {
+            "instance": "p8"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            20.0
+          ],
+          "last": [
+            1700000048000,
+            20.0
+          ],
+          "min": 18.0,
+          "max": 20.0,
+          "pointsSha": "0b3f91497d30ffc9"
+        },
+        {
+          "labels": {
+            "instance": "p9"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            21.0
+          ],
+          "last": [
+            1700000048000,
+            21.0
+          ],
+          "min": 19.0,
+          "max": 21.0,
+          "pointsSha": "4e4903e8d1be18db"
+        },
+        {
+          "labels": {
+            "instance": "p10"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            22.0
+          ],
+          "last": [
+            1700000048000,
+            22.0
+          ],
+          "min": 20.0,
+          "max": 22.0,
+          "pointsSha": "d925142dc35c47d9"
+        },
+        {
+          "labels": {
+            "instance": "p11"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            23.0
+          ],
+          "last": [
+            1700000048000,
+            23.0
+          ],
+          "min": 21.0,
+          "max": 23.0,
+          "pointsSha": "3cdbd985a9b85d8d"
+        },
+        {
+          "labels": {
+            "instance": "p12"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            24.0
+          ],
+          "last": [
+            1700000048000,
+            24.0
+          ],
+          "min": 22.0,
+          "max": 24.0,
+          "pointsSha": "d577441f098a7ead"
+        },
+        {
+          "labels": {
+            "instance": "p13"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            25.0
+          ],
+          "last": [
+            1700000048000,
+            25.0
+          ],
+          "min": 23.0,
+          "max": 25.0,
+          "pointsSha": "0165bc6e3e89a564"
+        },
+        {
+          "labels": {
+            "instance": "p14"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            26.0
+          ],
+          "last": [
+            1700000048000,
+            26.0
+          ],
+          "min": 24.0,
+          "max": 26.0,
+          "pointsSha": "d241942e2365d82d"
+        },
+        {
+          "labels": {
+            "instance": "p15"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            27.0
+          ],
+          "last": [
+            1700000048000,
+            27.0
+          ],
+          "min": 25.0,
+          "max": 27.0,
+          "pointsSha": "ca68a7466bd331fe"
+        },
+        {
+          "labels": {
+            "instance": "p16"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            28.0
+          ],
+          "last": [
+            1700000048000,
+            28.0
+          ],
+          "min": 26.0,
+          "max": 28.0,
+          "pointsSha": "03d15b47be0d91f1"
+        },
+        {
+          "labels": {
+            "instance": "p17"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            29.0
+          ],
+          "last": [
+            1700000048000,
+            29.0
+          ],
+          "min": 27.0,
+          "max": 29.0,
+          "pointsSha": "6e59b76cc5a86a88"
+        },
+        {
+          "labels": {
+            "instance": "p18"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            30.0
+          ],
+          "last": [
+            1700000048000,
+            30.0
+          ],
+          "min": 28.0,
+          "max": 30.0,
+          "pointsSha": "5d11ce2deaaf1c03"
+        },
+        {
+          "labels": {
+            "instance": "p19"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            31.0
+          ],
+          "last": [
+            1700000048000,
+            31.0
+          ],
+          "min": 29.0,
+          "max": 31.0,
+          "pointsSha": "8f659bc08c528480"
+        },
+        {
+          "labels": {
+            "instance": "p20"
+          },
+          "pointCount": 49,
+          "shipped": 49,
+          "first": [
+            1700000000000,
+            32.0
+          ],
+          "last": [
+            1700000048000,
+            32.0
+          ],
+          "min": 30.0,
+          "max": 32.0,
+          "pointsSha": "b7d795695b125390"
+        }
+      ]
+    },
+    {
+      "source": "metrics",
+      "component": "db",
+      "query": "sparse",
+      "resolvedQuery": "sparse",
+      "status": "INSUFFICIENT",
+      "coverage": 0.0612,
+      "instanceCount": 1,
+      "instances": [
+        {
+          "labels": {
+            "instance": "a"
+          },
+          "pointCount": 3,
+          "shipped": 3,
+          "first": [
+            1700000000000,
+            5.0
+          ],
+          "last": [
+            1700000048000,
+            7.0
+          ],
+          "min": 5.0,
+          "max": 7.0,
+          "pointsSha": "234f8cef497585bd"
+        }
+      ]
+    },
+    {
+      "source": "metrics",
+      "component": "db",
+      "query": "nothing",
+      "resolvedQuery": "nothing",
+      "status": "EMPTY",
+      "coverage": 0.0,
+      "instanceCount": 0,
+      "instances": []
+    },
+    {
+      "source": "metrics",
+      "component": "db",
+      "query": "up",
+      "resolvedQuery": "up",
+      "status": "FAILED",
+      "coverage": null,
+      "error": "e26-metrics.csv line 1328: time \"2023-11-14 22:13:20\" has no time zone - add one (2026-10-02T14:02:15+03:00, or a Z for UTC), write epoch milliseconds, or give the file's zone with --time-zone",
+      "instanceCount": 0,
+      "instances": []
+    }
+  ]
+}

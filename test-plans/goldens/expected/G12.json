@@ -1,0 +1,589 @@
+{
+  "testName": "JMeter Web Insight Report",
+  "status": "FAIL",
+  "serverStatus": "FAIL",
+  "assertsEvaluated": true,
+  "duration": 48464,
+  "window": {
+    "start": "2023-11-14T22:13:20.026Z",
+    "end": "2023-11-14T22:14:08.490Z",
+    "startMillis": 1700000000026,
+    "endMillis": 1700000048490
+  },
+  "serverData": {
+    "state": "COLLECTED",
+    "series": [
+      {
+        "component": "kafka",
+        "metric": "cpu",
+        "unit": "%"
+      },
+      {
+        "component": "kafka",
+        "metric": "lag",
+        "unit": "msgs"
+      },
+      {
+        "component": "db",
+        "metric": "lag",
+        "unit": "msgs"
+      },
+      {
+        "component": "db",
+        "metric": "cpu",
+        "unit": "%"
+      },
+      {
+        "component": "db",
+        "metric": "many"
+      },
+      {
+        "component": "db",
+        "metric": "sparse"
+      },
+      {
+        "component": "db",
+        "metric": "nothing"
+      },
+      {
+        "component": "db",
+        "metric": "up"
+      }
+    ]
+  },
+  "totalSamples": 1200,
+  "totalErrors": 25,
+  "errorRate": 2.08,
+  "samplers": [
+    {
+      "name": "GET /api/products",
+      "sampleCount": 400,
+      "mean": 119.47,
+      "p95": 182.5,
+      "p99": 224.0,
+      "errorRate": 0.0,
+      "throughput": 8.3,
+      "apdex": 1.0,
+      "assertStatus": "WARN"
+    },
+    {
+      "name": "GET /api/search",
+      "sampleCount": 400,
+      "mean": 211.41,
+      "p95": 347.0,
+      "p99": 407.0,
+      "errorRate": 2.0,
+      "throughput": 8.28,
+      "apdex": 0.98,
+      "assertStatus": "PASS"
+    },
+    {
+      "name": "POST /api/checkout",
+      "sampleCount": 400,
+      "mean": 373.86,
+      "p95": 610.5,
+      "p99": 692.0,
+      "errorRate": 4.25,
+      "throughput": 8.26,
+      "apdex": 0.87,
+      "assertStatus": "FAIL"
+    }
+  ],
+  "assertViolations": [
+    {
+      "sampler": "Whole run",
+      "scope": "overall",
+      "status": "FAIL"
+    },
+    {
+      "sampler": "POST /api/checkout",
+      "status": "FAIL"
+    },
+    {
+      "sampler": "GET /api/products",
+      "status": "WARN"
+    }
+  ],
+  "gate": {
+    "status": "FAIL",
+    "declared": 6,
+    "evaluated": 6,
+    "passed": 3,
+    "warned": 1,
+    "failed": 2,
+    "notJudged": {
+      "total": 0,
+      "disabled": 0,
+      "noMatch": 0,
+      "noValue": 0,
+      "invalidRule": 0,
+      "sourceFailed": 0,
+      "lowCoverage": 0,
+      "loadNotAchieved": 0
+    }
+  },
+  "assertions": [
+    {
+      "id": "load:throughput",
+      "description": "the load the run achieved — PASSes on plain.jtl, so its dependants judge",
+      "target": "Whole run",
+      "targetKind": "overall",
+      "metric": "throughput",
+      "unit": "/s",
+      "status": "PASS",
+      "matched": 1,
+      "attainment": {
+        "actual": 24.76,
+        "failThreshold": 0.001,
+        "consumed": 0.0,
+        "breached": false
+      },
+      "results": [
+        {
+          "sampler": "Whole run",
+          "actual": 24.76,
+          "status": "PASS"
+        }
+      ]
+    },
+    {
+      "id": "load:unreachable",
+      "description": "a load target this run misses, so its dependants are LOAD_NOT_ACHIEVED",
+      "target": "Whole run",
+      "targetKind": "overall",
+      "metric": "throughput",
+      "unit": "/s",
+      "status": "FAIL",
+      "matched": 1,
+      "attainment": {
+        "actual": 24.76,
+        "failThreshold": 100000.0,
+        "consumed": 4038.6667,
+        "breached": true
+      },
+      "results": [
+        {
+          "sampler": "Whole run",
+          "actual": 24.76,
+          "status": "FAIL",
+          "predicate": "lt",
+          "threshold": 100000.0
+        }
+      ]
+    },
+    {
+      "id": "checkout-mean-on-band",
+      "description": "N3: a FAIL two decimals put on its band (373.8625 over gt 373.86)",
+      "target": "POST /api/checkout",
+      "targetKind": "sampler",
+      "metric": "mean",
+      "unit": "ms",
+      "status": "FAIL",
+      "matched": 1,
+      "attainment": {
+        "actual": 373.863,
+        "failThreshold": 373.86,
+        "consumed": 1.00001,
+        "breached": true
+      },
+      "results": [
+        {
+          "sampler": "POST /api/checkout",
+          "actual": 373.863,
+          "status": "FAIL",
+          "predicate": "gt",
+          "threshold": 373.86
+        }
+      ]
+    },
+    {
+      "id": "run-mean-whole-ms",
+      "description": "N3: a whole-run PASS whole ms put on its band (234.9117 under gt 235)",
+      "target": "Whole run",
+      "targetKind": "overall",
+      "metric": "mean",
+      "unit": "ms",
+      "status": "PASS",
+      "matched": 1,
+      "attainment": {
+        "actual": 234.91,
+        "failThreshold": 235.0,
+        "consumed": 0.9996,
+        "breached": false
+      },
+      "results": [
+        {
+          "sampler": "Whole run",
+          "actual": 234.91,
+          "status": "PASS"
+        }
+      ]
+    },
+    {
+      "id": "search-mean-gte-on-band",
+      "description": "N3: a gte PASS two decimals put on its band (211.405 under gte 211.41)",
+      "target": "GET /api/search",
+      "targetKind": "sampler",
+      "metric": "mean",
+      "unit": "ms",
+      "status": "PASS",
+      "matched": 1,
+      "attainment": {
+        "actual": 211.405,
+        "failThreshold": 211.41,
+        "consumed": 0.99998,
+        "breached": false
+      },
+      "results": [
+        {
+          "sampler": "GET /api/search",
+          "actual": 211.405,
+          "status": "PASS"
+        }
+      ]
+    },
+    {
+      "id": "products-mean-warns",
+      "description": "N3: a WARN whole ms put across its warn band (119.4675 over warn gt 119.46); fail 1000, not higher, so the mean chart's axis keeps its lines",
+      "target": "GET /api/products",
+      "targetKind": "sampler",
+      "metric": "mean",
+      "unit": "ms",
+      "status": "WARN",
+      "matched": 1,
+      "attainment": {
+        "actual": 119.47,
+        "failThreshold": 1000.0,
+        "consumed": 0.1195,
+        "breached": false
+      },
+      "results": [
+        {
+          "sampler": "GET /api/products",
+          "actual": 119.47,
+          "status": "WARN",
+          "predicate": "gt",
+          "threshold": 119.46
+        }
+      ]
+    }
+  ],
+  "serverComponents": [
+    {
+      "id": "kafka",
+      "label": "Kafka",
+      "type": "custom",
+      "collectionId": "60a852d6637b30c5",
+      "status": "FAIL",
+      "declared": 4,
+      "evaluated": 3,
+      "passed": 1,
+      "warned": 0,
+      "failed": 1,
+      "notJudged": {
+        "total": 2,
+        "disabled": 1,
+        "noMatch": 0,
+        "noValue": 0,
+        "invalidRule": 0,
+        "sourceFailed": 0,
+        "lowCoverage": 0,
+        "loadNotAchieved": 1
+      }
+    },
+    {
+      "id": "db",
+      "label": "DB",
+      "type": "custom",
+      "collectionId": "60a852d6637b30c5",
+      "status": "WARN",
+      "declared": 8,
+      "evaluated": 8,
+      "passed": 3,
+      "warned": 1,
+      "failed": 0,
+      "notJudged": {
+        "total": 4,
+        "disabled": 0,
+        "noMatch": 1,
+        "noValue": 0,
+        "invalidRule": 1,
+        "sourceFailed": 1,
+        "lowCoverage": 1,
+        "loadNotAchieved": 0
+      }
+    }
+  ],
+  "serverAsserts": [
+    {
+      "id": "cpu-headroom",
+      "description": "comfortably inside its limit",
+      "component": "kafka",
+      "query": "cpu",
+      "unit": "%",
+      "reduce": {
+        "kind": "max"
+      },
+      "across": "max",
+      "status": "PASS",
+      "actual": 65.0,
+      "coverage": 1.0,
+      "instances": 2,
+      "fail": {
+        "gt": 95.0
+      }
+    },
+    {
+      "id": "lag-spike",
+      "description": "breaches for a stretch in the middle of the window",
+      "component": "kafka",
+      "query": "lag",
+      "unit": "msgs",
+      "reduce": {
+        "kind": "max"
+      },
+      "across": "max",
+      "status": "FAIL",
+      "actual": 900.0,
+      "coverage": 1.0,
+      "instances": 1,
+      "warn": {
+        "gt": 300.0
+      },
+      "fail": {
+        "gt": 500.0
+      },
+      "breached": {
+        "gt": 500.0
+      }
+    },
+    {
+      "id": "lag-p50-warns",
+      "description": "over warn, under fail",
+      "component": "db",
+      "query": "lag",
+      "unit": "msgs",
+      "reduce": {
+        "kind": "p50"
+      },
+      "across": "max",
+      "status": "WARN",
+      "actual": 120.0,
+      "coverage": 1.0,
+      "instances": 1,
+      "warn": {
+        "gt": 100.0
+      },
+      "fail": {
+        "gt": 5000.0
+      },
+      "breached": {
+        "gt": 100.0
+      }
+    },
+    {
+      "id": "lag-sustained",
+      "description": "the level held for 5 s — the reducer the chart has to agree with",
+      "component": "db",
+      "query": "lag",
+      "unit": "msgs",
+      "reduce": {
+        "kind": "max",
+        "over": {
+          "sustainedFor": "5s"
+        }
+      },
+      "across": "max",
+      "status": "PASS",
+      "actual": 900.0,
+      "coverage": 1.0,
+      "instances": 1,
+      "fail": {
+        "gt": 5000.0
+      }
+    },
+    {
+      "id": "cpu-per-rps",
+      "description": "divideBy the load rule's measured throughput",
+      "component": "db",
+      "query": "cpu",
+      "unit": "%",
+      "reduce": {
+        "kind": "max"
+      },
+      "across": "avg",
+      "divideBy": "load:throughput",
+      "status": "PASS",
+      "actual": 2.2415,
+      "coverage": 1.0,
+      "instances": 2,
+      "fail": {
+        "gt": 10000.0
+      }
+    },
+    {
+      "id": "many-instances",
+      "description": "21 instances against a cap of 20 — the tab must say one is not drawn",
+      "component": "db",
+      "query": "many",
+      "unit": "",
+      "reduce": {
+        "kind": "max"
+      },
+      "across": "max",
+      "status": "PASS",
+      "actual": 32.0,
+      "coverage": 1.0,
+      "instances": 21,
+      "fail": {
+        "gt": 10000.0
+      }
+    },
+    {
+      "id": "needs-load",
+      "description": "NOT_JUDGED / LOAD_NOT_ACHIEVED — the load rule it names FAILED",
+      "component": "kafka",
+      "query": "cpu",
+      "unit": "%",
+      "reduce": {
+        "kind": "max"
+      },
+      "across": "max",
+      "requiresLoad": "load:unreachable",
+      "status": "NOT_JUDGED",
+      "notJudged": "LOAD_NOT_ACHIEVED",
+      "reason": "load rule 'load:unreachable' FAILED: throughput 24.76/s breached < 100000 /s",
+      "actual": null,
+      "coverage": null,
+      "instances": 0,
+      "fail": {
+        "gt": 1.0
+      }
+    },
+    {
+      "id": "sparse-coverage",
+      "description": "NOT_JUDGED / LOW_COVERAGE — a configuration error, fatal under failonerror",
+      "component": "db",
+      "query": "sparse",
+      "unit": "",
+      "reduce": {
+        "kind": "max"
+      },
+      "across": "max",
+      "status": "NOT_JUDGED",
+      "notJudged": "LOW_COVERAGE",
+      "reason": "coverage 6% of the collected window is below the floor 90%; no point between 2023-11-14T22:13:40Z and 2023-11-14T22:14:08Z (28 s)",
+      "actual": null,
+      "coverage": 0.0612,
+      "instances": 1,
+      "fail": {
+        "gt": 1.0
+      }
+    },
+    {
+      "id": "nothing-recorded",
+      "description": "NOT_JUDGED / NO_MATCH — declared, and the directory answers nothing",
+      "component": "db",
+      "query": "nothing",
+      "unit": "",
+      "reduce": {
+        "kind": "max"
+      },
+      "across": "max",
+      "status": "NOT_JUDGED",
+      "notJudged": "NO_MATCH",
+      "reason": "no row of the CSV names component db, metric nothing",
+      "actual": null,
+      "coverage": 0.0,
+      "instances": 0,
+      "fail": {
+        "gt": 1.0
+      }
+    },
+    {
+      "id": "source-never-answered",
+      "description": "NOT_JUDGED / SOURCE_FAILED — its recording is unreadable on purpose",
+      "component": "db",
+      "query": "up",
+      "unit": "",
+      "reduce": {
+        "kind": "max"
+      },
+      "across": "max",
+      "status": "NOT_JUDGED",
+      "notJudged": "SOURCE_FAILED",
+      "reason": "e26-metrics.csv line 1328: time \"2023-11-14 22:13:20\" has no time zone - add one (2026-10-02T14:02:15+03:00, or a Z for UTC), write epoch milliseconds, or give the file's zone with --time-zone",
+      "actual": null,
+      "coverage": null,
+      "instances": 0,
+      "fail": {
+        "gt": 1.0
+      }
+    },
+    {
+      "id": "parked",
+      "description": "NOT_JUDGED / DISABLED",
+      "component": "kafka",
+      "query": "cpu",
+      "unit": "%",
+      "reduce": {
+        "kind": "max"
+      },
+      "across": "max",
+      "status": "NOT_JUDGED",
+      "notJudged": "DISABLED",
+      "reason": "was parked with enabled: false",
+      "actual": null,
+      "coverage": null,
+      "instances": 0,
+      "fail": {
+        "gt": 1.0
+      }
+    },
+    {
+      "id": "typo-reducer",
+      "description": "NOT_JUDGED / INVALID_RULE — fix the file, not the run",
+      "component": "db",
+      "query": "cpu",
+      "unit": "%",
+      "reduce": null,
+      "across": "max",
+      "status": "NOT_JUDGED",
+      "notJudged": "INVALID_RULE",
+      "reason": "reduce.kind 'maxx' is not a reducer — valid here: max, min, avg, last, slope, pN (e.g. p95)",
+      "actual": null,
+      "coverage": null,
+      "instances": 0,
+      "fail": {
+        "gt": 1.0
+      }
+    }
+  ],
+  "findings": [
+    {
+      "severity": "error",
+      "ruleId": "typo-reducer",
+      "message": "reduce.kind 'maxx' is not a reducer — valid here: max, min, avg, last, slope, pN (e.g. p95)"
+    }
+  ],
+  "artifacts": {
+    "outputDirectory": "<outputDir>",
+    "html": {
+      "path": "G12-report.html",
+      "outcome": "WRITTEN"
+    },
+    "json": {
+      "path": "G12-report.json",
+      "outcome": "WRITTEN"
+    },
+    "xml": {
+      "path": "G12-report.xml",
+      "outcome": "PLANNED"
+    },
+    "data": {
+      "path": "G12-report-data.js",
+      "outcome": "SKIPPED",
+      "detail": "inline"
+    }
+  }
+}
