@@ -3511,6 +3511,31 @@ body.dark-mode .wir-status-menu { box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5); }
     margin-left: 10px;
 }
 
+/* The tab's line colour, at the row's far end; its picker opens leftwards from there. */
+.wir-server-line-color {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+}
+
+.wir-color-anchor {
+    position: relative;
+    display: inline-block;
+}
+
+.wir-color-anchor > .sampler-color-dot {
+    width: 14px;
+    height: 14px;
+    padding: 0;
+    border: 1px solid var(--color-border);
+}
+
+.wir-color-anchor > .color-picker-popup {
+    left: auto;
+    right: 0;
+}
+
 .wir-filter-label {
     font-size: 0.75rem;
     font-weight: 700;

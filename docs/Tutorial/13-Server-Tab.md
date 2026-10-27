@@ -399,6 +399,12 @@ Then one filter row:
   on the Asserts tab. The counts follow the other filters, the text you are typing included, so the
   chips always add up to what `All` says. A screen reader hears which chip is on.
 - **Clear filters**, shown when any filter is on, as soon as you type.
+- **Line colour**, at the end of the row: the colour of every server chart's line. Click the dot to
+  open the colour picker the samplers' dots open in the filter bar (which is hidden on this tab).
+  The colour you pick draws every row's line and Per instance bars, and the metric picker's chart.
+  On a chart with several instances, the first instance takes it and the others keep the palette's
+  next colours, so the lines stay apart. It is saved in your browser beside the sampler colours,
+  and choosing a palette clears it, as it clears theirs.
 
 A filter narrows the board to the cards it found something in. With no filter on, every declared
 component has a card, an empty one included.

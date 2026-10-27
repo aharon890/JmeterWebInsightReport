@@ -394,6 +394,25 @@ function chartColors() {
 var customColors = {}; // samplerName -> color override
 var lineThickness = 2;
 
+/* The Server tab's line colour, picked with the samplers' own picker and kept in customColors
+   beside theirs, so a palette change or Reset clears it as it clears theirs. A JMeter label cannot
+   hold U+0000 (the JTL is XML or a CSV a sampler wrote), so no sampler can be this key. */
+var SERVER_LINE_COLOR_KEY = '\u0000server-line';
+
+/* One colour for every server chart's line (the owner, 2026-10-27): the picked one, else the
+   palette's first, as the charts drew before a reader picked anything. */
+function serverLineColor() {
+    return customColors[SERVER_LINE_COLOR_KEY] || chartColors()[0];
+}
+
+/* A server chart's colours by instance: the line colour first, the palette after it, so a second
+   instance is still told from the first. */
+function serverLineColors() {
+    var colors = chartColors().slice();
+    colors[0] = serverLineColor();
+    return colors;
+}
+
 /* Track which samplers are visible */
 var samplerVisibility = {};
 
@@ -18191,8 +18210,27 @@ WIR.serverKpis = (function () {
                 : '')
             + '</div>';
         html += restoredDraftHtml() + droppedDraftHtml();
-        html += '<div class="wir-server-filters">' + filterRowHtml() + '</div>';
+        html += '<div class="wir-server-filters">' + filterRowHtml() + lineColorHtml() + '</div>';
         return html + '</div>';
+    }
+
+    /* The tab's one line colour (the owner, 2026-10-27), at the end of the filter row: the filter
+       bar holding the palette and the samplers' dots is hidden on this tab (D4). The dot opens the
+       samplers' own picker (pickLineColor), anchored in a span of its own as theirs is. */
+    function lineColorHtml() {
+        return '<span class="wir-server-line-color"><span class="wir-filter-label">Line colour</span>'
+            + '<span class="wir-color-anchor"><button type="button" class="sampler-color-dot"'
+            + ' id="serverLineColorDot" aria-label="Line colour of every server chart"'
+            + ' title="Line colour of every server chart"'
+            + ' style="background:' + esc(serverLineColor()) + '"'
+            + '\n                onclick="WIR.serverKpis.pickLineColor()"></button></span></span>';
+    }
+
+    /* The dot shows what the charts draw. A palette change or Reset clears the picked colour, and a
+       theme change moves the palette's first to its dark variant; neither renders this header. */
+    function syncLineColorDot() {
+        var dot = document.getElementById('serverLineColorDot');
+        if (dot) dot.style.background = serverLineColor();
     }
 
     /* The document's count, as the Asserts tab's pill shows it (U1); nothing when nothing is
@@ -20103,8 +20141,9 @@ WIR.serverKpis = (function () {
             }
             /* The reader's palette and line weight, as every other chart takes them (R3-12): a
                colour-blind-safe palette chosen in the header is a promise about EVERY chart. In
-               its dark variant on a dark chart (SF37). */
-            var palette = chartColors();
+               its dark variant on a dark chart (SF37). The first instance takes the tab's line
+               colour, when the reader picked one. */
+            var palette = serverLineColors();
             var color = palette[i % palette.length];
             /* A symbol on each lone point and on nothing else. showSymbol has to be on for any
                symbol to be drawn, so the rest of the series says 'none' per point; a series with
@@ -20547,7 +20586,7 @@ WIR.serverKpis = (function () {
             },
             series: [{
                 type: 'bar', data: values, barMaxWidth: 18,
-                itemStyle: { color: chartColors()[0] },
+                itemStyle: { color: serverLineColor() },
                 markLine: marks.length ? { silent: true, symbol: 'none', data: marks } : undefined
             }]
         });
@@ -25566,7 +25605,8 @@ WIR.serverKpis = (function () {
             tooltip: { trigger: 'axis', formatter: tooltipFormatter(metric.unit || ''), appendTo: 'body' },
             series: [{
                 name: metric.label || dialog.focus, type: 'line', showSymbol: false, data: run.points,
-                lineStyle: { width: 1.5 }
+                itemStyle: { color: serverLineColor() },
+                lineStyle: { width: 1.5, color: serverLineColor() }
             }]
         }, true);
         chart.resize();
@@ -26160,7 +26200,14 @@ WIR.serverKpis = (function () {
             its facts above an empty box until the next redraw of the dialog. */
         refresh: function () {
             reinitOpenCharts();
+            syncLineColorDot();
             if (dialog && dialog.kind === 'picker' && dialog.step === 'pick') drawFocusChart();
+        },
+
+        /** The line colour's dot: the samplers' picker (openColorPicker), over the tab's own key. */
+        pickLineColor: function () {
+            var dot = document.getElementById('serverLineColorDot');
+            if (dot) openColorPicker(dot.parentNode, SERVER_LINE_COLOR_KEY, 0, dot);
         },
 
         /** Called by switchTab once the tab is shown and its charts resized (R3-4). */

@@ -1159,6 +1159,68 @@ test.describe('Server tab — charts that agree with the board (M7c E)', () => {
     expect(c.series[0].lineWidth).toBe(4);
   });
 
+  test('[R] one line colour for every server chart, picked in the sampler colour picker and kept', async ({ page }) => {
+    // The owner, 2026-10-27: a server line was always the palette's first colour, and "some people
+    // like other colors" — one colour for all server charts, set in one place, with the picker the
+    // samplers already have.
+    await loadClean(page, 'E26');
+    await switchTab(page, 'server');
+    await openChart(page, 'lag-spike');
+    await openChart(page, 'cpu-headroom');
+    const palette: string[] = await page.evaluate(() => (window as any).chartColors());
+    const bar = (id: string) => page.evaluate((kpiId) => {
+      const W = (window as any).WIR.serverKpis;
+      const el = document.getElementById('serverInstances-' + W._keyOf(kpiId));
+      const inst = el && (window as any).echarts.getInstanceByDom(el);
+      return inst ? inst.getOption().series[0].itemStyle.color : null;
+    }, id);
+    const dot = page.locator('#serverLineColorDot');
+    await expect(dot).toHaveCSS('background-color', await page.evaluate((c) => {
+      const s = document.createElement('span');
+      s.style.background = c;
+      return s.style.backgroundColor;
+    }, palette[0]));
+
+    await dot.click();
+    const popup = page.locator('.wir-server-filters .color-picker-popup.open');
+    await expect(popup).toBeVisible();
+    await popup.locator('.color-swatch[data-color="#FF0000"]').click();
+    await expect(popup).toBeHidden();
+
+    await expect.poll(async () => (await chartOf(page, 'lag-spike'))!.series[0].color).toBe('#FF0000');
+    const cpu = (await chartOf(page, 'cpu-headroom'))!;
+    expect(cpu.series[0].color).toBe('#FF0000');
+    expect(cpu.visual, 'the legend and tooltip swatch follow the line').toBe('#FF0000');
+    expect(cpu.series[1].color, 'a second instance keeps the palette\'s next colour, so the two stay apart')
+      .toBe(palette[1]);
+    expect(await bar('lag-spike'), 'the Per instance bars take it too').toBe('#FF0000');
+    await expect(dot).toHaveCSS('background-color', 'rgb(255, 0, 0)');
+    // No sampler took it: every dot in the client filter bar is still its palette slot.
+    expect(await page.evaluate(() => {
+      const W = window as any;
+      const dots = Array.from(document.querySelectorAll('#filterBar .sampler-color-dot'));
+      return dots.length > 0 && dots.every((d) => {
+        const i = Number(d.getAttribute('data-idx'));
+        return W.getColorForSampler(d.getAttribute('data-sampler'), i) === W.chartColors()[i % W.chartColors().length];
+      });
+    })).toBe(true);
+
+    // Kept across a reload, where sampler colours are kept.
+    await loadDirty(page, 'E26');
+    await switchTab(page, 'server');
+    await openChart(page, 'lag-spike');
+    expect((await chartOf(page, 'lag-spike'))!.series[0].color).toBe('#FF0000');
+    await expect(page.locator('#serverLineColorDot')).toHaveCSS('background-color', 'rgb(255, 0, 0)');
+
+    // A new palette resets it, as it resets every sampler colour, and the dot says so.
+    await switchTab(page, 'timeline');
+    await page.click('#paletteToggle [data-palette="okabe-ito"]');
+    await switchTab(page, 'server');
+    const okabe: string[] = await page.evaluate(() => (window as any).chartColors());
+    await expect.poll(async () => (await chartOf(page, 'lag-spike'))!.series[0].color).toBe(okabe[0]);
+    await expect(page.locator('#serverLineColorDot')).not.toHaveCSS('background-color', 'rgb(255, 0, 0)');
+  });
+
   test('[U] the chart note names the reducer of the declared assert (L3-13)', async ({ page }) => {
     await loadClean(page, 'E26');
     await switchTab(page, 'server');
