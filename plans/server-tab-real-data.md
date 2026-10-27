@@ -289,6 +289,27 @@ heap.live.growth reads its steps, unread. The panel's open state and chart data 
 - 20 steps is the 299.8 s collected window at 15 s, as Coverage counts it.
 - C6's pins lost the bare `INSUFFICIENT`. Tutorial 13 describes the words and 5.6's gap.
 
+**5.8, expected (written before the change, 4.1.24):**
+- S4 X07: its two asserts (mongo-command-p95 with an in-run `+Inf`, catalog-hikari-acquire-p95 with `Infinity`) go
+  SOURCE_FAILED → judged on their other points, as A0 judges them. The verdict and actual equal A0's unless the dropped
+  row held the reducer's point; coverage loses at most that one slot.
+- M10 (empty and `NaN` rows beside numbers) is unchanged; so is every other S4 variant.
+- WIR: E28's blank-values assert goes SOURCE_FAILED ("every value is empty or NaN") → LOW_COVERAGE (0 of N steps,
+  the gap named). Its spec pins move.
+
+**5.8, done (4.1.24).** Red first: four CsvSourceTest cases (an all-blank series is an instance with no point; an all-NaN
+instance counts beside numbered ones; `±Inf`/`Infinity` are gaps in both layouts while `1e400` is still refused; blank rows in
+the run beside numbered ones outside it). They replace Stage 2's D6 test that refused `+Inf` by line. Observed:
+- X07 vs A0: `catalog-hikari-acquire-p95` SOURCE_FAILED → PASS 0.95, as A0, coverage 0.95 → 0.90. As registered.
+- **Deviation:** `mongo-command-p95` SOURCE_FAILED → **LOW_COVERAGE**, not A0's PASS. Its A0 coverage sat exactly at the 0.90
+  floor, and the `+Inf` slot took it to 0.85. That is the live path's rule; my registration missed a series at the floor.
+  Its reason names the hole (30 s).
+- M10 unchanged; goldens unchanged (9 sets).
+- E28 `blank`: SOURCE_FAILED → LOW_COVERAGE, `app/blank 0 of 4 steps have a point (0%)`.
+- The wide layout skips its blank cells without storing them, so an all-blank wide column stays EMPTY (NO_MATCH, Grafana's
+  NoData). Only `±Inf` joined that skip.
+- Tutorial 16 and CLAUDE.md say the new rule.
+
 **For the owner:**
 - **Q5, the y-axis.** Grafana bounds it by the data; WIR includes every band (R3-3) so the drag handles stay on the
   plot.

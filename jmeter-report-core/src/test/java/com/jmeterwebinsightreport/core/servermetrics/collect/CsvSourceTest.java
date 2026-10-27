@@ -273,11 +273,26 @@ class CsvSourceTest {
     }
 
     @Test
-    void rowsInsideTheRunWithNoValueAreSaidNotEmpty() throws IOException {
+    void rowsInsideTheRunWithNoValueAreAnInstanceWithNoPointAsOnTheLivePath() throws IOException {
+        // 5.8 (Q1, N2): a series whose every value in the run is empty or NaN was SOURCE_FAILED here,
+        // and LOW_COVERAGE live, where Prometheus' NaN samples are dropped and the series kept. Grafana
+        // and Prometheus count a NaN-valued series as data with no value: one rule on both paths.
         ServerSource s = csv("time,component,metric,instance,value\n"
                 + "1700000000000,app,cpu,,\n1700000015000,app,cpu,,NaN\n");
-        assertEquals("m.csv has 2 rows for app/cpu and every value is empty or NaN - the export carries the"
-                + " series' times and no numbers", ask(new CsvSource(), s, "app", "cpu").error());
+        SeriesSource.Answer a = ask(new CsvSource(), s, "app", "cpu");
+        assertNull(a.error(), a.error());
+        assertEquals(1, a.instances().size(), "the instance is there");
+        assertTrue(a.instances().get(0).getPoints().isEmpty(), "with no point: coverage 0, LOW_COVERAGE");
+    }
+
+    @Test
+    void anInstanceWithNoValueStillCountsAsAnInstanceBesideOnesWithNumbers() throws IOException {
+        // 5.8 (B7): the payload paths counted it (5 instances), this one dropped it (4).
+        ServerSource s = csv("time,component,metric,instance,value\n"
+                + "1700000000000,app,cpu,a,40\n1700000000000,app,cpu,b,NaN\n1700000015000,app,cpu,b,\n");
+        SeriesSource.Answer a = ask(new CsvSource(), s, "app", "cpu");
+        assertNull(a.error(), a.error());
+        assertEquals(2, a.instances().size());
     }
 
     @Test
@@ -1046,19 +1061,28 @@ class CsvSourceTest {
     }
 
     @Test
-    void prometheusInfIsNotAFiniteNumberNotADecimalPointSlip() throws IOException {
-        // D6 (S4 X07): histogram_quantile into the +Inf bucket reads +Inf, Prometheus' own spelling, which
-        // Double.parseDouble does not take: it was told to use a '.' decimal point.
+    void prometheusInfIsAGapAsOnTheLivePath() throws IOException {
+        // 5.8 (Q1, N3; S4 X07): Prometheus writes +Inf/-Inf (histogram_quantile into the +Inf bucket,
+        // a division by zero) and Grafana's CSV export Infinity. The live path drops a non-finite
+        // sample as a gap; this one refused the whole series by line. One rule: a gap here too.
         ServerSource s = csv("time,component,metric,instance,value\n"
-                + "1700000000000,c,x,,+Inf\n1700000000000,c,y,,-Inf\n1700000000000,c,z,,Infinity\n");
+                + "1700000000000,c,x,,+Inf\n1700000015000,c,x,,5\n1700000000000,c,y,,-Inf\n"
+                + "1700000000000,c,z,,Infinity\n1700000015000,c,z,,7\n");
         CsvSource reader = new CsvSource();
-        assertEquals("m.csv line 2: value \"+Inf\" is not a finite number", ask(reader, s, "c", "x").error());
-        assertEquals("m.csv line 3: value \"-Inf\" is not a finite number", ask(reader, s, "c", "y").error());
-        assertEquals("m.csv line 4: value \"Infinity\" is not a finite number", ask(reader, s, "c", "z").error());
+        SeriesSource.Answer x = ask(reader, s, "c", "x");
+        assertNull(x.error(), x.error());
+        assertEquals(1, x.instances().get(0).getPoints().size(), "+Inf left a gap beside the 5");
+        assertEquals(5.0, x.instances().get(0).getPoints().get(0).getValue(), 0.0);
+        assertNull(ask(reader, s, "c", "y").error());
+        assertEquals(1, ask(reader, s, "c", "z").instances().get(0).getPoints().size());
         // The wide layout reads its cells the same way.
-        ServerSource w = wide("\"Time\",\"c/x\"\n1700000000000,+Inf\n");
-        assertEquals("grafana.csv line 2: column \"c/x\": value \"+Inf\" is not a finite number",
-                ask(new CsvSource(), w, "c", "x").error());
+        ServerSource w = wide("\"Time\",\"c/x\"\n1700000000000,+Inf\n1700000015000,3\n");
+        SeriesSource.Answer wx = ask(new CsvSource(), w, "c", "x");
+        assertNull(wx.error(), wx.error());
+        assertEquals(1, wx.instances().get(0).getPoints().size());
+        // A number too big for a double is no tool's spelling of infinity: still refused by line.
+        ServerSource big = csv("time,component,metric,instance,value\n1700000000000,c,x,,1e400\n");
+        assertEquals("m.csv line 2: value \"1e400\" is not a finite number", ask(new CsvSource(), big, "c", "x").error());
     }
 
     @Test
@@ -1932,11 +1956,15 @@ class CsvSourceTest {
     }
 
     @Test
-    void blankRowsInsideTheRunBesideNumberedOnesOutsideItAreCountedInside() throws IOException {
+    void blankRowsInsideTheRunBesideNumberedOnesOutsideItAreAnInstanceWithNoPoint() throws IOException {
+        // The rows inside the run decide it: blank there, so the instance is there with no point (5.8),
+        // never a time problem because the numbered row is outside.
         ServerSource s = csv("time,component,metric,instance,value\n"
                 + "1699999900000,app,cpu,,40\n1700000000000,app,cpu,,\n1700000015000,app,cpu,,NaN\n");
-        assertEquals("m.csv has 2 rows for app/cpu inside the run and every value is empty or NaN - the export"
-                + " carries the series' times and no numbers", ask(new CsvSource(), s, "app", "cpu").error());
+        SeriesSource.Answer a = ask(new CsvSource(), s, "app", "cpu");
+        assertNull(a.error(), a.error());
+        assertEquals(1, a.instances().size());
+        assertTrue(a.instances().get(0).getPoints().isEmpty());
     }
 
     // ---- the measured step (decision 12): the reader's own index, the reader's own rules ----------

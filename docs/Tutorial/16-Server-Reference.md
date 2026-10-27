@@ -133,8 +133,10 @@ time,component,metric,instance,value
 - **`instance`**: optional. Empty is one instance; a value becomes the chart label
   `instance=<value>`, or the value alone when it already reads as a label (`routeId=catalog`, as an
   exporter that writes a series' own labels into the cell gives it).
-- **`value`**: a number with `.` as the decimal point and no thousands separator. Empty or `NaN` is
-  a gap, not zero. Without `--from` it is the metric's value in the catalogue's unit and nothing is
+- **`value`**: a number with `.` as the decimal point and no thousands separator. Empty, `NaN`, and
+  the infinities Prometheus and Grafana write (`+Inf`, `-Inf`, `Inf`, `Infinity`) are a gap, not
+  zero, exactly as a live collection drops such a sample. A number too big for a double (`1e400`)
+  is refused by line. Without `--from` it is the metric's value in the catalogue's unit and nothing is
   converted, so a counter must be exported as the rate the catalogue's query would have computed.
 - Rows more than one step outside the run's window are dropped. **A series whose every row falls
   outside the run is said**, not dropped in silence: `server.csv has 62 rows for db/connections and
@@ -144,7 +146,9 @@ time,component,metric,instance,value
   that sentence on the console and the Server tab. A shift of seconds is named as clock skew, with
   the `--clock-offset` that moves it; rows before and after the run with none inside it (an export
   of two other runs) are named as such, with `export the run's window`. Nothing is ever shifted
-  without being asked. Rows inside the run whose every value is empty or `NaN` are said as that; under
+  without being asked. Rows inside the run whose every value is a gap make an instance with no point,
+  as a live series of `NaN` samples does: the series reads `LOW COVERAGE`, `0 of 20 steps have a
+  point`, never `SOURCE FAILED`, which is for a file or a row that could not be read. Under
   `--from`, rows that hold numbers a counter conversion leaves nothing of (no row before the run to
   take a rate from) are said as that, with `export from one step before the run`.
 - **The names must match exactly.** `component` and `metric` are compared as written; a row whose

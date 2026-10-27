@@ -930,7 +930,8 @@ name in any order, extra columns ignored, quoted cells and a UTF-8 BOM allowed:
 milliseconds — a time with no zone is refused, never guessed. `metric` is a catalogue metric's name
 or a custom assert's `query` text. `instance` is optional (empty is one instance; a value becomes
 the chart label `instance=<value>`, or the value alone when it already reads `k=…`, C1). `value` uses `.` as the decimal point and no thousands
-separator; empty or `NaN` is a gap, not zero; without `--from` it is the metric's value in the
+separator; empty, `NaN` and `+Inf`/`-Inf`/`Infinity` are a gap, not zero, as the live path drops a non-finite
+sample, and an instance whose every row in the run is a gap is kept with no point (LOW_COVERAGE, 5.8); without `--from` it is the metric's value in the
 catalogue's unit, with no counter conversion. Rows more than one step outside the run window are
 dropped. A bad row fails **only the series it belongs to**, naming the line
 (`e26-metrics.csv line 1328: time "2023-11-14 22:13:20" has no time zone - ...`), so the source
@@ -1013,7 +1014,7 @@ both spans and the shift (`outsideWindow`: a whole number of quarter hours withi
 time zone with `--time-zone`/`--clock-offset`, seconds as clock skew, anything larger as another
 period) — it used to be EMPTY → NO_MATCH "the query matched no series" and pass every gate; a name
 that differs only by case or `.`/`_`/`-` is FAILED naming both spellings (`nearMiss`); rows inside the
-run with no value are FAILED as such; a row with more cells than the header (an unquoted `90,9`), one
+run with no value are an instance with no point, LOW_COVERAGE as on the live path (5.8; they were FAILED as such); a row with more cells than the header (an unquoted `90,9`), one
 that stops before the value, an unclosed quote, a 15+-digit epoch (µs/ns), a `;`/tab delimiter and a
 UTF-16 long file are refused by line or by name; a repeated time with another value is a console
 WARNING (`duplicateNotes`). `wir-collect` prints the run window, the long file's unasked series

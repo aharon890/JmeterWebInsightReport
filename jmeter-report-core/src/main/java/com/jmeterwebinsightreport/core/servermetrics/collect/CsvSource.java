@@ -261,9 +261,12 @@ public final class CsvSource implements SeriesSource {
                     points.add(new ServerMetricsPayload.Point(ts, p.getValue()));
                 }
             }
-            if (points.isEmpty()) {
+            if (points.isEmpty() && (readAs != null || !hasRowInRun(rows, source.clockOffsetMs(), window, slack))) {
+                // Nothing in the run, or numbers a --from conversion left nothing of: emptySeries says which.
                 continue;
             }
+            // An instance whose rows in the run hold no number is still an instance, with no point, as
+            // the live path keeps a series whose samples are NaN (5.8, Q1/B7): LOW_COVERAGE, not FAILED.
             ServerMetricsPayload.InstanceRecord inst = new ServerMetricsPayload.InstanceRecord();
             inst.setLabels(e.getKey().isEmpty() ? Collections.<String, String>emptyMap()
                     : Collections.singletonMap(INSTANCE_LABEL, e.getKey()));
@@ -579,6 +582,17 @@ public final class CsvSource implements SeriesSource {
         return window == null || (ts >= window.getStart() - slack && ts <= window.getEnd() + slack);
     }
 
+    /** Whether any of an instance's rows, a blank one included, lies in the run (the clock offset applied). */
+    private static boolean hasRowInRun(TreeMap<Long, Double> rows, long clockOffset,
+                                       ServerMetricsPayload.Window window, long slack) {
+        for (Long ts : rows.keySet()) {
+            if (inRun(ts + clockOffset, window, slack)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * The interval one instance's rows ({@code ascending}) were exported at, or 0 when they have none:
      * the most common gap, the smaller on a tie, taken only when it repeats at least
@@ -850,14 +864,16 @@ public final class CsvSource implements SeriesSource {
             }
             String v = row.cell(header.value).trim();
             Double value;
-            if (v.isEmpty() || v.equalsIgnoreCase("nan")) {
-                value = null;   // a gap, not a zero
+            if (v.isEmpty() || v.equalsIgnoreCase("nan") || infinityText(v)) {
+                // A gap, not a zero. Prometheus writes +Inf/-Inf and Grafana's export Infinity; the live
+                // path drops a non-finite sample as a gap, so this path does too (5.8, Q1).
+                value = null;
             } else {
                 try {
                     value = Double.parseDouble(v);
                 } catch (NumberFormatException e) {
-                    idx.errors.put(key, where + "value \"" + v + "\" " + (infinityText(v) ? "is not a finite number"
-                            : "is not a number - write it with a '.' decimal point and no thousands separator"));
+                    idx.errors.put(key, where + "value \"" + v + "\" is not a number - write it with a '.' decimal"
+                            + " point and no thousands separator");
                     continue;
                 }
                 if (value.isInfinite()) {
