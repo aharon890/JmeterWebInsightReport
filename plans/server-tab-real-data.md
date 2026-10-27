@@ -327,6 +327,13 @@ replaced is not a restart: kube-state-metrics counts per container, and Datadog'
 the same. A replica-gap metric (`kube_deployment_status_replicas_unavailable`, the standard signal for a dead pod) is
 under Open for the owner.
 
+**The Stage 5 review** (3 agents, one lens each, on the diff; the full list is in `tmp/` and the workflow journal) confirmed real
+defects in 5.1, 5.6, 5.7, 5.8 and 5.9, plus four doc lags. The full regression also failed one test: a second 5.5 pin
+(`verdict-block.spec.ts`), fixed in its own commit. One fix per commit, red first:
+- **4.1.27:** server charts had joined the client charts' connected group, so hovering a Timeline chart ran a hidden
+  Server chart's tooltip, visible since 5.1 put it on the body. Server charts now link among themselves
+  (`serverChartGroup`). Red: the leak spec found 1 floating tooltip; now 0.
+
 **For the owner:**
 - **Q5, the y-axis.** Grafana bounds it by the data; WIR includes every band (R3-3) so the drag handles stay on the
   plot.

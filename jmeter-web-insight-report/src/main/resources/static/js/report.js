@@ -3450,10 +3450,14 @@ function syncSamplerCompanionRows(tbody) {
  * ============================================================ */
 
 var chartGroup = 'wir-linked';
+/* The Server tab's charts link among themselves, never with the client's: they span the collected
+   window on a tab of their own, and once their tooltips sat on the body (5.1) hovering a Timeline
+   chart showed a hidden Server chart's tooltip over the Timeline (the Stage 5 review). */
+var serverChartGroup = 'wir-server-linked';
 
 function connectCharts() {
     chartInstances.forEach(function (c) {
-        c.group = chartGroup;
+        if (c.group !== serverChartGroup) c.group = chartGroup;
     });
     if (typeof echarts !== 'undefined') {
         echarts.connect(chartGroup);
@@ -20058,7 +20062,7 @@ WIR.serverKpis = (function () {
             return;
         }
         disposeChartIn(el);
-        var chart = createChart(el);
+        var chart = createServerChart(el);
         charts[k.key] = chart;
         bindHandlePlacement();
         watchHandles(chart, k.key);
@@ -20418,6 +20422,14 @@ WIR.serverKpis = (function () {
         };
     }
 
+    /** A chart of this tab: createChart's, in the Server tab's own connected group (serverChartGroup). */
+    function createServerChart(el) {
+        var chart = createChart(el);
+        chart.group = serverChartGroup;
+        echarts.connect(serverChartGroup);
+        return chart;
+    }
+
     function initInstanceChartFor(k) {
         var chartKey = instanceChartKey(k.key);
         disposeChart(chartKey);
@@ -20466,7 +20478,7 @@ WIR.serverKpis = (function () {
             labelWidth = Math.max(labelWidth, r && isFinite(r.width) ? Math.ceil(r.width) + 2 : labelCap);
         });
         labelWidth = Math.min(labelCap, labelWidth);
-        var chart = createChart(el);
+        var chart = createServerChart(el);
         charts[chartKey] = chart;
         /* A row that decided nothing draws its limits muted, as Value over time does (F4, SF36):
            a bar past a full-strength fail line reads as a breach the run never earned — and from
@@ -25529,7 +25541,7 @@ WIR.serverKpis = (function () {
         }
         if (!chart) {
             el.innerHTML = '';
-            chart = createChart(el);
+            chart = createServerChart(el);
         }
         /* Replaces the option outright, so it says the background again (createChart). The time
            labels hide where they would overlap: on the 300px pane nine of them printed over one

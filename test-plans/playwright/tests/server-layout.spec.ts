@@ -679,6 +679,31 @@ test.describe('SF37: the Server tab\'s charts reach contrast in both themes', ()
     expect(box!.right - box!.visibleRight, 'no ancestor clips its right: ' + JSON.stringify(box)).toBeLessThanOrEqual(0.5);
   });
 
+  test('[R] 5.1 review: hovering a client chart never shows a hidden Server chart\'s tooltip', async ({ page }) => {
+    // The Stage 5 review: every chart joined the client's connected group, so hovering a Timeline chart
+    // ran the (hidden) Server row chart's axis tooltip - harmless inside the hidden tab, visible once the
+    // tooltip sat on the body (5.1). Server charts link among themselves, not with the client's.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await loadClean(page, 'E26');
+    await switchTab(page, 'server');
+    await openRows(page, ['cpu-headroom']);
+    await switchTab(page, 'timeline');
+    const leaked = await page.evaluate(async () => {
+      const W = window as any;
+      const el = document.getElementById('response-time-chart')!;
+      const inst = W.echarts.getInstanceByDom(el);
+      for (const x of [80, 120, 200, 400]) {
+        inst.dispatchAction({ type: 'showTip', x, y: inst.getHeight() / 2 });
+        await new Promise((r) => setTimeout(r, 150));
+      }
+      return [...document.querySelectorAll('div')].filter((d) =>
+        /z-index:\s*9999999/.test(d.getAttribute('style') || '') && d.style.display !== 'none'
+        && getComputedStyle(d).visibility !== 'hidden' && Number(getComputedStyle(d).opacity) > 0
+        && d.offsetParent !== null && /instance=[ab]\b/.test(d.textContent || '')).length;
+    });
+    expect(leaked, 'a Server tooltip floating over the Timeline').toBe(0);
+  });
+
   test('[R] C2: a Per instance name that fits is drawn whole, not cut', async ({ page }) => {
     // The end-of-Stage-4 session on petstore F2/F5: "routeId=catalog" read "routeId=cata…" and
     // "instance 1" read "instanc…", far under the 38% cap. The room was measured in 12px sans-serif
