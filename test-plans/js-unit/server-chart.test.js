@@ -117,6 +117,16 @@ test('R3-11: a two-minute outage breaks the line instead of being drawn as a ram
     assert.deepStrictEqual(raw, [[0, 10], [1000, 12], [2000, 11], [3000, null], [120000, 90], [121000, 91]]);
 });
 
+test('REV-10: a coarser rung keeps the spike of a max assert and the dip of a min one; every other reducer averages', () => {
+    // Two points in one bucket are what tells the modes apart: every other call here has one per
+    // bucket, so a max drawn as an average - washing out the spike the verdict judged, SF39's
+    // defect class - passed them all (Stage 6).
+    const pts = [[0, 1], [1000, 9], [2000, 2], [10000, 5]];
+    assert.deepStrictEqual(plain(SK._aggregateServerPoints(pts, 10000, 'max', 0)), [[0, 9], [10000, 5]]);
+    assert.deepStrictEqual(plain(SK._aggregateServerPoints(pts, 10000, 'min', 0)), [[0, 1], [10000, 5]]);
+    assert.deepStrictEqual(plain(SK._aggregateServerPoints(pts, 10000, 'avg', 0)), [[0, 4], [10000, 5]]);
+});
+
 test('R3-11: a series at its own cadence is not broken, and a coarse step is not a gap', () => {
     const regular = [[0, 1], [15000, 2], [30000, 3], [45000, 4]];
     assert.deepStrictEqual(plain(SK._aggregateServerPoints(regular, 0, 'avg', 0, 15000)), regular);
