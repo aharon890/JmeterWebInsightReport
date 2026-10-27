@@ -600,7 +600,7 @@ An open row has two panels:
   whose legend shows that name draws it, and its Per instance bar takes it too. (A chart of one
   instance names it by all its labels, so its name can differ from the same instance's on a chart
   of several.) Click the **name** to hide or show the line. The server charts are linked, so the
-  line of that name hides on every open chart, and stays hidden when a chart is drawn again.
+  line of that name hides on every chart, open or opened later, and stays hidden when a chart is drawn again.
 - Above the draw cap, the extra instances are listed as "and N more instance(s) not drawn". Every instance was still judged.
 - A series `wir-collect` read under another tool's name (`--csv FILE --from TOOL`) says which, in the
   note under the panels: `read as postgresql.percent_usage_connections (datadog, gauge, x100)`, the

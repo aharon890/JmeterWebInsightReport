@@ -959,6 +959,7 @@ function openColorPicker(parent, samplerName, samplerIdx, dotEl, slotColor) {
         existing.__wirSlot = slot;
         markSelectedSwatch(existing, samplerName, samplerIdx, slot);
         existing.classList.add('open');
+        closeOnClickElsewhere(existing, dotEl);
         return;
     }
 
@@ -1025,15 +1026,25 @@ function openColorPicker(parent, samplerName, samplerIdx, dotEl, slotColor) {
     popup.appendChild(customRow);
 
     parent.appendChild(popup);
+    closeOnClickElsewhere(popup, dotEl);
+}
 
-    // Close on outside click
+/* A click outside an open picker closes it — on every opening, a kept popup's second included: the
+   handler removes itself when it closes the popup, and was only ever added when the popup was
+   built, so from the second opening a click elsewhere left it open over the page. One handler per
+   popup: an earlier one still waiting (the popup was closed by a pick) is replaced. */
+function closeOnClickElsewhere(popup, dotEl) {
+    if (popup.__wirClose) document.removeEventListener('click', popup.__wirClose);
+    var closeHandler = function (e) {
+        if (!popup.contains(e.target) && e.target !== dotEl) {
+            popup.classList.remove('open');
+            document.removeEventListener('click', closeHandler);
+            if (popup.__wirClose === closeHandler) popup.__wirClose = null;
+        }
+    };
+    popup.__wirClose = closeHandler;
     setTimeout(function () {
-        document.addEventListener('click', function closeHandler(e) {
-            if (!popup.contains(e.target) && e.target !== dotEl) {
-                popup.classList.remove('open');
-                document.removeEventListener('click', closeHandler);
-            }
-        });
+        if (popup.__wirClose === closeHandler) document.addEventListener('click', closeHandler);
     }, 10);
 }
 
@@ -20243,7 +20254,7 @@ WIR.serverKpis = (function () {
                colour dot the samplers' entries carry, which a canvas legend cannot. ECharts' stays,
                unshown, because it holds which lines are shown (toggleInstance), and it starts from
                the lines the reader hid, which a rebuild (a colour pick, a theme) used to bring back. */
-            legend: { show: false, selected: legendSelected(k.key, instanceLabels) },
+            legend: { show: false, selected: legendSelected(instanceLabels) },
             grid: { left: 60, right: 24, top: 24, bottom: 32 },
             /* hideOverlap, as the picker's chart has (SF35): since SF34 a row's chart is the card's
                width, and below about 700px its nine time labels printed over one another —
@@ -20295,28 +20306,30 @@ WIR.serverKpis = (function () {
 
     var LEGEND_EVENTS = HANDLE_REDRAW_EVENTS.filter(function (name) { return /^legend/.test(name); });
 
-    /* Per row, the names of the lines the reader hid: kept across a rebuild of the row's chart. */
-    var hiddenLines = Object.create(null);
+    /* The names of the lines the reader hid, kept across a rebuild (a colour pick, a theme). One set
+       for the tab, not one per row: the server charts are linked, so a name hidden on one chart is
+       hidden on every chart, an open one and one opened later alike. Kept per row, a row opened
+       after the hide drew the line, and from then on each click flipped the two charts apart. */
+    var hiddenNames = Object.create(null);
 
     /* Every legend entry by its dot's id, the one literal its two handlers carry (D20). */
     var legendEntries = Object.create(null);
 
-    /* ECharts' legend.selected for a row's chart: false for each line the reader hid. */
-    function legendSelected(key, names) {
-        var hidden = hiddenLines[key] || {};
+    /* ECharts' legend.selected for a chart: false for each line the reader hid. */
+    function legendSelected(names) {
         var selected = {};
-        names.forEach(function (n) { if (hidden[n]) selected[n] = false; });
+        names.forEach(function (n) { if (hiddenNames[n]) selected[n] = false; });
         return selected;
     }
 
-    /* After a legend action reached this chart: remember what it hides, and say it on its legend. */
+    /* After a legend action reached this chart, its own or a linked chart's: say on its legend what
+       it now draws. */
     function syncLegend(key, chart, names) {
         if (!chart || chart.isDisposed()) return;
         var legend = (chart.getOption().legend || [])[0] || {};
         var selected = legend.selected || {};
         var hidden = Object.create(null);
         names.forEach(function (n) { if (selected[n] === false) hidden[n] = true; });
-        hiddenLines[key] = hidden;
         var box = document.getElementById(legendDomId(key));
         if (!box) return;
         names.forEach(function (n, i) {
@@ -20361,7 +20374,7 @@ WIR.serverKpis = (function () {
        that opens the colour picker, and the name, which shows or hides the line as the canvas
        legend's did. A name is cut at the entry's width; its title says it whole. */
     function legendHtml(key, component, names, colors) {
-        var hidden = hiddenLines[key] || {};
+        var hidden = hiddenNames;
         return names.map(function (name, i) {
             var id = legendDotId(key, i);
             legendEntries[id] = { key: key, i: i, name: name, component: component };
@@ -26359,12 +26372,17 @@ WIR.serverKpis = (function () {
         },
 
         /** A legend entry's name (by its dot's id): shows or hides that line, as the canvas legend
-         *  did. Its legend, and every linked chart's, follow through syncLegend. */
+         *  did. A select or an unselect, never a toggle: the link passes the action to every other
+         *  chart, and a toggle there flipped each chart's own state, which need not be this one's.
+         *  Every legend follows through syncLegend. */
         toggleInstance: function (id) {
             var entry = hasOwn(legendEntries, id) ? legendEntries[id] : null;
             var chart = entry ? charts[entry.key] : null;
             if (!chart || chart.isDisposed()) return;
-            chart.dispatchAction({ type: 'legendToggleSelect', name: entry.name });
+            var hide = !hiddenNames[entry.name];
+            if (hide) hiddenNames[entry.name] = true;
+            else delete hiddenNames[entry.name];
+            chart.dispatchAction({ type: hide ? 'legendUnSelect' : 'legendSelect', name: entry.name });
         },
 
         /** Called by switchTab once the tab is shown and its charts resized (R3-4). */

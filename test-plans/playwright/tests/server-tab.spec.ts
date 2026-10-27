@@ -1317,6 +1317,61 @@ test.describe('Server tab — charts that agree with the board (M7c E)', () => {
     }
   });
 
+  test('[R] a chart opened after a line was hidden hides it too, and one click moves every chart alike', async ({ page }) => {
+    // The second review of this branch: hidden lines were kept per row, and the click sent a
+    // toggle the linked charts each applied to their own state. A row opened after the hide drew
+    // the line, and from then on every click flipped the two charts in opposite directions.
+    await loadClean(page, 'E26');
+    await switchTab(page, 'server');
+    await openChart(page, 'cpu-headroom');
+    const keys = await page.evaluate(() => {
+      const W = (window as any).WIR.serverKpis;
+      return [W._keyOf('cpu-headroom'), W._keyOf('cpu-per-rps')];
+    });
+    const entry = (key: string) => page.locator('#serverLegend-' + key + ' .wir-legend-name').nth(0);
+    const drawn = (key: string) => page.evaluate((k) => {
+      const inst = (window as any).echarts.getInstanceByDom(document.getElementById('serverChart-' + k));
+      return inst.getOption().legend[0].selected['instance=a'] !== false;
+    }, key);
+
+    await entry(keys[0]).click();
+    await openChart(page, 'cpu-per-rps');
+    for (const key of keys) {
+      await expect(entry(key), 'hidden on the chart opened after the hide too').toHaveAttribute('aria-pressed', 'false');
+      expect(await drawn(key)).toBe(false);
+    }
+    await entry(keys[1]).click();
+    for (const key of keys) {
+      await expect(entry(key), 'one click shows it on both').toHaveAttribute('aria-pressed', 'true');
+      expect(await drawn(key)).toBe(true);
+    }
+    await entry(keys[1]).click();
+    for (const key of keys) {
+      await expect(entry(key), 'and hides it on both').toHaveAttribute('aria-pressed', 'false');
+      expect(await drawn(key)).toBe(false);
+    }
+  });
+
+  test('[R] a colour picker opened a second time still closes on a click elsewhere', async ({ page }) => {
+    // The popup is kept and opened again, and only its first opening was given the outside-click
+    // handler: from the second, it stayed open over the board (the second review of this branch).
+    await loadClean(page, 'E26');
+    await switchTab(page, 'server');
+    await openChart(page, 'cpu-headroom');
+    const key = await page.evaluate(() => (window as any).WIR.serverKpis._keyOf('cpu-headroom'));
+    for (const [what, dot, popup] of [
+      ['Line colour', '#serverLineColorDot', '.wir-server-filters .color-picker-popup'],
+      ['legend', '#serverLegend-' + key + ' .sampler-color-dot >> nth=0', '#serverLegend-' + key + ' .color-picker-popup'],
+    ]) {
+      for (const round of [1, 2]) {
+        await page.locator(dot).click();
+        await expect(page.locator(popup + '.open'), `${what}, opening ${round}`).toBeVisible();
+        await page.mouse.click(5, 5);
+        await expect(page.locator(popup + '.open'), `${what}, a click elsewhere closes opening ${round}`).toHaveCount(0);
+      }
+    }
+  });
+
   test('[R] dark mode: a legend dot\'s picker marks the palette colour, and picking it changes nothing', async ({ page }) => {
     // SF37 for the samplers' picker: a dark chart draws a palette's dark variant, the swatches show
     // the palette itself. The instance picker took the dark variant as the line's own colour, so no
