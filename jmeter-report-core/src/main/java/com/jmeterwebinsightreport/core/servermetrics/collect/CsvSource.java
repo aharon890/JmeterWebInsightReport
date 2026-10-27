@@ -673,6 +673,19 @@ public final class CsvSource implements SeriesSource {
     }
 
     /**
+     * The metric text {@link #collect} read {@code component}'s rows under: {@code metric}, or {@code written}
+     * - an interpolating query as the file writes it - when only that text has rows (N5). What
+     * {@link #blankRows} and {@link #rowSpacingMillis} must be asked by, or they count nothing and a half-blank
+     * export is advised a coarser --step (the 4.1.33 review, finding 3).
+     */
+    public String metricRead(String component, String metric, String written) {
+        if (index == null || written == null || written.equals(metric)) {
+            return metric;
+        }
+        return !index.has(seriesKey(component, metric)) && index.has(seriesKey(component, written)) ? written : metric;
+    }
+
+    /**
      * How many rows of the file last read name this series and carry no value (an empty cell or
      * NaN): gaps the export wrote, not an interval coarser than the step - so the collector must not
      * advise a coarser --step for them, which would read half-missing data as fully covered. Only the

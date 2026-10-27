@@ -693,6 +693,37 @@ class WirCollectTest {
         assertFalse(console.contains("pass --step 30s"), console);
     }
 
+    @Test
+    void aTemplateQuerysBlankRowsAreCountedUnderTheTextTheFileWritesAndNotAdvisedAsACoarserStep() throws Exception {
+        // N5 reads an interpolating query's rows under the text the file writes, ${env.ns} and all; the
+        // blank-row count asked the resolved text, found no rows, and a half-blank 5 s export was told
+        // "pass --step 10s" - the advice that reads half-missing data as covered (the 4.1.33 review, finding 3).
+        ReportData run = new JtlParser().parse(PLAIN_JTL, WirCollect.DEFAULT_TEST_NAME);
+        long start = run.getMetadata().getStartTime().toEpochMilli();
+        long end = run.getMetadata().getEndTime().toEpochMilli();
+        StringBuilder csv = new StringBuilder("time,component,metric,instance,value\n");
+        int i = 0;
+        for (long t = start - 5_000; t <= end + 5_000; t += 5_000, i++) {
+            csv.append(t).append(",app,\"up{ns=\"\"${env.ns}\"\"}\",,").append(i % 2 == 0 ? "1" : "").append('\n');
+        }
+        Path file = dir.resolve("template.csv");
+        Files.write(file, csv.toString().getBytes(StandardCharsets.UTF_8));
+        Path annotations = dir.resolve("template.json");
+        Files.write(annotations, ("{\"serverMetrics\":{\"components\":{\"app\":{\"type\":\"custom\"}},"
+                + "\"environments\":{\"e\":{\"vars\":{\"ns\":\"shop\"}}},\"defaultEnv\":\"e\",\"asserts\":["
+                + "{\"id\":\"up\",\"component\":\"app\",\"query\":\"up{ns=\\\"${env.ns}\\\"}\",\"reduce\":{\"kind\":\"min\"},"
+                + "\"fail\":{\"lt\":1}}]}}").getBytes(StandardCharsets.UTF_8));
+        File out = dir.resolve("template-out.json").toFile();
+        Streams s = new Streams();
+        assertEquals(0, WirCollect.run(new String[] {"--jtl", PLAIN_JTL.getPath(), "--annotations", annotations.toString(),
+                "--out", out.getPath(), "--csv", file.toString(), "--step", "5s", "--no-wait"},
+                s.outStream(), s.errStream(), Collections.<String, String>emptyMap()), s.out() + s.err());
+        String console = s.out() + s.err();
+        assertTrue(console.contains("app/up{ns=\"shop\"} has ") && console.contains("with no value (an empty cell or NaN)"
+                + " - gaps in the export, not a coarser interval"), console);
+        assertFalse(console.contains("pass --step 10s"), console);
+    }
+
     // ---- --layout wide, --columns, --time-zone: Grafana's export --------------------------------
 
     @Test
