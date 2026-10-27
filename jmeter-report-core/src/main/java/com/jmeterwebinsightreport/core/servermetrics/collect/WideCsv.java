@@ -191,8 +191,12 @@ final class WideCsv {
                 }
                 String v = row.cell(e.getKey()).trim();
                 if (v.isEmpty() || v.equalsIgnoreCase("nan") || CsvSource.infinityText(v)) {
-                    // A gap: no point, and not one of this series' own periods. Grafana's export writes
-                    // Infinity and Prometheus +Inf; the live path drops either as a gap (5.8).
+                    // A gap: no point, kept as a row with no value as the long layout keeps one, so a
+                    // column with no number in the run is an instance with no point (5.8; the Stage 5
+                    // review: skipped, it left nothing to keep). Grafana's export writes Infinity and
+                    // Prometheus +Inf; the live path drops either as a gap. Spacing reads only rows with
+                    // a value, so a gap is still not one of this series' own periods.
+                    idx.series.get(key).get(t.instance).putIfAbsent(ts, null);
                     continue;
                 }
                 double value;

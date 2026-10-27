@@ -343,6 +343,13 @@ defects in 5.1, 5.6, 5.7, 5.8 and 5.9, plus four doc lags. The full regression a
   - A capped series ships Java's gap (`judgedGap`) and the page names that, never its thinned copy's. Red on 4.1.27:
     `server-board.spec.ts` "5.6 review".
 
+- **4.1.29 (5.8's missed paths), expected before the build:** S4's wide variants W1 and W2 keep their asserts and series. No
+  column is all gaps in the run, and the console may add blank-cell lines now that a wide gap is a row. No difference
+  beyond earlier steps' known ones (5.6's suffix).
+
+  Done: red first, two CsvSourceTest cases (a wide mixed column and an all-gap column; `--from` with a NaN instance and
+  an all-NaN series). Observed: W1 and W2 identical to 4.1.0, asserts and series, with no new console line.
+
 **For the owner:**
 - **Q5, the y-axis.** Grafana bounds it by the data; WIR includes every band (R3-3) so the drag handles stay on the
   plot.

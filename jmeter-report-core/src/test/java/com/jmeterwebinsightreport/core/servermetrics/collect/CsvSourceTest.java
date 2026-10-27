@@ -924,6 +924,37 @@ class CsvSourceTest {
     }
 
     @Test
+    void underFromAnInstanceWithNoNumberInTheRunIsKeptAndABlankSeriesIsLowCoverage() throws Exception {
+        // The Stage 5 review: 5.8 kept a point-less instance only without --from, so under a tool's
+        // name b was dropped (1 instance where the same file without --from gives 2), and an all-NaN
+        // series still failed "every value is empty or NaN".
+        ServerMetricsPayload mixed = collectFrom("datadog", every15s("web", "shop.drops", "a", i -> "0.5")
+                + every15s("web", "shop.drops", "b", i -> "NaN"), shopKpi("drops"));
+        ServerMetricsPayload.SeriesRecord both = seriesOf(mixed, "web", "drops");
+        assertEquals(2, both.getInstances().size(), both.getInstances().toString());
+        ServerMetricsPayload blank = collectFrom("datadog", every15s("web", "shop.drops", "", i -> "NaN"), shopKpi("drops"));
+        ServerMetricsPayload.SeriesRecord none = seriesOf(blank, "web", "drops");
+        assertNull(none.getError(), none.getError());
+        assertEquals(CollectionStatus.INSUFFICIENT, none.collectionStatus());
+    }
+
+    @Test
+    void aWideColumnWithNoNumberIsAnInstanceWithNoPointAsInTheLongLayout() throws IOException {
+        // The Stage 5 review: the wide reader skipped a blank, NaN or Inf cell without storing it, so an
+        // all-gap column left nothing for 5.8's rule to keep - "no row of the CSV names component c"
+        // (false: the header names it), and b dropped beside a (1 instance where the long layout gives 2).
+        SeriesSource.Answer mixed = ask(new CsvSource(),
+                wide("\"Time\",\"c/x/a\",\"c/x/b\"\n1700000000000,1,\n1700000015000,2,NaN\n"), "c", "x");
+        assertNull(mixed.error(), mixed.error());
+        assertEquals(2, mixed.instances().size());
+        SeriesSource.Answer gaps = ask(new CsvSource(),
+                wide("\"Time\",\"c/x\"\n1700000000000,+Inf\n1700000015000,Infinity\n"), "c", "x");
+        assertNull(gaps.error(), gaps.error());
+        assertEquals(1, gaps.instances().size());
+        assertTrue(gaps.instances().get(0).getPoints().isEmpty());
+    }
+
+    @Test
     void aCounterWithNoRowBeforeTheRunIsSaidToNeedOneNotToHoldNoNumbers() throws Exception {
         // One counter row inside the run and none before it: the cell holds a number, and the
         // conversion to a rate leaves nothing. It was "every value is empty or NaN".

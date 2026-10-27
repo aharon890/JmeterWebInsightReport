@@ -261,7 +261,7 @@ public final class CsvSource implements SeriesSource {
                     points.add(new ServerMetricsPayload.Point(ts, p.getValue()));
                 }
             }
-            if (points.isEmpty() && (readAs != null || !hasRowInRun(rows, source.clockOffsetMs(), window, slack))) {
+            if (points.isEmpty() && !rowsInRunHoldNoNumber(e.getValue(), source.clockOffsetMs(), window, slack)) {
                 // Nothing in the run, or numbers a --from conversion left nothing of: emptySeries says which.
                 continue;
             }
@@ -588,15 +588,24 @@ public final class CsvSource implements SeriesSource {
         return window == null || (ts >= window.getStart() - slack && ts <= window.getEnd() + slack);
     }
 
-    /** Whether any of an instance's rows, a blank one included, lies in the run (the clock offset applied). */
-    private static boolean hasRowInRun(TreeMap<Long, Double> rows, long clockOffset,
-                                       ServerMetricsPayload.Window window, long slack) {
-        for (Long ts : rows.keySet()) {
-            if (inRun(ts + clockOffset, window, slack)) {
-                return true;
+    /**
+     * Whether an instance has rows in the run (the clock offset applied) and none of them, as the file
+     * wrote them, holds a number: data with no value, kept as an instance with no point (5.8), under
+     * {@code --from} as without it (the Stage 5 review). Read from the raw rows, so numbers a counter
+     * conversion left nothing of are not this case but emptySeries' "export from one step before".
+     */
+    private static boolean rowsInRunHoldNoNumber(TreeMap<Long, Double> raw, long clockOffset,
+                                                 ServerMetricsPayload.Window window, long slack) {
+        boolean any = false;
+        for (Map.Entry<Long, Double> row : raw.entrySet()) {
+            if (inRun(row.getKey() + clockOffset, window, slack)) {
+                if (row.getValue() != null) {
+                    return false;
+                }
+                any = true;
             }
         }
-        return false;
+        return any;
     }
 
     /**
