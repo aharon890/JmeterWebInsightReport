@@ -1549,6 +1549,27 @@ class CatalogueTest {
         }
     }
 
+    /**
+     * postgres_exporter writes no {@code wait_event_type="Lock"} row while nobody waits, so the bare
+     * count read NO_MATCH on every healthy run (petstore R1-R3). It falls back to 0 per server, by
+     * {@code max by (instance)} of {@code pg_up}: one series per instance, labelled {@code instance}
+     * only, where {@code or on (instance) 0 * pg_up} would carry pg_up's job and pod labels and make
+     * one server two instances.
+     */
+    @Test
+    void theLocksWaitingReadsZeroWhileNobodyWaits() {
+        CatalogueMetric locks = catalogue.type("postgres").metric("locks.waiting");
+        assertEquals("sum by (instance) (pg_stat_activity_count{wait_event_type=\"Lock\"})"
+                        + " or 0 * max by (instance) (pg_up)",
+                locks.query(Catalogue.PROMETHEUS, null));
+        assertEquals("sum by (instance) (pg_stat_activity_count{wait_event_type=\"Lock\",app=\"catalog-pg\"})"
+                        + " or 0 * max by (instance) (pg_up{app=\"catalog-pg\"})",
+                locks.query(Catalogue.PROMETHEUS, "app=\"catalog-pg\""));
+        assertTrue(locks.description().contains("Reads 0 while nobody waits"), locks.description());
+        assertTrue(catalogue.type("postgres").source().contains("reads its 0 fallback whatever waits"),
+                catalogue.type("postgres").source());
+    }
+
     /** Three metrics that read a number which cannot mean what the name suggests in a common setup. */
     @Test
     void threeDescriptionsSayWhereTheirMetricCannotReadWhatItsNameSays() {
