@@ -506,9 +506,10 @@ public final class CsvSource implements SeriesSource {
      * as. Each instance's {@linkplain #intervalOf interval} between its rows with a value (a blank row
      * is a gap, as {@link Coverage#spacingMillis} reads it), counting only rows within {@code window}
      * and one {@code source} step of it (null: every row) - a jittered, sparse or scattered export has
-     * none; within one series the finest of its instances, as {@link Coverage#spacingMillis} takes it
-     * (5.9, N6: the dense instances fill the slots a sparse one leaves, so one every-other-minute
-     * instance no longer coarsens the collection); then the widest over the series {@code requests}
+     * none; within one series the most common gap over all its instances' rows together
+     * ({@link #intervalOfAll}, as {@link Coverage#spacingMillis} pools the points: 5.9, N6 - one
+     * every-other-minute instance no longer coarsens the collection, and one short-lived dense instance
+     * does not re-grid it either, the Stage 5 review); then the widest over the series {@code requests}
      * ask for, so a coarser series is never counted in slots finer than its rows. A series is found as {@link #collect} finds it - by
      * component and metric key, under a {@code --from} tool's name first when the file has rows under
      * it - and one the collection never reads, however coarse, sets nothing. 0 when nothing was
@@ -537,7 +538,7 @@ public final class CsvSource implements SeriesSource {
         long slack = Math.max(0, source.stepMillis());
         long widest = 0;
         for (Map<String, TreeMap<Long, Double>> byInstance : measured) {
-            long finest = 0;
+            List<List<Long>> perInstance = new ArrayList<>();
             for (TreeMap<Long, Double> rows : byInstance.values()) {
                 List<Long> times = new ArrayList<>();
                 for (Map.Entry<Long, Double> p : rows.entrySet()) {
@@ -546,12 +547,9 @@ public final class CsvSource implements SeriesSource {
                         times.add(ts);
                     }
                 }
-                long interval = intervalOf(times);
-                if (interval > 0 && (finest == 0 || interval < finest)) {
-                    finest = interval;
-                }
+                perInstance.add(times);
             }
-            widest = Math.max(widest, finest);
+            widest = Math.max(widest, intervalOfAll(perInstance));
         }
         return widest;
     }
@@ -617,17 +615,22 @@ public final class CsvSource implements SeriesSource {
      * one interval for most of its rows has none to measure, and is collected at the default.
      */
     static long intervalOf(List<Long> ascending) {
+        return intervalOfAll(java.util.Collections.singletonList(ascending));
+    }
+
+    /** {@link #intervalOf} over several instances' rows at once, their gaps counted together (5.9). */
+    static long intervalOfAll(List<List<Long>> instancesAscending) {
         // Coverage's own count of the gaps (the smaller on a tie), so the measured step and the
         // spacing the warnings quote are one rule; only the floor is this method's.
-        long[] counts = Coverage.spacingCounts(ascending);
+        long[] counts = Coverage.pooledSpacingCounts(instancesAscending);
         long most = counts[1];
         return most >= MIN_STEP_REPEATS && most * 2 >= counts[2] ? counts[0] : 0;
     }
 
     /**
      * How far apart the rows of the file last read for this series are, a row with no value
-     * included: each instance's {@linkplain Coverage#mostCommonSpacing most common spacing}, the
-     * widest over the instances, 0 with none. Only the rows {@link #collect} keeps count: those within
+     * included: the most common gap over every instance's rows together
+     * ({@link Coverage#pooledSpacingCounts}, as {@link Coverage#spacingMillis} takes the points'), 0 with none. Only the rows {@link #collect} keeps count: those within
      * {@code window} and one {@code source} step of it, the clock offset applied, as
      * {@link #measuredStepMillis} and {@link #blankRows} count them - an export of a finer period
      * before the run must not speak for the run's rows. Beside {@link Coverage#spacingMillis} over the
@@ -638,7 +641,7 @@ public final class CsvSource implements SeriesSource {
         Map<String, TreeMap<Long, Double>> byInstance = index == null ? null
                 : index.series.get(seriesKey(component, metric));
         long slack = Math.max(0, source.stepMillis());
-        long widest = 0;
+        List<List<Long>> perInstance = new ArrayList<>();
         if (byInstance != null) {
             for (TreeMap<Long, Double> rows : byInstance.values()) {
                 List<Long> times = new ArrayList<>();
@@ -648,10 +651,12 @@ public final class CsvSource implements SeriesSource {
                         times.add(ts);
                     }
                 }
-                widest = Math.max(widest, Coverage.mostCommonSpacing(times));
+                perInstance.add(times);
             }
         }
-        return widest;
+        // Pooled over the instances, as Coverage.spacingMillis is (5.9; the Stage 5 review: the widest let
+        // one sparse instance's rows decide a "coarser interval" and the --step to advise).
+        return Coverage.pooledSpacingCounts(perInstance)[0];
     }
 
     /**

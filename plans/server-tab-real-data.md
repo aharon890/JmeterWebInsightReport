@@ -350,6 +350,14 @@ defects in 5.1, 5.6, 5.7, 5.8 and 5.9, plus four doc lags. The full regression a
   Done: red first, two CsvSourceTest cases (a wide mixed column and an all-gap column; `--from` with a NaN instance and
   an all-NaN series). Observed: W1 and W2 identical to 4.1.0, asserts and series, with no new console line.
 
+- **4.1.30 (5.9's rule), expected before the build:** none. X17c and X18b measure 1m and 1s (uniform instances), and
+  the F-runs set 15 s.
+
+  Done: the most common gap over all of a series' rows together (`Coverage.pooledSpacingCounts`, `CsvSource.intervalOfAll`),
+  for the points' spacing, the measured step (still the widest across series) and the rows' spacing alike. Red first: the
+  reviewer's short-lived dense pod (5 s → 15 s) and sparse-instance rows (60 s → 15 s). Observed: X17c and X18b identical
+  to 4.1.25. 5.9's two pins hold under the pooled rule.
+
 **For the owner:**
 - **Q5, the y-axis.** Grafana bounds it by the data; WIR includes every band (R3-3) so the drag handles stay on the
   plot.

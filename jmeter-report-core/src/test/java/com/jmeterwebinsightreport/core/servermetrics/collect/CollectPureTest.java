@@ -133,14 +133,13 @@ class CollectPureTest {
     }
 
     @Test
-    void aSeriesSpacingIsItsMostCommonGapTheSmallestOverItsInstances() {
+    void aSeriesSpacingIsTheMostCommonGapOverAllItsInstancesPoints() {
         // What the step-against-spacing warning compares with --step: an export at the panel's
         // interval has every point a minute apart, however few gaps it has.
         assertEquals(60_000, Coverage.spacingMillis(Collections.singletonList(
                 instance(0, 1, 60_000, 1, 120_000, 1, 240_000, 1, 300_000, 1))));
-        // Per instance, then the smallest (5.9, N6): coverage counts the union of a series' slots, so a
-        // 60 s instance beside a 15 s one leaves no slot empty - as Grafana's interval follows the
-        // finest series, a sparse one does not coarsen the rest.
+        // Pooled over the instances (5.9, N6): a 60 s instance beside a 15 s one does not coarsen the
+        // series, and coverage counts the union of its slots, which the 15 s one fills.
         assertEquals(15_000, Coverage.spacingMillis(Arrays.asList(
                 instance(0, 1, 15_000, 1, 30_000, 1, 45_000, 1), instance(0, 1, 60_000, 1, 120_000, 1))));
         // A tie keeps the smaller spacing, as the export's period does (Conversion.period).

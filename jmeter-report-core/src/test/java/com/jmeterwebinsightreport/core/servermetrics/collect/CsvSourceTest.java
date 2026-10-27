@@ -2017,8 +2017,8 @@ class CsvSourceTest {
     void theStepIsAnInstancesMostCommonSpacingBetweenRowsWithAValue() throws IOException {
         // Instance a every 5 s; instance b's rows are blank but for every third, which would read
         // 15 s - a blank row is a gap, not the export's interval, so b measures 15 s. Within one series
-        // the finest instance sets the step (5.9, N6): a's points fill every 5 s slot b leaves empty,
-        // and one every-third-row instance used to coarsen the whole collection.
+        // the most common gap over all its rows sets the step (5.9, N6): a's 29 gaps of 5 s outnumber
+        // b's 9 of 15 s, and one every-third-row instance used to coarsen the whole collection.
         StringBuilder sb = new StringBuilder("time,component,metric,instance,value\n");
         for (int i = 0; i < 30; i++) {
             long t = 1_700_000_000_000L + i * 5000L;
@@ -2029,6 +2029,33 @@ class CsvSourceTest {
         // Without b, a's 5 s.
         assertEquals(5_000, new CsvSource().measuredStepMillis(csv("time,component,metric,instance,value\n"
                 + rows("app,cpu,a", 1_700_000_000_000L, 5000, 10, false)), HOUR));
+    }
+
+    @Test
+    void aShortLivedDenseInstanceDoesNotRegridTheSeriesTheMostCommonGapOverItsRowsDoes() throws IOException {
+        // The Stage 5 review: under "the finest instance" a pod that lived 15 s at 5 s (3 gaps) beside one
+        // reporting every 15 s for the hour set a 5 s step, and the hour-long instance then covered a third
+        // of the slots - LOW_COVERAGE on every assert. The most common gap over the series' rows is 15 s.
+        String file = "time,component,metric,instance,value\n"
+                + rows("app,cpu,a", 1_700_000_000_000L, 15_000, 240, false)
+                + rows("app,cpu,b", 1_700_000_100_000L, 5_000, 4, false);
+        assertEquals(15_000, new CsvSource().measuredStepMillis(csv(file), HOUR));
+    }
+
+    @Test
+    void theRowsSpacingIsTheMostCommonGapOverTheSeriesRowsAsThePointsSpacingIs() throws IOException {
+        // The Stage 5 review: Coverage.spacingMillis followed one rule and rowSpacingMillis, its row-side
+        // twin, another (the widest), so wir-collect advised "pass --step 60s" from a sparse instance's rows.
+        // a: rows every 15 s for 4 minutes, every other one blank; b: a row every 60 s.
+        StringBuilder sb = new StringBuilder("time,component,metric,instance,value\n");
+        for (int i = 0; i < 16; i++) {
+            sb.append(1_700_000_000_000L + i * 15_000L).append(",app,cpu,a,").append(i % 2 == 0 ? "1" : "").append('\n');
+        }
+        sb.append(rows("app,cpu,b", 1_700_000_000_000L, 60_000, 5, false));
+        CsvSource reader = new CsvSource();
+        ServerSource s = csv(sb.toString());
+        ask(reader, s, "app", "cpu");
+        assertEquals(15_000, reader.rowSpacingMillis(s, HOUR, "app", "cpu"));
     }
 
     @Test

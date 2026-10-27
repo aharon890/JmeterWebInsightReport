@@ -99,28 +99,25 @@ public final class Coverage {
     }
 
     /**
-     * How far apart a series' points are, in milliseconds: each instance's
-     * {@linkplain #mostCommonSpacing most common spacing} between consecutive points, and the
-     * smallest of those over the instances; 0 when no instance has two points. The smallest (5.9,
-     * N6): coverage counts the union of a series' slots, so one sparse instance beside dense ones
-     * leaves none empty, and Grafana's interval follows the finest series rather than the sparsest. What
+     * How far apart a series' points are, in milliseconds: the
+     * {@linkplain #pooledSpacingCounts most common gap over every instance's points together}; 0 when no
+     * instance has two points. Pooled (5.9, N6): one sparse instance beside dense ones does not make
+     * the series coarse, as Grafana's interval does not follow the sparsest series, and one short-lived
+     * dense instance does not make it fine either (the Stage 5 review). What
      * {@code wir-collect} compares with {@code --step}: an export at a panel's 60 s interval, counted
      * in 15 s slots, covers a quarter of them at most and reads LOW_COVERAGE for a reason nothing
      * else says.
      */
     public static long spacingMillis(List<ServerMetricsPayload.InstanceRecord> instances) {
-        long finest = 0;
+        List<List<Long>> perInstance = new ArrayList<>();
         for (ServerMetricsPayload.InstanceRecord inst : instances) {
             List<Long> times = new ArrayList<>();
             for (ServerMetricsPayload.Point p : inst.getPoints()) {
                 times.add(p.getTs());
             }
-            long spacing = mostCommonSpacing(times);
-            if (spacing > 0 && (finest == 0 || spacing < finest)) {
-                finest = spacing;
-            }
+            perInstance.add(times);
         }
-        return finest;
+        return pooledSpacingCounts(perInstance)[0];
     }
 
     /**
@@ -138,15 +135,28 @@ public final class Coverage {
      * measured step on the last two, so it counts with this rule rather than a copy of it.
      */
     static long[] spacingCounts(Iterable<Long> ascending) {
+        return pooledSpacingCounts(java.util.Collections.singletonList(ascending));
+    }
+
+    /**
+     * {@link #spacingCounts} over several instances' rows at once: each instance's own gaps (never one
+     * between two instances), counted together. The most common gap over a series' rows is its
+     * interval (5.9): one sparse instance beside dense ones does not coarsen it, and one short-lived
+     * dense instance does not re-grid it either (the Stage 5 review: "the finest instance" let a pod
+     * that lived 15 s at 5 s set a 5 s step for an hour of 15 s rows).
+     */
+    static long[] pooledSpacingCounts(Iterable<? extends Iterable<Long>> instancesAscending) {
         TreeMap<Long, Integer> spacings = new TreeMap<>();
-        Long previous = null;
         int gaps = 0;
-        for (Long t : ascending) {
-            if (previous != null && t > previous) {
-                spacings.merge(t - previous, 1, Integer::sum);
-                gaps++;
+        for (Iterable<Long> ascending : instancesAscending) {
+            Long previous = null;
+            for (Long t : ascending) {
+                if (previous != null && t > previous) {
+                    spacings.merge(t - previous, 1, Integer::sum);
+                    gaps++;
+                }
+                previous = t;
             }
-            previous = t;
         }
         long common = 0;
         int most = 0;
