@@ -128,8 +128,8 @@ The report has 3 main areas:
   errors — an error count is not a verdict, and errors have their own header card and tab.
 - **Server chip** — beside the badge, on a run that declares server asserts. It speaks for the
   server side, which is judged separately and never folded into the badge:
-  - `Server · Kafka FAIL · 2 more` — the worst component (FAIL, then NOT EVALUATED, then WARN,
-    then PASS), and how many other components the Server tab shows
+  - `Server · Kafka FAIL · 1 warn · 1 pass` — the worst component (FAIL, then NOT EVALUATED, then
+    WARN, then PASS), and the other components counted by their state
   - `Server · nothing judged` — the server asserts were evaluated, but no component was reported
   - `Server · NOT COLLECTED` — the interim report: nothing has been collected yet
   - `Server · REFUSED` — the server-metrics payload given to the report was refused

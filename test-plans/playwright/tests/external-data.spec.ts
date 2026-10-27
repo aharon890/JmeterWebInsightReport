@@ -420,7 +420,7 @@ test.describe('External data mode', () => {
     // the card keys on. The card used to be blank beside it.
     const chip = '<button type="button" class="status-badge wir-server-chip badge-fail" data-wir-tab="server"\n'
       + '                        title="The worst server component - open the Server tab for every component">'
-      + 'Server · Kafka FAIL · 1 more</button>';
+      + 'Server · Kafka FAIL · 1 warn</button>';
     const copy = forwardedCopy(testInfo, 'forwarded-chip', (html) => {
       const anchor = 'NO ASSERTS DECLARED</span>';
       expect(html.indexOf(anchor), 'E19\'s header badge').toBeGreaterThan(0);

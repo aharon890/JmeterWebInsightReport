@@ -300,7 +300,7 @@ Beside the client badge, one chip speaks for the server side:
 
 | Chip | Means |
 |---|---|
-| `Server · Kafka FAIL · 2 more` | The worst component (Kafka), its status, and how many other components the tab holds |
+| `Server · Kafka FAIL · 1 warn · 1 pass` | The worst component (Kafka) and its status, then every other component counted by its state, in the same order (FAIL, NOT EVALUATED, WARN, PASS; only the states that occur), as an alerting tool's summary counts them. A WARN behind a component that judged nothing is never hidden |
 | `Server · nothing judged` | The asserts were evaluated, but no component was reported |
 | `Server · NOT COLLECTED` | Server asserts are declared and no payload was given yet: the interim report, step 1 |
 | `Server · REFUSED` | Server asserts are declared and the payload given was refused. The tab says why. It does not change the exit code unless `webinsight.report.server.failonerror=true` is set |

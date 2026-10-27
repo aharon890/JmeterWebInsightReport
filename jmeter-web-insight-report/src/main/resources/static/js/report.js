@@ -5224,7 +5224,7 @@ function verdictBlockText(facts) {
     var s = f.server;
     if (s && s.word) {
         lines.push('Server: ' + s.word + (s.label ? dash + s.label : '')
-            + (s.others > 0 ? ' · ' + s.others + ' more' : ''));
+            + (s.othersText ? ' · ' + s.othersText : ''));
     }
     if (a && f.draftDiffers) lines.push('Draft differs' + dash + 'see Asserts');
     if (f.fileName) lines.push(f.fileName);
@@ -5272,7 +5272,8 @@ function verdictFacts() {
         var verdict = typeof globalChartData !== 'undefined' && globalChartData && globalChartData.serverVerdict;
         var chipState = chip.getAttribute('data-wir-chip-state');
         if (verdict) {
-            server = { word: WIR.status.chipLabel(verdict.status), label: verdict.label || null, others: verdict.others || 0 };
+            server = { word: WIR.status.chipLabel(verdict.status), label: verdict.label || null, others: verdict.others || 0,
+                othersText: verdict.othersText || '' };
         } else if (chipState === 'REFUSED' || chipState === 'NOT_COLLECTED') {
             server = { word: chipState === 'REFUSED' ? 'REFUSED' : 'NOT COLLECTED', label: null, others: 0 };
         } else {

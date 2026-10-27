@@ -205,8 +205,28 @@ class ServerGateEvaluationTest {
         assertTrue(e.fatalConfigErrors() > 0, "sanity: and it exits 1 under failonerror");
         ServerGateEvaluation.Chip chip = e.headerChip();
         assertEquals("kafka", chip.getGateId(), "the component that decided nothing, not api's PASS");
-        assertEquals("Server · Kafka NOT EVALUATED · 1 more", chip.getText());
+        assertEquals("Server · Kafka NOT EVALUATED · 1 pass", chip.getText());
         assertEquals("NOT_EVALUATED", e.serverStatus());
+    }
+
+    @Test
+    void theChipCountsTheOtherComponentsByStateSoAWarnIsNeverHiddenBehindTheWorst() throws Exception {
+        // B2 (owner, 2026-10-27): keep D24's rank and surface the hidden WARNs. Grafana's alert rule
+        // stats and the Prometheus alerts page show a count per state beside the worst one; "2 more"
+        // hid a WARN behind a component that judged nothing (petstore F6: kafka-lag WARN).
+        String three = "{\"kafka\":{\"type\":\"custom\",\"description\":\"Kafka\"},"
+                + "\"api\":{\"type\":\"custom\",\"description\":\"API\"},\"db\":{\"type\":\"custom\",\"description\":\"DB\"}}";
+        String doc = block(three, kpi("dead", "down", 1, "kafka"),
+                "{\"id\":\"warned\",\"component\":\"api\",\"query\":\"lag\",\"reduce\":{\"kind\":\"max\"},\"warn\":{\"gt\":50}}",
+                kpi("fine", "lag", 500, "db"));
+        ServerGateEvaluation e = evaluate(doc, payloadJson("r", ok("lag", 100),
+                series("down", "FAILED", null, "HTTP 503", new double[0])), run());
+
+        ServerGateEvaluation.Chip chip = e.headerChip();
+        assertEquals("kafka", chip.getGateId(), "the rank stays D24's");
+        assertEquals("NOT_EVALUATED", e.serverStatus());
+        assertEquals("Server · Kafka NOT EVALUATED · 1 warn · 1 pass", chip.getText());
+        assertEquals(2, chip.getOthers(), "the count of the rest is unchanged");
     }
 
     @Test
@@ -307,13 +327,13 @@ class ServerGateEvaluationTest {
         assertEquals("[kafka, db, (no gate)]", named.reportedGates().keySet().toString(), "sanity: an orphan");
         assertEquals("kafka", named.headerChip().getGateId());
         assertEquals(1, named.headerChip().getOthers(), "db only - the strip has no (no gate) badge");
-        assertEquals("Server · Kafka FAIL · 1 more", named.headerChip().getText());
+        assertEquals("Server · Kafka FAIL · 1 pass", named.headerChip().getText());
 
         ServerGateEvaluation reserved = evaluate(block(two, kpi("k", "lag", 500, "kafka"), kpi("d", "lag", 500, "db"), typo),
                 payloadJson("r", ok("lag", 100)), run());
         assertEquals(ServerGateEvaluation.NO_GATE_ID, reserved.headerChip().getGateId());
         assertEquals(2, reserved.headerChip().getOthers(), "kafka and db");
-        assertEquals("Server · (no component) NOT EVALUATED · 2 more", reserved.headerChip().getText());
+        assertEquals("Server · (no component) NOT EVALUATED · 2 pass", reserved.headerChip().getText());
     }
 
     @Test

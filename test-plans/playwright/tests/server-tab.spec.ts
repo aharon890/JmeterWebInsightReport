@@ -336,16 +336,16 @@ test.describe('Server tab — the board', () => {
 
   test('[R] the header chip names the worst BUILDING gate and counts the rest', async ({ page }) => {
     await loadClean(page, 'E26');
-    // D17. kafka FAILs and db only WARNs; the chip names the worst and counts the rest.
+    // D17. kafka FAILs and db only WARNs; the chip names the worst and counts the rest by state (B2:
+    // "1 more" hid db's WARN, as Grafana's rule stats and the Prometheus alerts page would not).
     const chip = page.locator('.wir-server-chip');
     await expect(chip).toBeVisible();
-    await expect(chip).toContainText('Kafka FAIL');
-    await expect(chip).toContainText('1 more');
+    await expect(chip).toHaveText('Server · Kafka FAIL · 1 warn');
     await expect(chip).toHaveClass(/badge-fail/);
   });
 
   test('[R] L3-6: the header chip is the way to the Server tab, from any tab', async ({ page }) => {
-    // The chip names a gate and counts the rest - "1 more" is a pointer to the tab, and it was a
+    // The chip names a gate and counts the rest - a pointer to the tab, and it was a
     // <span> nobody could follow. It is a button now, bound by report.js to the same switchTab
     // the tab bar uses (data-wir-tab, a listener - no inline handler for the sweep to excuse).
     await loadClean(page, 'E26');

@@ -1109,8 +1109,9 @@ NOT_EVALUATED (a component that judged nothing) > WARN > PASS — and NOT_EVALUA
 reported. `ServerGateEvaluation.worstBuildingGate()` is that fold, and the only one:
 `serverStatus()` and `headerChip()` both read it, so the JSON's word and the header's cannot be
 chosen by two rules (a component whose source died used to lose the header word to a sibling's
-PASS). The chip's word is the worst component's; every other declared component is "N more", a
-pointer to the tab. The page is handed the same word as `chartData.serverVerdict` (status, the
+PASS). The chip's word is the worst component's; every other declared component is counted by its
+state in the fold's order (`· 1 warn · 3 pass`, B2: "N more" hid a WARN behind a component that judged
+nothing; Grafana's rule stats and the Prometheus alerts page count every state). The page is handed the same word as `chartData.serverVerdict` (status, the
 chip's entry and label, and the reserved entry when there is one), so the Summary card prints it
 rather than folding again. Asserts that name no declared component are reported as one more
 component, the reserved `(no gate)` entry, in the fold and in `serverComponents[]` (where it has no

@@ -245,6 +245,19 @@ set, and no S4 variant or F-run has one (C08's and F2's capped series fold `max`
 **5.4, done (4.1.20).** Red first (`ServerKpiEvaluatorTest`'s ranking case, avg now `[5, 1, 3, 0, 4, 2]`). Observed, as
 registered: C08 vs 4.1.11 and F2 vs 4.1.19, `cmp.cjs` none.
 
+**5.5, expected (written before the F-run check, 4.1.21):** F6's chip names the same worst component as on 4.1.0, and its
+counts now include a `warn` (kafka-lag, hidden behind NOT EVALUATED until now); F2's and F5's chips keep their word, with
+the rest counted by state. `serverStatus` and the CI/CD JSON unchanged (`cmp.cjs` none); R06 goldens unchanged.
+
+**5.5, done (4.1.21).** Red first (`ServerGateEvaluationTest.theChipCountsTheOtherComponentsByState…`). Observed, as
+registered (chip, 4.1.0 → 4.1.21):
+- F6: `Catalog JVM NOT EVALUATED · 14 more` → `· 2 not evaluated · 2 warn · 10 pass`. The two WARNs were hidden.
+- F5: `Catalog API (no actuator) FAIL · 14 more` → `· 1 fail · 1 not evaluated · 2 warn · 10 pass`.
+- F2: `… WARN · 14 more` → `· 14 pass`.
+- `serverStatus` and every assert are unchanged. F2's and F6's one series difference is 4.1.11's capped row.
+- Five pins of "N more" now hold the counts; Tutorial 01, 13, FEATURES and CLAUDE.md describe them. The Summary card
+  prints the same text (`serverVerdict.othersText`).
+
 **For the owner:**
 - **Q5, the y-axis.** Grafana bounds it by the data; WIR includes every band (R3-3) so the drag handles stay on the
   plot.

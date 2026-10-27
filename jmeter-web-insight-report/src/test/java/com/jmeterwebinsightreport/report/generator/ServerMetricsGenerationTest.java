@@ -230,7 +230,8 @@ class ServerMetricsGenerationTest {
         assertTrue(chip.contains("data-wir-tab=\"server\""), chip);
         assertFalse(chip.contains("onclick"), chip);
         assertTrue(html.contains("badge-fail\" data-wir-tab=\"server\""), "the component's verdict colours it");
-        assertTrue(html.contains(">Server · Kafka FAIL · 1 more</button>"), "and names it");
+        assertTrue(html.contains(">Server · Kafka FAIL · 1 not evaluated</button>"),
+                "and names it, and counts the rest by state: db declares no assert, so it judged nothing");
     }
 
     // ---- the gates, end to end (M4) -------------------------------------------------

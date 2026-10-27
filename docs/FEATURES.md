@@ -433,7 +433,7 @@ Full reference with the meaning and the fix for each:
 - **Server chip** — beside the badge on a run with server asserts, and a link to the Server tab.
   It names the worst component, ranked FAIL > NOT EVALUATED > WARN > PASS — the same fold
   as the JSON's `serverStatus`, so the two cannot disagree — and counts the other declared
-  components: `Server · Kafka FAIL · 2 more`. With no component reported it reads
+  components by state: `Server · Kafka FAIL · 1 warn · 1 pass`. With no component reported it reads
   `Server · nothing judged`. With server asserts declared and nothing judged it says which, in
   the Summary card's words and the neutral style: `Server · NOT COLLECTED` on the interim report,
   which has collected nothing yet, and `Server · REFUSED` when the payload given was refused. No
