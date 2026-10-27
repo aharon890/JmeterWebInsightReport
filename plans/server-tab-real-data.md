@@ -362,6 +362,10 @@ defects in 5.1, 5.6, 5.7, 5.8 and 5.9, plus four doc lags. The full regression a
   10,000 steps; from there the Collection says `coverage P%`. Red first: `server-board.spec.ts` "5.7 review" (20,001
   steps read `2468 of 20001`). Display only.
 
+- **4.1.32 (docs):** Tutorial 16's `--step` row (pooled), its wide-layout gap rule (infinities, the column with no
+  number), Tutorial 13's Per instance paragraph (worst first, the labels that tell instances apart), and the chip's
+  template comment (counts by state). The template is under `src/main`, hence the bump.
+
 **For the owner:**
 - **Q5, the y-axis.** Grafana bounds it by the data; WIR includes every band (R3-3) so the drag handles stay on the
   plot.

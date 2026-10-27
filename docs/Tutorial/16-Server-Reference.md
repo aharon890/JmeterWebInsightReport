@@ -33,7 +33,7 @@ usage: wir-collect --jtl <results.jtl> --annotations <report-annotations.json> -
 | `--csv-columns SPEC` | With a long `--csv`: the file's names for the columns, as `key=column` pairs — `time`, `component`, `metric`, `instance`, `value`; a key not given keeps its own name. `metric=_measurement+_field` joins two columns as `<measurement>.<field>`. See [From InfluxDB 2](#from-influxdb-2-csv-columns-and-a-fixed-component) |
 | `--component ID` | With a long `--csv`: every row belongs to component `ID`, for an export with no component column whose asserts are all on `ID` — an assert on any other component finds no rows and reads `UNMATCHED`. Refused beside `--csv-columns component=` (exit 1). Beside a component column of the file's own, the file is refused and every series fails ([below](#from-influxdb-2-csv-columns-and-a-fixed-component)) |
 | `--time-zone ZONE` | With `--csv`: the zone of a time written with none — an IANA id (`Europe/Berlin`), `UTC`, or an offset (`+03:00`). Without it such a time is refused |
-| `--step DURATION` | The resolution asked for, and the coverage grid. Default: with `--csv`, the interval measured from the file's rows as the collector reads them (each instance's most frequent gap between rows with a value, within the run's window, taken when it repeats at least 3 times and is at least half the gaps; the widest over the series the asserts read, so a coarser series in the file that no assert reads does not set it — with no assert yet, over the declared components' catalogue metrics), printed as `wir-collect: step 5s, measured from the file's rows`; with no measurable interval, and for Prometheus and `--recording`, `15s`. A measured interval coarser than `15s` that would leave fewer than 10 points in the run is not used, and the console says so (`step 10m measured from the file's rows is too coarse for this 35m run (fewer than 10 points) - collecting at 15s; …`) |
+| `--step DURATION` | The resolution asked for, and the coverage grid. Default: with `--csv`, the interval measured from the file's rows as the collector reads them (the most frequent gap between rows with a value over all of a series' instances together, within the run's window, taken when it repeats at least 3 times and is at least half the gaps, so one sparse or one short-lived instance does not set it; the widest over the series the asserts read, so a coarser series in the file that no assert reads does not set it — with no assert yet, over the declared components' catalogue metrics), printed as `wir-collect: step 5s, measured from the file's rows`; with no measurable interval, and for Prometheus and `--recording`, `15s`. A measured interval coarser than `15s` that would leave fewer than 10 points in the run is not used, and the console says so (`step 10m measured from the file's rows is too coarse for this 35m run (fewer than 10 points) - collecting at 15s; …`) |
 | `--clock-offset DURATION` | Added to every timestamp the source reports: `-30s` lines up servers whose clocks run 30 s ahead. Default `0` |
 | `--env NAME` | The `serverMetrics.environments` entry to resolve `${env.*}` from. Default: the file's `defaultEnv` |
 | `--test-name NAME` | The same text as `-Jwebinsight.report.title` when step 3 sets one. Default: `JMeter Web Insight Report` |
@@ -305,8 +305,10 @@ nothing, and the console says so.
   `wir-collect: 1 column names a component and metric the annotations do not ask for:
   "order-db/connections.used.pct/pg-1"`. Without it the only trace is the series it was meant for,
   `EMPTY` further down.
-- **An empty cell or `NaN` is a gap**, never a zero. Joined by time is an outer join, so an empty cell
-  is a series with no point at another series' timestamp.
+- **An empty cell, `NaN`, or an infinity (`+Inf`, `-Inf`, `Inf`, `Infinity`, as Grafana's export and
+  Prometheus write them) is a gap**, never a zero. Joined by time is an outer join, so an empty cell
+  is a series with no point at another series' timestamp. A column with no number in the run is an
+  instance with no point: `LOW COVERAGE`, as in the long layout.
 - **A cell that is not a plain number fails its series**, naming the line. One that looks formatted
   says so: `value "41.5%" is not a plain number - it looks formatted, with a unit or a thousands
   separator: export it with Formatted data off`.

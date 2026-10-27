@@ -595,7 +595,11 @@ An open row has two panels:
 - The value axis stretches to include the bands, so a limit above the data is still on the plot.
 
 **Per instance** is one bar per instance: the assert's own reducer applied to that instance's
-points in the judged window, against the warn and fail lines. Its axis is in the unit the verdict
+points in the judged window, against the warn and fail lines. The bars run worst first (the highest
+first, the lowest under `across: min`), as a top list does, so the bar the verdict came from leads.
+Each instance is named, there and in the Value over time legend, by the labels that tell it apart
+from the others (`pod=catalog-a`): a label every instance shares is left out, as Grafana's legend
+does; with one instance every label is written. Its axis is in the unit the verdict
 compares in, so a slope's bars are per minute and a `divideBy` ratio's are divided by the load. The
 unit is written under the axis. Each line is labelled `warn` or `fail` at its top, the lower band's
 label to the left of its line and the higher one's to the right, so two close bands stay readable.
