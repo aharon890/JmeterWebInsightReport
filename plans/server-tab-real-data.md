@@ -136,13 +136,27 @@ names, all 10 off the canvas, and the plot collapses (negative width); 4.1.13 dr
 377x510. The registered "4 names" came from the evaluation's screenshot at another width; same failure. `cmp.cjs`
 vs 4.1.12: none. server-layout, server-board and server-numbers specs: 62/62.
 
+**4.4, C4, N9 first.** F2 (4.1.13, headless): the client Timeline's charts tick by the minute at 1166, 618 and 338 px,
+no repeat; the server row (`catalog-jvm-heap-used-pct`, judged window 240 s after the 60 s ramp-up) ticks every 30 s
+and repeats 4 labels at 755 and 596 px. So, per the plan, server-only: no `formatClock` change, the client pins stay.
+**Expected (written before the F2 check, 4.1.14):** that row 0 repeats at 1280 and 700 px; the Timeline unchanged;
+chart data unchanged.
+
+**4.4, done (4.1.14).** Red first, two specs in `server-layout.spec.ts`. The first cut of each passed on 4.1.13, so
+neither was the mechanism yet: the time test needed F2's ramp-up (a 300 s window charts as 240 s, and only 240 s ticks
+every 30 s), the gap test a 303 px chart (1024 px viewport: 0.46 px between two value labels). Fix: server time axes
+take `minInterval: 60000` whenever the visible range is two minutes or more (`serverTimeMinInterval`); the Per instance
+value axis takes `splitNumber` from its plot width, one tick per 64 px. A first try, `axisLabel.padding`, does not count
+toward `hideOverlap`. Observed on F2, as registered: the row reads `18:35 18:36 18:37 18:38` at 1280 and 700 px, the
+Timeline unchanged, `cmp.cjs` none. The value labels' smallest gap is 18.8 px or more from 390 to 1920 px.
+
 **Outside 4.1's registered list:** that list came from a scan of S4 only. F2's catalog-db slowest-statement custom query
 (27 instances, capped) also draws a different twenty under C5 (`cmp.cjs` vs 4.1.0: 1 of 117 series, 0 asserts). The
 same rule, on a run the scan did not cover.
 
 **Also outside 4.1's list:** I wrote that E26 `many`'s specs pin counts only. `server-tab.spec.ts` (L9-12) also
 pinned *which* twenty: p0 kept, p19 dropped, under the old collector-order fill. E26's values rise p0 → p20, so under
-C5 p0 (the lowest) gives its slot up and p19 is drawn. The pin now says that (`fd3…`, the commit after 4.1.13), found
+C5 p0 (the lowest) gives its slot up and p19 is drawn. The pin now says that (the test commit after 4.1.13), found
 on the first run of that spec over fixtures regenerated after 4.1.11.
 
 ## Open

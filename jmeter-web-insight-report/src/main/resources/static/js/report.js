@@ -20130,6 +20130,7 @@ WIR.serverKpis = (function () {
                 type: 'time',
                 min: w ? w.start : undefined,
                 max: w ? w.end : undefined,
+                minInterval: serverTimeMinInterval(),
                 axisLabel: { formatter: formatTimeAxis, hideOverlap: true }
             },
             /* Bounded so every band, and the handle that drags it, is on the plot (R3-3).
@@ -20318,6 +20319,16 @@ WIR.serverKpis = (function () {
      * axis named in the verdict unit (instanceFrame). Drawn from the page's copy of the series,
      * so a capped one is said to be a sample.
      */
+    /**
+     * The finest tick a Server-tab time axis may take (C4). formatClock drops the seconds once the
+     * visible range reaches two minutes, whatever tick ECharts chose, and on a 240s judged window
+     * it chose 30s: "18:35 18:35 18:36 18:36". The client Timeline of the same run ticked by the
+     * minute at every width (N9, petstore F2), so the floor is this tab's alone.
+     */
+    function serverTimeMinInterval() {
+        return getEffectiveVisibleRange() >= 120000 ? 60000 : undefined;
+    }
+
     function initInstanceChartFor(k) {
         var chartKey = instanceChartKey(k.key);
         disposeChart(chartKey);
@@ -20406,6 +20417,10 @@ WIR.serverKpis = (function () {
                 max: bounds.max === null ? undefined : bounds.max,
                 /* Ticks of 10,000,000 printed over one another (SF17): short, in one prefix for
                    the whole axis, and never two on top of each other. */
+                /* About one tick per 64px of plot (C4). hideOverlap hides a label whose box meets
+                   another's; two that only touched both stayed and read as one number, "1,0001,200",
+                   at ECharts' default five ticks on a 190px plot. */
+                splitNumber: Math.max(2, Math.floor(((el.clientWidth || 600) - labelWidth - 40) / 64)),
                 axisLabel: {
                     formatter: axisTicker(finite.concat(bandValues, [bounds.min, bounds.max])),
                     hideOverlap: true
@@ -25386,7 +25401,7 @@ WIR.serverKpis = (function () {
         chart.setOption({
             backgroundColor: 'transparent',
             grid: { left: 40, right: 8, top: 8, bottom: 20 },
-            xAxis: { type: 'time', axisLabel: { formatter: formatTimeAxis, hideOverlap: true } },
+            xAxis: { type: 'time', minInterval: serverTimeMinInterval(), axisLabel: { formatter: formatTimeAxis, hideOverlap: true } },
             yAxis: { type: 'value' },
             tooltip: { trigger: 'axis', formatter: tooltipFormatter(metric.unit || '') },
             series: [{

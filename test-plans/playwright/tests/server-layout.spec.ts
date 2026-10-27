@@ -628,6 +628,63 @@ test.describe('SF37: the Server tab\'s charts reach contrast in both themes', ()
     expect(c!.h, 'a row of at least 18px per bar').toBeGreaterThanOrEqual(20 * 18);
   });
 
+  test('[R] C4: a five-minute row never prints one minute twice on its time axis', async ({ page }) => {
+    // formatClock drops the seconds once the visible range reaches two minutes, whatever tick ECharts
+    // chose: petstore's 300s rows ticked every 30s and read "18:35 18:35 18:36 18:36". The client
+    // Timeline of the same run ticked by the minute at every width (N9, checked on F2), so the floor
+    // is the Server tab's.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await loadClean(page, 'E26');
+    await switchTab(page, 'server');
+    await page.evaluate(() => {
+      const W = window as any;
+      const d = JSON.parse(JSON.stringify(W.chartData));
+      // F2's shape: a window that starts 39.65s past a minute, runs 300s and has a 60s ramp-up, so
+      // the row charts the 240s judged window - on which ECharts ticks every 30s.
+      const start = Math.floor(d.serverMetrics.window.start / 60000) * 60000 + 39650;
+      const shift = start - d.serverMetrics.window.start;
+      d.serverMetrics.window = { start, end: start + 300000, rampUpEnd: start + 60000 };
+      d.serverMetrics.series.forEach((s: any) => s.instances.forEach((i: any) =>
+        i.points.forEach((p: any) => { p[0] += shift; })));
+      W.visibleTimeRangeMs = 300000;
+      W.WIR.serverKpis.init(d);
+    });
+    await openRows(page, ['cpu-headroom']);
+    const c = await rowChart(page, 'cpu-headroom');
+    const clock = c!.texts.filter((t) => /^\d{2}:\d{2}(:\d{2})?$/.test(t.t)).sort((a, b) => a.x - b.x).map((t) => t.t);
+    expect(clock.length, clock.join(' ')).toBeGreaterThanOrEqual(3);
+    for (let i = 1; i < clock.length; i++) {
+      expect(clock[i], clock.join(' ')).not.toBe(clock[i - 1]);
+    }
+  });
+
+  test('[R] C4: Per instance value labels keep a gap, not only no overlap', async ({ page }) => {
+    // hideOverlap hides a label whose box intersects another; two that only touch both stay, and
+    // read as one number ("1,0001,200" on petstore's catalog-db rows). At 1024 the chart is 303px
+    // wide and its ticks sat 0.5px apart.
+    await page.setViewportSize({ width: 1024, height: 900 });
+    await loadClean(page, 'E26');
+    await switchTab(page, 'server');
+    await page.evaluate(() => {
+      const W = window as any;
+      const d = JSON.parse(JSON.stringify(W.chartData));
+      const k = d.serverKpis.find((x: any) => x.id === 'many-instances');
+      const s = d.serverMetrics.series.find((x: any) => x.query === k.query);
+      s.instances.forEach((inst: any, i: number) => inst.points.forEach((p: any) => { p[1] = i * 60; }));   // 0 .. 1200
+      W.WIR.serverKpis.init(d);
+    });
+    await openRows(page, ['many-instances']);
+    let c: Paint | null = null;
+    await expect.poll(async () => { c = await rowChart(page, 'many-instances', 'instances'); return !!c; }).toBe(true);
+    // The value axis: the row of labels under the plot.
+    const below = c!.texts.filter((t) => t.y > c!.grid.y + c!.grid.h && /\d/.test(t.t)).sort((a, b) => a.x - b.x);
+    expect(below.length, below.map((t) => t.t).join(' ')).toBeGreaterThanOrEqual(2);
+    for (let i = 1; i < below.length; i++) {
+      const gap = below[i].x - (below[i - 1].x + below[i - 1].w);
+      expect(gap, `${below[i - 1].t} | ${below[i].t}: ${below.map((t) => t.t).join(' ')}`).toBeGreaterThanOrEqual(4);
+    }
+  });
+
   test('[R] SF37: a dark chart draws the high-contrast palette at 3:1 — its dark variant', async ({ page }) => {
     // High-contrast's #0000FF, #8800CC, #004400 and #880000 were 1.65 to 2.63:1 on ECharts' dark
     // canvas, and on the card a transparent chart shows (#111827) #666600 is 2.93:1 too: a series in
