@@ -1552,21 +1552,25 @@ class CatalogueTest {
     /**
      * postgres_exporter writes no {@code wait_event_type="Lock"} row while nobody waits, so the bare
      * count read NO_MATCH on every healthy run (petstore R1-R3). It falls back to 0 per server, by
-     * {@code max by (instance)} of {@code pg_up}: one series per instance, labelled {@code instance}
-     * only, where {@code or on (instance) 0 * pg_up} would carry pg_up's job and pod labels and make
-     * one server two instances.
+     * {@code max by (instance)}: one series per instance, labelled {@code instance} only, where an
+     * {@code or on (instance)} would carry the job and pod labels and make one server two instances.
+     * The 0 is taken from the sessions that do carry a wait_event_type, never from {@code pg_up}: an
+     * exporter before 0.17.0 writes no such label at all, and over {@code pg_up} it read 0 whatever
+     * waited - a fail band PASSed - and 0 through an outage (the 4.1.33 review, finding 1). Over the
+     * sessions it reads no data there, as before 4.1.10, and a gap through an outage.
      */
     @Test
-    void theLocksWaitingReadsZeroWhileNobodyWaits() {
+    void theLocksWaitingReadsZeroWhileNobodyWaitsOnlyWhereTheExporterWritesWaitEvents() {
         CatalogueMetric locks = catalogue.type("postgres").metric("locks.waiting");
         assertEquals("sum by (instance) (pg_stat_activity_count{wait_event_type=\"Lock\"})"
-                        + " or 0 * max by (instance) (pg_up)",
+                        + " or 0 * max by (instance) (pg_stat_activity_count{wait_event_type!=\"\"})",
                 locks.query(Catalogue.PROMETHEUS, null));
         assertEquals("sum by (instance) (pg_stat_activity_count{wait_event_type=\"Lock\",app=\"catalog-pg\"})"
-                        + " or 0 * max by (instance) (pg_up{app=\"catalog-pg\"})",
+                        + " or 0 * max by (instance) (pg_stat_activity_count{wait_event_type!=\"\",app=\"catalog-pg\"})",
                 locks.query(Catalogue.PROMETHEUS, "app=\"catalog-pg\""));
+        assertFalse(locks.query(Catalogue.PROMETHEUS, null).contains("pg_up"));
         assertTrue(locks.description().contains("Reads 0 while nobody waits"), locks.description());
-        assertTrue(catalogue.type("postgres").source().contains("reads its 0 fallback whatever waits"),
+        assertTrue(catalogue.type("postgres").source().contains("reads no data, as it did before 4.1.10"),
                 catalogue.type("postgres").source());
     }
 
