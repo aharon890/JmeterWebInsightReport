@@ -91,6 +91,27 @@ registered:
   ended 5 min before; it was stopped. Not investigated: whether a series that never reaches the window end should wait
   that long.
 
+## Stage 4: the page (branch `fix/server-tab-stage4-page`)
+
+Stage 3 merged first (PR #25, `eb08dbb`).
+
+**4.1, C5, expected re-verify diff (written before the change, 4.1.11).** Only C08 has capped series in S4 (a scan of
+every archived report): app-pods `memory.limit.used.pct`, `restarts` and `restarts.oom`, 26 instances each.
+- C08 `memory.limit.used.pct`: the drawn set gains tails-messages (83.30, over warn 80) and gives up the lowest
+  instance; `cmp.cjs` shows that one payload series differing (instance hash), asserts 0 differ.
+- C08 `restarts`, `restarts.oom`: unchanged when their values tie (ties keep index order); a nonzero instance past
+  the first twenty is the deciding one and was kept already.
+- Every other S4 variant: none. CI/CD JSON, JUnit and the R06 goldens: none (they read the evaluation).
+- WIR fixtures: E26 `many` (21 instances) and E29 (24) may draw a different set; their specs pin counts.
+
+**4.1, done (4.1.11).** Red first (`ServerMetricsPayloadWriterTest.theFreeSlotsGoToTheWorstInstancesNotTheFirstInCollectorOrder`:
+pg-1..pg-20 drawn, pg-21 at 83.3 not). `ServerKpiEvaluator.rankedInstances` ranks by the evaluator's own reduction;
+`ReportDataSerializerTest.theInstanceCapKeepsTheInstancesTheVerdictComesFrom` pinned the old fill ("the rest fill up in
+collector order") and now pins the new one. The N8 javadoc (`decidingInstances`) says what the cap keeps. Observed, as
+registered: C08 vs 4.1.0, asserts 35/35 equal, 1 of 104 series differs (`memory.limit.used.pct`: tails-messages 83.3,
+tails-realtime x2, traffic-generator, tails-web, web drawn in place of the six lowest, redis 6.0 among them);
+`restarts` and `restarts.oom` unchanged. M01 vs 4.1.10: none.
+
 ## Open
 
 - **End of Stage 2 (4.1.7):** full regression green on 2026-10-27, R01–R06 with fixtures regenerated, 1077 Playwright

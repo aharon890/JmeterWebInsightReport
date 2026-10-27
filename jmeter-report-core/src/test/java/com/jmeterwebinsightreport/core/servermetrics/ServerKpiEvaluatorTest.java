@@ -45,6 +45,28 @@ class ServerKpiEvaluatorTest {
     }
 
     @Test
+    void theRankingPutsTheWorstFirstInTheAcrossDirectionTiesInIndexOrder() {
+        // C5: the display cap fills its free slots from this. Under max of each instance's last
+        // point, 10, 20, 0, 20, 5 and 40 rank 5, 1, 3 (a tie, in index order), 0, 4, 2; under min
+        // the other way round, ties still in index order; under avg (mean 15.83) by distance from
+        // the mean, furthest first.
+        ServerMetricsPayload p = payload(null, (i, t) -> new double[] {10, 20, 0, 20, 5, 40}[i]);
+        ServerMetricsPayload.SeriesRecord s = p.getSeries().get(0);
+        Reducer last = Reducer.of(Reducer.Kind.LAST);
+        assertEquals(java.util.Arrays.asList(5, 1, 3, 0, 4, 2),
+                ServerKpiEvaluator.rankedInstances(null, p, s, last, Across.MAX));
+        assertEquals(java.util.Arrays.asList(2, 4, 0, 1, 3, 5),
+                ServerKpiEvaluator.rankedInstances(null, p, s, last, Across.MIN));
+        assertEquals(java.util.Arrays.asList(5, 2, 4, 0, 1, 3),
+                ServerKpiEvaluator.rankedInstances(null, p, s, last, Across.AVG));
+        // Under max and min the first is the deciding instance.
+        assertEquals(ServerKpiEvaluator.decidingInstances(null, p, s, last, Across.MAX).get(0),
+                ServerKpiEvaluator.rankedInstances(null, p, s, last, Across.MAX).get(0));
+        assertEquals(ServerKpiEvaluator.decidingInstances(null, p, s, last, Across.MIN).get(0),
+                ServerKpiEvaluator.rankedInstances(null, p, s, last, Across.MIN).get(0));
+    }
+
+    @Test
     void underAcrossMaxOrMinTheDecidingInstanceFoldsToTheNumber() {
         ServerMetricsPayload p = payload(null, ServerKpiEvaluatorTest::shaped);
         ServerMetricsPayload.SeriesRecord s = p.getSeries().get(0);
