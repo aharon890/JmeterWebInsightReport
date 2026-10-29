@@ -545,6 +545,10 @@ public class ReportDataSerializer {
                 full.put("responseCode", es.getResponseCode());
                 full.put("responseMessage", es.getResponseMessage());
                 full.put("occurrenceCount", es.getOccurrenceCount());
+                // The group's whole span, for the grouped view's first and last seen (E2): the
+                // records it used to read them from are only the first 500 errors.
+                full.put("firstTimestamp", es.getFirstTimestamp());
+                full.put("lastTimestamp", es.getLastTimestamp());
                 full.put("percentageOfErrors", round2(es.getPercentageOfErrors()));
                 full.put("percentageOfAllSamples", round2(es.getPercentageOfAllSamples()));
                 full.put("errorClass", es.getErrorClass());

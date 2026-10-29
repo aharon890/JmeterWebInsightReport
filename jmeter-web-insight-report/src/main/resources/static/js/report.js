@@ -1396,7 +1396,8 @@ function initCharts(data) {
     pendingChartInits.push({ tab: 'errors', fn: function () { initErrorBreakdownCharts(data); } });
 
     // Error Details grouped view (DOM-only — the error tables are parsed before this script runs)
-    buildErrorGroups(data.errorRecords);
+    buildErrorGroups(data.errorRecords, data.errorSummaries);
+    noteKeptErrorRecords(data);
     restoreErrorDetailsView();
 
     // Comparison tab
@@ -4763,38 +4764,61 @@ function formatErrorClock(ts) {
 /* Group error records by sampler + response code, sorted by count desc. Each group renders a head
  * row plus a hidden body row holding one line per occurrence. Field names are the serializer's
  * short keys (sampler/code/message/thread), not the Thymeleaf model's long ones. */
-function buildErrorGroups(records) {
-    var table = document.getElementById('errorGroupsTable');
-    if (!table || !table.tBodies[0]) return;
-    var tbody = table.tBodies[0];
-    tbody.innerHTML = '';
-    if (!records || !records.length) return;
-
+/* The grouped view's groups, one per sampler + response code (E2).
+ *
+ * Each group's count and its first and last seen come from the error summaries, which count every
+ * error; the occurrences listed under it are the detail records the report kept, the first 500
+ * errors. It used to build everything from those records, so past 500 errors the counts and the
+ * last seen were the first 500's and said nothing about it (S38: 3,559 errors, its groups added up
+ * to 500; 21 of its 108 groups were missing). A payload with no summaries (no errors, or an older
+ * one) still groups the records. */
+function errorGroupsFrom(records, summaries) {
     /* Null-prototype map so sampler names like "constructor" can't collide with Object.prototype. */
     var byKey = Object.create(null);
     var groups = [];
-    records.forEach(function (er) {
-        var key = (er.sampler || '') + '||' + (er.code || '');
+    function groupFor(sampler, code, from) {
+        var key = (sampler || '') + '||' + (code || '');
         var g = byKey[key];
         if (!g) {
-            g = { key: key, sampler: er.sampler || '', code: er.code || '', message: er.message || '',
+            g = { key: key, sampler: sampler || '', code: code || '', message: from.message || from.responseMessage || '',
                   /* Carried through from the payload so the grouped view says the same thing as
                      the server-rendered table it replaces. */
-                  errorClass: er.errorClass || '', errorClassLabel: er.errorClassLabel || '',
-                  messageMeaningless: !!er.messageMeaningless,
-                  first: null, last: null, occurrences: [] };
+                  errorClass: from.errorClass || '', errorClassLabel: from.errorClassLabel || '',
+                  messageMeaningless: !!from.messageMeaningless,
+                  count: 0, first: null, last: null, occurrences: [] };
             byKey[key] = g;
             groups.push(g);
         }
+        return g;
+    }
+    var counted = !!(summaries && summaries.length);
+    (counted ? summaries : []).forEach(function (es) {
+        var g = groupFor(es.samplerName, es.responseCode, es);
+        g.count = es.occurrenceCount || 0;
+        if (es.firstTimestamp) g.first = es.firstTimestamp;
+        if (es.lastTimestamp) g.last = es.lastTimestamp;
+    });
+    (records || []).forEach(function (er) {
+        var g = groupFor(er.sampler, er.code, er);
         g.occurrences.push(er);
+        if (!counted) g.count++;
         var ts = er.timestamp;
-        if (ts != null) {
+        if (ts != null && (!counted || g.first == null)) {
             if (g.first == null || ts < g.first) g.first = ts;
             if (g.last == null || ts > g.last) g.last = ts;
         }
     });
+    groups.sort(function (a, b) { return b.count - a.count; });
+    return groups;
+}
 
-    groups.sort(function (a, b) { return b.occurrences.length - a.occurrences.length; });
+function buildErrorGroups(records, summaries) {
+    var table = document.getElementById('errorGroupsTable');
+    if (!table || !table.tBodies[0]) return;
+    var tbody = table.tBodies[0];
+    tbody.innerHTML = '';
+    var groups = errorGroupsFrom(records, summaries);
+    if (!groups.length) return;
 
     groups.forEach(function (g) {
         var head = document.createElement('tr');
@@ -4802,7 +4826,7 @@ function buildErrorGroups(records) {
         head.style.cursor = 'pointer';
         head.innerHTML =
             '<td style="text-align:center;color:var(--color-text-secondary);font-size:0.7rem;">&#9654;</td>' +
-            '<td><strong>' + g.occurrences.length + '&times;</strong></td>' +
+            '<td><strong>' + g.count + '&times;</strong></td>' +
             '<td><span class="error-code">' + escapeHtml(String(g.code)) + '</span>' +
                 (g.errorClassLabel
                     ? '<span class="error-class error-class-' + escapeHtml(g.errorClass) + '">' +
@@ -4828,6 +4852,13 @@ function buildErrorGroups(records) {
             '<td style="border-bottom:1px solid var(--color-border);"></td>' +
             '<td colspan="6" style="padding:0 8px 10px;border-bottom:1px solid var(--color-border);">' +
             '<div style="display:flex;flex-direction:column;gap:2px;padding-top:6px;">' +
+            (g.occurrences.length < g.count
+                ? '<div class="truncation-note" style="font-size:0.72rem;color:var(--color-text-secondary,#64748b);padding:0 8px 4px;">' +
+                  (g.occurrences.length
+                      ? 'The ' + g.occurrences.length + ' of these ' + g.count + ' among the first 500 errors the report keeps in detail.'
+                      : 'None of these ' + g.count + ' is among the first 500 errors the report keeps in detail.') +
+                  '</div>'
+                : '') +
             g.occurrences.map(function (er) {
                 return '<div style="display:flex;align-items:baseline;gap:12px;font-size:0.76rem;' +
                     'padding:2px 8px;border-left:2px solid var(--color-border);">' +
@@ -4840,6 +4871,25 @@ function buildErrorGroups(records) {
             '</div></td>';
         tbody.appendChild(body);
     });
+}
+
+/* The By-time list is the detail records, the first 500 errors: say so over it when there were more (E2).
+   The codes chart and the error timeline carried that note; the list and the grouped view did not. */
+function noteKeptErrorRecords(data) {
+    var table = document.getElementById('errorDetailsTable');
+    if (!table || !data || !data.errorRecordsTruncated) return;
+    var wrapper = table.parentNode;
+    if (!wrapper || !wrapper.parentNode || wrapper.parentNode.querySelector('.kept-errors-note')) return;
+    var note = document.createElement('div');
+    note.className = 'truncation-note kept-errors-note';
+    note.style.cssText = 'font-size:0.72rem;color:var(--color-text-secondary,#64748b);margin:2px 0 6px;';
+    note.textContent = keptErrorsNote((data.errorRecords || []).length, data.totalErrorCount);
+    wrapper.parentNode.insertBefore(note, wrapper);
+}
+
+function keptErrorsNote(kept, total) {
+    return 'The first ' + kept + ' of ' + (total != null ? total : 'more') + ' errors, kept in detail. ' +
+        'The Error Summary, the charts and the Grouped counts include every error.';
 }
 
 /* Open state lives on the body row (data-open) so search can re-hide a group without losing it. */

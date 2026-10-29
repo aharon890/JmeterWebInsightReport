@@ -35,8 +35,10 @@ public class LiveStatisticsEngine {
     private final Map<Long, TimeBucketAggregator> timeBuckets = new ConcurrentHashMap<>();
     private final List<ErrorRecord> errorRecords = new ArrayList<>();
     /** Unbounded per-(sampler|code) error aggregation — feeds summaries and error charts.
-     *  Detailed {@link #errorRecords} are capped for memory, but these counts never are.
-     *  Guarded by the {@code errorRecords} monitor. */
+     *  Detailed {@link #errorRecords} are capped for memory, but these counts never are:
+     *  {count, earliest start, latest start}, so the grouped view's first and last seen are the
+     *  group's whole span, not the first 500 errors' (E2). Guarded by the {@code errorRecords}
+     *  monitor. */
     private final Map<String, long[]> errorSummaryCounts = new LinkedHashMap<>();
     private final Map<String, ErrorRecord> errorSummaryFirst = new LinkedHashMap<>();
     /** Real transaction-controller hierarchy, captured from actual sample sub-results
@@ -150,7 +152,7 @@ public class LiveStatisticsEngine {
             String key = samplerName + "|" + responseCode;
             long[] c = errorSummaryCounts.get(key);
             if (c == null) {
-                c = new long[]{0};
+                c = new long[]{0, timestamp, timestamp};
                 errorSummaryCounts.put(key, c);
                 ErrorRecord agg = new ErrorRecord();
                 agg.setSamplerName(samplerName);
@@ -160,6 +162,8 @@ public class LiveStatisticsEngine {
                 errorSummaryFirst.put(key, agg);
             }
             c[0]++;
+            c[1] = Math.min(c[1], timestamp);
+            c[2] = Math.max(c[2], timestamp);
 
             // Detailed records (URL/headers/body) are capped to bound memory.
             if (errorRecords.size() >= MAX_ERROR_RECORDS) {
@@ -506,10 +510,12 @@ public class LiveStatisticsEngine {
         // Group by sampler + response code — from the UNBOUNDED aggregation (not the capped list),
         // so counts and percentages are correct even when > MAX_ERROR_RECORDS errors occurred.
         Map<String, Long> counts = new LinkedHashMap<>();
+        Map<String, long[]> spans = new LinkedHashMap<>();
         Map<String, ErrorRecord> firstRecords;
         synchronized (errorRecords) {
             for (Map.Entry<String, long[]> e : errorSummaryCounts.entrySet()) {
                 counts.put(e.getKey(), e.getValue()[0]);
+                spans.put(e.getKey(), new long[]{e.getValue()[1], e.getValue()[2]});
             }
             firstRecords = new LinkedHashMap<>(errorSummaryFirst);
         }
@@ -523,6 +529,8 @@ public class LiveStatisticsEngine {
             s.setResponseMessage(rec.getResponseMessage());
             s.setErrorType(rec.getResponseCode());
             s.setOccurrenceCount(entry.getValue());
+            s.setFirstTimestamp(spans.get(entry.getKey())[0]);
+            s.setLastTimestamp(spans.get(entry.getKey())[1]);
             s.setPercentageOfErrors(errors > 0 ? (entry.getValue() * 100.0) / errors : 0);
             s.setPercentageOfAllSamples(total > 0 ? (entry.getValue() * 100.0) / total : 0);
             result.add(s);

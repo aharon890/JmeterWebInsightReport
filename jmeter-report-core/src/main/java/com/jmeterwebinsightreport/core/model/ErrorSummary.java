@@ -12,6 +12,10 @@ public class ErrorSummary {
     private long occurrenceCount;
     private double percentageOfErrors;
     private double percentageOfAllSamples;
+    /** When the group's earliest and latest error started, over every error of it — not only the
+     *  first 500 the report keeps in detail (E2). 0 when not known. */
+    private long firstTimestamp;
+    private long lastTimestamp;
 
     public ErrorSummary() {
     }
@@ -66,6 +70,22 @@ public class ErrorSummary {
 
     public double getPercentageOfAllSamples() {
         return percentageOfAllSamples;
+    }
+
+    public long getFirstTimestamp() {
+        return firstTimestamp;
+    }
+
+    public void setFirstTimestamp(long firstTimestamp) {
+        this.firstTimestamp = firstTimestamp;
+    }
+
+    public long getLastTimestamp() {
+        return lastTimestamp;
+    }
+
+    public void setLastTimestamp(long lastTimestamp) {
+        this.lastTimestamp = lastTimestamp;
     }
 
     public void setPercentageOfAllSamples(double percentageOfAllSamples) {

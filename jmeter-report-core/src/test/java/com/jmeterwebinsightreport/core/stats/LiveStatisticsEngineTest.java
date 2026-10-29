@@ -608,6 +608,23 @@ class LiveStatisticsEngineTest {
     }
 
     @Test
+    void errorSummariesSpanEveryErrorPastTheKeptRecords() {
+        // E2: 800 errors of one sampler and code, 1 s apart. The detail records stop at 500; the
+        // summary's count, first and last cover all 800, so the grouped view can say so.
+        long ts = 1700000000000L;
+        for (int i = 0; i < 800; i++) {
+            engine.recordSample("Pay", 10, false, 10, 10, ts + i * 1000L, 1, 1);
+            engine.recordError("Pay", "500", "Internal", ts + i * 1000L, "T 1-1");
+        }
+        ReportData data = engine.buildReportData("t");
+        assertEquals(500, data.getErrorRecords().size());
+        ErrorSummary s = data.getErrorSummaries().get(0);
+        assertEquals(800, s.getOccurrenceCount());
+        assertEquals(ts, s.getFirstTimestamp());
+        assertEquals(ts + 799_000L, s.getLastTimestamp());
+    }
+
+    @Test
     void errorRecordsAreListedByStartThenSamplerThenThread() {
         // E4: records arrive as samples finish, which the listener and the results file do not see in
         // one order. Listed by start, then sampler, then thread, two builds of one run read alike.
