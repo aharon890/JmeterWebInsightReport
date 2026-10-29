@@ -181,6 +181,26 @@ class OverallMetricsTest {
     }
 
     @Test
+    void bytesRatesAreAllBytesOverTheRunNotTheSumOfTheRowsRates() {
+        // B1: "a" ran the whole 20 s, "b" only its last 2 s. Each row's KB/s is over its own
+        // window; the run's is every byte over the run's window, as JMeter's TOTAL row has it.
+        SamplerStatistics a = stat("a", 100, 0, 100, 200, 5, 1.0);
+        a.setTotalReceivedBytes(200_000);
+        a.setTotalSentBytes(20_000);
+        a.setReceivedBytesPerSec(10_000);
+        SamplerStatistics b = stat("b", 100, 0, 100, 200, 50, 1.0);
+        b.setTotalReceivedBytes(200_000);
+        b.setTotalSentBytes(20_000);
+        b.setReceivedBytesPerSec(100_000);
+
+        OverallMetrics m = OverallMetrics.of(data(20_000, 4, a, b));
+
+        assertEquals(20_000.0, m.getReceivedBytesPerSec(), 1e-9);   // 400,000 B / 20 s, not 110,000
+        assertEquals(2_000.0, m.getSentBytesPerSec(), 1e-9);
+        assertEquals(10.0, m.getThroughput(), 1e-9);                // 200 / 20 s, not 5 + 50
+    }
+
+    @Test
     void theFiguresMatchWhatTheRendererUsedToComputeInline() {
         // Guards the extraction itself: these are the formulas that were in
         // ThymeleafReportRenderer, checked against an independent hand calculation.

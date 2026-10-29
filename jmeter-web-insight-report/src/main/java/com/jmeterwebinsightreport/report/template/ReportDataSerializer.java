@@ -479,12 +479,18 @@ public class ReportDataSerializer {
             overall.put("totalSamples", m.getTotalSamples());
             overall.put("errorRate", round2(m.getErrorRate()));
             overall.put("throughput", fullPrecision(m.getThroughput()));   // see samplers[] (R2-1)
+            // All bytes over the test duration: the Σ Total row's KB/s columns (B1), which used to
+            // add up the rows' own rates.
+            overall.put("receivedBytesPerSec", round2(m.getReceivedBytesPerSec()));
+            overall.put("sentBytesPerSec", round2(m.getSentBytesPerSec()));
             overall.put("apdex", m.getApdex());
             overall.put("duration", round2(m.getDurationSeconds()));
             overall.put("maxThreads", m.getMaxThreads());
             exact(exact, "mean", m.getMean());
             exact(exact, "errorRate", m.getErrorRate());
             exact(exact, "duration", m.getDurationSeconds());
+            exact(exact, "receivedBytesPerSec", m.getReceivedBytesPerSec());
+            exact(exact, "sentBytesPerSec", m.getSentBytesPerSec());
             if (!exact.isEmpty()) {
                 overall.put("exact", exact);
             }

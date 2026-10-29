@@ -1222,6 +1222,39 @@ function refreshAllCharts() {
     updateTotalRow();
 }
 
+/* The Σ Total row's figures (B1). JMeter's Aggregate Report computes its TOTAL row with a
+ * calculator of its own, fed every sample: the rate is all samples over the run's window, the
+ * mean is the mean of every sample. Adding up the rows' rates is right only when every sampler
+ * ran for the whole run (P17 read 41.69/s where JMeter's TOTAL is 11.31/s), and a mean of the
+ * rows' 2-decimal means is not the run's mean. So everything that is a figure of the whole run
+ * comes from chartData.overall — the numbers the Summary tiles show, from one resolver
+ * (OverallMetrics) — and only counts, min and max are taken from the rows, where summing or
+ * taking the extreme is exact. Transaction children are left out, as the overall block leaves
+ * them out: their time is already inside their parent. */
+function totalRowFigures(data, isChild) {
+    var f = { samples: 0, errors: 0, min: Infinity, max: 0 };
+    (data.samplers || []).forEach(function (s) {
+        if (isChild(s.name)) return;
+        var count = s.sampleCount || s.count || 0;
+        f.samples += count;
+        f.errors += s.errorCount || Math.round((s.errorRate || 0) * count / 100) || 0;
+        if ((s.min != null) && s.min < f.min) f.min = s.min;
+        if ((s.max || 0) > f.max) f.max = s.max;
+    });
+    if (f.min === Infinity) f.min = 0;
+    f.errorPct = f.samples > 0 ? (f.errors / f.samples * 100) : 0;
+    var o = data.overall || {};
+    f.mean = o.mean;
+    f.median = o.median;
+    f.p90 = o.p90;
+    f.p95 = o.p95;
+    f.p99 = o.p99;
+    f.throughput = o.throughput;
+    f.receivedKBs = o.receivedBytesPerSec != null ? o.receivedBytesPerSec / 1024.0 : null;
+    f.apdex = o.apdex;
+    return f;
+}
+
 function updateTotalRow() {
     var table = document.querySelector('#tab-samplers table');
     if (!table || !globalChartData) return;
@@ -1237,42 +1270,8 @@ function updateTotalRow() {
     var samplers = globalChartData.samplers;
     if (!samplers || samplers.length === 0) return;
 
-    var totalSamples = 0, totalErrors = 0, wMean = 0, wMedian = 0;
-    var wP90 = 0, wP95 = 0, wP99 = 0, minRT = Infinity, maxRT = 0;
-    var totalThroughput = 0, totalRecvKBs = 0, wApdex = 0;
-
-    samplers.forEach(function (s) {
-        /* Always skip transaction children in total — parents already aggregate them */
-        if (isTransactionChild(s.name)) return;
-        var count = s.sampleCount || s.count || 0;
-        totalSamples += count;
-        totalErrors += s.errorCount || Math.round((s.errorRate || 0) * count / 100) || 0;
-        wMean += (s.mean || 0) * count;
-        wMedian += (s.median || 0) * count;
-        wP90 += (s.p90 || 0) * count;
-        wP95 += (s.p95 || 0) * count;
-        wP99 += (s.p99 || 0) * count;
-        if ((s.min != null) && s.min < minRT) minRT = s.min;
-        if ((s.max || 0) > maxRT) maxRT = s.max;
-        totalThroughput += s.throughput || 0;
-        totalRecvKBs += (s.receivedBytesPerSec || 0) / 1024.0;
-        wApdex += (s.apdex || 0) * count;
-    });
-
-    var errorPct = totalSamples > 0 ? (totalErrors / totalSamples * 100) : 0;
-    if (totalSamples > 0) { wMean /= totalSamples; wMedian /= totalSamples; wP90 /= totalSamples; wP95 /= totalSamples; wP99 /= totalSamples; wApdex /= totalSamples; }
-    wApdex = Math.round(wApdex * 100) / 100;
-    if (minRT === Infinity) minRT = 0;
-
-    /* Prefer TRUE overall percentiles (merged distribution) over count-weighted averages of
-     * per-sampler percentiles, which understate the real global percentile (B11). */
-    var overall = globalChartData.overall;
-    if (overall) {
-        if (overall.median != null) wMedian = overall.median;
-        if (overall.p90 != null) wP90 = overall.p90;
-        if (overall.p95 != null) wP95 = overall.p95;
-        if (overall.p99 != null) wP99 = overall.p99;
-    }
+    var t = totalRowFigures(globalChartData, isTransactionChild);
+    var errorPct = t.errorPct;
 
     var fmt = function (v) { return v == null || isNaN(v) ? '0' : Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 }); };
 
@@ -1281,19 +1280,19 @@ function updateTotalRow() {
 
     var cells = [
         TOTAL_SAMPLER_NAME,
-        fmt(totalSamples),
-        fmt(totalErrors),
+        fmt(t.samples),
+        fmt(t.errors),
         errorPct.toFixed(2) + '%',
-        fmt(wMean),
-        fmt(wMedian),
-        fmt(wP90),
-        fmt(wP95),
-        fmt(wP99),
-        fmt(minRT),
-        fmt(maxRT),
-        fmt(totalThroughput) + '/s',
-        fmt(totalRecvKBs),
-        '__apdex__' + wApdex
+        fmt(t.mean),
+        fmt(t.median),
+        fmt(t.p90),
+        fmt(t.p95),
+        fmt(t.p99),
+        fmt(t.min),
+        fmt(t.max),
+        fmt(t.throughput) + '/s',
+        fmt(t.receivedKBs),
+        '__apdex__' + t.apdex
     ];
 
     /* Match column count of existing rows (may include extra action columns) */

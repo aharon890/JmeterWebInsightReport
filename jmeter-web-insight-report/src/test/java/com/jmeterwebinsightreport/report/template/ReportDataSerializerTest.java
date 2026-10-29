@@ -412,7 +412,8 @@ class ReportDataSerializerTest {
 
         assertNotNull(overall, "the overall block must exist whenever there are samplers");
         for (String key : new String[]{"median", "p90", "p95", "p99", "mean", "totalSamples",
-                "errorRate", "throughput", "apdex", "duration", "maxThreads"}) {
+                "errorRate", "throughput", "receivedBytesPerSec", "sentBytesPerSec", "apdex", "duration",
+                "maxThreads"}) {
             assertTrue(overall.has(key), "overall." + key + " is missing from the payload");
         }
     }
