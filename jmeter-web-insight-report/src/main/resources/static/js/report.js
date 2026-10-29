@@ -613,9 +613,9 @@ function aggregateTimeSeries(timestamps, values, granularityMs, opts) {
     var counts = opts.counts || null;
     var result = [];
     var bucketStart = null;
-    var sum = 0, wsum = 0, count = 0, maxv = -Infinity, firstTs = 0, lastTs = 0;
+    var sum = 0, wsum = 0, count = 0, maxv = -Infinity;
 
-    function flush(isFinal) {
+    function flush() {
         if (count === 0) return;
         var v;
         if (mode === 'max') {
@@ -625,13 +625,12 @@ function aggregateTimeSeries(timestamps, values, granularityMs, opts) {
         } else if (mode === 'rate') {
             /* Per-second rate over the whole bucket window, counting idle seconds.
              * Averaging only the seconds that had samples reports a bursty minute at
-             * its burst rate instead of its true average. The last bucket is usually
-             * partial, so divide it by the span it actually covers rather than by a
-             * full window — otherwise every chart ends in a spurious dip. */
-            var spanMs = isFinal
-                ? Math.min(granularityMs, lastTs - firstTs + 1000)
-                : granularityMs;
-            v = sum / Math.max(1, spanMs / 1000);
+             * its burst rate instead of its true average. Every window is divided by its
+             * full width, the last one too, as JMeter's charts (TimeRateAggregator) and
+             * Grafana's rate do (T3): a window the run only partly filled shows the dip it
+             * had. Dividing the last one by the seconds a series was active read a single
+             * request in a 10 s window as 1/s (campaign F14). */
+            v = sum / (granularityMs / 1000);
         } else {
             v = sum / count;
         }
@@ -642,9 +641,8 @@ function aggregateTimeSeries(timestamps, values, granularityMs, opts) {
         if (values[i] == null) continue;
         var key = Math.floor(timestamps[i] / granularityMs) * granularityMs;
         if (key !== bucketStart) {
-            flush(false);
+            flush();
             bucketStart = key;
-            firstTs = timestamps[i];
             sum = 0; wsum = 0; count = 0; maxv = -Infinity;
         }
         var val = values[i];
@@ -657,10 +655,9 @@ function aggregateTimeSeries(timestamps, values, granularityMs, opts) {
         } else {
             sum += val;
         }
-        lastTs = timestamps[i];
         count++;
     }
-    flush(true);
+    flush();
     return result;
 }
 

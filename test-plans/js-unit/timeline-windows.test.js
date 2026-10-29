@@ -54,6 +54,26 @@ test('T2: the axis opens at the first window when windows are coarser than 1 s',
     assert.strictEqual(scope.timelineXAxis().min, T0, 'at 1 s the first second, as before');
 });
 
+test('T3: one request in a 10 s window is 0.1 per second, not 1', () => {
+    // pilot-D's "Warmup Once": a single request. The last window used to be divided by the seconds
+    // the series was active, one, and read 1.0/s.
+    const scope = loadReportScope();
+    const ts = seconds(30);
+    const values = ts.map((t, i) => (i === 12 ? 1 : null));
+    const out = scope.aggregateTimeSeries(ts, values, 10000, { mode: 'rate' });
+    assert.strictEqual(out.length, 1);
+    assert.strictEqual(out[0][1], 0.1);
+});
+
+test('T3: every window is divided by its full width, so a partly filled one shows its dip', () => {
+    // 10 requests a second for 15 s from the start of a window: 10/s, then 50 over 10 s = 5/s, as
+    // JMeter's TimeRateAggregator draws it.
+    const scope = loadReportScope();
+    const ts = Array.from({ length: 15 }, (_, i) => 1700000000000 + i * 1000);
+    const out = scope.aggregateTimeSeries(ts, ts.map(() => 10), 10000, { mode: 'rate' });
+    assert.deepStrictEqual(Array.from(out, (p) => p[1]), [10, 5]);
+});
+
 // ---------------------------------------------------------------------------
 
 let failed = 0;
