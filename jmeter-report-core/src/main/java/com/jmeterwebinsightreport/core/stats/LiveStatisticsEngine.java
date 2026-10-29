@@ -264,13 +264,26 @@ public class LiveStatisticsEngine {
     }
 
     /**
-     * Get recorded errors.
+     * Get recorded errors, in time order: by when the sample started, then by sampler and thread.
+     *
+     * <p>They are kept in the order they arrived, which is when each sample finished, and the
+     * listener and the results file do not see concurrent samples finish in the same order. Two
+     * reports of one run listed the same errors in a different order (S36: 22 of 500 positions,
+     * campaign F17, E4). Sorted, they read alike, and a "by time" list is in time order.
      */
     public List<ErrorRecord> getErrorRecords() {
+        List<ErrorRecord> copy;
         synchronized (errorRecords) {
-            return new ArrayList<>(errorRecords);
+            copy = new ArrayList<>(errorRecords);
         }
+        copy.sort(ERROR_RECORD_ORDER);
+        return copy;
     }
+
+    private static final Comparator<ErrorRecord> ERROR_RECORD_ORDER =
+            Comparator.comparingLong(ErrorRecord::getTimestamp)
+                    .thenComparing(ErrorRecord::getSamplerName, Comparator.nullsFirst(Comparator.naturalOrder()))
+                    .thenComparing(ErrorRecord::getThreadName, Comparator.nullsFirst(Comparator.naturalOrder()));
 
     /**
      * True when the number of errors exceeded the detailed-record cap, i.e. the detailed

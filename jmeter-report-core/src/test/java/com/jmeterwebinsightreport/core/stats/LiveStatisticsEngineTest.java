@@ -559,6 +559,23 @@ class LiveStatisticsEngineTest {
     }
 
     @Test
+    void errorRecordsAreListedByStartThenSamplerThenThread() {
+        // E4: records arrive as samples finish, which the listener and the results file do not see in
+        // one order. Listed by start, then sampler, then thread, two builds of one run read alike.
+        long ts = 1700000000000L;
+        engine.recordError("B", "500", "x", ts + 5, "T 1-2");
+        engine.recordError("B", "500", "x", ts + 5, "T 1-1");
+        engine.recordError("A", "500", "x", ts + 5, "T 1-9");
+        engine.recordError("C", "503", "y", ts, "T 1-3");
+
+        List<String> order = new java.util.ArrayList<>();
+        for (ErrorRecord r : engine.getErrorRecords()) {
+            order.add(r.getSamplerName() + "/" + r.getThreadName());
+        }
+        assertEquals(List.of("C/T 1-3", "A/T 1-9", "B/T 1-1", "B/T 1-2"), order);
+    }
+
+    @Test
     void aSampleThatEndsAfterItsElapsedTimeIsWindowedToItsEnd() {
         // B7: a Transaction Controller's parent sample with "include timers" off. Its elapsed time is
         // its children's 200 ms; it really ran 1 s, the rest think time. Two of them back to back
