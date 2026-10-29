@@ -38,10 +38,10 @@ async function visibleDataRowCount(page: Page): Promise<number> {
 // ---------------------------------------------------------------------------
 
 test.describe('Samplers Tab — Table defaults', () => {
-  test('14 column headers present and all visible', async ({ page }) => {
+  test('15 column headers present and all visible', async ({ page }) => {
     await goSamplers(page);
     const headers = await visibleHeaders(page);
-    expect(headers.length).toBe(14);
+    expect(headers.length).toBe(15);   // the Aggregate Report's columns, Sent KB/s included (B8), plus Apdex
     for (const name of EXPECTED_HEADERS) {
       expect(headers).toContain(name);
     }
@@ -176,7 +176,7 @@ test.describe('Samplers Tab — Search CRUD', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('Samplers Tab — Column hide/show CRUD', () => {
-  test('Columns button opens menu with 14 checked checkboxes', async ({ page }) => {
+  test('Columns button opens menu with 15 checked checkboxes', async ({ page }) => {
     await goSamplers(page);
 
     const columnsBtn = page.locator('#columnMenuBtn');
@@ -187,10 +187,10 @@ test.describe('Samplers Tab — Column hide/show CRUD', () => {
     await expect(menu).toHaveClass(/open/);
 
     const checkboxes = menu.locator('input[type="checkbox"]');
-    expect(await checkboxes.count()).toBe(14);
+    expect(await checkboxes.count()).toBe(15);
 
     // All should be checked initially
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < 15; i++) {
       await expect(checkboxes.nth(i)).toBeChecked();
     }
   });
@@ -204,18 +204,18 @@ test.describe('Samplers Tab — Column hide/show CRUD', () => {
     const minLabel = menu.locator('label', { hasText: 'Min (ms)' });
     const maxLabel = menu.locator('label', { hasText: 'Max (ms)' });
 
-    // Uncheck Min — should go from 14 to 13 visible headers
+    // Uncheck Min — should go from 15 to 14 visible headers
     await minLabel.locator('input').uncheck();
     await page.waitForTimeout(200);
     let headers = await visibleHeaders(page);
-    expect(headers.length).toBe(13);
+    expect(headers.length).toBe(14);
     expect(headers).not.toContain('Min (ms)');
 
-    // Uncheck Max — should go to 12
+    // Uncheck Max — should go to 13
     await maxLabel.locator('input').uncheck();
     await page.waitForTimeout(200);
     headers = await visibleHeaders(page);
-    expect(headers.length).toBe(12);
+    expect(headers.length).toBe(13);
     expect(headers).not.toContain('Max (ms)');
 
     // Verify data rows also lost the columns
@@ -224,20 +224,20 @@ test.describe('Samplers Tab — Column hide/show CRUD', () => {
     ).first().locator('td').evaluateAll(
       (cells: HTMLTableCellElement[]) => cells.filter(c => c.style.display !== 'none').length
     );
-    expect(firstDataCells).toBe(12);
+    expect(firstDataCells).toBe(13);
 
-    // Re-check Min — back to 13
+    // Re-check Min — back to 14
     await minLabel.locator('input').check();
     await page.waitForTimeout(200);
     headers = await visibleHeaders(page);
-    expect(headers.length).toBe(13);
+    expect(headers.length).toBe(14);
     expect(headers).toContain('Min (ms)');
 
-    // Re-check Max — back to 14
+    // Re-check Max — back to 15
     await maxLabel.locator('input').check();
     await page.waitForTimeout(200);
     headers = await visibleHeaders(page);
-    expect(headers.length).toBe(14);
+    expect(headers.length).toBe(15);
     expect(headers).toContain('Max (ms)');
   });
 });

@@ -8,11 +8,12 @@ import { loadClean } from './helpers';
  * Collapsing those into a coarser granularity, or combining them across samplers
  * into the Σ Total line, has to respect what each metric means:
  *
- *   - rates (throughput, bytes)  → total over the bucket's wall-clock span
+ *   - rates (throughput, bytes)  → total over the bucket's full window, the last one too (T3)
  *   - averages and percentiles   → weighted by each second's sample count
  *   - max                        → a maximum, never an average
  *
- * These drive the pure functions directly so the assertions are exact.
+ * These drive the pure functions directly so the assertions are exact. Windows sit on the clock's
+ * grid, multiples of the granularity from the epoch (T2), so the rate tests start on a minute.
  */
 
 /** One-second timestamps starting at t0. */
@@ -48,7 +49,7 @@ test.describe('aggregateTimeSeries — metric-aware bucketing', () => {
     // trailing partial bucket.
     const value = await page.evaluate(() => {
       const w = window as any;
-      const t0 = 1700000000000;
+      const t0 = 1699999980000;   // on a minute, so the first window is these 60 seconds
       const activeSeconds = [0, 10, 20, 30, 40, 50];
       const timestamps = activeSeconds.map((s) => t0 + s * 1000);
       const throughputs = activeSeconds.map(() => 10);
@@ -63,14 +64,15 @@ test.describe('aggregateTimeSeries — metric-aware bucketing', () => {
     expect(value).toBeCloseTo(1, 6);
   });
 
-  test('[R] a trailing partial bucket is not divided by a full window', async ({ page }) => {
+  test('[R] a trailing partial bucket is divided by its full window, as JMeter\'s charts divide it (T3)', async ({ page }) => {
     await loadClean(page, 'E02');
 
-    // Two full minutes at 10 rps plus a 10-second tail at 10 rps. The tail must
-    // still read ~10 rps, not 10/6 — otherwise every chart ends in a fake dip.
+    // Two full minutes at 10 rps plus a 10-second tail at 10 rps. JMeter's TimeRateAggregator divides
+    // every window by its width, so the tail reads 100 / 60 and the chart ends in the dip the run had.
+    // This test used to pin the opposite (the tail divided by the 10 s it covered).
     const values = await page.evaluate(() => {
       const w = window as any;
-      const t0 = 1700000000000;
+      const t0 = 1699999980000;
       const timestamps: number[] = [];
       const throughputs: number[] = [];
       for (let s = 0; s < 130; s++) { timestamps.push(t0 + s * 1000); throughputs.push(10); }
@@ -80,17 +82,19 @@ test.describe('aggregateTimeSeries — metric-aware bucketing', () => {
     });
 
     expect(values.length).toBe(3);
-    values.forEach((v) => expect(v).toBeCloseTo(10, 6));
+    expect(values[0]).toBeCloseTo(10, 6);
+    expect(values[1]).toBeCloseTo(10, 6);
+    expect(values[2]).toBeCloseTo(100 / 60, 6);
   });
 
-  test('[R] the trailing bucket is measured over the span it actually covers', async ({ page }) => {
+  test('[R] a single request in its window reads one per window, not one per second (T3)', async ({ page }) => {
     await loadClean(page, 'E02');
 
-    // A run that stops 6 seconds into its last minute really did sustain 10 rps
-    // for those 6 seconds — dividing by a full 60 s window would understate it.
+    // A run that stops 6 seconds into its last minute: that minute held 60 requests, 1 rps over the
+    // window, as JMeter draws it. (pilot-D's one "Warmup Once" request read 1.0/s in a 10 s window.)
     const values = await page.evaluate(() => {
       const w = window as any;
-      const t0 = 1700000000000;
+      const t0 = 1699999980000;
       const timestamps: number[] = [];
       const throughputs: number[] = [];
       for (let s = 0; s < 66; s++) { timestamps.push(t0 + s * 1000); throughputs.push(10); }
@@ -100,7 +104,7 @@ test.describe('aggregateTimeSeries — metric-aware bucketing', () => {
 
     expect(values.length).toBe(2);
     expect(values[0]).toBeCloseTo(10, 6);
-    expect(values[1]).toBeCloseTo(10, 6);
+    expect(values[1]).toBeCloseTo(1, 6);
   });
 
   test('[R] max takes the maximum, never an average of maxima', async ({ page }) => {
