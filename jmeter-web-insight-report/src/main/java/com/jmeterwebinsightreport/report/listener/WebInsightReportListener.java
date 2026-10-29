@@ -480,6 +480,11 @@ public class WebInsightReportListener extends ResultCollector {
         // end (S46: duration 3 m 10 s against JMeter's 3 m 4 s, B3). JMeter's Aggregate Report
         // reads getStartTime() too. A result that never set one keeps its time stamp.
         long start = result.getStartTime() > 0 ? result.getStartTime() : result.getTimeStamp();
+        // And its real end: a Transaction Controller's parent sample with "include timers" off
+        // counts only its children's time as elapsed and its pauses as idle time, and still ends
+        // after them. Its row's throughput window stopped at start + elapsed (P11: 0.86/s on the
+        // transaction row, 0.76/s on the Summary tile for the same 50 transactions, B7).
+        long end = Math.max(result.getEndTime(), start + Math.max(0, result.getTime()));
         statsEngine.recordSample(
                 result.getSampleLabel(),
                 result.getTime(),
@@ -487,6 +492,7 @@ public class WebInsightReportListener extends ResultCollector {
                 result.getBytesAsLong(),
                 result.getSentBytes(),
                 start,
+                end,
                 result.getConnectTime(),
                 result.getLatency()
         );

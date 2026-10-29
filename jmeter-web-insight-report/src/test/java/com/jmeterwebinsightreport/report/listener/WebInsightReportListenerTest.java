@@ -242,6 +242,34 @@ class WebInsightReportListenerTest {
     }
 
     @Test
+    void aTransactionThatExcludesItsTimersIsWindowedToItsRealEnd() throws Exception {
+        // B7: TransactionSampler with "include timers" off sets idle = end - start - children's time
+        // and then the end, so getTime() is 200 ms and getEndTime() a second after the start. Two
+        // back to back ran 2 s; the row's window stopped at start + elapsed (P11: 0.86/s on the row
+        // against 0.76/s on the tile for the same 50 transactions).
+        WebInsightReportListener listener = new WebInsightReportListener();
+        com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine engine =
+                new com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine();
+        Field f = WebInsightReportListener.class.getDeclaredField("statsEngine");
+        f.setAccessible(true);
+        f.set(listener, engine);
+
+        for (long start : new long[]{1_700_000_000_000L, 1_700_000_001_000L}) {
+            SampleResult tx = SampleResult.createTestSample(start, start + 1000);
+            tx.setIdleTime(800);
+            tx.setEndTime(start + 1000);
+            tx.setSampleLabel("Checkout");
+            tx.setSuccessful(true);
+            assertEquals(200, tx.getTime());
+            listener.sampleOccurred(new SampleEvent(tx, "Thread Group"));
+        }
+
+        com.jmeterwebinsightreport.core.model.ReportData data = engine.buildReportData("t");
+        assertEquals(1.0, data.getSamplerStatistics().get(0).getThroughput(), 1e-9);
+        assertEquals(2000, data.getMetadata().getDurationMillis());
+    }
+
+    @Test
     void aSampleIsRecordedAtItsStartWhateverItsTimeStampSays() throws Exception {
         // B3: with sampleresult.timestamp.start=false a SampleResult's time stamp is its END. The report
         // placed and windowed every sample by it (S46: 3 m 10 s where JMeter's Aggregate Report says 3 m 4 s).

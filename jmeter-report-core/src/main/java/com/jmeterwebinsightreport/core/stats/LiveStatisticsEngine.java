@@ -80,11 +80,24 @@ public class LiveStatisticsEngine {
     public void recordSample(String samplerName, long responseTime, boolean isSuccess,
                              long bytesReceived, long bytesSent, long timestamp,
                              long connectTime, long latency) {
+        recordSample(samplerName, responseTime, isSuccess, bytesReceived, bytesSent, timestamp,
+                timestamp + Math.max(0, responseTime), connectTime, latency);
+    }
+
+    /**
+     * Record a single sample result that ended at {@code endTime}. That is
+     * {@code timestamp + responseTime} for every sample but one kind: a Transaction Controller's
+     * parent sample with "include timers" off, whose elapsed time is its children's and whose
+     * pauses are its idle time. It ends after them, and the throughput windows end there (B7).
+     */
+    public void recordSample(String samplerName, long responseTime, boolean isSuccess,
+                             long bytesReceived, long bytesSent, long timestamp, long endTime,
+                             long connectTime, long latency) {
         // Per-sampler aggregation
         // The aggregator counts Apdex buckets as samples arrive, so it needs the threshold now.
         // setApdexThreshold is always called during setup, before any sample is recorded.
         aggregators.computeIfAbsent(samplerName, k -> new SamplerAggregator(k, apdexThreshold))
-                .addSample(responseTime, isSuccess, bytesReceived, bytesSent, timestamp,
+                .addSample(responseTime, isSuccess, bytesReceived, bytesSent, timestamp, endTime,
                         connectTime, latency);
 
         // Time-series bucketing (1-second granularity)
@@ -100,7 +113,7 @@ public class LiveStatisticsEngine {
         }
         updateMinLong(firstTimestamp, timestamp);
         updateMaxLong(lastTimestamp, timestamp);
-        updateMaxLong(lastSampleEnd, timestamp + Math.max(0, responseTime));
+        updateMaxLong(lastSampleEnd, endTime);
     }
 
     /**

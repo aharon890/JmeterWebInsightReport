@@ -64,6 +64,19 @@ class SamplerAggregator {
     synchronized void addSample(long responseTime, boolean isSuccess,
                                  long bytesReceived, long bytesSent, long timestamp,
                                  long connectTime, long latency) {
+        addSample(responseTime, isSuccess, bytesReceived, bytesSent, timestamp,
+                timestamp + Math.max(0, responseTime), connectTime, latency);
+    }
+
+    /**
+     * @param endTime when the sample really ended. Usually {@code timestamp + responseTime}, but a
+     *        Transaction Controller's parent sample excludes its timers from its elapsed time and
+     *        still ends after them (B7): its window has to reach that end, as JMeter's Aggregate
+     *        Report reaches {@code getEndTime()}.
+     */
+    synchronized void addSample(long responseTime, boolean isSuccess,
+                                 long bytesReceived, long bytesSent, long timestamp, long endTime,
+                                 long connectTime, long latency) {
         sampleCount++;
         if (!isSuccess) {
             errorCount++;
@@ -78,7 +91,7 @@ class SamplerAggregator {
         sumBytesSent += bytesSent;
         firstTimestamp = Math.min(firstTimestamp, timestamp);
         lastTimestamp = Math.max(lastTimestamp, timestamp);
-        lastSampleEnd = Math.max(lastSampleEnd, timestamp + Math.max(0, responseTime));
+        lastSampleEnd = Math.max(lastSampleEnd, endTime);
         percentileCalculator.addValue(responseTime);
         if (isSuccess) {
             successPercentileCalculator.addValue(responseTime);

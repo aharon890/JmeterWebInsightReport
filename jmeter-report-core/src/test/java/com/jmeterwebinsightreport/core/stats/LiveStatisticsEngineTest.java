@@ -559,6 +559,21 @@ class LiveStatisticsEngineTest {
     }
 
     @Test
+    void aSampleThatEndsAfterItsElapsedTimeIsWindowedToItsEnd() {
+        // B7: a Transaction Controller's parent sample with "include timers" off. Its elapsed time is
+        // its children's 200 ms; it really ran 1 s, the rest think time. Two of them back to back
+        // ran 2 s, so 1/s, where windowing to start + elapsed read 2 over 1.2 s.
+        long ts = 1700000000000L;
+        engine.recordSample("Checkout", 200, true, 10, 10, ts, ts + 1000, -1, -1);
+        engine.recordSample("Checkout", 200, true, 10, 10, ts + 1000, ts + 2000, -1, -1);
+
+        ReportData data = engine.buildReportData("t");
+        assertEquals(1.0, findSampler(data, "Checkout").getThroughput(), 1e-9);
+        assertEquals(2000, data.getMetadata().getDurationMillis());
+        assertEquals(200.0, findSampler(data, "Checkout").getMeanResponseTime(), 1e-9, "the elapsed time is untouched");
+    }
+
+    @Test
     void apdex_wholeRunIsComputedFromTheCountsAndRoundedOnce() {
         // "slow": 3 frustrated, scores 0.00. "mixed": 2 satisfied + 1 frustrated, 0.6667, shown
         // as 0.67. The mean of the shown scores is (0 * 3 + 0.67 * 3) / 6 = 0.335, which a second
