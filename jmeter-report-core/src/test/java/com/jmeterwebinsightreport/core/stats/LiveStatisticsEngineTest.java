@@ -559,6 +559,33 @@ class LiveStatisticsEngineTest {
     }
 
     @Test
+    void aBusySecondsPercentilesAndHistogramCountEverySample() {
+        // T6: 300 requests in one second of one sampler. The second used to keep a random 128 of
+        // them, so its percentiles and heatmap cells moved between two builds of one file. Now
+        // they are the Samplers table's rule over all 300, and the bins are true counts.
+        long ts = 1700000000000L;
+        LiveStatisticsEngine again = new LiveStatisticsEngine();
+        for (int i = 0; i < 300; i++) {
+            long rt = i < 200 ? 10 + i % 40 : (i < 297 ? 300 + i : 6000);   // 200 fast, 97 at 500-596, 3 at 6 s
+            engine.recordSample("Busy", rt, true, 10, 10, ts + i, 1, 1);
+            again.recordSample("Busy", rt, true, 10, 10, ts + 299 - i, 1, 1);
+        }
+
+        TimeSeriesBucket.SamplerBucketData second =
+                engine.buildReportData("t").getTimeSeries().get(0).getPerSamplerData().get("Busy");
+        assertEquals(39, second.getP50(), 0.0);    // rank 150 of 300: the 30th fast value, 10 + 29
+        assertEquals(569, second.getP90(), 0.0);   // rank round(300 * 0.9f) = 270: 300 + 269
+        assertEquals(584, second.getP95(), 0.0);   // rank 285: 300 + 284
+        assertEquals(596, second.getP99(), 0.0);   // rank round(297.0000029) = 297: the last before the 6 s ones
+        assertArrayEquals(new int[]{200, 0, 0, 0, 97, 0, 0, 3}, second.getHistogramBins());
+
+        TimeSeriesBucket.SamplerBucketData other =
+                again.buildReportData("t").getTimeSeries().get(0).getPerSamplerData().get("Busy");
+        assertEquals(second.getP90(), other.getP90(), 0.0, "fed in another order, the same second");
+        assertArrayEquals(second.getHistogramBins(), other.getHistogramBins());
+    }
+
+    @Test
     void errorRecordsAreListedByStartThenSamplerThenThread() {
         // E4: records arrive as samples finish, which the listener and the results file do not see in
         // one order. Listed by start, then sampler, then thread, two builds of one run read alike.

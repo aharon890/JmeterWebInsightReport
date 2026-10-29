@@ -25,8 +25,8 @@ class ChartDataBuilderTest {
         SamplerBucketData sd = new SamplerBucketData();
         sd.setMeanResponseTime(meanResponseTime);
         sd.setSampleCount(sampleCount);
-        // Distribution is now built from the per-bucket histogram bins (populated from the reservoir
-        // in production), not from binning the mean. Place all samples in the bin for the mean.
+        // Distribution is built from the per-bucket histogram bins (the second's true counts in
+        // production), not from binning the mean. Place all samples in the bin for the mean.
         sd.setHistogramBins(binsForValue(meanResponseTime, (int) sampleCount));
 
         Map<String, SamplerBucketData> perSampler = new LinkedHashMap<>();
@@ -207,25 +207,28 @@ class ChartDataBuilderTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void buildResponseTimeDistribution_scalesReservoirToTrueCount() {
-        // C22/A5: reservoir bins (bounded sample) are scaled up to the bucket's true sample count.
+    void buildResponseTimeDistribution_sumsTheSecondsTrueCountsAsTheyAre() {
+        // T6: a second's bins count every sample of it (they were a 128-value reservoir, scaled up to
+        // the second's count), so the distribution is their plain sum, and two seconds add exactly.
         String sampler = "GET /api/hot";
-        TimeSeriesBucket bucket = new TimeSeriesBucket();
-        bucket.setTimestamp(Instant.now());
-        SamplerBucketData sd = new SamplerBucketData();
-        sd.setSampleCount(1000);          // true volume
-        int[] bins = new int[8];
-        bins[2] = 100;                    // reservoir of 100 samples, all in 100-200
-        sd.setHistogramBins(bins);
-        Map<String, SamplerBucketData> perSamplerMap = new LinkedHashMap<>();
-        perSamplerMap.put(sampler, sd);
-        bucket.setPerSamplerData(perSamplerMap);
+        List<TimeSeriesBucket> seconds = new java.util.ArrayList<>();
+        int[][] binsPerSecond = {{0, 0, 700, 0, 0, 0, 0, 3}, {1, 0, 299, 0, 0, 0, 0, 0}};
+        for (int[] bins : binsPerSecond) {
+            TimeSeriesBucket bucket = new TimeSeriesBucket();
+            bucket.setTimestamp(Instant.now());
+            SamplerBucketData sd = new SamplerBucketData();
+            sd.setSampleCount(java.util.Arrays.stream(bins).sum());
+            sd.setHistogramBins(bins);
+            Map<String, SamplerBucketData> perSamplerMap = new LinkedHashMap<>();
+            perSamplerMap.put(sampler, sd);
+            bucket.setPerSamplerData(perSamplerMap);
+            seconds.add(bucket);
+        }
 
         Map<String, Object> result = ChartDataBuilder.buildResponseTimeDistribution(
-                Collections.singletonList(bucket),
-                new LinkedHashSet<>(Collections.singletonList(sampler)));
+                seconds, new LinkedHashSet<>(Collections.singletonList(sampler)));
         List<Integer> out = ((Map<String, List<Integer>>) result.get("perSampler")).get(sampler);
-        assertEquals(1000, out.get(2), "reservoir bins scaled to true sample count");
+        assertEquals(java.util.Arrays.asList(1, 0, 999, 0, 0, 0, 0, 3), out);
     }
 
     // --- buildHeatmapData tests ---

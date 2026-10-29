@@ -2,16 +2,18 @@ package com.jmeterwebinsightreport.core.stats;
 
 import com.jmeterwebinsightreport.core.model.TimeSeriesBucket;
 
-import java.util.Arrays;
-import java.util.concurrent.ThreadLocalRandom;
-
 /**
  * Accumulates per-sampler data within a single time bucket.
- * Uses reservoir sampling (max 128 values) to bound memory while providing
- * approximate percentiles for 1-second time windows.
+ *
+ * <p>Every response time of the second is kept as an exact count per millisecond
+ * ({@link ResponseTimeDistribution}), so the second's percentiles are the Samplers table's rule
+ * applied to that second and its histogram bins are true counts. It used to keep a random 128 of
+ * them: above 128 requests per second the percentiles and the heatmap cells changed from one
+ * build of a file to the next (S11 "Browse Catalog", up to 166/s: 651 of 1,204 per-second
+ * P50-P99 values equal between two builds; T6, campaign F16). One second of one sampler holds a
+ * handful of distinct values, fewer than the 128 the reservoir always allocated.
  */
 class SamplerBucketAccumulator {
-    private static final int RESERVOIR_SIZE = 128;
 
     private long sampleCount;
     private long errorCount;
@@ -23,8 +25,7 @@ class SamplerBucketAccumulator {
     private boolean hasConnectTime;
     private boolean hasLatency;
     private long maxResponseTime = Long.MIN_VALUE;
-    private final long[] reservoir = new long[RESERVOIR_SIZE];
-    private int reservoirCount;
+    private final ResponseTimeDistribution responseTimes = new ResponseTimeDistribution();
 
     void add(long responseTime, boolean isSuccess, long receivedBytes, long sentBytes,
              long connectTime, long latency) {
@@ -37,16 +38,7 @@ class SamplerBucketAccumulator {
             maxResponseTime = responseTime;
         }
 
-        // Reservoir sampling: keep first RESERVOIR_SIZE values directly,
-        // then replace with decreasing probability
-        if (reservoirCount < RESERVOIR_SIZE) {
-            reservoir[reservoirCount++] = responseTime;
-        } else {
-            long j = ThreadLocalRandom.current().nextLong(sampleCount);
-            if (j < RESERVOIR_SIZE) {
-                reservoir[(int) j] = responseTime;
-            }
-        }
+        responseTimes.add(responseTime);
 
         if (connectTime >= 0) {
             sumConnectTime += connectTime;
@@ -74,38 +66,25 @@ class SamplerBucketAccumulator {
             data.setLatency((double) sumLatency / sampleCount);
         }
 
-        // Compute percentiles and histogram from reservoir sample
-        if (reservoirCount > 0) {
-            long[] sorted = Arrays.copyOf(reservoir, reservoirCount);
-            Arrays.sort(sorted);
-            data.setP50(percentile(sorted, 50));
-            data.setP90(percentile(sorted, 90));
-            data.setP95(percentile(sorted, 95));
-            data.setP99(percentile(sorted, 99));
+        // The second's percentiles, by the Samplers table's rule, and its histogram, in true counts
+        if (responseTimes.getCount() > 0) {
+            data.setP50(responseTimes.getPercentile(50));
+            data.setP90(responseTimes.getPercentile(90));
+            data.setP95(responseTimes.getPercentile(95));
+            data.setP99(responseTimes.getPercentile(99));
             data.setMax(maxResponseTime);
 
             // Histogram bins: [0-50, 50-100, 100-200, 200-500, 500-1000, 1000-2000, 2000-5000, 5000+]
             long[] boundaries = TimeSeriesBucket.SamplerBucketData.BIN_BOUNDARIES;
             int[] bins = new int[boundaries.length + 1];
-            for (int i = 0; i < reservoirCount; i++) {
-                long v = reservoir[i];
-                int binIdx = boundaries.length; // default: last bin (5000+)
-                for (int b = 0; b < boundaries.length; b++) {
-                    if (v < boundaries[b]) { binIdx = b; break; }
-                }
-                bins[binIdx]++;
+            long from = Long.MIN_VALUE;
+            for (int b = 0; b < boundaries.length; b++) {
+                bins[b] = (int) responseTimes.countBetween(from, boundaries[b]);
+                from = boundaries[b];
             }
+            bins[boundaries.length] = (int) responseTimes.countBetween(from, Long.MAX_VALUE);
             data.setHistogramBins(bins);
         }
         return data;
-    }
-
-    private static double percentile(long[] sorted, int p) {
-        if (sorted.length == 0) return 0;
-        double rank = (p / 100.0) * (sorted.length - 1);
-        int lower = (int) Math.floor(rank);
-        int upper = Math.min(lower + 1, sorted.length - 1);
-        double frac = rank - lower;
-        return sorted[lower] * (1 - frac) + sorted[upper] * frac;
     }
 }
