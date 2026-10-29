@@ -475,13 +475,18 @@ public class WebInsightReportListener extends ResultCollector {
      * Transaction Controllers with parent=true wrap child samples as sub-results.
      */
     private void processSampleResult(LiveStatisticsEngine statsEngine, SampleResult result) {
+        // The sample's start, whatever sampleresult.timestamp.start says: getTimeStamp() is its
+        // END when that property is false, and every sample was then placed and windowed by its
+        // end (S46: duration 3 m 10 s against JMeter's 3 m 4 s, B3). JMeter's Aggregate Report
+        // reads getStartTime() too. A result that never set one keeps its time stamp.
+        long start = result.getStartTime() > 0 ? result.getStartTime() : result.getTimeStamp();
         statsEngine.recordSample(
                 result.getSampleLabel(),
                 result.getTime(),
                 result.isSuccessful(),
                 result.getBytesAsLong(),
                 result.getSentBytes(),
-                result.getTimeStamp(),
+                start,
                 result.getConnectTime(),
                 result.getLatency()
         );
@@ -491,7 +496,7 @@ public class WebInsightReportListener extends ResultCollector {
         if (activeThreads <= 0) {
             activeThreads = result.getGroupThreads();
         }
-        statsEngine.updateActiveThreads(activeThreads, result.getTimeStamp());
+        statsEngine.updateActiveThreads(activeThreads, start);
 
         // Record error details with URL and response body
         if (!result.isSuccessful()) {
@@ -507,7 +512,7 @@ public class WebInsightReportListener extends ResultCollector {
                     result.getSampleLabel(),
                     result.getResponseCode(),
                     result.getResponseMessage(),
-                    result.getTimeStamp(),
+                    start,
                     result.getThreadName(),
                     url,
                     null,

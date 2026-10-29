@@ -240,4 +240,28 @@ class WebInsightReportListenerTest {
         assertNotNull(last);
         assertEquals(new File(thisRun).getAbsoluteFile(), last.jtl(), "the JTL the run wrote, not a fresh evaluation");
     }
+
+    @Test
+    void aSampleIsRecordedAtItsStartWhateverItsTimeStampSays() throws Exception {
+        // B3: with sampleresult.timestamp.start=false a SampleResult's time stamp is its END. The report
+        // placed and windowed every sample by it (S46: 3 m 10 s where JMeter's Aggregate Report says 3 m 4 s).
+        WebInsightReportListener listener = new WebInsightReportListener();
+        com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine engine =
+                new com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine();
+        Field f = WebInsightReportListener.class.getDeclaredField("statsEngine");
+        f.setAccessible(true);
+        f.set(listener, engine);
+
+        SampleResult result = SampleResult.createTestSample(1_700_000_000_000L, 1_700_000_001_000L);
+        result.setSampleLabel("GET /checkout");
+        result.setSuccessful(false);
+        result.setTimeStamp(1_700_000_001_000L);   // stamped at its end
+        listener.sampleOccurred(new SampleEvent(result, "Thread Group"));
+
+        com.jmeterwebinsightreport.core.model.ReportData data = engine.buildReportData("t");
+        assertEquals(1_700_000_000_000L, data.getMetadata().getStartTime().toEpochMilli());
+        assertEquals(1000, data.getMetadata().getDurationMillis());
+        assertEquals(1_700_000_000_000L, data.getTimeSeries().get(0).getTimestamp().toEpochMilli());
+        assertEquals(1_700_000_000_000L, data.getErrorRecords().get(0).getTimestamp());
+    }
 }

@@ -485,4 +485,34 @@ class JtlParserTest {
         assertEquals(2, data.getMetadata().getTotalSamples());
         assertEquals(2, data.getSamplerStatistics().size());
     }
+
+    @Test
+    void endStampedRowsArePlacedAtTheirStart() throws IOException {
+        // sampleresult.timestamp.start=false: each row's timeStamp is its END (B3). A: 1,000 ms ending at
+        // ...001000 (started ...000000) and 500 ms ending at ...003000 (started ...002500).
+        File jtl = writeJtl("end-stamped.jtl", HEADER + "\n"
+                + "1700000001000,1000,A,200,OK,T 1-1,text,true,,100,10,1,1,http://x/a,900,0,5\n"
+                + "1700000003000,500,A,200,OK,T 1-1,text,true,,100,10,1,1,http://x/a,400,0,5\n");
+
+        JtlParser parser = new JtlParser();
+        parser.setTimestampIsStart(false);
+        ReportData data = parser.parse(jtl, "end-stamped");
+
+        assertEquals(1700000000000L, data.getMetadata().getStartTime().toEpochMilli(), "the first start");
+        assertEquals(3000, data.getMetadata().getDurationMillis(), "first start to last end, as JMeter reads the file");
+        assertEquals(2 / 3.0, findSampler(data, "A").getThroughput(), 1e-9);
+        assertEquals(1700000000000L, data.getTimeSeries().get(0).getTimestamp().toEpochMilli(), "bucketed by start");
+    }
+
+    @Test
+    void startStampedRowsAreReadAsTheyAlwaysWere() throws IOException {
+        File jtl = writeJtl("start-stamped.jtl", HEADER + "\n"
+                + "1700000001000,1000,A,200,OK,T 1-1,text,true,,100,10,1,1,http://x/a,900,0,5\n"
+                + "1700000003000,500,A,200,OK,T 1-1,text,true,,100,10,1,1,http://x/a,400,0,5\n");
+
+        ReportData data = new JtlParser().parse(jtl, "start-stamped");
+
+        assertEquals(1700000001000L, data.getMetadata().getStartTime().toEpochMilli());
+        assertEquals(2500, data.getMetadata().getDurationMillis());
+    }
 }

@@ -41,6 +41,12 @@ public class JtlParser {
 
     private long rampUpDurationMillis;
     private double apdexThreshold = 500;
+    /** {@code sampleresult.timestamp.start}: whether the file's timeStamp is when a sample started
+     *  (JMeter's shipped setting) or when it ended. JMeter itself reads the file with this setting
+     *  ({@code SampleResult.stampAndTime}: start = timeStamp - elapsed when false); reading every
+     *  timeStamp as a start shifted each sample by its own elapsed time and stretched the run's
+     *  window (S46: 3 m 10 s against 3 m 4 s, B3). */
+    private boolean timestampIsStart = true;
 
     public void setRampUpDurationMillis(long rampUpDurationMillis) {
         this.rampUpDurationMillis = rampUpDurationMillis;
@@ -48,6 +54,10 @@ public class JtlParser {
 
     public void setApdexThreshold(double apdexThreshold) {
         this.apdexThreshold = apdexThreshold;
+    }
+
+    public void setTimestampIsStart(boolean timestampIsStart) {
+        this.timestampIsStart = timestampIsStart;
     }
 
     /**
@@ -111,8 +121,8 @@ public class JtlParser {
                 recordNum += physicalLines.size();
                 if (record.trim().isEmpty()) continue;
 
-                if (consume(engine, record, expectedColumns, colTimestamp, colElapsed, colLabel,
-                        colCode, colSuccess, colBytes, colSentBytes, colConnect, colLatency,
+                if (consume(engine, record, timestampIsStart, expectedColumns, colTimestamp, colElapsed,
+                        colLabel, colCode, colSuccess, colBytes, colSentBytes, colConnect, colLatency,
                         colThreads, colMessage, colThread, colUrl)) {
                     recordsParsed++;
                     continue;
@@ -128,9 +138,10 @@ public class JtlParser {
                 if (physicalLines.size() > 1) {
                     for (String physical : physicalLines) {
                         if (physical.trim().isEmpty()) continue;
-                        if (consume(engine, physical, expectedColumns, colTimestamp, colElapsed,
-                                colLabel, colCode, colSuccess, colBytes, colSentBytes, colConnect,
-                                colLatency, colThreads, colMessage, colThread, colUrl)) {
+                        if (consume(engine, physical, timestampIsStart, expectedColumns,
+                                colTimestamp, colElapsed, colLabel, colCode, colSuccess, colBytes,
+                                colSentBytes, colConnect, colLatency, colThreads, colMessage,
+                                colThread, colUrl)) {
                             recovered++;
                         } else {
                             lost++;
@@ -174,8 +185,8 @@ public class JtlParser {
      * @throws IllegalStateException when the engine fails on a record that parsed
      */
     @SuppressWarnings("checkstyle:ParameterNumber")
-    private static boolean consume(LiveStatisticsEngine engine, String record, int expectedColumns,
-                                   int colTimestamp, int colElapsed, int colLabel, int colCode,
+    private static boolean consume(LiveStatisticsEngine engine, String record, boolean timestampIsStart,
+                                   int expectedColumns, int colTimestamp, int colElapsed, int colLabel, int colCode,
                                    int colSuccess, int colBytes, int colSentBytes, int colConnect,
                                    int colLatency, int colThreads, int colMessage, int colThread,
                                    int colUrl) {
@@ -189,6 +200,10 @@ public class JtlParser {
         }
         if (sample == null) {
             return false;
+        }
+        if (!timestampIsStart) {
+            // The row was stamped at its end; the engine places and windows samples by start.
+            sample.timestamp -= sample.elapsed;
         }
         try {
             sample.feed(engine);

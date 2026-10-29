@@ -355,4 +355,17 @@ class ReportRebuildTest {
             ((ObjectNode) node).put("path", path.substring(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1));
         }
     }
+
+    @Test
+    void sampleresultTimestampStartIsReadAsJMeterReadsABoolean() {
+        // B3. JMeterUtils.getPropDefault: true/t or 1 is true, false/f or another number false, anything
+        // else its default, false. Absent is the shipped jmeter.properties' true.
+        assertTrue(ReportRebuild.stampedAtStart(null));
+        for (String yes : new String[]{"true", "TRUE", " t ", "1"}) {
+            assertTrue(ReportRebuild.stampedAtStart(yes), yes);
+        }
+        for (String no : new String[]{"false", "F", "0", "2", "maybe", ""}) {
+            assertFalse(ReportRebuild.stampedAtStart(no), no);
+        }
+    }
 }
