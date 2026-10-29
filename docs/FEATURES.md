@@ -1437,7 +1437,7 @@ only age can speak for it.
 | Component | Technology |
 |-----------|-----------|
 | Plugin | Java (JMeter listener) |
-| Percentiles | T-Digest (streaming) |
+| Percentiles | Exact counts per millisecond, ranked as JMeter's Aggregate Report ranks them |
 | Charts | Apache ECharts 5.5.0 |
 | Templating | Apache Thymeleaf |
 | Annotations | Jackson JSON |

@@ -359,21 +359,21 @@ public class LiveStatisticsEngine {
     }
 
     /**
-     * Merge the response-time digests of all top-level samplers, set the true overall
+     * Merge the response times of all top-level samplers, set the true overall
      * percentiles, and keep every distribution reachable from the report data.
      *
-     * <p>The four percentiles below are the ones the report renders. The digests they came
+     * <p>The four percentiles below are the ones the report renders. The distributions they came
      * from used to be dropped here, which meant p99.9 — or any quantile a rule names — could
      * not be answered afterwards at any price. They are now attached to {@link ReportData};
      * see {@link com.jmeterwebinsightreport.core.model.PercentileSource} for why that is
      * preferable to deciding the percentile set before the statistics are built.
      *
-     * <p>The merged digest excludes transaction children for the same reason the percentiles
+     * <p>The merged distribution excludes transaction children for the same reason the percentiles
      * always did: their time is already inside their parent, so including them weights those
      * samples twice.
      */
     private void computeOverallPercentiles(ReportData data) {
-        TDigestPercentileCalculator overall = new TDigestPercentileCalculator();
+        ResponseTimeDistribution overall = new ResponseTimeDistribution();
         Map<String, com.jmeterwebinsightreport.core.model.PercentileSource> sources =
                 new LinkedHashMap<>();
 

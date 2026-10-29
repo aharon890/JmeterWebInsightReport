@@ -166,11 +166,11 @@ class AssertionEngineTest {
     // ---------------------------------------------------------------- percentiles from digests
 
     @Test
-    void aStoredPercentileIsPreferredOverTheRetainedDigest() {
-        // The overall merge force-compresses each sampler's digest, so the digest answers p99
-        // slightly differently from the value stored before that merge. Half a millisecond is
-        // nothing as a measurement and decisive as a verdict — the gate must judge the number
-        // the report displays.
+    void aStoredPercentileIsResolvedAndTheDistributionAgreesWithIt() {
+        // The rule was written when the overall merge force-compressed each sampler's t-digest, so
+        // the digest answered p99 slightly differently from the value stored before that merge.
+        // The distributions are exact counts now (B2): the gate still judges the stored number the
+        // report displays, and the retained distribution answers the very same number.
         LiveStatisticsEngine engine = new LiveStatisticsEngine();
         for (int i = 1; i <= 1000; i++) {
             engine.recordSample("S", i, true, 500, 100, 1_700_000_000_000L + i, 5, 10);
@@ -181,8 +181,8 @@ class AssertionEngineTest {
         double resolved = MetricRef.parse("p99").valueFor(stat, d);
         assertEquals(stat.getPercentile99(), resolved, 0.0,
                 "p99 must come from the statistics, exactly");
-        assertTrue(Math.abs(d.percentileSource("S").percentile(99) - resolved) > 0,
-                "sanity: the digest really does answer differently, or this test proves nothing");
+        assertEquals(resolved, d.percentileSource("S").percentile(99), 0.0,
+                "the retained distribution answers what the table shows");
     }
 
     @Test
@@ -192,7 +192,8 @@ class AssertionEngineTest {
             engine.recordSample("S", i, true, 500, 100, 1_700_000_000_000L + i, 5, 10);
         }
         ReportData d = engine.buildReportData("T");
-        assertEquals(999.0, MetricRef.parse("p99.9").valueFor(d.getSamplerStatistics().get(0), d), 3.0);
+        // rank round(1000 * 0.999f) = 999: the 999th of 1..1000, exactly
+        assertEquals(999.0, MetricRef.parse("p99.9").valueFor(d.getSamplerStatistics().get(0), d), 0.0);
     }
 
     @Test

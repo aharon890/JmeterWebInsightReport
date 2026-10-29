@@ -72,26 +72,20 @@ class PercentileSourceTest {
     }
 
     @Test
-    void mergingADigestIntoAnotherMutatesTheSource() {
-        // The mechanism behind the test above, isolated — so that if a t-digest upgrade ever
-        // makes the merge non-destructive, this fails and the stored-value rule can be revisited
-        // instead of being cargo-culted forever.
-        com.jmeterwebinsightreport.core.stats.TDigestPercentileCalculator source =
-                new com.jmeterwebinsightreport.core.stats.TDigestPercentileCalculator();
+    void mergingADistributionIntoAnotherLeavesTheSourceAsItWas() {
+        // The mechanism the stored-value rule was written for, isolated. The t-digest's merge
+        // force-compressed its source (p99 991.0 before, 990.5 after); exact counts do not change.
+        com.jmeterwebinsightreport.core.stats.ResponseTimeDistribution source =
+                new com.jmeterwebinsightreport.core.stats.ResponseTimeDistribution();
         for (int i = 1; i <= 1000; i++) {
-            source.addValue(i);
+            source.add(i);
         }
         double before = source.getPercentile(99);
 
-        com.jmeterwebinsightreport.core.stats.TDigestPercentileCalculator target =
-                new com.jmeterwebinsightreport.core.stats.TDigestPercentileCalculator();
-        target.merge(source);
+        new com.jmeterwebinsightreport.core.stats.ResponseTimeDistribution().merge(source);
 
-        assertEquals(991.0, before, 0.0001);
-        assertEquals(990.5, source.getPercentile(99), 0.0001);
-        assertTrue(before != source.getPercentile(99),
-                "merge is destructive to the source — if this ever stops being true, "
-                        + "revisit why MetricRef prefers the stored percentiles");
+        assertEquals(990.0, before, 0.0);   // rank round(1000 * 0.99f) = 990
+        assertEquals(before, source.getPercentile(99), 0.0);
     }
 
     @Test
