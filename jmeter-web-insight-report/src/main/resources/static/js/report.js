@@ -2120,33 +2120,20 @@ function initBytesThroughputChart(data) {
  *  Connect Time vs Latency vs Processing (Stacked Area)
  * ============================================================ */
 
-function initConnectLatencyChart(data) {
-    var ctx = initTimelineChart('connect-latency-chart', data);
-    if (!ctx) return;
-
-    var perSampler = data.perSamplerSeries;
-    if (!perSampler) {
-        ctx.chartDom.style.height = '80px';
-        showNoData(ctx.chartDom, 'No connect/latency data available.');
-        return;
-    }
-
-    var chart = activateTimelineChart(ctx);
-    var chartDom = ctx.chartDom;
-
-    var series = [];
-    var visibleNames = getVisibleSamplerNames();
-    /* When Total is checked, aggregate across ALL samplers */
-    if (isTotalVisible()) visibleNames = data.samplers ? data.samplers.map(function (s) { return s.name; }) : [];
-    var samplerNames = data.samplers ? data.samplers.map(function (s) { return s.name; }) : [];
-
-    /* Aggregate the three stacked components across visible samplers. Each component
-     * carries its own weight, because a sampler can report elapsed with no connect or
-     * latency (non-HTTP samplers, JSR223, cached connections). Sharing one counter made
-     * those buckets average a 0 ms connect time into the stack and flattened the chart
-     * (B14 remnant). Weighted by sample count so a low-volume sampler doesn't outweigh
-     * a busy one. */
-    var n = data.timestamps.length;
+/* The Connect / Latency / Processing breakdown of the named samplers, per second: each component a
+ * count-weighted mean over the samplers that reported it, null where none did (so the line breaks
+ * instead of dropping to the axis), and beside it the weight it was taken over.
+ *
+ * Each component carries its own weight, because a sampler can report elapsed with no connect or
+ * latency (non-HTTP samplers, JSR223, cached connections). Sharing one counter made those buckets
+ * average a 0 ms connect time into the stack and flattened the chart (B14 remnant). Weighted by
+ * sample count so a low-volume sampler doesn't outweigh a busy one.
+ *
+ * The weights are what a window above 1 s folds the seconds with (T4). It folded them with the
+ * bucket's count of every sample, hidden samplers and transaction children included, so a second
+ * the shown samplers barely touched weighed as much as their busiest (pilot-D at 10 s: Connect
+ * 7.36 ms where the shown samplers' own weights give 7.61). */
+function connectLatencyBreakdown(perSampler, names, n) {
     var connectSum = new Array(n), connectW = new Array(n);
     var latencySum = new Array(n), latencyW = new Array(n);
     var processingSum = new Array(n), processingW = new Array(n);
@@ -2157,7 +2144,7 @@ function initConnectLatencyChart(data) {
     }
 
     var hasData = false;
-    visibleNames.forEach(function (name) {
+    names.forEach(function (name) {
         if (!perSampler[name]) return;
         var ct = perSampler[name].connectTime;
         var lat = perSampler[name].latency;
@@ -2191,21 +2178,47 @@ function initConnectLatencyChart(data) {
         }
     });
 
+    var connect = new Array(n), latency = new Array(n), processing = new Array(n);
+    for (var j = 0; j < n; j++) {
+        connect[j] = connectW[j] > 0 ? connectSum[j] / connectW[j] : null;
+        latency[j] = latencyW[j] > 0 ? latencySum[j] / latencyW[j] : null;
+        processing[j] = processingW[j] > 0 ? processingSum[j] / processingW[j] : null;
+    }
+    return {
+        hasData: hasData,
+        connect: connect, latency: latency, processing: processing,
+        connectWeights: connectW, latencyWeights: latencyW, processingWeights: processingW
+    };
+}
+
+function initConnectLatencyChart(data) {
+    var ctx = initTimelineChart('connect-latency-chart', data);
+    if (!ctx) return;
+
+    var perSampler = data.perSamplerSeries;
+    if (!perSampler) {
+        ctx.chartDom.style.height = '80px';
+        showNoData(ctx.chartDom, 'No connect/latency data available.');
+        return;
+    }
+
+    var chart = activateTimelineChart(ctx);
+    var chartDom = ctx.chartDom;
+
+    var series = [];
+    var visibleNames = getVisibleSamplerNames();
+    /* When Total is checked, aggregate across ALL samplers */
+    if (isTotalVisible()) visibleNames = data.samplers ? data.samplers.map(function (s) { return s.name; }) : [];
+    var samplerNames = data.samplers ? data.samplers.map(function (s) { return s.name; }) : [];
+
+    var b = connectLatencyBreakdown(perSampler, visibleNames, data.timestamps.length);
+    var hasData = b.hasData;
+    var connectAgg = b.connect, latencyAgg = b.latency, processingAgg = b.processing;
+
     if (!hasData) {
         chartDom.style.height = '80px';
         showNoData(chartDom, 'No connect/latency breakdown data for selected samplers.');
         return;
-    }
-
-    /* null (not 0) where a component had no data, so the line breaks instead of
-     * dropping to the axis. */
-    var connectAgg = new Array(n);
-    var latencyAgg = new Array(n);
-    var processingAgg = new Array(n);
-    for (var j = 0; j < n; j++) {
-        connectAgg[j] = connectW[j] > 0 ? connectSum[j] / connectW[j] : null;
-        latencyAgg[j] = latencyW[j] > 0 ? latencySum[j] / latencyW[j] : null;
-        processingAgg[j] = processingW[j] > 0 ? processingSum[j] / processingW[j] : null;
     }
 
     series.push({
@@ -2213,7 +2226,7 @@ function initConnectLatencyChart(data) {
         type: 'line',
         stack: 'breakdown',
         areaStyle: { opacity: 0.6 },
-        data: zipTimeSeries(data.timestamps, connectAgg, aggOptsForMetric('connectTime', data.throughputs)),
+        data: zipTimeSeries(data.timestamps, connectAgg, { mode: 'wavg', counts: b.connectWeights }),
         smooth: true,
         symbol: 'none',
         lineStyle: { width: 1 },
@@ -2224,7 +2237,7 @@ function initConnectLatencyChart(data) {
         type: 'line',
         stack: 'breakdown',
         areaStyle: { opacity: 0.6 },
-        data: zipTimeSeries(data.timestamps, latencyAgg, aggOptsForMetric('latency', data.throughputs)),
+        data: zipTimeSeries(data.timestamps, latencyAgg, { mode: 'wavg', counts: b.latencyWeights }),
         smooth: true,
         symbol: 'none',
         lineStyle: { width: 1 },
@@ -2235,7 +2248,7 @@ function initConnectLatencyChart(data) {
         type: 'line',
         stack: 'breakdown',
         areaStyle: { opacity: 0.6 },
-        data: zipTimeSeries(data.timestamps, processingAgg, aggOptsForMetric('responseTime', data.throughputs)),
+        data: zipTimeSeries(data.timestamps, processingAgg, { mode: 'wavg', counts: b.processingWeights }),
         smooth: true,
         symbol: 'none',
         lineStyle: { width: 1 },
