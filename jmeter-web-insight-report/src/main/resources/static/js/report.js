@@ -598,6 +598,13 @@ function zipTimeSeries(timestamps, values, opts) {
  *
  * The server emits a bucket only for seconds that actually had samples, so a plain
  * average silently divides by "seconds with data" rather than by the bucket window.
+ *
+ * Windows are multiples of the granularity counted from the epoch, and each point is drawn at
+ * its window's start, as JMeter's charts do (TimeStampKeysSelector: time - time % granularity)
+ * (T2). They used to open at the run's first second for every series, move on at the next second
+ * with data, and draw at the window's middle: a sampler that started late had its first point
+ * drawn at run start + half a window however late it began (S17's "Admin Dashboard", 240 s in,
+ * drawn 235 s early), and the last point fell past the axis's end.
  */
 function aggregateTimeSeries(timestamps, values, granularityMs, opts) {
     if (!timestamps || timestamps.length === 0) return [];
@@ -605,8 +612,8 @@ function aggregateTimeSeries(timestamps, values, granularityMs, opts) {
     var mode = opts.mode || 'avg';
     var counts = opts.counts || null;
     var result = [];
-    var bucketStart = timestamps[0];
-    var sum = 0, wsum = 0, count = 0, maxv = -Infinity, lastTs = timestamps[0];
+    var bucketStart = null;
+    var sum = 0, wsum = 0, count = 0, maxv = -Infinity, firstTs = 0, lastTs = 0;
 
     function flush(isFinal) {
         if (count === 0) return;
@@ -622,20 +629,22 @@ function aggregateTimeSeries(timestamps, values, granularityMs, opts) {
              * partial, so divide it by the span it actually covers rather than by a
              * full window — otherwise every chart ends in a spurious dip. */
             var spanMs = isFinal
-                ? Math.min(granularityMs, lastTs - bucketStart + 1000)
+                ? Math.min(granularityMs, lastTs - firstTs + 1000)
                 : granularityMs;
             v = sum / Math.max(1, spanMs / 1000);
         } else {
             v = sum / count;
         }
-        result.push([bucketStart + Math.floor(granularityMs / 2), v]);
+        result.push([bucketStart, v]);
     }
 
     for (var i = 0; i < timestamps.length; i++) {
         if (values[i] == null) continue;
-        if (timestamps[i] - bucketStart >= granularityMs && count > 0) {
+        var key = Math.floor(timestamps[i] / granularityMs) * granularityMs;
+        if (key !== bucketStart) {
             flush(false);
-            bucketStart = timestamps[i];
+            bucketStart = key;
+            firstTs = timestamps[i];
             sum = 0; wsum = 0; count = 0; maxv = -Infinity;
         }
         var val = values[i];
@@ -1639,11 +1648,15 @@ function activateTimelineChart(ctx) {
  * it, and at 390px its labels printed over one another, "22:1226:2…" (XLOG-1).
  */
 function timelineXAxis() {
+    var start = getTestStart();
+    /* Above 1 s a point sits at its window's start (T2), and the run's first window can open before
+       its first second: the axis starts there, or that point would be clipped. */
+    var min = start && chartGranularity > 1000 ? Math.floor(start / chartGranularity) * chartGranularity : start;
     return {
         type: 'time',
         axisLabel: { formatter: formatTimeAxis, hideOverlap: true },
-        min: getTestStart() || undefined,
-        max: getTestStart() ? getTestStart() + getTestDurationMs() : undefined
+        min: min || undefined,
+        max: start ? start + getTestDurationMs() : undefined
     };
 }
 
