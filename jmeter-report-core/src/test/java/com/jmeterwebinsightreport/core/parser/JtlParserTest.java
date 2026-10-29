@@ -326,10 +326,11 @@ class JtlParserTest {
                     @Override
                     public void recordSample(String samplerName, long responseTime, boolean isSuccess,
                                              long bytesReceived, long bytesSent, long timestamp,
-                                             long connectTime, long latency) {
+                                             long endTime, long connectTime, long latency,
+                                             long samples, long errors) {
                         recorded.incrementAndGet();
                         super.recordSample(samplerName, responseTime, isSuccess, bytesReceived,
-                                bytesSent, timestamp, connectTime, latency);
+                                bytesSent, timestamp, endTime, connectTime, latency, samples, errors);
                     }
 
                     @Override
@@ -514,5 +515,24 @@ class JtlParserTest {
 
         assertEquals(1700000001000L, data.getMetadata().getStartTime().toEpochMilli());
         assertEquals(2500, data.getMetadata().getDurationMillis());
+    }
+
+    @Test
+    void aRowWithASampleCountStandsForThatManySamples() throws IOException {
+        // B6: jmeter.save.saveservice.sample_count=true writes SampleCount and ErrorCount. JMeter's
+        // Aggregate Report opened on the file reads each row as a StatisticalSampleResult and counts
+        // both.
+        File jtl = writeJtl("sample-count.jtl", "timeStamp,elapsed,label,responseCode,responseMessage,threadName,"
+                + "success,bytes,sentBytes,SampleCount,ErrorCount" + "\n"
+                + "1700000000000,1000,S,500,x,T 1-1,false,5000,500,10,3" + "\n"
+                + "1700000001000,40,S,200,OK,T 1-1,true,500,50,1,0" + "\n");
+
+        ReportData data = new JtlParser().parse(jtl, "sample-count");
+
+        SamplerStatistics s = findSampler(data, "S");
+        assertEquals(11, s.getSampleCount());
+        assertEquals(3, s.getErrorCount(), "the row's ErrorCount, as JMeter reads the file");
+        assertEquals(100, s.getMaxResponseTime(), 0.0);
+        assertEquals(1040 / 11.0, s.getMeanResponseTime(), 1e-9);
     }
 }

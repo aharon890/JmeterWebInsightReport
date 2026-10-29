@@ -93,24 +93,38 @@ public class LiveStatisticsEngine {
     public void recordSample(String samplerName, long responseTime, boolean isSuccess,
                              long bytesReceived, long bytesSent, long timestamp, long endTime,
                              long connectTime, long latency) {
+        recordSample(samplerName, responseTime, isSuccess, bytesReceived, bytesSent, timestamp,
+                endTime, connectTime, latency, 1, isSuccess ? 0 : 1);
+    }
+
+    /**
+     * Record a result that stands for {@code samples} samples, {@code errors} of them failed: what
+     * JMeter's Statistical mode sends from a remote engine, and what a results file saved with
+     * {@code jmeter.save.saveservice.sample_count=true} holds. JMeter's Aggregate Report counts it as
+     * that many samples ({@code SamplingStatCalculator.addSample}); one per result undercounted every
+     * figure of such a run (B6).
+     */
+    public void recordSample(String samplerName, long responseTime, boolean isSuccess,
+                             long bytesReceived, long bytesSent, long timestamp, long endTime,
+                             long connectTime, long latency, long samples, long errors) {
+        long n = Math.max(1, samples);
+        long failed = Math.min(n, Math.max(0, errors));
         // Per-sampler aggregation
         // The aggregator counts Apdex buckets as samples arrive, so it needs the threshold now.
         // setApdexThreshold is always called during setup, before any sample is recorded.
         aggregators.computeIfAbsent(samplerName, k -> new SamplerAggregator(k, apdexThreshold))
                 .addSample(responseTime, isSuccess, bytesReceived, bytesSent, timestamp, endTime,
-                        connectTime, latency);
+                        connectTime, latency, n, failed);
 
         // Time-series bucketing (1-second granularity)
         long bucketKey = timestamp / 1000 * 1000;
         timeBuckets.computeIfAbsent(bucketKey, k -> new TimeBucketAggregator(k))
-                .addSample(responseTime, isSuccess, samplerName, bytesReceived, bytesSent,
-                        connectTime, latency);
+                .addSample(responseTime, samplerName, bytesReceived, bytesSent,
+                        connectTime, latency, n, failed);
 
         // Global counters
-        totalSamples.incrementAndGet();
-        if (!isSuccess) {
-            totalErrors.incrementAndGet();
-        }
+        totalSamples.addAndGet(n);
+        totalErrors.addAndGet(failed);
         updateMinLong(firstTimestamp, timestamp);
         updateMaxLong(lastTimestamp, timestamp);
         updateMaxLong(lastSampleEnd, endTime);

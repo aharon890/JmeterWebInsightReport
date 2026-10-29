@@ -559,6 +559,28 @@ class LiveStatisticsEngineTest {
     }
 
     @Test
+    void anAggregatedResultCountsAsTheSamplesItStandsFor() {
+        // B6: JMeter's Statistical mode sends one result for 10 samples, 1,000 ms in all, 3 failed.
+        // JMeter's Aggregate Report counts 10 samples of 100 ms (StatCalculator.addValue(1000, 10)).
+        long ts = 1700000000000L;
+        engine.recordSample("S", 1000, false, 5000, 500, ts, ts + 1000, -1, -1, 10, 3);
+        engine.recordSample("S", 40, true, 500, 50, ts + 1000, ts + 1040, -1, -1, 1, 0);
+
+        ReportData data = engine.buildReportData("t");
+        SamplerStatistics s = findSampler(data, "S");
+        assertEquals(11, s.getSampleCount());
+        assertEquals(3, s.getErrorCount());
+        assertEquals(1040 / 11.0, s.getMeanResponseTime(), 1e-9);
+        assertEquals(40, s.getMinResponseTime(), 0.0);
+        assertEquals(100, s.getMaxResponseTime(), 0.0, "each of the 10 took 100 ms");
+        assertEquals(100, s.getMedianResponseTime(), 0.0);
+        assertEquals(5500, s.getTotalReceivedBytes(), 0.0, "bytes once per result");
+        assertEquals(11, data.getMetadata().getTotalSamples());
+        assertEquals(3, data.getMetadata().getTotalErrors());
+        assertEquals(11, data.getTimeSeries().get(0).getSampleCount() + data.getTimeSeries().get(1).getSampleCount());
+    }
+
+    @Test
     void aBusySecondsPercentilesAndHistogramCountEverySample() {
         // T6: 300 requests in one second of one sampler. The second used to keep a random 128 of
         // them, so its percentiles and heatmap cells moved between two builds of one file. Now

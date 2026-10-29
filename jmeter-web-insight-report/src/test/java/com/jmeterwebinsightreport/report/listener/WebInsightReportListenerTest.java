@@ -270,6 +270,35 @@ class WebInsightReportListenerTest {
     }
 
     @Test
+    void aStatisticalResultCountsItsSamplesAndItsErrors() throws Exception {
+        // B6: a remote engine in Statistical mode sends one StatisticalSampleResult for many samples.
+        WebInsightReportListener listener = new WebInsightReportListener();
+        com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine engine =
+                new com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine();
+        Field f = WebInsightReportListener.class.getDeclaredField("statsEngine");
+        f.setAccessible(true);
+        f.set(listener, engine);
+
+        org.apache.jmeter.samplers.StatisticalSampleResult batch = null;
+        for (int i = 0; i < 4; i++) {
+            SampleResult one = SampleResult.createTestSample(1_700_000_000_000L + i * 100, 1_700_000_000_000L + i * 100 + 50);
+            one.setSampleLabel("GET /a");
+            one.setSuccessful(i != 2);
+            if (batch == null) {
+                batch = new org.apache.jmeter.samplers.StatisticalSampleResult(one);   // counts nothing yet
+            }
+            batch.add(one);
+        }
+        assertEquals(4, batch.getSampleCount());
+        listener.sampleOccurred(new SampleEvent(batch, "Thread Group"));
+
+        com.jmeterwebinsightreport.core.model.SamplerStatistics s = engine.buildReportData("t").getSamplerStatistics().get(0);
+        assertEquals(4, s.getSampleCount());
+        assertEquals(batch.getErrorCount(), s.getErrorCount());
+        assertEquals(batch.getTime() / 4, s.getMaxResponseTime(), 0.0);
+    }
+
+    @Test
     void aSampleIsRecordedAtItsStartWhateverItsTimeStampSays() throws Exception {
         // B3: with sampleresult.timestamp.start=false a SampleResult's time stamp is its END. The report
         // placed and windowed every sample by it (S46: 3 m 10 s where JMeter's Aggregate Report says 3 m 4 s).

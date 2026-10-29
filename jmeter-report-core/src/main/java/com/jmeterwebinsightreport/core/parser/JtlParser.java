@@ -111,6 +111,10 @@ public class JtlParser {
             int colConnect = headers.getOrDefault("Connect", -1);
             int colLatency = headers.getOrDefault("Latency", -1);
             int colUrl = headers.getOrDefault("URL", -1);
+            // Written with jmeter.save.saveservice.sample_count=true (SampleCount above 1 for a row
+            // JMeter aggregated, distributed Statistical mode), always together. See ParsedSample.feed.
+            int colSampleCount = headers.getOrDefault("SampleCount", -1);
+            int colErrorCount = headers.getOrDefault("ErrorCount", -1);
 
             int expectedColumns = headers.size();
             List<String> physicalLines;
@@ -123,7 +127,7 @@ public class JtlParser {
 
                 if (consume(engine, record, timestampIsStart, expectedColumns, colTimestamp, colElapsed,
                         colLabel, colCode, colSuccess, colBytes, colSentBytes, colConnect, colLatency,
-                        colThreads, colMessage, colThread, colUrl)) {
+                        colThreads, colMessage, colThread, colUrl, colSampleCount, colErrorCount)) {
                     recordsParsed++;
                     continue;
                 }
@@ -141,7 +145,7 @@ public class JtlParser {
                         if (consume(engine, physical, timestampIsStart, expectedColumns,
                                 colTimestamp, colElapsed, colLabel, colCode, colSuccess, colBytes,
                                 colSentBytes, colConnect, colLatency, colThreads, colMessage,
-                                colThread, colUrl)) {
+                                colThread, colUrl, colSampleCount, colErrorCount)) {
                             recovered++;
                         } else {
                             lost++;
@@ -189,12 +193,12 @@ public class JtlParser {
                                    int expectedColumns, int colTimestamp, int colElapsed, int colLabel, int colCode,
                                    int colSuccess, int colBytes, int colSentBytes, int colConnect,
                                    int colLatency, int colThreads, int colMessage, int colThread,
-                                   int colUrl) {
+                                   int colUrl, int colSampleCount, int colErrorCount) {
         ParsedSample sample;
         try {
             sample = parseSample(record, expectedColumns, colTimestamp, colElapsed, colLabel,
                     colCode, colSuccess, colBytes, colSentBytes, colConnect, colLatency, colThreads,
-                    colMessage, colThread, colUrl);
+                    colMessage, colThread, colUrl, colSampleCount, colErrorCount);
         } catch (RuntimeException e) {
             return false;
         }
@@ -225,7 +229,7 @@ public class JtlParser {
                                             int colCode, int colSuccess, int colBytes,
                                             int colSentBytes, int colConnect, int colLatency,
                                             int colThreads, int colMessage, int colThread,
-                                            int colUrl) {
+                                            int colUrl, int colSampleCount, int colErrorCount) {
         String[] fields = parseCsvLine(record);
         // A field count nowhere near the header's means this is not a record —
         // most often the tail of a wrongly-joined line. Reject it so the caller
@@ -255,6 +259,12 @@ public class JtlParser {
             s.thread = colThread >= 0 && colThread < fields.length ? fields[colThread] : "";
             s.url = colUrl >= 0 && colUrl < fields.length ? fields[colUrl] : null;
         }
+        if (colSampleCount >= 0 && colSampleCount < fields.length) {
+            s.samples = Math.max(1, parseLongSafe(fields[colSampleCount]));
+        }
+        if (colErrorCount >= 0 && colErrorCount < fields.length) {
+            s.errors = parseLongSafe(fields[colErrorCount]);
+        }
         return s;
     }
 
@@ -273,10 +283,19 @@ public class JtlParser {
         String message;
         String thread;
         String url;
+        long samples = 1;
+        long errors = -1;
 
+        /**
+         * A row standing for several samples counts as that many, with the failures its ErrorCount
+         * column gives, as JMeter's Aggregate Report reads the file (B6): with the columns saved,
+         * {@code CSVSaveService} builds a {@code StatisticalSampleResult}, whose
+         * {@code setErrorCount} keeps the count. Without them a row is one sample, failed or not.
+         */
         void feed(LiveStatisticsEngine engine) {
             engine.recordSample(label, elapsed, success, bytes, sentBytes, timestamp,
-                    connectTime, latency);
+                    timestamp + Math.max(0, elapsed), connectTime, latency, samples,
+                    errors >= 0 ? errors : (success ? 0 : 1));
             if (threads > 0) {
                 engine.updateActiveThreads(threads, timestamp);
             }

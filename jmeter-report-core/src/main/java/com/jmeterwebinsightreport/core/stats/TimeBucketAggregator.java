@@ -26,14 +26,20 @@ class TimeBucketAggregator {
     synchronized void addSample(long responseTime, boolean isSuccess, String samplerName,
                                  long receivedBytes, long sentBytes,
                                  long connectTime, long latency) {
-        sampleCount++;
-        if (!isSuccess) {
-            errorCount++;
-        }
+        addSample(responseTime, samplerName, receivedBytes, sentBytes, connectTime, latency,
+                1, isSuccess ? 0 : 1);
+    }
+
+    /** A result standing for {@code samples} samples, {@code errors} of them failed (B6). */
+    synchronized void addSample(long responseTime, String samplerName,
+                                 long receivedBytes, long sentBytes,
+                                 long connectTime, long latency, long samples, long errors) {
+        sampleCount += samples;
+        errorCount += errors;
         sumResponseTime += responseTime;
 
         perSamplerAccum.computeIfAbsent(samplerName, k -> new SamplerBucketAccumulator())
-                .add(responseTime, isSuccess, receivedBytes, sentBytes, connectTime, latency);
+                .add(responseTime, receivedBytes, sentBytes, connectTime, latency, samples, errors);
     }
 
     synchronized void updateActiveThreads(int activeThreads) {

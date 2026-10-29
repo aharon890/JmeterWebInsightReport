@@ -29,16 +29,23 @@ class SamplerBucketAccumulator {
 
     void add(long responseTime, boolean isSuccess, long receivedBytes, long sentBytes,
              long connectTime, long latency) {
-        sampleCount++;
-        if (!isSuccess) errorCount++;
+        add(responseTime, receivedBytes, sentBytes, connectTime, latency, 1, isSuccess ? 0 : 1);
+    }
+
+    /** A result standing for {@code samples} samples of {@code responseTime / samples} ms each (B6). */
+    void add(long responseTime, long receivedBytes, long sentBytes,
+             long connectTime, long latency, long samples, long errors) {
+        long each = responseTime / samples;
+        sampleCount += samples;
+        errorCount += errors;
         sumResponseTime += responseTime;
         sumReceivedBytes += receivedBytes;
         sumSentBytes += sentBytes;
-        if (responseTime > maxResponseTime) {
-            maxResponseTime = responseTime;
+        if (each > maxResponseTime) {
+            maxResponseTime = each;
         }
 
-        responseTimes.add(responseTime);
+        responseTimes.add(each, samples);
 
         if (connectTime >= 0) {
             sumConnectTime += connectTime;

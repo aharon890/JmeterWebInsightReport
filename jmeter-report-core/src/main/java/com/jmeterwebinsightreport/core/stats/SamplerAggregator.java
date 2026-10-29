@@ -78,28 +78,47 @@ class SamplerAggregator {
     synchronized void addSample(long responseTime, boolean isSuccess,
                                  long bytesReceived, long bytesSent, long timestamp, long endTime,
                                  long connectTime, long latency) {
-        sampleCount++;
-        if (!isSuccess) {
-            errorCount++;
-        }
+        addSample(responseTime, isSuccess, bytesReceived, bytesSent, timestamp, endTime,
+                connectTime, latency, 1, isSuccess ? 0 : 1);
+    }
+
+    /**
+     * @param samples how many samples this result stands for: 1, or more for a result JMeter
+     *        aggregated (distributed tests in Statistical mode, {@code SampleResult.getSampleCount()}).
+     *        As JMeter's {@code StatCalculator.addValue(value, count)} does, it counts as that many
+     *        samples of {@code responseTime / samples} ms each (whole ms, as JMeter divides a Long),
+     *        and its bytes once (B6).
+     * @param errors how many of them failed ({@code SampleResult.getErrorCount()})
+     */
+    synchronized void addSample(long responseTime, boolean isSuccess,
+                                 long bytesReceived, long bytesSent, long timestamp, long endTime,
+                                 long connectTime, long latency, long samples, long errors) {
+        long n = Math.max(1, samples);
+        long failed = Math.min(n, Math.max(0, errors));
+        long ok = n - failed;
+        long each = responseTime / n;
+        double eachExact = (double) responseTime / n;
+        sampleCount += n;
+        errorCount += failed;
         sumResponseTime += responseTime;
-        double delta = responseTime - runningMean;
-        runningMean += delta / sampleCount;
-        m2 += delta * (responseTime - runningMean);
-        minResponseTime = Math.min(minResponseTime, responseTime);
-        maxResponseTime = Math.max(maxResponseTime, responseTime);
+        // Welford for n equal values: the weighted form of the one-value update
+        double delta = eachExact - runningMean;
+        runningMean += delta * n / sampleCount;
+        m2 += delta * (eachExact - runningMean) * n;
+        minResponseTime = Math.min(minResponseTime, each);
+        maxResponseTime = Math.max(maxResponseTime, each);
         sumBytesReceived += bytesReceived;
         sumBytesSent += bytesSent;
         firstTimestamp = Math.min(firstTimestamp, timestamp);
         lastTimestamp = Math.max(lastTimestamp, timestamp);
         lastSampleEnd = Math.max(lastSampleEnd, endTime);
-        responseTimes.add(responseTime);
-        if (isSuccess) {
-            successResponseTimes.add(responseTime);
-            if (responseTime <= configuredApdexThreshold) {
-                satisfiedCount++;
-            } else if (responseTime <= configuredApdexThreshold * 4) {
-                toleratingCount++;
+        responseTimes.add(each, n);
+        if (ok > 0) {
+            successResponseTimes.add(each, ok);
+            if (each <= configuredApdexThreshold) {
+                satisfiedCount += ok;
+            } else if (each <= configuredApdexThreshold * 4) {
+                toleratingCount += ok;
             }
         }
 

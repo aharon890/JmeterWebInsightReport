@@ -23,6 +23,23 @@ class ResponseTimeDistributionJMeterParityTest {
     private static final String[] PERCENTILES = {"50", "75", "90", "95", "99", "99.9", "99.99", "1", "10", "33.3"};
 
     @Test
+    void anAggregatedSampleIsCountedAsJMeterCountsIt() {
+        // B6: StatCalculator.addValue(value, count) adds count values of value / count (Long division).
+        StatCalculatorLong jmeter = new StatCalculatorLong();
+        ResponseTimeDistribution ours = new ResponseTimeDistribution();
+        long[][] batches = {{1003, 10}, {40, 1}, {999, 3}, {7, 7}};
+        for (long[] b : batches) {
+            jmeter.addValue(b[0], b[1]);
+            ours.add(b[0] / b[1], b[1]);
+        }
+        assertEquals(jmeter.getCount(), ours.getCount());
+        for (String label : PERCENTILES) {
+            assertEquals(jmeter.getPercentPoint(Float.parseFloat(label) / 100).longValue(),
+                    ours.getPercentile(Double.parseDouble(label)), 0.0, "p" + label);
+        }
+    }
+
+    @Test
     void everyPercentileEqualsTheAggregateReportsOnRandomRuns() {
         Random random = new Random(20261030L);
         int checked = 0;

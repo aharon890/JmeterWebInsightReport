@@ -494,7 +494,11 @@ public class WebInsightReportListener extends ResultCollector {
                 start,
                 end,
                 result.getConnectTime(),
-                result.getLatency()
+                result.getLatency(),
+                // 1 and 0/1 for every sample but one JMeter aggregated (Statistical mode), which
+                // stands for that many, that many failed (B6)
+                result.getSampleCount(),
+                result.getErrorCount()
         );
 
         // Track active threads — total across all thread groups, not just this sampler's group.
