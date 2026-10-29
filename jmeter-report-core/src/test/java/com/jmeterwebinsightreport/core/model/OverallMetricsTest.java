@@ -156,6 +156,31 @@ class OverallMetricsTest {
     }
 
     @Test
+    void apdexIsComputedFromTheCountsWhenTheStatisticsCarryThem() {
+        // a: 0 satisfied of 3, score 0.00. b: 1 satisfied and 2 tolerating of 3, (1 + 1) / 3 =
+        // 0.667, shown as 0.67. From the scores the run is 0.335, rounded again to 0.34; from
+        // the counts it is (1 + 2 / 2) / 6 = 0.333, rounded once to 0.33 (B4).
+        SamplerStatistics a = stat("a", 3, 0, 100, 200, 5, 0.0);
+        a.setApdexSatisfied(0);
+        a.setApdexTolerating(0);
+        SamplerStatistics b = stat("b", 3, 0, 100, 200, 5, 0.67);
+        b.setApdexSatisfied(1);
+        b.setApdexTolerating(2);
+
+        assertEquals(0.33, OverallMetrics.of(data(10_000, 4, a, b)).getApdex(), 1e-9);
+    }
+
+    @Test
+    void apdexFallsBackToTheScoresWhenAnySamplerLacksItsCounts() {
+        SamplerStatistics a = stat("a", 3, 0, 100, 200, 5, 0.0);
+        a.setApdexSatisfied(0);
+        a.setApdexTolerating(0);
+        SamplerStatistics b = stat("b", 3, 0, 100, 200, 5, 0.67);   // assembled: no counts
+
+        assertEquals(0.34, OverallMetrics.of(data(10_000, 4, a, b)).getApdex(), 1e-9);
+    }
+
+    @Test
     void theFiguresMatchWhatTheRendererUsedToComputeInline() {
         // Guards the extraction itself: these are the formulas that were in
         // ThymeleafReportRenderer, checked against an independent hand calculation.

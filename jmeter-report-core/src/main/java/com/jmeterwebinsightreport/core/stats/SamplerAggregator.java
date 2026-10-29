@@ -217,6 +217,8 @@ class SamplerAggregator {
             }
             double apdex = (satisfied + tolerating / 2.0) / sampleCount;
             stats.setApdexScore(Math.round(apdex * 100.0) / 100.0);
+            stats.setApdexSatisfied(satisfied);
+            stats.setApdexTolerating(tolerating);
         }
 
         return stats;

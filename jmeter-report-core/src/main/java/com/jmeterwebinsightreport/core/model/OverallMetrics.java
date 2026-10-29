@@ -73,12 +73,27 @@ public final class OverallMetrics {
         long errors = 0;
         double weightedResponseTime = 0;
         double weightedApdex = 0;
+        double satisfied = 0;
+        double tolerating = 0;
+        boolean apdexCounted = true;
         for (SamplerStatistics s : topLevel) {
             samples += s.getSampleCount();
             errors += s.getErrorCount();
             weightedResponseTime += s.getMeanResponseTime() * s.getSampleCount();
             weightedApdex += s.getApdexScore() * s.getSampleCount();
+            if (Double.isNaN(s.getApdexSatisfied()) || Double.isNaN(s.getApdexTolerating())) {
+                apdexCounted = false;
+            } else {
+                satisfied += s.getApdexSatisfied();
+                tolerating += s.getApdexTolerating();
+            }
         }
+        // From the counts, rounded once (B4). The count-weighted mean of the per-sampler scores
+        // rounds every score to 2 dp first, so the whole run was rounded twice; it stays only
+        // for statistics assembled without their counts.
+        double apdex = samples <= 0 ? 0
+                : apdexCounted ? (satisfied + tolerating / 2.0) / samples
+                : weightedApdex / samples;
 
         TestMetadata meta = data.getMetadata();
         double durationSeconds = meta != null ? meta.getDurationMillis() / 1000.0 : 0;
@@ -115,9 +130,8 @@ public final class OverallMetrics {
                 samples > 0 ? weightedResponseTime / samples : 0,
                 median, p90, p95, p99,
                 throughput,
-                // Rounded to 2 dp to match the per-sampler scores, which SamplerAggregator
-                // already rounds. An unrounded overall next to rounded parts reads as a bug.
-                samples > 0 ? Math.round(weightedApdex / samples * 100.0) / 100.0 : 0,
+                // Rounded to 2 dp like the per-sampler scores beside it, once.
+                Math.round(apdex * 100.0) / 100.0,
                 durationSeconds,
                 meta != null ? meta.getTotalThreads() : 0,
                 data.overallPercentileSource());
