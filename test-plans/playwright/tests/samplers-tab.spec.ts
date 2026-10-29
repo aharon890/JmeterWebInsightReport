@@ -4,7 +4,7 @@ import { loadClean, switchTab, expectNoJsErrors } from './helpers';
 const EXPECTED_HEADERS = [
   'Sampler', 'Samples', 'Errors', 'Error %',
   'Mean (ms)', 'Median (ms)', 'P90 (ms)', 'P95 (ms)', 'P99 (ms)',
-  'Min (ms)', 'Max (ms)', 'Throughput', 'Recv KB/s', 'Apdex',
+  'Min (ms)', 'Max (ms)', 'Throughput', 'Recv KB/s', 'Sent KB/s', 'Apdex',
 ];
 
 async function goSamplers(page: Page, testId = 'E02') {

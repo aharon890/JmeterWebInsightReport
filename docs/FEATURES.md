@@ -192,7 +192,7 @@ All standard chart features: drag-to-reorder, hide/show, fullscreen, PNG/SVG exp
 ## Samplers Tab
 
 ### Statistics Table
-Full table with columns: Sampler, Samples, Errors, Error %, Mean, Median, P90, P95, P99, Min, Max, Throughput, Recv KB/s, Apdex.
+Full table with columns: Sampler, Samples, Errors, Error %, Mean, Median, P90, P95, P99, Min, Max, Throughput, Recv KB/s, Sent KB/s, Apdex (JMeter's Aggregate Report columns, plus Apdex).
 
 - **Sortable** — click any column header (ascending/descending)
 - **Searchable** — text filter box above the table

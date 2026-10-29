@@ -24,7 +24,7 @@ const payload = () => ({
         { name: 'Late', count: 100, errorCount: 0, mean: 400, min: 300, max: 600, throughput: 10, receivedBytesPerSec: 102400, apdex: 0.5 },
         { name: 'Late child', count: 100, errorCount: 7, mean: 1, min: 1, max: 2000, throughput: 10, receivedBytesPerSec: 999, apdex: 0, parent: 'Late' },
     ],
-    overall: { mean: 72.73, median: 30, p90: 400, p95: 500, p99: 800, throughput: 11, receivedBytesPerSec: 20480, apdex: 0.95 },
+    overall: { mean: 72.73, median: 30, p90: 400, p95: 500, p99: 800, throughput: 11, receivedBytesPerSec: 20480, sentBytesPerSec: 1024, apdex: 0.95 },
 });
 const isChild = (name) => name === 'Late child';
 
@@ -33,6 +33,7 @@ test('B1: the rate, KB/s, mean and Apdex are the whole run\'s, not sums or means
     const t = scope.totalRowFigures(payload(), isChild);
     assert.strictEqual(t.throughput, 11, 'all samples over the run, not 10 + 10');
     assert.strictEqual(t.receivedKBs, 20, '20,480 B/s over the run, not 10 + 100 KB/s');
+    assert.strictEqual(t.sentKBs, 1, 'the Sent KB/s column (B8), over the run as well');
     assert.strictEqual(t.mean, 72.73);
     assert.strictEqual(t.apdex, 0.95, 'from the counts (B4), not a mean of the rounded scores');
     assert.deepStrictEqual([t.median, t.p90, t.p95, t.p99], [30, 400, 500, 800]);

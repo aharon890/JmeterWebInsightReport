@@ -484,7 +484,8 @@
                                 <th draggable="true" onclick="sortTable(10, 'num')">Max (ms)</th>
                                 <th draggable="true" onclick="sortTable(11, 'num')">Throughput</th>
                                 <th draggable="true" onclick="sortTable(12, 'num')">Recv KB/s</th>
-                                <th draggable="true" onclick="sortTable(13, 'num')">Apdex</th>
+                                <th draggable="true" onclick="sortTable(13, 'num')">Sent KB/s</th>
+                                <th draggable="true" onclick="sortTable(14, 'num')">Apdex</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -520,6 +521,7 @@
                                 <td th:text="${fmt.millis(stat.maxResponseTime)}">0</td>
                                 <td th:text="${fmt.number(stat.throughput)} + '/s'">0/s</td>
                                 <td th:text="${fmt.number(stat.receivedBytesPerSec / 1024.0)}">0</td>
+                                <td th:text="${fmt.number(stat.sentBytesPerSec / 1024.0)}">0</td>
                                 <td><span class="apdex-badge"
                                           th:text="${stat.apdexScore}"
                                           th:classappend="${stat.apdexScore > 0.94} ? 'apdex-excellent' : (${stat.apdexScore > 0.85} ? 'apdex-good' : (${stat.apdexScore > 0.70} ? 'apdex-fair' : (${stat.apdexScore > 0.50} ? 'apdex-poor' : 'apdex-unacceptable')))">0</span></td>

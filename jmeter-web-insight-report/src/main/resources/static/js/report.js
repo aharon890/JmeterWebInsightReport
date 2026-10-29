@@ -1257,6 +1257,7 @@ function totalRowFigures(data, isChild) {
     f.p99 = o.p99;
     f.throughput = o.throughput;
     f.receivedKBs = o.receivedBytesPerSec != null ? o.receivedBytesPerSec / 1024.0 : null;
+    f.sentKBs = o.sentBytesPerSec != null ? o.sentBytesPerSec / 1024.0 : null;
     f.apdex = o.apdex;
     return f;
 }
@@ -1298,6 +1299,7 @@ function updateTotalRow() {
         fmt(t.max),
         fmt(t.throughput) + '/s',
         fmt(t.receivedKBs),
+        fmt(t.sentKBs),
         '__apdex__' + t.apdex
     ];
 
@@ -3958,9 +3960,10 @@ function getChartTheme() {
  *  Sampler table: search, column toggle
  * ============================================================ */
 
+/* The Aggregate Report's columns (StatGraphVisualizer), Sent KB/s included (B8), plus Apdex. */
 var COLUMN_NAMES = ['Sampler', 'Samples', 'Errors', 'Error %', 'Mean (ms)',
     'Median (ms)', 'P90 (ms)', 'P95 (ms)', 'P99 (ms)', 'Min (ms)', 'Max (ms)',
-    'Throughput', 'Recv KB/s', 'Apdex'];
+    'Throughput', 'Recv KB/s', 'Sent KB/s', 'Apdex'];
 
 var hiddenColumns = {};
 
@@ -14435,6 +14438,7 @@ WIR.asserts = (function () {
            the payload carries — see MetricRef.Unit.KILOBYTES_PER_SECOND. This column used to be
            the documented example of "no assertable counterpart, so no button that cannot work". */
         'Recv KB/s': 'receivedKbPerSec',
+        'Sent KB/s': 'sentKbPerSec',
         'Apdex': 'apdex'
     };
 
