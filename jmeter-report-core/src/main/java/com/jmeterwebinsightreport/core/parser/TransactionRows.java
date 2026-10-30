@@ -33,8 +33,17 @@ import java.util.Map;
  * rule of the campaign's Aggregate Report referee ({@code --population top-level}), which reproduces
  * the run reports' totals.
  *
- * <p>Sub-results with no marker (embedded resources, redirects: "Home Page-0") cannot be told apart
- * from ordinary rows in a file, by this or by any JMeter tool that reads one; they stay rows.
+ * <p>A request inside a transaction may have sub-results of its own (redirect hops, embedded
+ * resources), which JMeter writes right after it, depth first, named after it — "Login-0",
+ * "Login-1", "Login-0-0" ({@code SampleResult.storeSubResult} renames them so) — and which are not
+ * among the transaction's N: N counts its direct children ({@code TransactionSampler}). Such rows are
+ * nested under their request, as the listener nests them, and take no place among the N; counting
+ * them used up the transaction's places and left its last requests at the top level. JMeter does
+ * not rename them in functional mode or with {@code subresults.disable_renaming=true}, and then they
+ * cannot be told from the next request.
+ *
+ * <p>Sub-results outside a transaction (S47, "Home Page-0") are left as rows: no JMeter tool that
+ * reads a file nests them, and nothing here anchors them.
  *
  * <p>One instance per file, fed every row in file order. Not thread-safe; the parser is single
  * threaded per file.
@@ -47,6 +56,19 @@ final class TransactionRows {
     private final Map<String, Pending> pending = new HashMap<>();
     /** Per thread: the parent-sample transactions whose children are still being read, innermost last. */
     private final Map<String, Deque<Open>> open = new HashMap<>();
+    /** Per thread: the last request read inside a transaction and its sub-results so far, outermost first. */
+    private final Map<String, Deque<String>> requests = new HashMap<>();
+
+    /** Whose row a row is: a transaction's ({@code transaction}), or a request's sub-result. */
+    static final class Nesting {
+        final String parent;
+        final boolean transaction;
+
+        Nesting(String parent, boolean transaction) {
+            this.parent = parent;
+            this.transaction = transaction;
+        }
+    }
 
     /**
      * Read one row and say whose child it is.
@@ -56,12 +78,25 @@ final class TransactionRows {
      * @param start   when the sample started
      * @param elapsed its elapsed time
      * @param idle    its IdleTime, 0 when the file has no such column
-     * @return the label of the parent-sample transaction this row is a child of, or null
+     * @return whose child the row is — a parent-sample transaction's, or a request's inside one — or null
      */
-    String parentOf(String thread, String label, String message, long start, long elapsed, long idle) {
+    Nesting parentOf(String thread, String label, String message, long start, long elapsed, long idle) {
         if (thread == null || thread.isEmpty()) {
             return null;
         }
+        Deque<String> chain = requests.get(thread);
+        if (chain != null) {
+            while (!chain.isEmpty() && !isSubResultOf(label, chain.peekLast())) {
+                chain.removeLast();
+            }
+            if (!chain.isEmpty()) {
+                String request = chain.peekLast();
+                chain.addLast(label);
+                return new Nesting(request, false);
+            }
+            requests.remove(thread);
+        }
+
         Pending last = pending.remove(thread);
         if (last != null && start >= last.start && start < last.realEnd) {
             open.computeIfAbsent(thread, k -> new ArrayDeque<>()).addLast(new Open(last.label, last.children));
@@ -80,8 +115,26 @@ final class TransactionRows {
         int children = childrenIn(message);
         if (children > 0) {
             pending.put(thread, new Pending(label, start, start + Math.max(0, elapsed) + Math.max(0, idle), children));
+        } else if (parent != null) {
+            Deque<String> request = new ArrayDeque<>();
+            request.addLast(label);
+            requests.put(thread, request);
         }
-        return parent;
+        return parent == null ? null : new Nesting(parent, true);
+    }
+
+    /** JMeter's name for a sub-result of {@code request}: its label, a dash and a position. */
+    static boolean isSubResultOf(String label, String request) {
+        if (label == null || request == null || label.length() <= request.length() + 1
+                || !label.startsWith(request) || label.charAt(request.length()) != '-') {
+            return false;
+        }
+        for (int i = request.length() + 1; i < label.length(); i++) {
+            if (!Character.isDigit(label.charAt(i))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** The N of "Number of samples in transaction : N, ...", or 0 for a row that is no transaction. */

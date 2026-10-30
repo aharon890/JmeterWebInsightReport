@@ -255,8 +255,11 @@ Controller's sample and the sub-samples inside it — never guessed from sampler
 rebuilds the same tree from the JTL: a transaction row (response message `Number of samples in
 transaction : N, ...`) whose thread's next row starts inside it generated a parent sample, and its
 thread's next N rows are its children, as JMeter writes them. Both reports of one run therefore count
-the same totals (B5). Sub-samples a JTL does not mark (embedded resources, redirects) stay rows of
-their own in a `-g` report, as in every JMeter tool that reads the file. When transactions are nested,
+the same totals (B5). A request's own sub-results inside a transaction (redirect hops, embedded
+resources, which JMeter writes right after it as `<request>-0`, `<request>-1`) are nested under that
+request as the listener nests them, and are not counted among the transaction's N. Sub-samples
+outside a transaction (embedded resources, redirects) stay rows of their own in a `-g` report, as in
+every JMeter tool that reads the file. When transactions are nested,
 the Summary tab says that each one counts once, as JMeter's Aggregate Report in the test plan counts it:
 - **Default view:** Only parent transactions and standalone samplers are shown — matches JMeter's native Aggregate Report. Child samplers are hidden from the table, filter bar, and charts to avoid double-counting.
 - **"Transaction Details" toggle:** Button in the Samplers tab toolbar. When activated, child samplers appear indented under their parent with full statistics and mini-charts. The toggle also reveals child sampler checkboxes in the filter bar.

@@ -218,14 +218,15 @@ public class JtlParser {
             // The row was stamped at its end; the engine places and windows samples by start.
             sample.timestamp -= sample.elapsed;
         }
-        String parent = transactions.parentOf(sample.thread, sample.label, sample.message,
+        TransactionRows.Nesting parent = transactions.parentOf(sample.thread, sample.label, sample.message,
                 sample.timestamp, sample.elapsed, sample.idle);
         try {
             sample.feed(engine);
             if (parent != null) {
                 // Nested as the listener nests a parent sample's sub-results: the transaction counts
-                // once in the totals, its requests are its breakdown (B5)
-                engine.recordTransaction(parent, sample.label, true);
+                // once in the totals, its requests are its breakdown (B5); a request's own redirects and
+                // embedded resources nest under it, not badged as a transaction
+                engine.recordTransaction(parent.parent, sample.label, parent.transaction);
             }
         } catch (RuntimeException e) {
             throw new IllegalStateException("The statistics engine failed on the sample '"
