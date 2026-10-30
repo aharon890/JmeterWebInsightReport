@@ -32,7 +32,9 @@ HTML report groups them by: the code and the response message (`500/Internal Ser
 from 200 to 399) or one with no code, the first failed assertion's message (`Test failed: text
 expected to contain /order-id/`) — `Assertion failed` when the results file saved none. The
 listener reads that message off the sample; `-g` reads the JTL's `failureMessage` column, which
-JMeter writes by default. A non-protocol row's response message is the HTTP reason phrase — `OK` —
+JMeter writes by default. With `jmeter.save.saveservice.assertion_results_failure_message=false`
+JMeter types every such failure `Assertion failed`, and so does the report (JMeter's own `-g` then
+refuses the file, which lacks the column). A non-protocol row's response message is the HTTP reason phrase — `OK` —
 which says nothing about why the sampler failed it, so the tab shows the type of error there
 instead.
 

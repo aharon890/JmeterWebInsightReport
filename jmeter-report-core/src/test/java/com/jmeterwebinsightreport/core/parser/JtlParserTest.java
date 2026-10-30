@@ -538,6 +538,20 @@ class JtlParserTest {
     }
 
     @Test
+    void withFailureMessagesOffAFailedAssertionIsJMetersAssertionFailed() throws IOException {
+        // jmeter.save.saveservice.assertion_results_failure_message=false: JMeter's HTML report types the
+        // error "Assertion failed" whatever the file holds
+        File jtl = writeJtl("assertions-off.jtl", HEADER + "\n"
+                + "1700000000000,100,Search,200,OK,TG 1-1,text,false,Test failed: x,500,50,1,1,http://x/s,90,0,5\n");
+        JtlParser parser = new JtlParser();
+        parser.setFailureMessageTypesErrors(false);
+
+        ReportData data = parser.parse(jtl, "assertions-off");
+
+        assertEquals("Assertion failed", data.getErrorSummaries().get(0).getErrorType());
+    }
+
+    @Test
     void anEndStampedTransactionIsNestedFromItsRealStart() throws IOException {
         // sampleresult.timestamp.start=false: the stamp is the end. Checkout really ran 0..350 ms (Cart
         // 0..100, a 50 ms pause, Pay 150..350): elapsed 300, idle 50, stamped at 350. Read as stamp -

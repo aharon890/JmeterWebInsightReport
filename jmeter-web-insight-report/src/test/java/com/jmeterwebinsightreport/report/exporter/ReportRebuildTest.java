@@ -368,4 +368,16 @@ class ReportRebuildTest {
             assertFalse(ReportRebuild.stampedAtStart(no), no);
         }
     }
+
+    @Test
+    void theFailureMessagePropertyIsReadAsJMetersHtmlReportReadsIt() {
+        // E1: ErrorsSummaryConsumer reads it with getPropDefault(..., true): unreadable is its default, true
+        assertTrue(ReportRebuild.failureMessageTypesErrors(null));
+        for (String yes : new String[]{"true", " T ", "1", "maybe", ""}) {
+            assertTrue(ReportRebuild.failureMessageTypesErrors(yes), yes);
+        }
+        for (String no : new String[]{"false", "f", "0", "2"}) {
+            assertFalse(ReportRebuild.failureMessageTypesErrors(no), no);
+        }
+    }
 }

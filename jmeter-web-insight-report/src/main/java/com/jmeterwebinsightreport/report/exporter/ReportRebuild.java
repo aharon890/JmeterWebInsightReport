@@ -106,6 +106,20 @@ public final class ReportRebuild {
      * never loaded JMeter's file, not a JMeter that stamps at the end.
      */
     static boolean stampedAtStart(String value) {
+        return jmeterBoolean(value, false);
+    }
+
+    /**
+     * {@code jmeter.save.saveservice.assertion_results_failure_message}, read as JMeter's HTML report reads it
+     * ({@code ErrorsSummaryConsumer}: {@code getPropDefault(..., true)}): whether a failed assertion's message
+     * names a 2xx failure's type of error (E1).
+     */
+    static boolean failureMessageTypesErrors(String value) {
+        return jmeterBoolean(value, true);
+    }
+
+    /** As {@code JMeterUtils.getPropDefault} reads a boolean, absent read as true (see {@link #stampedAtStart}). */
+    private static boolean jmeterBoolean(String value, boolean unreadable) {
         if (value == null) {
             return true;
         }
@@ -119,7 +133,7 @@ public final class ReportRebuild {
         try {
             return Integer.parseInt(v) == 1;
         } catch (NumberFormatException e) {
-            return false;
+            return unreadable;
         }
     }
 
@@ -148,6 +162,8 @@ public final class ReportRebuild {
         // The file is read the way JMeter wrote it (B3): sampleresult.timestamp.start=false
         // stamps each row at its end.
         parser.setTimestampIsStart(stampedAtStart(props.apply("sampleresult.timestamp.start")));
+        parser.setFailureMessageTypesErrors(failureMessageTypesErrors(
+                props.apply("jmeter.save.saveservice.assertion_results_failure_message")));
 
         ReportData reportData = parser.parse(jtl, config.getReportTitle());
 

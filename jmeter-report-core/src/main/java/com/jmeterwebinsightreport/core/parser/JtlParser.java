@@ -47,6 +47,10 @@ public class JtlParser {
      *  timeStamp as a start shifted each sample by its own elapsed time and stretched the run's
      *  window (S46: 3 m 10 s against 3 m 4 s, B3). */
     private boolean timestampIsStart = true;
+    /** {@code jmeter.save.saveservice.assertion_results_failure_message}: whether a failed assertion's
+     *  message is a 2xx failure's type of error, as JMeter's HTML report reads it ({@code
+     *  ErrorsSummaryConsumer}); off, every such failure is "Assertion failed" (E1). */
+    private boolean failureMessageTypesErrors = true;
 
     public void setRampUpDurationMillis(long rampUpDurationMillis) {
         this.rampUpDurationMillis = rampUpDurationMillis;
@@ -54,6 +58,10 @@ public class JtlParser {
 
     public void setApdexThreshold(double apdexThreshold) {
         this.apdexThreshold = apdexThreshold;
+    }
+
+    public void setFailureMessageTypesErrors(boolean failureMessageTypesErrors) {
+        this.failureMessageTypesErrors = failureMessageTypesErrors;
     }
 
     public void setTimestampIsStart(boolean timestampIsStart) {
@@ -119,7 +127,7 @@ public class JtlParser {
             // that did not (TransactionRows)
             int colIdle = headers.getOrDefault("IdleTime", -1);
             // The first failed assertion's message: a 2xx failure's type of error (E1)
-            int colFailure = headers.getOrDefault("failureMessage", -1);
+            int colFailure = failureMessageTypesErrors ? headers.getOrDefault("failureMessage", -1) : -1;
             TransactionRows transactions = new TransactionRows();
 
             int expectedColumns = headers.size();

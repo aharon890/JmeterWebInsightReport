@@ -530,8 +530,10 @@ public class WebInsightReportListener extends ResultCollector {
                     result.getSampleLabel(),
                     result.getResponseCode(),
                     result.getResponseMessage(),
-                    // what a results file's failureMessage column holds (CSVSaveService) (E1)
-                    result.getFirstAssertionFailureMessage(),
+                    // what a results file's failureMessage column holds (CSVSaveService), when JMeter would
+                    // type the error by it: the property is on (its default), as the HTML report reads it (E1)
+                    JMeterUtils.getPropDefault("jmeter.save.saveservice.assertion_results_failure_message", true)
+                            ? result.getFirstAssertionFailureMessage() : null,
                     start,
                     result.getThreadName(),
                     url,
