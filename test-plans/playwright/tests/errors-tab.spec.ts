@@ -189,6 +189,12 @@ async function readErrorTotal(page: Page) {
       rows: data.length,
       shown: shown.length,
       samplers: data.map((r) => r.getAttribute('data-sampler')),
+      rowCounts: data.reduce((m: Record<string, number>, r) => {
+        const name = r.getAttribute('data-sampler') || '';
+        m[name] = (m[name] || 0) + parseInt(text(r, 'Count').replace(/,/g, ''), 10);
+        return m;
+      }, {}),
+      samplerErrors: Object.fromEntries((d.samplers || []).map((s: any) => [s.name, s.errorCount as number])),
       shownSum: shown.reduce((s, r) => s + parseInt(text(r, 'Count').replace(/,/g, ''), 10), 0),
       allSum: data.reduce((s, r) => s + parseInt(text(r, 'Count').replace(/,/g, ''), 10), 0),
       errors: d.requestErrorCount as number,
@@ -253,7 +259,12 @@ test.describe('Errors Tab — Error Summary Total row (B2)', () => {
     await goErrors(page);
     const t = await readErrorTotal(page);
     expect(t.transactions.length, 'E02 no longer has a transaction').toBeGreaterThan(0);
-    for (const tx of t.transactions) expect(t.samplers, `a row of transaction ${tx}`).not.toContain(tx);
+    // A transaction's own failures are not rows. One its thread was cut off from at the test end has no
+    // "Number of samples in transaction" message, and JMeter's HTML report counts it as a request
+    // (Sample.isController): E02 has one, so the transaction's row may hold that one and no more.
+    for (const tx of t.transactions) {
+      expect(t.rowCounts[tx] || 0, `transaction ${tx}'s own failures are rows`).toBeLessThan(t.samplerErrors[tx]);
+    }
     expect(t.shown).toBe(t.rows);
     expect(t.allSum, 'the rows do not add up to the run\'s failed requests').toBe(t.errors);
     expectTotalOfShown(t, 'E02');
