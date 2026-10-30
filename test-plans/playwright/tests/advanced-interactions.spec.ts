@@ -246,7 +246,7 @@ test.describe('Chart Legend Click (hide/show series)', () => {
       const opt = chart.getOption();
       const series = opt.series || [];
       // Find the first non-thread series name
-      const samplerSeries = series.filter((s: any) => s.name !== 'Active Threads');
+      const samplerSeries = series.filter((s: any) => s.name !== 'Max Active Threads');
       const firstName = samplerSeries.length > 0 ? samplerSeries[0].name : '';
       // Get legend selected state
       const legendSelected = opt.legend && opt.legend[0] ? (opt.legend[0].selected || {}) : {};

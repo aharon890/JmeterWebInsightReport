@@ -177,7 +177,7 @@ test.describe('Flow: Sampler Filtering (E05)', () => {
     const timelineCanvas = page.locator('#response-time-chart canvas').first();
     await expect(timelineCanvas).toBeVisible();
 
-    // Verify ECharts series: 2 sampler series + possibly "Active Threads" overlay
+    // Verify ECharts series: 2 sampler series + possibly the "Max Active Threads" overlay
     const visibleSeriesCount = await page.evaluate(() => {
       const el = document.getElementById('response-time-chart');
       if (!el) return 0;
@@ -186,9 +186,9 @@ test.describe('Flow: Sampler Filtering (E05)', () => {
       if (!chart) return 0;
       const option = chart.getOption();
       if (!option.series) return 0;
-      // Count only sampler series (exclude "Active Threads" overlay)
+      // Count only sampler series (exclude the "Max Active Threads" overlay)
       return option.series.filter(
-        (s: { name: string }) => s.name !== 'Active Threads'
+        (s: { name: string }) => s.name !== 'Max Active Threads'
       ).length;
     });
     expect(visibleSeriesCount).toBe(2);
@@ -233,9 +233,9 @@ test.describe('Flow: Sampler Filtering (E05)', () => {
       if (!chart) return 0;
       const option = chart.getOption();
       if (!option.series) return 0;
-      // Count only sampler series (exclude "Active Threads" overlay)
+      // Count only sampler series (exclude the "Max Active Threads" overlay)
       return option.series.filter(
-        (s: { name: string }) => s.name !== 'Active Threads'
+        (s: { name: string }) => s.name !== 'Max Active Threads'
       ).length;
     });
     expect(restoredSeriesCount).toBeGreaterThan(2);

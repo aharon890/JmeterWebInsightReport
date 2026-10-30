@@ -41,6 +41,12 @@ var visibleTimeRangeMs = 0; /* updated on dataZoom events */
 /* Virtual "Total" sampler — aggregate across all real samplers */
 var TOTAL_SAMPLER_NAME = '\u03A3 Total';
 
+/* The threads line over the response times (T8): the most threads running in the window, every thread
+   group together, as the Max Threads tile counts them. JMeter's Active Threads Over Time draws each
+   thread group's mean instead and has no all-groups line, so this one is named for what it is, and a
+   window above 1 s takes its seconds' maximum, not the mean of their maxima. */
+var MAX_THREADS_SERIES = 'Max Active Threads';
+
 /* Transaction Controller children visibility — false = hide children (like JMeter native) */
 var showTransactionChildren = false;
 
@@ -1683,10 +1689,10 @@ function initSummaryResponseTimeChart(data) {
     var hasThreads = data.activeThreads && data.activeThreads.some(function (v) { return v > 0; });
     if (hasThreads) {
         series.push({
-            name: 'Active Threads',
+            name: MAX_THREADS_SERIES,
             type: 'line',
             yAxisIndex: 1,
-            data: zipTimeSeries(data.timestamps, data.activeThreads),
+            data: zipTimeSeries(data.timestamps, data.activeThreads, aggOptsForMetric('max')),
             smooth: true,
             symbol: 'none',
             lineStyle: { width: 1, type: 'dashed', color: '#91cc75' },
@@ -1694,7 +1700,7 @@ function initSummaryResponseTimeChart(data) {
         });
     }
 
-    var rtSeries = series.filter(function (s) { return s.name !== 'Active Threads'; });
+    var rtSeries = series.filter(function (s) { return s.name !== MAX_THREADS_SERIES; });
     var maxRT = getMaxFromSeries(rtSeries);
     var yAxes = [responseTimeYAxis(maxRT, 'Response Time')];
     if (hasThreads) {
@@ -1742,10 +1748,10 @@ function initResponseTimeChart(data) {
     var hasThreads = data.activeThreads && data.activeThreads.some(function (v) { return v > 0; });
     if (hasThreads) {
         series.push({
-            name: 'Active Threads',
+            name: MAX_THREADS_SERIES,
             type: 'line',
             yAxisIndex: 1,
-            data: zipTimeSeries(data.timestamps, data.activeThreads),
+            data: zipTimeSeries(data.timestamps, data.activeThreads, aggOptsForMetric('max')),
             smooth: true,
             symbol: 'none',
             lineStyle: { width: 1, type: 'dashed', color: '#91cc75' },
@@ -1753,7 +1759,7 @@ function initResponseTimeChart(data) {
         });
     }
 
-    var rtSeries = series.filter(function (s) { return s.name !== 'Active Threads'; });
+    var rtSeries = series.filter(function (s) { return s.name !== MAX_THREADS_SERIES; });
     var maxRT = getMaxFromSeries(rtSeries);
     var yAxes = [responseTimeYAxis(maxRT, 'Response Time')];
     if (hasThreads) {
@@ -3302,7 +3308,7 @@ function pad(n) {
  * rendering as '1500 ms' where they should read '1500'.
  */
 function formatChartValue(val, seriesName) {
-    if (seriesName === 'Active Threads') return Math.round(val);
+    if (seriesName === MAX_THREADS_SERIES) return Math.round(val);
     return formatResponseTime(val);
 }
 

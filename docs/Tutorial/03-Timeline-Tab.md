@@ -11,7 +11,8 @@ except on **Throughput**, where it counts in the second it **started** — JMete
 
 9 charts are displayed in this default order:
 
-1. **Response Time Over Time** — per sampler + active threads overlay
+1. **Response Time Over Time** — per sampler + a Max Active Threads overlay (the most threads
+   running in the window, every thread group together)
 2. **Throughput Over Time** — requests/sec per sampler
 3. **Error Rate Over Time** — error % per sampler
 4. **Bytes Throughput Over Time** — bytes/sec received (solid) and sent (dashed) per sampler

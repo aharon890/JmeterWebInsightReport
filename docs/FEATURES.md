@@ -44,7 +44,7 @@ The time-series charts support:
 ### Available Charts
 
 **Timeline tab:**
-- Response Time Over Time (per sampler, with active threads overlay)
+- Response Time Over Time (per sampler, with a **Max Active Threads** overlay: the most threads running in the window, all thread groups together, as the Max Threads tile counts them — JMeter's Active Threads Over Time draws each group's mean instead)
 - Throughput Over Time (per sampler)
 - Error Rate Over Time (per sampler)
 - Bytes Throughput Over Time (received/sent bytes per sampler)
