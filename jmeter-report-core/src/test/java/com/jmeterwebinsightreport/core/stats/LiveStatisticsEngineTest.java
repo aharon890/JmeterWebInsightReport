@@ -248,6 +248,32 @@ class LiveStatisticsEngineTest {
     }
 
     @Test
+    void errorsAreGroupedPerSamplerByJMetersTypeOfError() {
+        // E1: pilot-D "Payment | 500 x69" is JMeter's "500/Internal Server Error x44" and
+        // "500/Database timeout x25"; its failed assertions on a 200 are their failure message
+        long ts = 1700000000000L;
+        for (int i = 0; i < 3; i++) {
+            engine.recordError("Payment", "500", "Internal Server Error", null, ts + i, "TG 1-1", null, null, null);
+        }
+        engine.recordError("Payment", "500", "Database timeout", null, ts + 5, "TG 1-1", null, null, null);
+        engine.recordError("Search", "200", "OK", "Test failed: text expected to contain /order-id/", ts + 6,
+                "TG 1-1", null, null, null);
+        engine.recordError("Search", "200", "OK", null, ts + 7, "TG 1-1", null, null, null);
+
+        List<ErrorSummary> groups = engine.buildReportData("t").getErrorSummaries();
+        assertEquals(4, groups.size());
+        assertEquals(3, groups.stream().filter(g -> g.getErrorType().equals("500/Internal Server Error"))
+                .findFirst().get().getOccurrenceCount());
+        assertTrue(groups.stream().anyMatch(g -> g.getErrorType().equals("500/Database timeout")));
+        ErrorSummary assertion = groups.stream()
+                .filter(g -> g.getErrorType().startsWith("Test failed")).findFirst().get();
+        assertEquals("Test failed: text expected to contain /order-id/", assertion.getFailureMessage());
+        assertTrue(groups.stream().anyMatch(g -> g.getErrorType().equals("Assertion failed")));
+        assertEquals("Test failed: text expected to contain /order-id/",
+                engine.getErrorRecords().get(4).getErrorType(), "the record carries its type too");
+    }
+
+    @Test
     void theDetailRecordsAreTruncatedOnlyByFailedRequests() {
         String tx = "Number of samples in transaction : 1, number of failing samples : 1";
         for (int i = 0; i < 500; i++) {

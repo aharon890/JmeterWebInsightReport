@@ -610,10 +610,13 @@
                             <tr>
                                 <th onclick="sortGenericTable('errorSummaryTable', 0, 'text')">Sampler</th>
                                 <th onclick="sortGenericTable('errorSummaryTable', 1, 'text')">Response Code</th>
-                                <th onclick="sortGenericTable('errorSummaryTable', 2, 'text')">Class</th>
-                                <th onclick="sortGenericTable('errorSummaryTable', 3, 'num')">Count</th>
-                                <th onclick="sortGenericTable('errorSummaryTable', 4, 'num')">% of Errors</th>
-                                <th onclick="sortGenericTable('errorSummaryTable', 5, 'num')">% of All Samples</th>
+                                <!-- JMeter's "Type of error" (E1): code/message, or a failed assertion's message -->
+                                <th onclick="sortGenericTable('errorSummaryTable', 2, 'text')"
+                                    title="As JMeter's HTML report words it: the code and message, or for a failed assertion its message">Type of error</th>
+                                <th onclick="sortGenericTable('errorSummaryTable', 3, 'text')">Class</th>
+                                <th onclick="sortGenericTable('errorSummaryTable', 4, 'num')">Count</th>
+                                <th onclick="sortGenericTable('errorSummaryTable', 5, 'num')">% of Errors</th>
+                                <th onclick="sortGenericTable('errorSummaryTable', 6, 'num')">% of All Samples</th>
                                 <th></th>
                             </tr>
                         </thead>
@@ -622,9 +625,10 @@
                                 th:data-sampler="${err.samplerName}" th:data-error-class="${err.errorClass}">
                                 <td th:text="${err.samplerName}" th:title="${err.samplerName}">Sampler</td>
                                 <td th:text="${err.responseCode}" th:title="${err.responseCode}">500</td>
+                                <td th:text="${err.errorType}" th:title="${err.errorType}">500/Internal Server Error</td>
                                 <td><span class="error-class" th:classappend="'error-class-' + ${err.errorClass}"
                                        th:text="${err.errorClassLabel}"
-                                       th:title="'Inferred from the response code — the report cannot see which assertion fired'">HTTP failure</span></td>
+                                       th:title="'Inferred from the response code: where the failure was decided'">HTTP failure</span></td>
                                 <td th:text="${fmt.number(err.occurrenceCount)}">0</td>
                                 <td th:text="${fmt.percentage(err.percentageOfErrors)}">0%</td>
                                 <td th:text="${fmt.percentage(err.percentageOfAllSamples)}">0%</td>
@@ -642,7 +646,7 @@
                         <h2 style="margin-bottom:0;">Error Details</h2>
                         <div class="filter-btn-group" id="errorViewToggle">
                             <button class="filter-toggle-btn active" id="errViewTimeBtn" onclick="setErrorDetailsView('time')" title="Chronological list &mdash; trace failures over time">By time</button>
-                            <button class="filter-toggle-btn" id="errViewGroupBtn" onclick="setErrorDetailsView('group')" title="Aggregated by sampler + response code">Grouped</button>
+                            <button class="filter-toggle-btn" id="errViewGroupBtn" onclick="setErrorDetailsView('group')" title="By sampler and type of error, as JMeter's HTML report groups errors">Grouped</button>
                         </div>
                     </div>
                     <button class="table-csv-btn" onclick="exportErrorDetailsCsv()" title="Download as CSV">
@@ -680,9 +684,10 @@
                                     <td th:text="${er.responseCode}" th:title="${er.responseCode}">500</td>
                                     <td><span class="error-class" th:classappend="'error-class-' + ${er.errorClass}"
                                            th:text="${er.errorClassLabel}"
-                                           th:title="'Inferred from the response code — the report cannot see which assertion fired'">HTTP failure</span></td>
-                                    <td th:if="${er.messageMeaningless}" class="error-message-none"
-                                        th:title="'The sampler failed a 2xx response. The reason lives in failureMessage, which is not captured on either ingestion path.'">&mdash;</td>
+                                           th:title="'Inferred from the response code: where the failure was decided'">HTTP failure</span></td>
+                                    <!-- A failed 2xx's "OK" says nothing: JMeter's type of error, its assertion's message (E1) -->
+                                    <td th:if="${er.messageMeaningless}" th:text="${er.errorType}"
+                                        th:title="${er.errorType}">Assertion failed</td>
                                     <td th:unless="${er.messageMeaningless}"
                                         th:text="${er.responseMessage}" th:title="${er.responseMessage}">Error</td>
                                     <td th:text="${er.threadName}" th:title="${er.threadName}">Thread</td>
@@ -694,7 +699,7 @@
                     </div>
                 </div>
 
-                <!-- Grouped view: one row per sampler+code signature; tbody built by buildErrorGroups(). -->
+                <!-- Grouped view: one row per sampler and type of error; tbody built by buildErrorGroups(). -->
                 <div id="errViewGroup" style="display:none;">
                     <div class="table-toolbar">
                         <input type="text" class="table-search" placeholder="Filter errors..." oninput="filterErrorGroups(this.value)"/>
@@ -709,7 +714,7 @@
                                     <th>Count</th>
                                     <th>Code</th>
                                     <th>Sampler</th>
-                                    <th>Message</th>
+                                    <th>Type of error</th>
                                     <th>First seen</th>
                                     <th>Last seen</th>
                                 </tr>

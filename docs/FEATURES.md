@@ -280,8 +280,9 @@ The Errors tab provides four views:
 2. **Error Timeline** — scatter plot showing individual error occurrences over time, colored by
    sampler. The report keeps the details of the first 500 failed samples; past that the timeline
    plots those 500 and says so under the chart, with the time of the last one plotted
-3. **Error Summary Table** — grouped by sampler + response code, with the error class, count and
-   percentages, counting every error
+3. **Error Summary Table** — grouped by sampler + JMeter's type of error (`500/Internal Server
+   Error`, or a failed assertion's message, read from the sample or the JTL's `failureMessage`), with
+   the code, the error class, count and percentages, counting every failed request
    - Search filter, column toggle, row hide
    - A long sampler name ends in an ellipsis, with the full text in a native title tooltip
    - **⊕ on the Class cell** — opens the assert editor with an `errorRate:class=…` rule for that
@@ -289,7 +290,7 @@ The Errors tab provides four views:
 4. **Error Details Table** — the first 500 error records, with time, sampler, code, class,
    message and thread. A **By time / Grouped** switch beside the heading picks the view, and the
    choice is remembered: *By time* is one row per error, *Grouped* one row per sampler and
-   response code, most frequent first, with first and last seen — click a group to list each
+   type of error, most frequent first, with first and last seen — click a group to list each
    occurrence's time and thread, or use Expand All / Collapse All
    - Search filter, column toggle, row hide
    - A long sampler name or message ends in an ellipsis, with the full text in a native title tooltip

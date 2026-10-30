@@ -20,8 +20,18 @@ public class ErrorSummary {
      *  transaction ..."). The asserts count them, as the Aggregate Report counts a failed transaction;
      *  the Errors tab does not, as JMeter's HTML report does not (E3). */
     private boolean transactionRow;
+    /** The group's first failed assertion message, or null (E1). */
+    private String failureMessage;
 
     public ErrorSummary() {
+    }
+
+    public String getFailureMessage() {
+        return failureMessage;
+    }
+
+    public void setFailureMessage(String failureMessage) {
+        this.failureMessage = failureMessage;
     }
 
     public boolean isTransactionRow() {
@@ -40,8 +50,10 @@ public class ErrorSummary {
         this.samplerName = samplerName;
     }
 
+    /** JMeter's "Type of error" of the group ({@link ErrorType}): what the engine grouped by, else
+     *  worked out from the group's code, message and failure message. */
     public String getErrorType() {
-        return errorType;
+        return errorType != null ? errorType : ErrorType.of(responseCode, responseMessage, failureMessage);
     }
 
     public void setErrorType(String errorType) {
@@ -124,9 +136,8 @@ public class ErrorSummary {
      * True when the response message says nothing about the failure.
      *
      * <p>A 2xx that a sampler failed carries the HTTP reason phrase — "OK" — which is not a
-     * failure reason and is actively misleading in an error table. The real reason lives in
-     * {@code failureMessage}, which neither ingestion path captures, so the honest render is
-     * nothing at all rather than a message we know is meaningless.
+     * failure reason and is actively misleading in an error table. The real reason is the failed
+     * assertion's message, the group's {@link #getErrorType()} since E1, which the tab shows instead.
      */
     public boolean isMessageMeaningless() {
         return ErrorClass.of(responseCode) == ErrorClass.NON_PROTOCOL;

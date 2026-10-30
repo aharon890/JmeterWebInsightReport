@@ -526,6 +526,8 @@ public class WebInsightReportListener extends ResultCollector {
                     result.getSampleLabel(),
                     result.getResponseCode(),
                     result.getResponseMessage(),
+                    // what a results file's failureMessage column holds (CSVSaveService) (E1)
+                    result.getFirstAssertionFailureMessage(),
                     start,
                     result.getThreadName(),
                     url,

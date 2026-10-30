@@ -13,8 +13,23 @@ public class ErrorRecord {
     private String requestUrl;
     private String requestHeaders;
     private String responseBody;
+    /** The first failed assertion's message, or null: the reason a 2xx failed (E1). */
+    private String failureMessage;
 
     public ErrorRecord() {
+    }
+
+    public String getFailureMessage() {
+        return failureMessage;
+    }
+
+    public void setFailureMessage(String failureMessage) {
+        this.failureMessage = failureMessage;
+    }
+
+    /** JMeter's "Type of error" for this failure, which the Errors tab groups by ({@link ErrorType}). */
+    public String getErrorType() {
+        return ErrorType.of(responseCode, responseMessage, failureMessage);
     }
 
     public String getSamplerName() {
@@ -101,9 +116,9 @@ public class ErrorRecord {
      * True when the response message says nothing about the failure.
      *
      * <p>A 2xx that a sampler failed carries the HTTP reason phrase — "OK" — which is not a
-     * failure reason and is actively misleading in an error table. The real reason lives in
-     * {@code failureMessage}, which neither ingestion path captures, so the honest render is
-     * nothing at all rather than a message we know is meaningless.
+     * failure reason and is actively misleading in an error table. The real reason is the failed
+     * assertion's message, which both paths read since E1: the Errors tab shows JMeter's type of
+     * error instead ({@link #getErrorType()}: that message, or "Assertion failed").
      */
     public boolean isMessageMeaningless() {
         return ErrorClass.of(responseCode) == ErrorClass.NON_PROTOCOL;

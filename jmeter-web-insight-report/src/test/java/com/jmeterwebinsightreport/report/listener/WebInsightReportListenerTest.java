@@ -301,6 +301,33 @@ class WebInsightReportListenerTest {
     }
 
     @Test
+    void aFailedAssertionsMessageIsTheTypeOfErrorOfA200() throws Exception {
+        // E1: what CSVSaveService writes into failureMessage, read off the result itself
+        WebInsightReportListener listener = new WebInsightReportListener();
+        com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine engine =
+                new com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine();
+        Field f = WebInsightReportListener.class.getDeclaredField("statsEngine");
+        f.setAccessible(true);
+        f.set(listener, engine);
+
+        SampleResult search = SampleResult.createTestSample(1_700_000_000_000L, 1_700_000_000_100L);
+        search.setSampleLabel("Search");
+        search.setResponseCode("200");
+        search.setResponseMessage("OK");
+        search.setSuccessful(false);
+        org.apache.jmeter.assertions.AssertionResult failed =
+                new org.apache.jmeter.assertions.AssertionResult("Search Assert");
+        failed.setFailure(true);
+        failed.setFailureMessage("Test failed: text expected to contain /order-id/");
+        search.addAssertionResult(failed);
+        listener.sampleOccurred(new SampleEvent(search, "Thread Group"));
+
+        com.jmeterwebinsightreport.core.model.ReportData data = engine.buildReportData("t");
+        assertEquals("Test failed: text expected to contain /order-id/",
+                data.getErrorSummaries().get(0).getErrorType());
+    }
+
+    @Test
     void aStatisticalResultCountsItsSamplesAndItsErrors() throws Exception {
         // B6: a remote engine in Statistical mode sends one StatisticalSampleResult for many samples.
         WebInsightReportListener listener = new WebInsightReportListener();

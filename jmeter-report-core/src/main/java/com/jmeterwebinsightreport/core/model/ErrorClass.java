@@ -6,12 +6,11 @@ package com.jmeterwebinsightreport.core.model;
  *
  * <h2>Why this has to be inferred</h2>
  *
- * <p>Errors are collected on {@code success == false}, and {@code errorType} is the response code
- * verbatim. A sample failed by a Response Assertion has {@code success=false} and
- * {@code responseCode=200}, so it lands in the error set as <em>200 / OK</em> — a row that reads
- * like a pass, counted as an error, and indistinguishable at every field the report captures.
- * {@code failureMessage} and {@code getAssertionResults()} are read on neither ingestion path,
- * so there is nothing else to look at.
+ * <p>Errors are collected on {@code success == false}. A sample failed by a Response Assertion has
+ * {@code success=false} and {@code responseCode=200}: a row that reads like a pass. Since E1 both
+ * paths read the first failed assertion's message ({@code failureMessage}), which names the
+ * assertion's complaint and becomes the error's {@link ErrorType}; the class stays the code's, so a
+ * results file saved without that column classifies as the listener does.
  *
  * <p>This class therefore says <strong>where the failure was decided</strong>, never <em>why</em>.
  * It is derived from {@code (success == false, shape of the response code)} and nothing more.

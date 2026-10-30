@@ -4740,11 +4740,15 @@ function errorGroupsFrom(records, summaries) {
     /* Null-prototype map so sampler names like "constructor" can't collide with Object.prototype. */
     var byKey = Object.create(null);
     var groups = [];
+    /* Per sampler and JMeter's type of error, the group the engine counted (E1); a payload without
+       one groups by code. */
     function groupFor(sampler, code, from) {
-        var key = (sampler || '') + '||' + (code || '');
+        var type = from.errorType || code || '';
+        var key = (sampler || '') + '||' + type;
         var g = byKey[key];
         if (!g) {
-            g = { key: key, sampler: sampler || '', code: code || '', message: from.message || from.responseMessage || '',
+            g = { key: key, sampler: sampler || '', code: code || '', errorType: type,
+                  message: from.message || from.responseMessage || '',
                   /* Carried through from the payload so the grouped view says the same thing as
                      the server-rendered table it replaces. */
                   errorClass: from.errorClass || '', errorClassLabel: from.errorClassLabel || '',
@@ -4798,10 +4802,9 @@ function buildErrorGroups(records, summaries) {
                     : '') + '</td>' +
             '<td title="' + escapeHtml(String(g.sampler)) + '" style="max-width:380px;overflow:hidden;' +
                 'text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(String(g.sampler)) + '</td>' +
-            /* An em-dash, not "OK": the HTTP reason phrase of a 2xx says nothing about why the
-               sampler failed it, and the reason that would is captured on neither path. */
-            '<td class="' + (g.messageMeaningless ? 'error-message-none' : '') + '">' +
-                (g.messageMeaningless ? '&mdash;' : escapeHtml(String(g.message))) + '</td>' +
+            /* JMeter's type of error, the group's key: code/message, or a failed assertion's message
+               where the HTTP reason phrase of a 2xx ("OK") says nothing (E1). */
+            '<td title="' + escapeHtml(String(g.errorType)) + '">' + escapeHtml(String(g.errorType)) + '</td>' +
             '<td>' + formatErrorClock(g.first) + '</td>' +
             '<td>' + formatErrorClock(g.last) + '</td>';
         /* Listener rather than an inline onclick: sampler names may contain quotes. */
@@ -7585,10 +7588,10 @@ function exportTop5SlowestCsv() {
 function exportErrorSummaryCsv() {
     if (!globalChartData) return;
     var records = globalChartData.errorSummaries || globalChartData.errorsByType || [];
-    var headers = ['Sampler', 'Response Code', 'Error Class', 'Response Message', 'Count',
+    var headers = ['Sampler', 'Response Code', 'Type of Error', 'Error Class', 'Response Message', 'Count',
         '% of Errors', '% of All Samples'];
     var rows = records.map(function (e) {
-        return [e.samplerName || e.sampler || '', e.responseCode || e.code || '',
+        return [e.samplerName || e.sampler || '', e.responseCode || e.code || '', e.errorType || '',
             errorClassLabelOf(e),
             /* Blank rather than "OK": exporting the HTML reason phrase of a 2xx as a failure
                message is the same untruth as printing it. */
@@ -7601,11 +7604,11 @@ function exportErrorSummaryCsv() {
 
 function exportErrorDetailsCsv() {
     if (!globalChartData || !globalChartData.errorRecords) return;
-    var headers = ['Timestamp', 'Sampler', 'Response Code', 'Error Class', 'Response Message',
+    var headers = ['Timestamp', 'Sampler', 'Response Code', 'Type of Error', 'Error Class', 'Response Message',
         'Thread', 'URL', 'Request Headers', 'Response Body'];
     var rows = globalChartData.errorRecords.map(function (e) {
         var ts = e.timestamp ? new Date(e.timestamp).toISOString() : '';
-        return [ts, e.samplerName || e.sampler || '', e.responseCode || e.code || '',
+        return [ts, e.samplerName || e.sampler || '', e.responseCode || e.code || '', e.errorType || '',
             errorClassLabelOf(e),
             e.messageMeaningless ? '' : (e.responseMessage || e.message || ''),
             e.threadName || e.thread || '',

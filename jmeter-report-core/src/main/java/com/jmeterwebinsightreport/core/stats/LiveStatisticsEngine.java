@@ -171,12 +171,25 @@ public class LiveStatisticsEngine {
     public void recordError(String samplerName, String responseCode, String responseMessage,
                             long timestamp, String threadName,
                             String requestUrl, String requestHeaders, String responseBody) {
+        recordError(samplerName, responseCode, responseMessage, null, timestamp, threadName,
+                requestUrl, requestHeaders, responseBody);
+    }
+
+    /**
+     * Record an error with its first failed assertion's message ({@code failureMessage}), which decides
+     * JMeter's type of error for a 2xx failure ({@link ErrorType}).
+     */
+    public void recordError(String samplerName, String responseCode, String responseMessage,
+                            String failureMessage, long timestamp, String threadName,
+                            String requestUrl, String requestHeaders, String responseBody) {
         boolean transactionRow = isTransactionRow(responseMessage);
         synchronized (errorRecords) {
-            // Unbounded aggregation for summaries and error charts — updated for every error. A
-            // transaction's own failures are a group of their own: the asserts count them, the
-            // Errors tab does not (E3).
-            String key = samplerName + "|" + responseCode + (transactionRow ? "|transaction" : "");
+            // Unbounded aggregation for summaries and error charts — updated for every error. Grouped
+            // per sampler by JMeter's type of error, as the HTML report's Top 5 Errors by Sampler
+            // groups them (E1): a code alone made one row of two messages. A transaction's own
+            // failures are a group of their own: the asserts count them, the Errors tab does not (E3).
+            String key = samplerName + "|" + ErrorType.of(responseCode, responseMessage, failureMessage)
+                    + (transactionRow ? "|transaction" : "");
             long[] c = errorSummaryCounts.get(key);
             if (c == null) {
                 c = new long[]{0, timestamp, timestamp};
@@ -185,6 +198,7 @@ public class LiveStatisticsEngine {
                 agg.setSamplerName(samplerName);
                 agg.setResponseCode(responseCode);
                 agg.setResponseMessage(responseMessage);
+                agg.setFailureMessage(failureMessage);
                 agg.setTimestamp(timestamp);
                 errorSummaryFirst.put(key, agg);
             }
@@ -206,6 +220,7 @@ public class LiveStatisticsEngine {
             record.setSamplerName(samplerName);
             record.setResponseCode(responseCode);
             record.setResponseMessage(responseMessage);
+            record.setFailureMessage(failureMessage);
             record.setTimestamp(timestamp);
             record.setThreadName(threadName);
             if (requestUrl != null) {
@@ -585,7 +600,8 @@ public class LiveStatisticsEngine {
             s.setSamplerName(rec.getSamplerName());
             s.setResponseCode(rec.getResponseCode());
             s.setResponseMessage(rec.getResponseMessage());
-            s.setErrorType(rec.getResponseCode());
+            s.setFailureMessage(rec.getFailureMessage());
+            s.setErrorType(rec.getErrorType());
             s.setOccurrenceCount(entry.getValue());
             s.setFirstTimestamp(spans.get(entry.getKey())[0]);
             s.setLastTimestamp(spans.get(entry.getKey())[1]);

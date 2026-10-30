@@ -563,6 +563,7 @@ public class ReportDataSerializer {
                 Map<String, Object> e = new LinkedHashMap<>();
                 e.put("code", es.getResponseCode());
                 e.put("message", es.getResponseMessage());
+                e.put("errorType", es.getErrorType());
                 e.put("count", es.getOccurrenceCount());
                 e.put("pctErrors", round2(es.getPercentageOfErrors()));
                 // Carried, not re-derived in the browser. Everything client-side that shows an
@@ -579,6 +580,9 @@ public class ReportDataSerializer {
                 full.put("samplerName", es.getSamplerName());
                 full.put("responseCode", es.getResponseCode());
                 full.put("responseMessage", es.getResponseMessage());
+                // JMeter's "Type of error", the group's key (E1), and the assertion message behind it
+                full.put("errorType", es.getErrorType());
+                full.put("failureMessage", es.getFailureMessage());
                 full.put("occurrenceCount", es.getOccurrenceCount());
                 // The group's whole span, for the grouped view's first and last seen (E2): the
                 // records it used to read them from are only the first 500 errors.
@@ -626,6 +630,8 @@ public class ReportDataSerializer {
                 e.put("sampler", er.getSamplerName());
                 e.put("code", er.getResponseCode());
                 e.put("message", er.getResponseMessage());
+                e.put("errorType", er.getErrorType());
+                if (er.getFailureMessage() != null) e.put("failureMessage", er.getFailureMessage());
                 e.put("errorClass", er.getErrorClass());
                 e.put("errorClassLabel", er.getErrorClassLabel());
                 e.put("messageMeaningless", er.isMessageMeaningless());

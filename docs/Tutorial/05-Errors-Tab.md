@@ -21,17 +21,20 @@ same as an HTTP error, and the report says which is which.
 > `errorRate:class=transport`, the selector written to gate on exactly that, and none under
 > `class=protocol`.
 
-> **This is inferred, not read.** The class comes from the response code of a sample already known
-> to have failed — nothing more. The report cannot tell you *which* assertion fired, or whether an
-> assertion fired at all rather than a JSR223 marking the sample failed: `failureMessage` and
-> `getAssertionResults()` are captured neither by the listener nor from a JTL. It says **where** the
-> failure was decided, never why. That is also why it is the same answer on a live listener run and
-> on a JTL re-parsed by `-g`.
+> **The class is inferred from the code.** It comes from the response code of a sample already
+> known to have failed, and says **where** the failure was decided, never why — so it is the same
+> answer on a live listener run and on a JTL re-parsed by `-g`, whatever the JTL saved. The *why* is
+> the **type of error** below.
 
-**Why a non-protocol row shows no message.** Its response message is the HTTP reason phrase —
-`OK` — which says nothing about why the sampler failed it. Printing that in an errors table
-asserts something untrue, so it renders as `—`. A 500's message and a transport exception are
-real and are never suppressed.
+**The type of error is JMeter's.** Errors are grouped per sampler by the "Type of error" JMeter's
+HTML report groups them by: the code and the response message (`500/Internal Server Error` and
+`500/Database timeout` are two rows), or, for a failed response JMeter counts as a success (a code
+from 200 to 399) or one with no code, the first failed assertion's message (`Test failed: text
+expected to contain /order-id/`) — `Assertion failed` when the results file saved none. The
+listener reads that message off the sample; `-g` reads the JTL's `failureMessage` column, which
+JMeter writes by default. A non-protocol row's response message is the HTTP reason phrase — `OK` —
+which says nothing about why the sampler failed it, so the tab shows the type of error there
+instead.
 
 The class appears on every surface: both tables, the grouped error view, the by-response-code
 chart, and both CSV exports.
@@ -80,12 +83,13 @@ The Error Breakdown card and the Error Timeline each have:
 
 ![Error Summary Table](images/12c-error-summary-table.png)
 
-Groups errors by **sampler + response code** with aggregate counts.
+Groups errors by **sampler + type of error** with aggregate counts.
 
 | Column | Description |
 |--------|-------------|
 | **Sampler** | Request label |
 | **Response Code** | HTTP status code (e.g., 500, 404) |
+| **Type of error** | As JMeter's HTML report words it: `500/Internal Server Error`, or a failed assertion's message |
 | **Class** | Where the failure was decided — see [Error classes](#error-classes-where-a-failure-was-decided) |
 | **Count** | Number of occurrences |
 | **% of Errors** | Percentage of total errors |
@@ -142,13 +146,13 @@ One row per error, in the order they happened.
 | **Sampler** | Request label |
 | **Code** | HTTP response code |
 | **Class** | Where the failure was decided — see [Error classes](#error-classes-where-a-failure-was-decided) |
-| **Message** | Response message text |
+| **Message** | Response message text; for a failed 2xx, the type of error (the assertion's message) |
 | **Thread** | JMeter thread name |
 
 ### Grouped
 
-One row per sampler and response code, most frequent first: **Count**, **Code** (with its class),
-**Sampler**, **Message**, **First seen** and **Last seen**. Click a group to list each occurrence's
+One row per sampler and type of error, most frequent first: **Count**, **Code** (with its class),
+**Sampler**, **Type of error**, **First seen** and **Last seen**. Click a group to list each occurrence's
 time and thread; **Expand All** and **Collapse All** open or close every group, and the search box
 filters the groups.
 

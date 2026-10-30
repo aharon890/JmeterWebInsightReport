@@ -335,7 +335,8 @@ class JtlParserTest {
 
                     @Override
                     public void recordError(String samplerName, String responseCode,
-                                            String responseMessage, long timestamp, String threadName,
+                                            String responseMessage, String failureMessage,
+                                            long timestamp, String threadName,
                                             String requestUrl, String requestHeaders,
                                             String responseBody) {
                         throw new IllegalStateException("engine broke");
@@ -534,6 +535,22 @@ class JtlParserTest {
         assertEquals(3, s.getErrorCount(), "the row's ErrorCount, as JMeter reads the file");
         assertEquals(100, s.getMaxResponseTime(), 0.0);
         assertEquals(1040 / 11.0, s.getMeanResponseTime(), 1e-9);
+    }
+
+    @Test
+    void aFailedAssertionsMessageIsReadFromTheFailureMessageColumn() throws IOException {
+        // E1: the column JMeter writes the first failed assertion's message into
+        File jtl = writeJtl("assertions.jtl", HEADER + "\n"
+                + "1700000000000,100,Search,200,OK,TG 1-1,text,false,Test failed: text expected to contain /order-id/,500,50,1,1,http://x/s,90,0,5\n"
+                + "1700000000100,100,Search,200,OK,TG 1-1,text,false,,500,50,1,1,http://x/s,90,0,5\n");
+
+        ReportData data = new JtlParser().parse(jtl, "assertions");
+
+        assertEquals(2, data.getErrorSummaries().size());
+        assertTrue(data.getErrorSummaries().stream()
+                .anyMatch(s -> s.getErrorType().equals("Test failed: text expected to contain /order-id/")));
+        assertTrue(data.getErrorSummaries().stream().anyMatch(s -> s.getErrorType().equals("Assertion failed")));
+        assertEquals("Test failed: text expected to contain /order-id/", data.getErrorRecords().get(0).getFailureMessage());
     }
 
     @Test

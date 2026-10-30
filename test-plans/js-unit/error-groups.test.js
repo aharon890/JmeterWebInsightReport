@@ -53,6 +53,21 @@ test('E2: without summaries the records are grouped as before', () => {
     assert.strictEqual(groups[0].last, 2000);
 });
 
+test('E1: one sampler\'s errors are grouped by JMeter\'s type of error, not by code alone', () => {
+    const scope = loadReportScope();
+    const typed = [
+        { samplerName: 'Pay', responseCode: '500', errorType: '500/Internal Server Error', occurrenceCount: 44 },
+        { samplerName: 'Pay', responseCode: '500', errorType: '500/Database timeout', occurrenceCount: 25 },
+    ];
+    const kept = [
+        { sampler: 'Pay', code: '500', errorType: '500/Database timeout', timestamp: 5 },
+    ];
+    const groups = scope.errorGroupsFrom(kept, typed);
+    assert.strictEqual(groups.length, 2);
+    assert.deepStrictEqual(Array.from(groups, (g) => g.errorType), ['500/Internal Server Error', '500/Database timeout']);
+    assert.strictEqual(groups[1].occurrences.length, 1, 'the record joins its own type\'s group');
+});
+
 test('E2: the By-time list says it holds the first 500 of N', () => {
     const scope = loadReportScope();
     assert.strictEqual(scope.keptErrorsNote(500, 3559),
