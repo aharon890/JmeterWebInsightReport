@@ -325,6 +325,18 @@ class ThymeleafReportRendererTest {
      * Confirmed against a real {@code -g} run before this was written.
      */
     @Test
+    void theMeanColumnSaysItRoundsWhereTheAggregateReportTruncates() throws Exception {
+        // B8: the same mean reads 4 in JMeter's Aggregate Report ((long) mean) and 5 here; the column says why
+        ReportData data = createReportDataWithSamplers();
+        String html = renderer.render(data, ChartDataJson.of(data), "", "");
+        java.util.regex.Matcher th = java.util.regex.Pattern
+                .compile("<th[^>]*title=\"([^\"]*)\"[^>]*>Mean \\(ms\\)</th>").matcher(html);
+        assertTrue(th.find(), "the Mean (ms) header carries a title");
+        assertTrue(th.group(1).contains("rounded to the nearest ms"), th.group(1));
+        assertTrue(th.group(1).contains("Aggregate Report"), th.group(1));
+    }
+
+    @Test
     void render_labelsA2xxErrorAsNonProtocolAndSuppressesItsMeaninglessMessage() throws Exception {
         ReportData data = createReportDataWithSamplers();
 

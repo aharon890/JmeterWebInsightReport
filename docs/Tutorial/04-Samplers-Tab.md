@@ -14,7 +14,7 @@ Detailed per-sampler statistics table with sorting, filtering, column control, a
 | **Samples** | Total request count | Integer with comma separator |
 | **Errors** | Failed request count | Integer with comma separator |
 | **Error %** | Error rate | Percentage (e.g., "4.05%") |
-| **Mean (ms)** | Average response time | Whole milliseconds |
+| **Mean (ms)** | Average response time | Whole milliseconds, rounded to the nearest: JMeter's Aggregate Report cuts the decimals off (4.86 ms reads 4 there, 5 here), its HTML report shows two (4.86) — the same mean |
 | **Median (ms)** | P50 response time | Whole milliseconds |
 | **P90 (ms)** | 90th percentile | Whole milliseconds |
 | **P95 (ms)** | 95th percentile | Whole milliseconds |
