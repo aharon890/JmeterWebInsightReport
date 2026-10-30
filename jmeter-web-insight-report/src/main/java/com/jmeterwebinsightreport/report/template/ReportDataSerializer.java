@@ -159,6 +159,44 @@ public class ReportDataSerializer {
         // the annotations document only so a Save writes it back.
     }
 
+    private Map<String, List<Object>> buildTotalSeries(List<TimeSeriesBucket> timeSeries) {
+        Map<String, List<Object>> series = new LinkedHashMap<>();
+        for (String key : SERIES_METRIC_KEYS) {
+            series.put(key, new ArrayList<>(timeSeries.size()));
+        }
+        for (TimeSeriesBucket bucket : timeSeries) {
+            Object[] values = seriesValues(bucket.getTotal());
+            for (int m = 0; m < SERIES_METRIC_KEYS.length; m++) {
+                series.get(SERIES_METRIC_KEYS[m]).add(values[m]);
+            }
+        }
+        return series;
+    }
+
+    private static final String[] SERIES_METRIC_KEYS = {"responseTime", "throughput", "errorRate", "p50", "p90",
+            "p95", "p99", "max", "connectTime", "latency", "receivedBytes", "sentBytes"};
+
+    /** One second of one series, in {@link #SERIES_METRIC_KEYS}' order; all null for a second with no sample. */
+    private static Object[] seriesValues(SamplerBucketData sd) {
+        Object[] v = new Object[SERIES_METRIC_KEYS.length];
+        if (sd == null || sd.getSampleCount() == 0) {
+            return v;
+        }
+        v[0] = round2(sd.getMeanResponseTime());
+        v[1] = round2(sd.getThroughput());
+        v[2] = round2(sd.getErrorRate());
+        v[3] = round2(sd.getP50());
+        v[4] = round2(sd.getP90());
+        v[5] = round2(sd.getP95());
+        v[6] = round2(sd.getP99());
+        v[7] = round2(sd.getMax());
+        v[8] = round2OrNull(sd.getConnectTime());
+        v[9] = round2OrNull(sd.getLatency());
+        v[10] = round2(sd.getReceivedBytes());
+        v[11] = round2(sd.getSentBytes());
+        return v;
+    }
+
     private Map<String, Map<String, List<Object>>> buildPerSamplerSeries(List<TimeSeriesBucket> timeSeries) {
         Set<String> allSamplerNames = new LinkedHashSet<>();
         for (TimeSeriesBucket bucket : timeSeries) {
@@ -166,8 +204,7 @@ public class ReportDataSerializer {
         }
 
         int numBuckets = timeSeries.size();
-        String[] metricKeys = {"responseTime", "throughput", "errorRate", "p50", "p90", "p95",
-                "p99", "max", "connectTime", "latency", "receivedBytes", "sentBytes"};
+        String[] metricKeys = SERIES_METRIC_KEYS;
         int numMetrics = metricKeys.length;
 
         Map<String, Object[][]> samplerArrays = new LinkedHashMap<>(allSamplerNames.size());
@@ -179,19 +216,10 @@ public class ReportDataSerializer {
             TimeSeriesBucket bucket = timeSeries.get(bucketIdx);
             for (Map.Entry<String, SamplerBucketData> entry : bucket.getPerSamplerData().entrySet()) {
                 Object[][] arrays = samplerArrays.get(entry.getKey());
-                SamplerBucketData sd = entry.getValue();
-                arrays[0][bucketIdx] = round2(sd.getMeanResponseTime());
-                arrays[1][bucketIdx] = round2(sd.getThroughput());
-                arrays[2][bucketIdx] = round2(sd.getErrorRate());
-                arrays[3][bucketIdx] = round2(sd.getP50());
-                arrays[4][bucketIdx] = round2(sd.getP90());
-                arrays[5][bucketIdx] = round2(sd.getP95());
-                arrays[6][bucketIdx] = round2(sd.getP99());
-                arrays[7][bucketIdx] = round2(sd.getMax());
-                arrays[8][bucketIdx] = round2OrNull(sd.getConnectTime());
-                arrays[9][bucketIdx] = round2OrNull(sd.getLatency());
-                arrays[10][bucketIdx] = round2(sd.getReceivedBytes());
-                arrays[11][bucketIdx] = round2(sd.getSentBytes());
+                Object[] values = seriesValues(entry.getValue());
+                for (int m = 0; m < numMetrics; m++) {
+                    arrays[m][bucketIdx] = values[m];
+                }
             }
         }
 
@@ -230,6 +258,7 @@ public class ReportDataSerializer {
             baselineChart.put("throughputs", baseThroughputs);
             baselineChart.put("errorRates", baseErrorRates);
             baselineChart.put("perSamplerSeries", buildPerSamplerSeries(baseTs));
+            baselineChart.put("totalSeries", buildTotalSeries(baseTs));
             chartData.put("baseline", baselineChart);
         }
 
@@ -367,6 +396,10 @@ public class ReportDataSerializer {
         chartData.put("throughputs", throughputs);
         chartData.put("errorRates", errorRates);
         chartData.put("activeThreads", activeThreads);
+        // The Σ Total of every per-sampler metric, the top-level samplers pooled per second (T1): a
+        // percentile of the second's samples, not a mean of the samplers' percentiles, and no
+        // transaction counted beside its requests. The page draws the Σ lines from it alone.
+        chartData.put("totalSeries", buildTotalSeries(timeSeries));
 
         // Sampler summary for bar/comparison charts — includes p50 and max
         List<Map<String, Object>> samplers = new ArrayList<>(

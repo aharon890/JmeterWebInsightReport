@@ -18,6 +18,9 @@ public class TimeSeriesBucket {
 
     /** Per-sampler breakdown within this time bucket. Key = sampler name. */
     private Map<String, SamplerBucketData> perSamplerData = new LinkedHashMap<>();
+    /** The second's Σ Total: every top-level sampler's samples pooled, transaction children left out,
+     *  the population of the Summary tiles and the Σ Total row (T1). Null on a bucket built by hand. */
+    private SamplerBucketData total;
 
     public TimeSeriesBucket() {
     }
@@ -78,6 +81,14 @@ public class TimeSeriesBucket {
 
     public void setPerSamplerData(Map<String, SamplerBucketData> perSamplerData) {
         this.perSamplerData = perSamplerData;
+    }
+
+    public SamplerBucketData getTotal() {
+        return total;
+    }
+
+    public void setTotal(SamplerBucketData total) {
+        this.total = total;
     }
 
     /**

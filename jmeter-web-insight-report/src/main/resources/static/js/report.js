@@ -1463,33 +1463,18 @@ function initCharts(data) {
  * ============================================================ */
 
 /**
- * A Σ Total series for a metric that has no server-side total (percentiles, max, connect,
- * latency): combined across samplers per second, each weighted by its sample count in that second
- * — an unweighted mean lets a 10 req/s sampler drag the line as hard as a 990 req/s one — and
- * `max` taken as the maximum across samplers. Shared by the Timeline charts and the Compare tab.
+ * The Σ Total series of a metric, one value per second: the run's top-level samplers pooled, as the
+ * Summary tiles and the Σ Total row count them (T1). Java builds it (`totalSeries`), so a percentile
+ * is the percentile of the second's samples and a transaction is not counted beside its requests. It
+ * used to be combined here across every sampler, transaction children included: P11's Σ throughput
+ * line added up to 450 requests under a tile of 50, and its Σ P95 was a mean of the samplers' P95s.
+ * Shared by the Timeline charts and the Compare tab; `run` is the payload or its baseline.
  */
-function combinedTotalValues(perSampler, names, length, metric) {
-    var isMaxMetric = metric === 'max';
-    var computed = new Array(length);
-    for (var ti = 0; ti < length; ti++) {
-        var sum = 0, weight = 0, maxAcross = null;
-        names.forEach(function (n) {
-            var values = perSampler[n] && perSampler[n][metric];
-            if (!values || values[ti] == null) return;
-            var v = values[ti];
-            if (isMaxMetric) {
-                if (maxAcross === null || v > maxAcross) maxAcross = v;
-                return;
-            }
-            var counts = perSampler[n].throughput;
-            var w = (counts && counts[ti] != null) ? counts[ti] : 1;
-            sum += v * w;
-            weight += w;
-        });
-        if (isMaxMetric) computed[ti] = maxAcross;
-        else computed[ti] = weight > 0 ? sum / weight : null;
-    }
-    return computed;
+function totalSeriesFor(run, metric) {
+    var direct = { responseTime: run.meanResponseTimes, throughput: run.throughputs,
+        errorRate: run.errorRates }[metric];
+    if (direct) return direct;
+    return (run.totalSeries && run.totalSeries[metric]) || null;
 }
 
 function buildPerSamplerSeries(data, metric, overrideMetric) {
@@ -1524,22 +1509,7 @@ function buildPerSamplerSeries(data, metric, overrideMetric) {
 
     /* Append aggregate Total series when visible */
     if (isTotalVisible()) {
-        var totalMetricMap = {
-            'responseTime': data.meanResponseTimes,
-            'throughput': data.throughputs,
-            'errorRate': data.errorRates
-        };
-        var totalValues = totalMetricMap[effectiveMetric];
-        /* Metrics with no server-side total (percentiles, max, connect, latency) are
-         * combined across samplers here. Weight by each sampler's sample count in that
-         * second — an unweighted mean lets a 10 req/s sampler drag the Total line as
-         * hard as a 990 req/s one, so the chart contradicts the Σ Total table row and
-         * the percentile bar, which both use the properly merged digest. `max` is a
-         * maximum, not an average, so take the max across samplers. */
-        if (!totalValues && perSampler) {
-            var allNames = data.samplers ? data.samplers.map(function (s) { return s.name; }) : [];
-            totalValues = combinedTotalValues(perSampler, allNames, data.timestamps.length, effectiveMetric);
-        }
+        var totalValues = totalSeriesFor(data, effectiveMetric);
         if (totalValues) {
             series.push({
                 name: TOTAL_SAMPLER_NAME,
@@ -2072,17 +2042,12 @@ function initBytesThroughputChart(data) {
         }
     });
 
-    /* Total aggregate bytes series */
+    /* Total aggregate bytes series: the top-level samplers' bytes (T1), so a transaction's bytes and
+       its requests' are not both counted (P11's Σ line read exactly twice the requests' bytes, F6) */
     if (isTotalVisible()) {
-        var allNames = data.samplers ? data.samplers.map(function (s) { return s.name; }) : [];
-        var totalRecv = new Array(data.timestamps.length).fill(0);
-        var totalSent = new Array(data.timestamps.length).fill(0);
-        var hasRecv = false, hasSent = false;
-        allNames.forEach(function (n) {
-            if (!perSampler[n]) return;
-            if (perSampler[n].receivedBytes) { hasRecv = true; perSampler[n].receivedBytes.forEach(function (v, i) { if (v != null) totalRecv[i] += v; }); }
-            if (perSampler[n].sentBytes) { hasSent = true; perSampler[n].sentBytes.forEach(function (v, i) { if (v != null) totalSent[i] += v; }); }
-        });
+        var totalRecv = totalSeriesFor(data, 'receivedBytes');
+        var totalSent = totalSeriesFor(data, 'sentBytes');
+        var hasRecv = !!totalRecv, hasSent = !!totalSent;
         if (hasRecv) series.push({ name: TOTAL_SAMPLER_NAME + ' (Recv)', type: 'line', data: zipTimeSeries(data.timestamps, totalRecv, aggOptsForMetric('receivedBytes')), smooth: true, symbol: 'none', lineStyle: { width: lineThickness + 1, type: 'dashed' }, itemStyle: { color: getTotalColor() }, z: 10 });
         if (hasSent) series.push({ name: TOTAL_SAMPLER_NAME + ' (Sent)', type: 'line', data: zipTimeSeries(data.timestamps, totalSent, aggOptsForMetric('sentBytes')), smooth: true, symbol: 'none', lineStyle: { width: lineThickness + 1, type: 'dashed', opacity: 0.6 }, itemStyle: { color: getTotalColor() }, z: 10 });
     }
@@ -2210,9 +2175,20 @@ function initConnectLatencyChart(data) {
 
     var series = [];
     var visibleNames = getVisibleSamplerNames();
-    /* When Total is checked, aggregate across ALL samplers */
-    if (isTotalVisible()) visibleNames = data.samplers ? data.samplers.map(function (s) { return s.name; }) : [];
-    var samplerNames = data.samplers ? data.samplers.map(function (s) { return s.name; }) : [];
+    /* When Total is checked, break the Σ Total down: the top-level samplers pooled per second (T1),
+       weighted by their sample counts. It used to fold every sampler, transaction parents beside
+       their own requests. */
+    if (isTotalVisible() && data.totalSeries) {
+        var totalBreakdown = {};
+        totalBreakdown[TOTAL_SAMPLER_NAME] = {
+            connectTime: data.totalSeries.connectTime,
+            latency: data.totalSeries.latency,
+            responseTime: data.meanResponseTimes,
+            throughput: data.throughputs
+        };
+        perSampler = totalBreakdown;
+        visibleNames = [TOTAL_SAMPLER_NAME];
+    }
 
     var b = connectLatencyBreakdown(perSampler, visibleNames, data.timestamps.length);
     var hasData = b.hasData;
@@ -6855,15 +6831,8 @@ function buildComparisonSeries(data, metric) {
         var totalColor = getTotalColor();
         /* The selected metric, as the Timeline's Σ Total draws it. This drew the mean whatever
            the Metric toggle said, beside per-sampler lines of the selected metric. */
-        var totalOf = function (run, perSampler) {
-            var direct = { responseTime: run.meanResponseTimes, throughput: run.throughputs,
-                errorRate: run.errorRates }[metric];
-            if (direct) return direct;
-            if (!run.timestamps) return null;
-            return combinedTotalValues(perSampler, Object.keys(perSampler), run.timestamps.length, metric);
-        };
-        var currGlobal = totalOf(data, currPerSampler);
-        var baseGlobal = totalOf(data.baseline, basePerSampler);
+        var currGlobal = totalSeriesFor(data, metric);
+        var baseGlobal = totalSeriesFor(data.baseline, metric);
 
         if (currGlobal) {
             series.push({

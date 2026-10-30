@@ -145,7 +145,7 @@ test.describe('aggregateTimeSeries — metric-aware bucketing', () => {
 });
 
 test.describe('buildPerSamplerSeries — Σ Total line', () => {
-  /** Install a synthetic two-sampler dataset and read back the Σ Total series. */
+  /** Install a synthetic two-sampler dataset, with the Σ Total Java pooled from its second, and read back the Σ line. */
   async function totalSeriesFor(page: any, metric: string) {
     return page.evaluate((m: string) => {
       const w = window as any;
@@ -160,6 +160,8 @@ test.describe('buildPerSamplerSeries — Σ Total line', () => {
           busy: { throughput: [990], p95: [100], max: [120], responseTime: [90] },
           rare: { throughput: [10], p95: [4000], max: [5000], responseTime: [3500] },
         },
+        // The second's 1,000 samples pooled (T1): its P95 is a sample of the second, 100 ms
+        totalSeries: { p95: [100], max: [5000] },
       };
       // Make every sampler and the Total visible.
       w.samplerVisibility = { busy: true, rare: true, [w.TOTAL_SAMPLER_NAME]: true };
@@ -170,15 +172,14 @@ test.describe('buildPerSamplerSeries — Σ Total line', () => {
     }, metric);
   }
 
-  test('[C/R] p95 Total is weighted by sample count, not a plain mean', async ({ page }) => {
+  test('[C/R] p95 Total is the percentile of the second Java pooled, not a mean of the samplers\' P95s (T1)', async ({ page }) => {
     await loadClean(page, 'E02');
     const value = await totalSeriesFor(page, 'p95');
-    // Unweighted would be (100 + 4000)/2 = 2050 — wildly above the true merged p95.
-    expect(value).not.toBeCloseTo(2050, 0);
-    expect(value).toBeCloseTo(139, 6); // (100*990 + 4000*10) / 1000
+    // This test used to pin the count-weighted mean, (100*990 + 4000*10) / 1000 = 139: not a percentile of anything.
+    expect(value).toBe(100);
   });
 
-  test('[C/R] max Total is the maximum across samplers', async ({ page }) => {
+  test('[C/R] max Total is the second\'s maximum', async ({ page }) => {
     await loadClean(page, 'E02');
     const value = await totalSeriesFor(page, 'max');
     expect(value).toBe(5000); // not (120 + 5000)/2 = 2560

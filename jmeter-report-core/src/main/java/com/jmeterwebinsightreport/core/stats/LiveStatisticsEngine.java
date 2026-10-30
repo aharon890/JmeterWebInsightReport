@@ -275,9 +275,16 @@ public class LiveStatisticsEngine {
      * Get time-series data sorted by timestamp.
      */
     public List<TimeSeriesBucket> getTimeSeries() {
+        // The samplers detectTransactionHierarchy nests: every child of a recorded relationship
+        Set<String> nested = new HashSet<>();
+        for (Set<String> children : explicitTransactions.values()) {
+            synchronized (children) {
+                nested.addAll(children);
+            }
+        }
         return timeBuckets.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
-                .map(e -> e.getValue().toBucket())
+                .map(e -> e.getValue().toBucket(nested))
                 .collect(Collectors.toList());
     }
 

@@ -175,6 +175,47 @@ class LiveStatisticsEngineTest {
     }
 
     @Test
+    void theSecondsTotalsCountTheTopLevelSamplersAsTheTilesDo() {
+        // T1: P11's Σ Total throughput line added up to 450 requests while the tile said 50, and its
+        // bytes line read twice the requests' bytes
+        long ts = 1700000000000L;
+        engine.recordTransaction("Checkout", "Cart", true);
+        engine.recordTransaction("Checkout", "Pay", true);
+        engine.recordSample("Checkout", 300, false, 900, 90, ts, 10, 280);
+        engine.recordSample("Cart", 100, true, 400, 40, ts, 5, 90);
+        engine.recordSample("Pay", 200, false, 500, 50, ts + 100, 5, 190);
+        engine.recordSample("Home", 10, true, 100, 10, ts + 200, -1, -1);
+
+        TimeSeriesBucket b = engine.getTimeSeries().get(0);
+        assertEquals(2, b.getSampleCount(), "Checkout and Home; Cart and Pay are inside Checkout");
+        assertEquals(155.0, b.getMeanResponseTime(), 1e-9);
+        assertEquals(2.0, b.getThroughput(), 1e-9);
+        assertEquals(50.0, b.getErrorRate(), 1e-9, "the failed transaction, once");
+        TimeSeriesBucket.SamplerBucketData total = b.getTotal();
+        assertEquals(1000.0, total.getReceivedBytes(), 1e-9, "a transaction's bytes are its requests'");
+        assertEquals(300.0, total.getMax(), 1e-9);
+        assertEquals(10.0, total.getConnectTime(), 1e-9, "a mean over the samples that have one");
+        assertEquals(4, b.getPerSamplerData().size(), "every sampler keeps its own series");
+        assertEquals(engine.buildReportData("t").getTopLevelSampleCount(), b.getSampleCount(),
+                "the seconds add up to the Total Samples tile");
+    }
+
+    @Test
+    void theSecondsTotalPercentileIsAPercentileOfItsSamplesNotAMeanOfTheSamplers() {
+        long ts = 1700000000000L;
+        for (int i = 0; i < 99; i++) {
+            engine.recordSample("busy", 100, true, 0, 0, ts + i, -1, -1);
+        }
+        engine.recordSample("rare", 4000, true, 0, 0, ts + 500, -1, -1);
+
+        TimeSeriesBucket.SamplerBucketData total = engine.getTimeSeries().get(0).getTotal();
+        // The rank rule over the second's 100 samples: rank 95 is 100 ms. The page used to draw the
+        // samplers' P95s weighted by count: (100 x 99 + 4000) / 100 = 139.
+        assertEquals(100.0, total.getP95(), 1e-9);
+        assertEquals(4000.0, total.getMax(), 1e-9);
+    }
+
+    @Test
     void recordSample_noFalseTransactionFromNamePrefix() {
         long ts = 1700000000000L;
         // REST-style names share a prefix but are independent samplers — must NOT be nested (B8).

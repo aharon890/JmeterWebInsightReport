@@ -3,19 +3,23 @@ package com.jmeterwebinsightreport.core.stats;
 import com.jmeterwebinsightreport.core.model.TimeSeriesBucket;
 
 import java.time.Instant;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Time-bucket aggregator for 1-second granularity time-series.
  * Thread-safe via synchronized methods.
+ *
+ * <p>The second's totals (the Σ Total lines) pool its top-level samplers only, as the Summary tiles
+ * and the Σ Total row count: a transaction's requests are inside it, and counting both made the Σ
+ * throughput line add up to 450 requests in a run whose tiles said 50 (P11, T1, campaign F6). Which
+ * samplers are nested is known only once the run is over, so it is applied when the bucket is built.
  */
 class TimeBucketAggregator {
 
     private final long timestampMs;
-    private long sampleCount;
-    private long errorCount;
-    private double sumResponseTime;
     private int maxActiveThreads;
     private final Map<String, SamplerBucketAccumulator> perSamplerAccum = new LinkedHashMap<>();
 
@@ -34,10 +38,6 @@ class TimeBucketAggregator {
     synchronized void addSample(long responseTime, String samplerName,
                                  long receivedBytes, long sentBytes,
                                  long connectTime, long latency, long samples, long errors) {
-        sampleCount += samples;
-        errorCount += errors;
-        sumResponseTime += responseTime;
-
         perSamplerAccum.computeIfAbsent(samplerName, k -> new SamplerBucketAccumulator())
                 .add(responseTime, receivedBytes, sentBytes, connectTime, latency, samples, errors);
     }
@@ -47,20 +47,31 @@ class TimeBucketAggregator {
     }
 
     synchronized TimeSeriesBucket toBucket() {
+        return toBucket(Collections.emptySet());
+    }
+
+    /** @param nested the samplers inside another's samples (transaction children), left out of the totals */
+    synchronized TimeSeriesBucket toBucket(Set<String> nested) {
         TimeSeriesBucket bucket = new TimeSeriesBucket();
         bucket.setTimestamp(Instant.ofEpochMilli(timestampMs));
-        bucket.setSampleCount(sampleCount);
-        bucket.setMeanResponseTime(sampleCount > 0 ? sumResponseTime / sampleCount : 0);
-        bucket.setThroughput(sampleCount); // samples per second (1s bucket)
-        bucket.setErrorRate(sampleCount > 0 ? (errorCount * 100.0) / sampleCount : 0);
         bucket.setActiveThreads(maxActiveThreads);
 
         Map<String, TimeSeriesBucket.SamplerBucketData> perSampler = new LinkedHashMap<>();
+        SamplerBucketAccumulator pool = new SamplerBucketAccumulator();
         for (Map.Entry<String, SamplerBucketAccumulator> entry : perSamplerAccum.entrySet()) {
             perSampler.put(entry.getKey(), entry.getValue().toBucketData());
+            if (!nested.contains(entry.getKey())) {
+                entry.getValue().mergeInto(pool);
+            }
         }
         bucket.setPerSamplerData(perSampler);
 
+        TimeSeriesBucket.SamplerBucketData total = pool.toBucketData();
+        bucket.setTotal(total);
+        bucket.setSampleCount(total.getSampleCount());
+        bucket.setMeanResponseTime(total.getMeanResponseTime());
+        bucket.setThroughput(total.getThroughput()); // samples per second (1s bucket)
+        bucket.setErrorRate(total.getErrorRate());
         return bucket;
     }
 }

@@ -153,7 +153,10 @@ Presets are stored in localStorage under the key `wir_filterPresets`.
 - **Check:** Adds a virtual aggregate row to the Samplers table and a thicker, dashed total
   line to charts; on the Compare tab that line is solid for the current run and dashed for the baseline,
   and follows the Metric toggle like the per-sampler lines
-- Values: see *Σ Total Row* on the [Samplers tab](04-Samplers-Tab.md)
+- Values: see *Σ Total Row* on the [Samplers tab](04-Samplers-Tab.md). The chart line counts the same
+  samples per second: every top-level sampler pooled, a transaction once with its requests inside it, so
+  the throughput line adds up to the Total Samples tile, and a percentile line is the percentile of the
+  second's samples, not a mean of the samplers' percentiles
 
 ### Per-Sampler Color Override
 

@@ -543,6 +543,29 @@ class ReportDataSerializerTest {
     }
 
     @Test
+    void theSigmaTotalOfEveryMetricIsShippedFromTheTopLevelSamplers() throws JsonProcessingException {
+        // T1: the page draws the Σ Total lines from totalSeries alone
+        com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine engine =
+                new com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine();
+        long ts = 1700000000000L;
+        engine.recordTransaction("Checkout", "Pay", true);
+        engine.recordSample("Checkout", 300, true, 900, 90, ts, 10, 280);
+        engine.recordSample("Pay", 300, true, 900, 90, ts, 10, 280);
+        engine.recordSample("Home", 100, true, 100, 10, ts + 10, -1, -1);
+        engine.recordSample("Home", 500, true, 100, 10, ts + 20, -1, -1);
+
+        JsonNode json = objectMapper.readTree(ChartDataJson.of(engine.buildReportData("t")));
+        JsonNode total = json.get("totalSeries");
+        assertEquals(3, json.get("throughputs").get(0).asInt(), "Checkout and Home twice, not Pay");
+        assertEquals(300.0, total.get("p50").get(0).asDouble(), 1e-9);
+        assertEquals(500.0, total.get("max").get(0).asDouble(), 1e-9);
+        assertEquals(1100.0, total.get("receivedBytes").get(0).asDouble(), 1e-9);
+        assertEquals(10.0, total.get("connectTime").get(0).asDouble(), 1e-9);
+        assertEquals(json.get("perSamplerSeries").get("Home").size(), total.size(),
+                "every per-sampler metric has its total");
+    }
+
+    @Test
     void serializesAbsentConnectLatencyAsNull() throws JsonProcessingException {
         // B14: buckets without connect/latency data must serialize null, not 0, so the client
         // can skip them instead of averaging in spurious zeros.

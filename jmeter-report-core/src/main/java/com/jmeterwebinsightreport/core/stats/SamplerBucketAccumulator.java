@@ -24,6 +24,10 @@ class SamplerBucketAccumulator {
     private long sumSentBytes;
     private boolean hasConnectTime;
     private boolean hasLatency;
+    /** For a pool only: the samples its connect time and latency are means over, which are the pooled
+     *  samplers' that had them. A sampler's own are over its every sample. */
+    private long connectCount = -1;
+    private long latencyCount = -1;
     private long maxResponseTime = Long.MIN_VALUE;
     private final ResponseTimeDistribution responseTimes = new ResponseTimeDistribution();
 
@@ -57,6 +61,27 @@ class SamplerBucketAccumulator {
         }
     }
 
+    /** Add this sampler's second to {@code pool}: the Σ Total of the second is its top-level samplers pooled. */
+    void mergeInto(SamplerBucketAccumulator pool) {
+        pool.sampleCount += sampleCount;
+        pool.errorCount += errorCount;
+        pool.sumResponseTime += sumResponseTime;
+        pool.sumReceivedBytes += sumReceivedBytes;
+        pool.sumSentBytes += sumSentBytes;
+        if (hasConnectTime) {
+            pool.sumConnectTime += sumConnectTime;
+            pool.connectCount = Math.max(0, pool.connectCount) + sampleCount;
+            pool.hasConnectTime = true;
+        }
+        if (hasLatency) {
+            pool.sumLatency += sumLatency;
+            pool.latencyCount = Math.max(0, pool.latencyCount) + sampleCount;
+            pool.hasLatency = true;
+        }
+        pool.maxResponseTime = Math.max(pool.maxResponseTime, maxResponseTime);
+        pool.responseTimes.merge(responseTimes);
+    }
+
     TimeSeriesBucket.SamplerBucketData toBucketData() {
         TimeSeriesBucket.SamplerBucketData data = new TimeSeriesBucket.SamplerBucketData();
         data.setSampleCount(sampleCount);
@@ -66,11 +91,13 @@ class SamplerBucketAccumulator {
         data.setReceivedBytes(sumReceivedBytes);
         data.setSentBytes(sumSentBytes);
 
-        if (hasConnectTime && sampleCount > 0) {
-            data.setConnectTime((double) sumConnectTime / sampleCount);
+        long connectOver = connectCount >= 0 ? connectCount : sampleCount;
+        long latencyOver = latencyCount >= 0 ? latencyCount : sampleCount;
+        if (hasConnectTime && connectOver > 0) {
+            data.setConnectTime((double) sumConnectTime / connectOver);
         }
-        if (hasLatency && sampleCount > 0) {
-            data.setLatency((double) sumLatency / sampleCount);
+        if (hasLatency && latencyOver > 0) {
+            data.setLatency((double) sumLatency / latencyOver);
         }
 
         // The second's percentiles, by the Samplers table's rule, and its histogram, in true counts
