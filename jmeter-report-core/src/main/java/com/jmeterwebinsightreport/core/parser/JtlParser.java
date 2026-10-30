@@ -218,8 +218,12 @@ public class JtlParser {
             // The row was stamped at its end; the engine places and windows samples by start.
             sample.timestamp -= sample.elapsed;
         }
+        // An end-stamped transaction row's stamp is its real end, after its pauses (IdleTime), so the
+        // start JMeter reads from it (stamp - elapsed) falls after its first request's start; its
+        // nesting is judged from its real start
+        long realStart = timestampIsStart ? sample.timestamp : sample.timestamp - sample.idle;
         TransactionRows.Nesting parent = transactions.parentOf(sample.thread, sample.label, sample.message,
-                sample.timestamp, sample.elapsed, sample.idle);
+                realStart, sample.elapsed, sample.idle);
         try {
             sample.feed(engine);
             if (parent != null) {

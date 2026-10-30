@@ -538,6 +538,25 @@ class JtlParserTest {
     }
 
     @Test
+    void anEndStampedTransactionIsNestedFromItsRealStart() throws IOException {
+        // sampleresult.timestamp.start=false: the stamp is the end. Checkout really ran 0..350 ms (Cart
+        // 0..100, a 50 ms pause, Pay 150..350): elapsed 300, idle 50, stamped at 350. Read as stamp -
+        // elapsed it started at 50, after Cart did, and nothing was nested.
+        String tx2 = "\"Number of samples in transaction : 2, number of failing samples : 0\"";
+        File jtl = writeJtl("end-stamped-tx.jtl", HEADER + "\n"
+                + "1700000000350,300,Checkout,200," + tx2 + ",TG 1-1,,true,,600,60,1,1,,0,50,0\n"
+                + "1700000000100,100,Cart,200,OK,TG 1-1,text,true,,300,30,1,1,http://x/cart,90,0,5\n"
+                + "1700000000350,200,Pay,200,OK,TG 1-1,text,true,,300,30,1,1,http://x/pay,190,0,5\n");
+        JtlParser parser = new JtlParser();
+        parser.setTimestampIsStart(false);
+
+        ReportData data = parser.parse(jtl, "end-stamped-tx");
+
+        assertEquals(Map.of("Checkout", List.of("Cart", "Pay")), data.getTransactionHierarchy());
+        assertEquals(1, data.getTopLevelSampleCount());
+    }
+
+    @Test
     void aFailedAssertionsMessageIsReadFromTheFailureMessageColumn() throws IOException {
         // E1: the column JMeter writes the first failed assertion's message into
         File jtl = writeJtl("assertions.jtl", HEADER + "\n"
