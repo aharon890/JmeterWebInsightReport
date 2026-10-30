@@ -158,7 +158,10 @@ as JMeter's HTML report keys every over-time chart — response times, percentil
 connect time and latency, the heatmap, active threads — and the second it **started** for the
 Throughput line, which is JMeter's Hits per Second. A 3-second request that started at 0.6 s
 counts in the throughput of second 0 and in the response time of second 3. Both reports of a run
-place it alike (a transaction's idle time does not move it).
+place it alike (a transaction's idle time does not move it). A second where requests started and none
+ended has a throughput and no response time, and the reverse; the line breaks where it has no value.
+A Statistical-mode result's elapsed is its samples' total, so it lands at its start plus that total,
+which is where JMeter's HTML report puts the row too.
 
 ### Granularity Control
 

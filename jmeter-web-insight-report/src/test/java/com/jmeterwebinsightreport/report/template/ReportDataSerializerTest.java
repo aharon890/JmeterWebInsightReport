@@ -592,8 +592,11 @@ class ReportDataSerializerTest {
 
         JsonNode json = objectMapper.readTree(ChartDataJson.of(engine.buildReportData("t")));
         assertEquals("[1700000000000,1700000002000]", json.get("timestamps").toString());
-        assertEquals("[1.0,0.0]", json.get("throughputs").toString());
+        assertEquals("[1.0,null]", json.get("throughputs").toString());
         assertEquals("[0,1]", json.get("sampleCounts").toString());
+        // nothing ended in the first second, nothing started in the second: no value, not 0 (C23)
+        assertEquals("[null,1500.0]", json.get("meanResponseTimes").toString());
+        assertEquals("[null,0.0]", json.get("errorRates").toString());
         JsonNode slow = json.get("perSamplerSeries").get("Slow");
         assertEquals("[1.0,null]", slow.get("throughput").toString());
         assertEquals("[null,1500.0]", slow.get("responseTime").toString());

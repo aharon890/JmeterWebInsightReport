@@ -275,9 +275,10 @@ public class ReportDataSerializer {
             List<Double> baseErrorRates = new ArrayList<>(baseTs.size());
             for (TimeSeriesBucket b : baseTs) {
                 baseTimestamps.add(b.getTimestamp().toEpochMilli());
-                baseMeanRT.add(round2(b.getMeanResponseTime()));
-                baseThroughputs.add(round2(b.getThroughput()));
-                baseErrorRates.add(round2(b.getErrorRate()));
+                boolean ended = b.getSampleCount() > 0;
+                baseMeanRT.add(ended ? round2(b.getMeanResponseTime()) : null);
+                baseThroughputs.add(b.getThroughput() > 0 ? round2(b.getThroughput()) : null);
+                baseErrorRates.add(ended ? round2(b.getErrorRate()) : null);
             }
             Map<String, Object> baselineChart = new LinkedHashMap<>();
             baselineChart.put("timestamps", baseTimestamps);
@@ -413,11 +414,15 @@ public class ReportDataSerializer {
 
         for (TimeSeriesBucket bucket : timeSeries) {
             timestamps.add(bucket.getTimestamp().toEpochMilli());
-            meanResponseTimes.add(round2(bucket.getMeanResponseTime()));
-            throughputs.add(round2(bucket.getThroughput()));
+            // Since T7 a second can hold requests that started in it and none that ended, or the
+            // reverse: each series is null where it has nothing, as the per-sampler ones are, so the
+            // line breaks there (C23) rather than drawing a mean of 0 ms or no threads
+            boolean ended = bucket.getSampleCount() > 0;
+            meanResponseTimes.add(ended ? round2(bucket.getMeanResponseTime()) : null);
+            throughputs.add(bucket.getThroughput() > 0 ? round2(bucket.getThroughput()) : null);
             sampleCounts.add(bucket.getSampleCount());
-            errorRates.add(round2(bucket.getErrorRate()));
-            activeThreads.add(bucket.getActiveThreads());
+            errorRates.add(ended ? round2(bucket.getErrorRate()) : null);
+            activeThreads.add(bucket.getActiveThreads() > 0 ? bucket.getActiveThreads() : null);
         }
 
         chartData.put("timestamps", timestamps);
