@@ -578,6 +578,24 @@ class ReportDataSerializerTest {
     }
 
     @Test
+    void theThroughputIsOfStartsAndEveryOtherSeriesOfEnds() throws JsonProcessingException {
+        // T7: JMeter's Hits per Second keys a request by its start, its other charts by its end
+        com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine engine =
+                new com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine();
+        long t0 = 1700000000000L;
+        engine.recordSample("Slow", 1500, true, 800, 80, t0 + 600, -1, -1);   // ends at t0 + 2.1 s
+
+        JsonNode json = objectMapper.readTree(ChartDataJson.of(engine.buildReportData("t")));
+        assertEquals("[1700000000000,1700000002000]", json.get("timestamps").toString());
+        assertEquals("[1.0,0.0]", json.get("throughputs").toString());
+        assertEquals("[0,1]", json.get("sampleCounts").toString());
+        JsonNode slow = json.get("perSamplerSeries").get("Slow");
+        assertEquals("[1.0,null]", slow.get("throughput").toString());
+        assertEquals("[null,1500.0]", slow.get("responseTime").toString());
+        assertEquals("[null,1]", slow.get("samples").toString(), "the weights of a mean over seconds");
+    }
+
+    @Test
     void serializesAbsentConnectLatencyAsNull() throws JsonProcessingException {
         // B14: buckets without connect/latency data must serialize null, not 0, so the client
         // can skip them instead of averaging in spurious zeros.

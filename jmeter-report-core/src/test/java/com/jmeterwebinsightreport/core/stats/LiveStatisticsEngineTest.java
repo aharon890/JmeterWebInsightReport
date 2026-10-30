@@ -206,9 +206,9 @@ class LiveStatisticsEngineTest {
         for (int i = 0; i < 99; i++) {
             engine.recordSample("busy", 100, true, 0, 0, ts + i, -1, -1);
         }
-        engine.recordSample("rare", 4000, true, 0, 0, ts + 500, -1, -1);
+        engine.recordSample("rare", 4000, true, 0, 0, ts + 500 - 4000, -1, -1);   // ends in the second (T7)
 
-        TimeSeriesBucket.SamplerBucketData total = engine.getTimeSeries().get(0).getTotal();
+        TimeSeriesBucket.SamplerBucketData total = bucketAt(engine.getTimeSeries(), ts).getTotal();
         // The rank rule over the second's 100 samples: rank 95 is 100 ms. The page used to draw the
         // samplers' P95s weighted by count: (100 x 99 + 4000) / 100 = 139.
         assertEquals(100.0, total.getP95(), 1e-9);
@@ -702,12 +702,13 @@ class LiveStatisticsEngineTest {
         LiveStatisticsEngine again = new LiveStatisticsEngine();
         for (int i = 0; i < 300; i++) {
             long rt = i < 200 ? 10 + i % 40 : (i < 297 ? 300 + i : 6000);   // 200 fast, 97 at 500-596, 3 at 6 s
-            engine.recordSample("Busy", rt, true, 10, 10, ts + i, 1, 1);
-            again.recordSample("Busy", rt, true, 10, 10, ts + 299 - i, 1, 1);
+            // each ends inside the second, where its figures go (T7)
+            engine.recordSample("Busy", rt, true, 10, 10, ts + i - rt, 1, 1);
+            again.recordSample("Busy", rt, true, 10, 10, ts + 299 - i - rt, 1, 1);
         }
 
         TimeSeriesBucket.SamplerBucketData second =
-                engine.buildReportData("t").getTimeSeries().get(0).getPerSamplerData().get("Busy");
+                bucketAt(engine.buildReportData("t").getTimeSeries(), ts).getPerSamplerData().get("Busy");
         assertEquals(39, second.getP50(), 0.0);    // rank 150 of 300: the 30th fast value, 10 + 29
         assertEquals(569, second.getP90(), 0.0);   // rank round(300 * 0.9f) = 270: 300 + 269
         assertEquals(584, second.getP95(), 0.0);   // rank 285: 300 + 284
@@ -715,7 +716,7 @@ class LiveStatisticsEngineTest {
         assertArrayEquals(new int[]{200, 0, 0, 0, 97, 0, 0, 3}, second.getHistogramBins());
 
         TimeSeriesBucket.SamplerBucketData other =
-                again.buildReportData("t").getTimeSeries().get(0).getPerSamplerData().get("Busy");
+                bucketAt(again.buildReportData("t").getTimeSeries(), ts).getPerSamplerData().get("Busy");
         assertEquals(second.getP90(), other.getP90(), 0.0, "fed in another order, the same second");
         assertArrayEquals(second.getHistogramBins(), other.getHistogramBins());
     }
@@ -1123,5 +1124,32 @@ class LiveStatisticsEngineTest {
         List<TimeSeriesBucket> buckets = engine.getTimeSeries();
         assertEquals(1, buckets.size(), "the bucket must be created on demand");
         assertEquals(42, buckets.get(0).getActiveThreads());
+    }
+
+    private static TimeSeriesBucket bucketAt(List<TimeSeriesBucket> buckets, long ts) {
+        return buckets.stream().filter(b -> b.getTimestamp().toEpochMilli() == ts).findFirst()
+                .orElseThrow(() -> new AssertionError("no bucket at " + ts));
+    }
+
+    @Test
+    void aSamplesFiguresGoToTheSecondItEndedAndItsHitToTheSecondItStarted() {
+        // T7: JMeter's charts key a sample by its end (TimeStampKeysSelector), Hits per Second by its
+        // start. A 1.5 s request started at 0.6 s ends at 2.1 s.
+        long t0 = 1700000000000L;
+        engine.recordSample("Slow", 1500, false, 800, 80, t0 + 600, 7, 900);
+        engine.updateActiveThreads(4, LiveStatisticsEngine.endOf(t0 + 600, 1500));
+
+        List<TimeSeriesBucket> buckets = engine.getTimeSeries();
+        TimeSeriesBucket started = bucketAt(buckets, t0);
+        TimeSeriesBucket ended = bucketAt(buckets, t0 + 2000);
+        assertEquals(1.0, started.getThroughput(), 0.0, "the hit, where it started");
+        assertEquals(0, started.getSampleCount(), "no figure of it where it started");
+        assertEquals(0.0, ended.getThroughput(), 0.0);
+        assertEquals(1, ended.getSampleCount());
+        assertEquals(1500.0, ended.getMeanResponseTime(), 0.0);
+        assertEquals(100.0, ended.getErrorRate(), 0.0);
+        assertEquals(800.0, ended.getPerSamplerData().get("Slow").getReceivedBytes(), 0.0);
+        assertEquals(4, ended.getActiveThreads(), "the threads at its end");
+        assertEquals(2, buckets.size(), "nothing in the second between");
     }
 }

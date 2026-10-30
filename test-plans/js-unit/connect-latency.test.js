@@ -18,8 +18,8 @@ const test = (name, fn) => tests.push({ name, fn });
 // Two seconds. "Shown" sends 9 requests in the first (connect 10 ms) and 1 in the second (connect
 // 100 ms); "Hidden" sends 1 and 99, and is not on the chart.
 const perSampler = {
-    Shown: { connectTime: [10, 100], latency: [20, 120], responseTime: [30, 130], throughput: [9, 1] },
-    Hidden: { connectTime: [5, 5], latency: [6, 6], responseTime: [7, 7], throughput: [1, 99] },
+    Shown: { connectTime: [10, 100], latency: [20, 120], responseTime: [30, 130], samples: [9, 1] },
+    Hidden: { connectTime: [5, 5], latency: [6, 6], responseTime: [7, 7], samples: [1, 99] },
 };
 
 test('T4: a component\'s weight per second is the shown samplers\' count', () => {
@@ -45,7 +45,7 @@ test('T4: a 10 s window weighs each second by those counts, not by every sample 
 
 test('T4: no breakdown for samplers that reported none', () => {
     const scope = loadReportScope();
-    const b = scope.connectLatencyBreakdown({ Jsr: { responseTime: [5], throughput: [3] } }, ['Jsr'], 1);
+    const b = scope.connectLatencyBreakdown({ Jsr: { responseTime: [5], samples: [3] } }, ['Jsr'], 1);
     assert.strictEqual(b.hasData, false);
     assert.strictEqual(b.connect[0], null);
 });

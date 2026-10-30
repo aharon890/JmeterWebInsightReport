@@ -32,7 +32,7 @@
 
     <properties>
         <!-- THE version of the whole suite. This is the only place to change it. -->
-        <revision>4.2.18</revision>
+        <revision>4.2.19</revision>
 
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!-- `release` rather than source/target: source/target still compiles against the

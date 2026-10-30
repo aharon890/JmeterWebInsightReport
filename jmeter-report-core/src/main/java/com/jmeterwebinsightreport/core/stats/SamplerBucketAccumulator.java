@@ -15,6 +15,10 @@ import com.jmeterwebinsightreport.core.model.TimeSeriesBucket;
  */
 class SamplerBucketAccumulator {
 
+    /** Samples that STARTED in this second: the Throughput line, as JMeter's Hits per Second
+     *  ({@code setSelectBeginTime(true)}). Every other figure here is of the samples that ENDED in it,
+     *  as JMeter's other charts key them (T7). */
+    private long hits;
     private long sampleCount;
     private long errorCount;
     private long sumResponseTime;
@@ -61,8 +65,14 @@ class SamplerBucketAccumulator {
         }
     }
 
+    /** Samples of this sampler that started in this second (T7). */
+    void addHits(long samples) {
+        hits += samples;
+    }
+
     /** Add this sampler's second to {@code pool}: the Σ Total of the second is its top-level samplers pooled. */
     void mergeInto(SamplerBucketAccumulator pool) {
+        pool.hits += hits;
         pool.sampleCount += sampleCount;
         pool.errorCount += errorCount;
         pool.sumResponseTime += sumResponseTime;
@@ -87,7 +97,7 @@ class SamplerBucketAccumulator {
         data.setSampleCount(sampleCount);
         data.setMeanResponseTime(sampleCount > 0 ? (double) sumResponseTime / sampleCount : 0);
         data.setErrorRate(sampleCount > 0 ? (errorCount * 100.0) / sampleCount : 0);
-        data.setThroughput(sampleCount);
+        data.setThroughput(hits);
         data.setReceivedBytes(sumReceivedBytes);
         data.setSentBytes(sumSentBytes);
 

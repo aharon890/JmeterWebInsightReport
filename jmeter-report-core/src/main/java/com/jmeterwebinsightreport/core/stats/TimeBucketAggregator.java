@@ -42,6 +42,11 @@ class TimeBucketAggregator {
                 .add(responseTime, receivedBytes, sentBytes, connectTime, latency, samples, errors);
     }
 
+    /** {@code samples} of {@code samplerName} started in this second (T7). */
+    synchronized void addHits(String samplerName, long samples) {
+        perSamplerAccum.computeIfAbsent(samplerName, k -> new SamplerBucketAccumulator()).addHits(samples);
+    }
+
     synchronized void updateActiveThreads(int activeThreads) {
         this.maxActiveThreads = Math.max(this.maxActiveThreads, activeThreads);
     }
@@ -70,7 +75,7 @@ class TimeBucketAggregator {
         bucket.setTotal(total);
         bucket.setSampleCount(total.getSampleCount());
         bucket.setMeanResponseTime(total.getMeanResponseTime());
-        bucket.setThroughput(total.getThroughput()); // samples per second (1s bucket)
+        bucket.setThroughput(total.getThroughput()); // samples started per second (1s bucket), T7
         bucket.setErrorRate(total.getErrorRate());
         return bucket;
     }

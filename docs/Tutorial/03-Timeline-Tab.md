@@ -6,6 +6,9 @@ Full time-series visualization of test metrics over the test duration.
 
 ## Charts
 
+A request counts in the second it **ended**, as JMeter's HTML report keys its over-time charts,
+except on **Throughput**, where it counts in the second it **started** — JMeter's Hits per Second.
+
 9 charts are displayed in this default order:
 
 1. **Response Time Over Time** — per sampler + active threads overlay

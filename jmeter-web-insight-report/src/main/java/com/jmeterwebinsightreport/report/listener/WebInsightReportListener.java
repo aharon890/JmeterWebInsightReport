@@ -506,7 +506,7 @@ public class WebInsightReportListener extends ResultCollector {
         if (activeThreads <= 0) {
             activeThreads = result.getGroupThreads();
         }
-        statsEngine.updateActiveThreads(activeThreads, start);
+        statsEngine.updateActiveThreads(activeThreads, LiveStatisticsEngine.endOf(start, result.getTime()));
         if (LiveStatisticsEngine.isTransactionRow(result.getResponseMessage())) {
             // Left out of the Errors tab, as JMeter's HTML report leaves it out (E3)
             statsEngine.recordTransactionRow(result.getSampleCount());

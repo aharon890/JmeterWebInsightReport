@@ -663,7 +663,8 @@ function aggregateTimeSeries(timestamps, values, granularityMs, opts) {
 
 /**
  * Aggregation options appropriate for a given metric key.
- * `counts` is the matching per-bucket sample count series (per-second throughput).
+ * `counts` is the matching per-bucket sample count series: the samples that ENDED in each second, which
+ * every series but the throughput is of (T7). The throughput is the samples that started in it.
  */
 function aggOptsForMetric(metric, counts) {
     if (metric === 'max') return { mode: 'max' };
@@ -1495,7 +1496,7 @@ function buildPerSamplerSeries(data, metric, overrideMetric) {
         if (colorIdx < 0) colorIdx = 0;
 
         var seriesColor = getColorForSampler(name, colorIdx);
-        var aggOpts = aggOptsForMetric(effectiveMetric, perSampler[name].throughput);
+        var aggOpts = aggOptsForMetric(effectiveMetric, perSampler[name].samples);
         series.push({
             name: name,
             type: 'line',
@@ -1514,7 +1515,7 @@ function buildPerSamplerSeries(data, metric, overrideMetric) {
             series.push({
                 name: TOTAL_SAMPLER_NAME,
                 type: 'line',
-                data: zipTimeSeries(data.timestamps, totalValues, aggOptsForMetric(effectiveMetric, data.throughputs)),
+                data: zipTimeSeries(data.timestamps, totalValues, aggOptsForMetric(effectiveMetric, data.sampleCounts)),
                 smooth: true,
                 symbol: 'none',
                 lineStyle: { width: lineThickness + 1, type: 'dashed' },
@@ -1670,7 +1671,7 @@ function initSummaryResponseTimeChart(data) {
         series.push({
             name: getMetricLabel() + ' Response Time',
             type: 'line',
-            data: zipTimeSeries(data.timestamps, data.meanResponseTimes, aggOptsForMetric('responseTime', data.throughputs)),
+            data: zipTimeSeries(data.timestamps, data.meanResponseTimes, aggOptsForMetric('responseTime', data.sampleCounts)),
             smooth: true,
             symbol: 'none',
             lineStyle: { width: 2 },
@@ -1735,7 +1736,7 @@ function initResponseTimeChart(data) {
     var chart = activateTimelineChart(ctx);
 
     if (series.length === 0) {
-        series.push({ name: getMetricLabel() + ' Response Time', type: 'line', data: zipTimeSeries(data.timestamps, data.meanResponseTimes, aggOptsForMetric('responseTime', data.throughputs)), smooth: true, symbol: 'none', lineStyle: { width: 2 }, itemStyle: { color: '#5470c6' }, areaStyle: { color: 'rgba(84, 112, 198, 0.1)' } });
+        series.push({ name: getMetricLabel() + ' Response Time', type: 'line', data: zipTimeSeries(data.timestamps, data.meanResponseTimes, aggOptsForMetric('responseTime', data.sampleCounts)), smooth: true, symbol: 'none', lineStyle: { width: 2 }, itemStyle: { color: '#5470c6' }, areaStyle: { color: 'rgba(84, 112, 198, 0.1)' } });
     }
 
     var hasThreads = data.activeThreads && data.activeThreads.some(function (v) { return v > 0; });
@@ -1968,7 +1969,7 @@ function initErrorRateChart(data) {
     var chart = activateTimelineChart(ctx);
 
     if (series.length === 0) {
-        series.push({ name: 'Error Rate', type: 'line', data: zipTimeSeries(data.timestamps, data.errorRates, aggOptsForMetric('errorRate', data.throughputs)), smooth: true, symbol: 'none', lineStyle: { width: 2 }, itemStyle: { color: '#ee6666' }, areaStyle: { color: 'rgba(238, 102, 102, 0.15)' } });
+        series.push({ name: 'Error Rate', type: 'line', data: zipTimeSeries(data.timestamps, data.errorRates, aggOptsForMetric('errorRate', data.sampleCounts)), smooth: true, symbol: 'none', lineStyle: { width: 2 }, itemStyle: { color: '#ee6666' }, areaStyle: { color: 'rgba(238, 102, 102, 0.15)' } });
     }
 
     injectMarkLines(series, data, 'errorRate');
@@ -2117,7 +2118,7 @@ function connectLatencyBreakdown(perSampler, names, n) {
         var ct = perSampler[name].connectTime;
         var lat = perSampler[name].latency;
         var elapsed = perSampler[name].responseTime || perSampler[name].elapsed;
-        var counts = perSampler[name].throughput;
+        var counts = perSampler[name].samples;
         if (!ct && !lat) return;
 
         for (var i = 0; i < n; i++) {
@@ -2184,7 +2185,7 @@ function initConnectLatencyChart(data) {
             connectTime: data.totalSeries.connectTime,
             latency: data.totalSeries.latency,
             responseTime: data.meanResponseTimes,
-            throughput: data.throughputs
+            samples: data.sampleCounts
         };
         perSampler = totalBreakdown;
         visibleNames = [TOTAL_SAMPLER_NAME];
@@ -2454,7 +2455,7 @@ function initScatterChart(data) {
         series.push({
             name: name,
             type: 'scatter',
-            data: zipTimeSeries(data.timestamps, rtData, aggOptsForMetric(rtKey, perSampler[name].throughput)),
+            data: zipTimeSeries(data.timestamps, rtData, aggOptsForMetric(rtKey, perSampler[name].samples)),
             symbolSize: 4,
             itemStyle: {
                 color: getColorForSampler(name, colorIdx),
@@ -2468,7 +2469,7 @@ function initScatterChart(data) {
         series.push({
             name: TOTAL_SAMPLER_NAME,
             type: 'scatter',
-            data: zipTimeSeries(data.timestamps, data.meanResponseTimes, aggOptsForMetric('responseTime', data.throughputs)),
+            data: zipTimeSeries(data.timestamps, data.meanResponseTimes, aggOptsForMetric('responseTime', data.sampleCounts)),
             symbolSize: 6,
             itemStyle: { color: getTotalColor(), opacity: 0.8 }
         });
@@ -4443,7 +4444,7 @@ function renderDetailTimeSeries(samplerName, containerId, def) {
         var s = {
             name: m.name || samplerName,
             type: 'line',
-            data: zipTimeSeries(ts, vals, aggOptsForMetric(m.key, sd.throughput)),
+            data: zipTimeSeries(ts, vals, aggOptsForMetric(m.key, sd.samples)),
             smooth: true,
             symbol: 'none',
             lineStyle: { width: lineThickness },

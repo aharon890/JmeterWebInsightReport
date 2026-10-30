@@ -153,6 +153,13 @@ Switch the response time charts between metrics:
 The selected metric applies to the Summary and Timeline response time charts and to the Compare
 tab's Response Time Comparison. Per-sampler percentiles are computed per 1-second time bucket.
 
+**Which second a request belongs to** is JMeter's choice: the second it **ended** (start + elapsed),
+as JMeter's HTML report keys every over-time chart — response times, percentiles, error rate, bytes,
+connect time and latency, the heatmap, active threads — and the second it **started** for the
+Throughput line, which is JMeter's Hits per Second. A 3-second request that started at 0.6 s
+counts in the throughput of second 0 and in the response time of second 3. Both reports of a run
+place it alike (a transaction's idle time does not move it).
+
 ### Granularity Control
 
 A dropdown in the filter bar lets you adjust the time-series aggregation level: **1s, 5s, 10s, 30s, 1min, 5min, 10min**. Higher granularity smooths charts by folding data points into larger buckets — a sample-weighted average for response times, percentiles and error rates, the bucket's rate for throughput and bytes, the maximum for Max — useful for long tests where 1-second resolution produces too many points.

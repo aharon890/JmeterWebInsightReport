@@ -132,11 +132,17 @@ public class LiveStatisticsEngine {
                 .addSample(responseTime, isSuccess, bytesReceived, bytesSent, timestamp, endTime,
                         connectTime, latency, n, failed);
 
-        // Time-series bucketing (1-second granularity)
-        long bucketKey = timestamp / 1000 * 1000;
-        timeBuckets.computeIfAbsent(bucketKey, k -> new TimeBucketAggregator(k))
+        // Time-series bucketing (1-second granularity). A sample counts in the second it ended, as
+        // JMeter's charts key it (TimeStampKeysSelector, end time but for Hits per Second), and its
+        // hit in the second it started, which the Throughput line draws as JMeter's Hits per Second
+        // does (T7). The end is start + elapsed on both paths, which is where JMeter's HTML report
+        // puts a row of the file: a transaction's idle time does not move it (the windows do, B7).
+        long endKey = endOf(timestamp, responseTime) / 1000 * 1000;
+        timeBuckets.computeIfAbsent(endKey, k -> new TimeBucketAggregator(k))
                 .addSample(responseTime, samplerName, bytesReceived, bytesSent,
                         connectTime, latency, n, failed);
+        long startKey = timestamp / 1000 * 1000;
+        timeBuckets.computeIfAbsent(startKey, k -> new TimeBucketAggregator(k)).addHits(samplerName, n);
 
         // Global counters
         totalSamples.addAndGet(n);
@@ -238,8 +244,14 @@ public class LiveStatisticsEngine {
         }
     }
 
+    /** Where a sample's per-second figures go: the second it ended, start + elapsed (T7). */
+    public static long endOf(long start, long elapsed) {
+        return start + Math.max(0, elapsed);
+    }
+
     /**
-     * Update the max active threads seen.
+     * Update the max active threads seen, in the second of {@code timestamp}: the sample's end
+     * ({@link #endOf}), where JMeter's Active Threads Over Time keys it (T7).
      */
     public void updateActiveThreads(int activeThreads, long timestamp) {
         maxActiveThreads.updateAndGet(current -> Math.max(current, activeThreads));

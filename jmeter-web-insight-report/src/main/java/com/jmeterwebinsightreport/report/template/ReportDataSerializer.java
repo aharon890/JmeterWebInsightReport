@@ -174,16 +174,25 @@ public class ReportDataSerializer {
     }
 
     private static final String[] SERIES_METRIC_KEYS = {"responseTime", "throughput", "errorRate", "p50", "p90",
-            "p95", "p99", "max", "connectTime", "latency", "receivedBytes", "sentBytes"};
+            "p95", "p99", "max", "connectTime", "latency", "receivedBytes", "sentBytes", "samples"};
 
-    /** One second of one series, in {@link #SERIES_METRIC_KEYS}' order; all null for a second with no sample. */
+    /**
+     * One second of one series, in {@link #SERIES_METRIC_KEYS}' order. {@code throughput} is the samples that
+     * started in the second (null when none did); every other value is of the samples that ended in it,
+     * {@code samples} their number, all null when none did (T7).
+     */
     private static Object[] seriesValues(SamplerBucketData sd) {
         Object[] v = new Object[SERIES_METRIC_KEYS.length];
-        if (sd == null || sd.getSampleCount() == 0) {
+        if (sd == null) {
+            return v;
+        }
+        if (sd.getThroughput() > 0) {
+            v[1] = round2(sd.getThroughput());
+        }
+        if (sd.getSampleCount() == 0) {
             return v;
         }
         v[0] = round2(sd.getMeanResponseTime());
-        v[1] = round2(sd.getThroughput());
         v[2] = round2(sd.getErrorRate());
         v[3] = round2(sd.getP50());
         v[4] = round2(sd.getP90());
@@ -194,6 +203,7 @@ public class ReportDataSerializer {
         v[9] = round2OrNull(sd.getLatency());
         v[10] = round2(sd.getReceivedBytes());
         v[11] = round2(sd.getSentBytes());
+        v[12] = sd.getSampleCount();
         return v;
     }
 
@@ -380,6 +390,7 @@ public class ReportDataSerializer {
         List<Long> timestamps = new ArrayList<>(timeSeries.size());
         List<Double> meanResponseTimes = new ArrayList<>(timeSeries.size());
         List<Double> throughputs = new ArrayList<>(timeSeries.size());
+        List<Long> sampleCounts = new ArrayList<>(timeSeries.size());
         List<Double> errorRates = new ArrayList<>(timeSeries.size());
         List<Integer> activeThreads = new ArrayList<>(timeSeries.size());
 
@@ -387,13 +398,17 @@ public class ReportDataSerializer {
             timestamps.add(bucket.getTimestamp().toEpochMilli());
             meanResponseTimes.add(round2(bucket.getMeanResponseTime()));
             throughputs.add(round2(bucket.getThroughput()));
+            sampleCounts.add(bucket.getSampleCount());
             errorRates.add(round2(bucket.getErrorRate()));
             activeThreads.add(bucket.getActiveThreads());
         }
 
         chartData.put("timestamps", timestamps);
         chartData.put("meanResponseTimes", meanResponseTimes);
+        // Requests that STARTED in each second (JMeter's Hits per Second); every other series is of the
+        // samples that ENDED in it, sampleCounts their number, the weights of a mean over seconds (T7)
         chartData.put("throughputs", throughputs);
+        chartData.put("sampleCounts", sampleCounts);
         chartData.put("errorRates", errorRates);
         chartData.put("activeThreads", activeThreads);
         // The Σ Total of every per-sampler metric, the top-level samplers pooled per second (T1): a

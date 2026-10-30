@@ -320,7 +320,7 @@ public class JtlParser {
                     timestamp + Math.max(0, elapsed), connectTime, latency, samples,
                     errors >= 0 ? errors : (success ? 0 : 1));
             if (threads > 0) {
-                engine.updateActiveThreads(threads, timestamp);
+                engine.updateActiveThreads(threads, LiveStatisticsEngine.endOf(timestamp, elapsed));
             }
             if (LiveStatisticsEngine.isTransactionRow(message)) {
                 engine.recordTransactionRow(samples);
