@@ -239,6 +239,12 @@
                         <div class="card-label">Max Threads</div>
                     </div>
                 </div>
+                <!-- Which samples the totals count (B5). JMeter counts a transaction run three ways:
+                     a listener in the plan the transactions, the Aggregate Report opened on the file
+                     every row, the HTML report the requests. Both paths here count as the listener. -->
+                <p class="wir-window-note wir-population-note" th:if="${countsTransactionsOnce != null and countsTransactionsOnce}">
+                    Each transaction counts once, with its requests inside it, as JMeter's Aggregate Report in the test
+                    plan counts them. The Samplers table lists the requests under their transaction.</p>
                 <!-- Extra metric cards row -->
                 <div class="summary-cards" style="margin-top: 16px;" th:if="${avgP95 != null}">
                     <div class="summary-card">

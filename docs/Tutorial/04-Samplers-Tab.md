@@ -206,5 +206,8 @@ When the test has Transaction Controllers (parent/child sampler hierarchy):
 The hierarchy comes from the result tree the listener receives, never from sampler names: a
 sample's sub-results are its children — a Transaction Controller's parent sample, and also embedded
 resources and redirect hops. Only a parent that came from a Transaction Controller gets the ▶ icon.
-A report generated from a JTL with `jmeter -g` has no hierarchy, so every sampler is listed at the
-top level there.
+A report generated from a JTL with `jmeter -g` rebuilds the Transaction Controllers' part of that
+tree from the file: a transaction's row is written first and its requests right after it, on its
+thread, so `-g` nests them as the listener did and both reports count the same totals. Embedded
+resources and redirect hops leave no such mark in a JTL, so on `-g` they are listed as samplers of
+their own.

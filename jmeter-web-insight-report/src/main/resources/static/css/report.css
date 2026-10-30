@@ -3633,6 +3633,10 @@ body.dark-mode .wir-status-menu { box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5); }
     margin: 0 0 10px;
 }
 
+.wir-population-note {
+    margin: 10px 0 0;
+}
+
 .wir-kpi-name {
     background: none;
     border: none;

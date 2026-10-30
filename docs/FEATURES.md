@@ -244,8 +244,13 @@ Click any sampler row to expand an inline detail panel with **configurable mini-
 
 ### Transaction Controller Hierarchy
 Transaction Controllers are detected from the sample tree the listener receives — a Transaction
-Controller's sample and the sub-samples inside it — never guessed from sampler names. A JTL does not
-keep that tree, so in a `-g` report every sampler is top-level:
+Controller's sample and the sub-samples inside it — never guessed from sampler names. A `-g` report
+rebuilds the same tree from the JTL: a transaction row (response message `Number of samples in
+transaction : N, ...`) whose thread's next row starts inside it generated a parent sample, and its
+thread's next N rows are its children, as JMeter writes them. Both reports of one run therefore count
+the same totals (B5). Sub-samples a JTL does not mark (embedded resources, redirects) stay rows of
+their own in a `-g` report, as in every JMeter tool that reads the file. When transactions are nested,
+the Summary tab says that each one counts once, as JMeter's Aggregate Report in the test plan counts it:
 - **Default view:** Only parent transactions and standalone samplers are shown — matches JMeter's native Aggregate Report. Child samplers are hidden from the table, filter bar, and charts to avoid double-counting.
 - **"Transaction Details" toggle:** Button in the Samplers tab toolbar. When activated, child samplers appear indented under their parent with full statistics and mini-charts. The toggle also reveals child sampler checkboxes in the filter bar.
 - **Σ Total always correct:** The total row always sums parents + standalone samplers only, regardless of toggle state. Parents already aggregate their children, so children are never double-counted.
@@ -790,7 +795,7 @@ Updates live when regression thresholds are adjusted via the Compare tab control
 The report auto-detects and handles common patterns:
 - **Auto-hide utility samplers** — samplers matching JSR223*, Debug*, BeanShell*, __* are unchecked in the filter bar by default, so they are off the charts; the Samplers table still lists them (tick them to chart them)
 - **Auto-hide empty samplers** — samplers with 0 requests are unchecked the same way
-- **Transaction Controller detection** — parent/child relationships taken from the sample tree the listener receives (a `-g` report has none, so every sampler is top-level); children collapsed by default
+- **Transaction Controller detection** — parent/child relationships taken from the sample tree the listener receives, or rebuilt from the JTL's transaction rows on `-g`; children collapsed by default
 - **Ramp-up period marking** — when configured, a semi-transparent overlay marks the ramp-up phase on the time-axis charts of the Summary, Timeline and Errors tabs (not the heatmap or the percentile bars)
 
 ---

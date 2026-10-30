@@ -115,6 +115,10 @@ public class JtlParser {
             // JMeter aggregated, distributed Statistical mode), always together. See ParsedSample.feed.
             int colSampleCount = headers.getOrDefault("SampleCount", -1);
             int colErrorCount = headers.getOrDefault("ErrorCount", -1);
+            // A transaction's real end, to tell a controller that generated a parent sample from one
+            // that did not (TransactionRows)
+            int colIdle = headers.getOrDefault("IdleTime", -1);
+            TransactionRows transactions = new TransactionRows();
 
             int expectedColumns = headers.size();
             List<String> physicalLines;
@@ -127,7 +131,8 @@ public class JtlParser {
 
                 if (consume(engine, record, timestampIsStart, expectedColumns, colTimestamp, colElapsed,
                         colLabel, colCode, colSuccess, colBytes, colSentBytes, colConnect, colLatency,
-                        colThreads, colMessage, colThread, colUrl, colSampleCount, colErrorCount)) {
+                        colThreads, colMessage, colThread, colUrl, colSampleCount, colErrorCount, colIdle,
+                        transactions)) {
                     recordsParsed++;
                     continue;
                 }
@@ -145,7 +150,7 @@ public class JtlParser {
                         if (consume(engine, physical, timestampIsStart, expectedColumns,
                                 colTimestamp, colElapsed, colLabel, colCode, colSuccess, colBytes,
                                 colSentBytes, colConnect, colLatency, colThreads, colMessage,
-                                colThread, colUrl, colSampleCount, colErrorCount)) {
+                                colThread, colUrl, colSampleCount, colErrorCount, colIdle, transactions)) {
                             recovered++;
                         } else {
                             lost++;
@@ -193,12 +198,13 @@ public class JtlParser {
                                    int expectedColumns, int colTimestamp, int colElapsed, int colLabel, int colCode,
                                    int colSuccess, int colBytes, int colSentBytes, int colConnect,
                                    int colLatency, int colThreads, int colMessage, int colThread,
-                                   int colUrl, int colSampleCount, int colErrorCount) {
+                                   int colUrl, int colSampleCount, int colErrorCount, int colIdle,
+                                   TransactionRows transactions) {
         ParsedSample sample;
         try {
             sample = parseSample(record, expectedColumns, colTimestamp, colElapsed, colLabel,
                     colCode, colSuccess, colBytes, colSentBytes, colConnect, colLatency, colThreads,
-                    colMessage, colThread, colUrl, colSampleCount, colErrorCount);
+                    colMessage, colThread, colUrl, colSampleCount, colErrorCount, colIdle);
         } catch (RuntimeException e) {
             return false;
         }
@@ -209,8 +215,15 @@ public class JtlParser {
             // The row was stamped at its end; the engine places and windows samples by start.
             sample.timestamp -= sample.elapsed;
         }
+        String parent = transactions.parentOf(sample.thread, sample.label, sample.message,
+                sample.timestamp, sample.elapsed, sample.idle);
         try {
             sample.feed(engine);
+            if (parent != null) {
+                // Nested as the listener nests a parent sample's sub-results: the transaction counts
+                // once in the totals, its requests are its breakdown (B5)
+                engine.recordTransaction(parent, sample.label, true);
+            }
         } catch (RuntimeException e) {
             throw new IllegalStateException("The statistics engine failed on the sample '"
                     + sample.label + "' at " + sample.timestamp + ", a row that parsed: "
@@ -229,7 +242,8 @@ public class JtlParser {
                                             int colCode, int colSuccess, int colBytes,
                                             int colSentBytes, int colConnect, int colLatency,
                                             int colThreads, int colMessage, int colThread,
-                                            int colUrl, int colSampleCount, int colErrorCount) {
+                                            int colUrl, int colSampleCount, int colErrorCount,
+                                            int colIdle) {
         String[] fields = parseCsvLine(record);
         // A field count nowhere near the header's means this is not a record —
         // most often the tail of a wrongly-joined line. Reject it so the caller
@@ -254,9 +268,12 @@ public class JtlParser {
                 ? parseLongSafe(fields[colLatency]) : -1;
         s.threads = colThreads >= 0 && colThreads < fields.length
                 ? parseIntSafe(fields[colThreads]) : 0;
+        // Every row's, not only a failure's: a transaction row is known by its message, and its
+        // children by their thread (TransactionRows)
+        s.message = colMessage >= 0 && colMessage < fields.length ? fields[colMessage] : "";
+        s.thread = colThread >= 0 && colThread < fields.length ? fields[colThread] : "";
+        s.idle = colIdle >= 0 && colIdle < fields.length ? parseLongSafe(fields[colIdle]) : 0;
         if (!s.success) {
-            s.message = colMessage >= 0 && colMessage < fields.length ? fields[colMessage] : "";
-            s.thread = colThread >= 0 && colThread < fields.length ? fields[colThread] : "";
             s.url = colUrl >= 0 && colUrl < fields.length ? fields[colUrl] : null;
         }
         if (colSampleCount >= 0 && colSampleCount < fields.length) {
@@ -283,6 +300,7 @@ public class JtlParser {
         String message;
         String thread;
         String url;
+        long idle;
         long samples = 1;
         long errors = -1;
 

@@ -234,6 +234,10 @@ public class ThymeleafReportRenderer {
                     .limit(5)
                     .collect(Collectors.toList());
             context.setVariable("top5Slowest", top5Slowest);
+            // Which samples the totals count, said where they are read (B5): JMeter's three tools
+            // count a transaction run three ways, and this report counts it as the listener does.
+            context.setVariable("countsTransactionsOnce", stats.stream()
+                    .anyMatch(SamplerStatistics::isTransactionController));
 
             if (overall.getTotalSamples() > 0) {
                 context.setVariable("overallApdex", overall.getApdex());

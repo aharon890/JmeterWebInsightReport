@@ -257,10 +257,10 @@ class JtlParserTest {
 
     @Test
     void parseTransactionControllers_noHierarchyFromNamesAlone() throws IOException {
-        // JTL rows carry no sub-result structure, so transaction grouping cannot be reliably
-        // reconstructed. Transaction hierarchy is now derived only from real sub-result
-        // relationships (listener mode), never guessed from name prefixes — this avoids falsely
-        // nesting/hiding REST-style samplers (audit finding B8).
+        // Names never nest anything: the hierarchy comes from real sub-result relationships (the
+        // listener) or from a Transaction Controller's own row (B5, the test below), never from name
+        // prefixes, which falsely nested and hid REST-style samplers (audit finding B8). This file has
+        // no transaction rows.
         JtlParser parser = new JtlParser();
         ReportData data = parser.parse(getResourceFile("transaction-controllers.jtl"), "TCTest");
 
@@ -534,5 +534,34 @@ class JtlParserTest {
         assertEquals(3, s.getErrorCount(), "the row's ErrorCount, as JMeter reads the file");
         assertEquals(100, s.getMaxResponseTime(), 0.0);
         assertEquals(1040 / 11.0, s.getMeanResponseTime(), 1e-9);
+    }
+
+    @Test
+    void aTransactionsParentSampleNestsTheRowsWrittenAfterItAsTheListenerDoes() throws IOException {
+        // B5: P11's rebuilt report counted 450 samples (every row) where its run report counted 50
+        // (the transactions, each with its requests inside). "Checkout" generated a parent sample: its
+        // row first, its two children right after, on its thread. "Report" did not: its children came
+        // first and its row after them, so the listener received all three and so does the file.
+        String tx2 = "\"Number of samples in transaction : 2, number of failing samples : 1\"";
+        File jtl = writeJtl("transactions.jtl", HEADER + "\n"
+                + "1700000000000,300,Checkout,500," + tx2 + ",TG 1-1,,false,,900,90,1,2,,0,40,0\n"
+                + "1700000000000,100,Cart,200,OK,TG 1-1,text,true,,400,40,1,2,http://x/cart,90,0,5\n"
+                + "1700000000120,200,Pay,500,Internal Server Error,TG 1-1,text,false,,500,50,1,2,http://x/pay,190,0,5\n"
+                + "1700000000000,50,Home,200,OK,TG 1-2,text,true,,100,10,1,2,http://x/,40,0,5\n"
+                + "1700000001000,100,Export,200,OK,TG 1-2,text,true,,100,10,1,2,http://x/export,90,0,5\n"
+                + "1700000001100,100,Download,200,OK,TG 1-2,text,true,,100,10,1,2,http://x/dl,90,0,5\n"
+                + "1700000001000,200,Report,200," + tx2.replace("1", "0") + ",TG 1-2,,true,,200,20,1,2,,0,0,0\n"
+                + "1700000001300,50,Home,200,OK,TG 1-2,text,true,,100,10,1,2,http://x/,40,0,5\n");
+
+        ReportData data = new JtlParser().parse(jtl, "transactions");
+
+        assertEquals(Map.of("Checkout", List.of("Cart", "Pay")), data.getTransactionHierarchy());
+        assertTrue(findSampler(data, "Checkout").isTransactionController());
+        assertEquals("Checkout", findSampler(data, "Pay").getParentSamplerName());
+        assertNull(findSampler(data, "Export").getParentSamplerName(), "no parent sample, nothing nested");
+        assertNull(findSampler(data, "Report").getParentSamplerName());
+        assertEquals(6, data.getTopLevelSampleCount(), "Checkout, Home x2, Export, Download, Report");
+        assertEquals(1, data.getTopLevelErrorCount(), "the failed transaction, once");
+        assertEquals(8, data.getMetadata().getTotalSamples(), "every row is still recorded");
     }
 }

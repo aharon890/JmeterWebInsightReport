@@ -445,8 +445,9 @@ public class LiveStatisticsEngine {
      * Build the transaction-controller hierarchy from real relationships observed via sample
      * sub-results (see {@link #recordTransaction}). Only genuine parent/child pairs are grouped —
      * there is no name-prefix guessing, so REST-style names are never falsely nested or hidden.
-     * When no sub-result relationships were seen (e.g. JTL/CLI mode, where sub-results are flattened),
-     * this returns an empty hierarchy and every sampler is treated as top-level.
+     * A JTL keeps no sub-results, but the parser finds a Transaction Controller's children by its row
+     * and calls {@link #recordTransaction} too (B5, {@code TransactionRows}). When no relationship was
+     * seen this returns an empty hierarchy and every sampler is treated as top-level.
      */
     private Map<String, List<String>> detectTransactionHierarchy(List<SamplerStatistics> stats) {
         Map<String, List<String>> hierarchy = new LinkedHashMap<>();
