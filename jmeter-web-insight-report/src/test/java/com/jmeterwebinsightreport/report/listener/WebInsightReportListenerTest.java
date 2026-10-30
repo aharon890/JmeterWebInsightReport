@@ -295,6 +295,9 @@ class WebInsightReportListenerTest {
 
         com.jmeterwebinsightreport.core.model.ReportData data = engine.buildReportData("t");
         assertEquals(1, data.getRequestSampleCount());
+        // T5: the response codes count the request, not the transaction
+        assertEquals(java.util.Map.of("500", 1L), data.getTimeSeries().stream()
+                .filter(b -> !b.getResponseCodes().isEmpty()).findFirst().get().getResponseCodes());
         assertEquals(1, data.requestErrorSummaries().size());
         assertEquals("Pay", data.requestErrorSummaries().get(0).getSamplerName());
         assertEquals(1, data.getErrorRecords().size());

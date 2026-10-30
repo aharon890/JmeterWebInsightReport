@@ -596,6 +596,22 @@ class ReportDataSerializerTest {
     }
 
     @Test
+    void theResponseCodesAreShippedPerCodeAlignedWithTheTimestamps() throws JsonProcessingException {
+        // T5: every response per code per second, null where none of a code ended
+        com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine engine =
+                new com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine();
+        long t0 = 1700000000000L;
+        engine.recordSample("A", 100, true, 0, 0, t0, -1, -1);
+        engine.recordResponseCode("200", t0 + 100);
+        engine.recordSample("A", 100, false, 0, 0, t0 + 1000, -1, -1);
+        engine.recordResponseCode("503", t0 + 1100);
+
+        JsonNode json = objectMapper.readTree(ChartDataJson.of(engine.buildReportData("t")));
+        assertEquals("[1700000000000,1700000001000]", json.get("timestamps").toString());
+        assertEquals("{\"200\":[1,null],\"503\":[null,1]}", json.get("responseCodes").toString());
+    }
+
+    @Test
     void serializesAbsentConnectLatencyAsNull() throws JsonProcessingException {
         // B14: buckets without connect/latency data must serialize null, not 0, so the client
         // can skip them instead of averaging in spurious zeros.

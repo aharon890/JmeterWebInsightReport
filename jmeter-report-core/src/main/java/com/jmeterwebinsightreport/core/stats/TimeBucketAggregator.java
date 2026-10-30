@@ -7,6 +7,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 /**
  * Time-bucket aggregator for 1-second granularity time-series.
@@ -22,6 +23,7 @@ class TimeBucketAggregator {
     private final long timestampMs;
     private int maxActiveThreads;
     private final Map<String, SamplerBucketAccumulator> perSamplerAccum = new LinkedHashMap<>();
+    private final Map<String, Long> responseCodes = new TreeMap<>();
 
     TimeBucketAggregator(long timestampMs) {
         this.timestampMs = timestampMs;
@@ -42,6 +44,11 @@ class TimeBucketAggregator {
                 .add(responseTime, receivedBytes, sentBytes, connectTime, latency, samples, errors);
     }
 
+    /** A response with this code ended in this second (T5). */
+    synchronized void addResponseCode(String code) {
+        responseCodes.merge(code, 1L, Long::sum);
+    }
+
     /** {@code samples} of {@code samplerName} started in this second (T7). */
     synchronized void addHits(String samplerName, long samples) {
         perSamplerAccum.computeIfAbsent(samplerName, k -> new SamplerBucketAccumulator()).addHits(samples);
@@ -60,6 +67,7 @@ class TimeBucketAggregator {
         TimeSeriesBucket bucket = new TimeSeriesBucket();
         bucket.setTimestamp(Instant.ofEpochMilli(timestampMs));
         bucket.setActiveThreads(maxActiveThreads);
+        bucket.setResponseCodes(new LinkedHashMap<>(responseCodes));
 
         Map<String, TimeSeriesBucket.SamplerBucketData> perSampler = new LinkedHashMap<>();
         SamplerBucketAccumulator pool = new SamplerBucketAccumulator();

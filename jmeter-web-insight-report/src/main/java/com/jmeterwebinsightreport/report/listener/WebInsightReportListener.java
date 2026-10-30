@@ -510,6 +510,10 @@ public class WebInsightReportListener extends ResultCollector {
         if (LiveStatisticsEngine.isTransactionRow(result.getResponseMessage())) {
             // Left out of the Errors tab, as JMeter's HTML report leaves it out (E3)
             statsEngine.recordTransactionRow(result.getSampleCount());
+        } else {
+            // and out of the response codes, as its Codes per Second does (T5)
+            statsEngine.recordResponseCode(result.getResponseCode(),
+                    LiveStatisticsEngine.endOf(start, result.getTime()));
         }
 
         // Record error details with URL and response body

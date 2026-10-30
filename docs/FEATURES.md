@@ -49,7 +49,7 @@ The time-series charts support:
 - Error Rate Over Time (per sampler)
 - Bytes Throughput Over Time (received/sent bytes per sampler)
 - Connect Time vs Latency vs Processing (stacked area breakdown)
-- Response Codes Over Time (stacked bar by response code of the failed samples, built from the first 500 error records)
+- Response Codes Over Time (stacked bars, responses per second by code: every response, successes included, of every sampler — JMeter's Codes per Second; the sampler filter does not apply, and a transaction's own result is not a response)
 - Response Time Percentiles Comparison (grouped bar: p50/p90/p95/p99/max per sampler)
 - Response Time Scatter Plot (one point per sampler per time bucket, at that bucket's mean response time)
 - Response Time Heatmap (response time distribution over time — see below)

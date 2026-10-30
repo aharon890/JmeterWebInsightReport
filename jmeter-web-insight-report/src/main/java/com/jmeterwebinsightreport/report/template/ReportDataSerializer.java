@@ -173,6 +173,23 @@ public class ReportDataSerializer {
         return series;
     }
 
+    /** code -> responses per second, aligned with the timestamps (null where none ended), codes sorted. */
+    private Map<String, List<Long>> buildResponseCodes(List<TimeSeriesBucket> timeSeries) {
+        Set<String> codes = new TreeSet<>();
+        for (TimeSeriesBucket bucket : timeSeries) {
+            codes.addAll(bucket.getResponseCodes().keySet());
+        }
+        Map<String, List<Long>> series = new LinkedHashMap<>();
+        for (String code : codes) {
+            List<Long> counts = new ArrayList<>(timeSeries.size());
+            for (TimeSeriesBucket bucket : timeSeries) {
+                counts.add(bucket.getResponseCodes().get(code));
+            }
+            series.put(code, counts);
+        }
+        return series;
+    }
+
     private static final String[] SERIES_METRIC_KEYS = {"responseTime", "throughput", "errorRate", "p50", "p90",
             "p95", "p99", "max", "connectTime", "latency", "receivedBytes", "sentBytes", "samples"};
 
@@ -415,6 +432,8 @@ public class ReportDataSerializer {
         // percentile of the second's samples, not a mean of the samplers' percentiles, and no
         // transaction counted beside its requests. The page draws the Σ lines from it alone.
         chartData.put("totalSeries", buildTotalSeries(timeSeries));
+        // Every response per code per second, by end: JMeter's Codes per Second (T5)
+        chartData.put("responseCodes", buildResponseCodes(timeSeries));
 
         // Sampler summary for bar/comparison charts — includes p50 and max
         List<Map<String, Object>> samplers = new ArrayList<>(

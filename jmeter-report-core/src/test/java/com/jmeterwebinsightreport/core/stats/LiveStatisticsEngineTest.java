@@ -1132,6 +1132,20 @@ class LiveStatisticsEngineTest {
     }
 
     @Test
+    void everyResponseIsCountedByItsCodeInTheSecondItEnded() {
+        // T5: JMeter's Codes per Second, successes included, a response with no code its own series
+        long t0 = 1700000000000L;
+        engine.recordResponseCode("200", t0 + 100);
+        engine.recordResponseCode("200", t0 + 900);
+        engine.recordResponseCode("500", t0 + 950);
+        engine.recordResponseCode("", t0 + 1200);
+
+        List<TimeSeriesBucket> buckets = engine.getTimeSeries();
+        assertEquals(Map.of("200", 2L, "500", 1L), bucketAt(buckets, t0).getResponseCodes());
+        assertEquals(Map.of(LiveStatisticsEngine.EMPTY_RESPONSE_CODE, 1L), bucketAt(buckets, t0 + 1000).getResponseCodes());
+    }
+
+    @Test
     void aSamplesFiguresGoToTheSecondItEndedAndItsHitToTheSecondItStarted() {
         // T7: JMeter's charts key a sample by its end (TimeStampKeysSelector), Hits per Second by its
         // start. A 1.5 s request started at 0.6 s ends at 2.1 s.

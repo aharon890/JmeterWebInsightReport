@@ -17,8 +17,9 @@ except on **Throughput**, where it counts in the second it **started** — JMete
 4. **Bytes Throughput Over Time** — bytes/sec received (solid) and sent (dashed) per sampler
 5. **Connect Time vs Latency vs Processing** — stacked area: connect time, latency after connect,
    and processing (response time after latency)
-6. **Response Codes Over Time** — stacked bars by response code of the **failed** samples, built
-   from the first 500 error records (a caption says so when later errors are left out)
+6. **Response Codes Over Time** — stacked bars, responses per second by code: **every** response,
+   successes included, as JMeter's Codes per Second counts them (a transaction's own result is not a
+   response). It covers the whole run, so the sampler filter does not narrow it; a caption says so
 7. **Response Time Percentiles Comparison** — grouped bars (P50/P90/P95/P99/Max) per sampler
 8. **Response Time Scatter Plot** — one point per sampler per time bucket, at that bucket's mean
    response time

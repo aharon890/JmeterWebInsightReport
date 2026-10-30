@@ -2259,35 +2259,13 @@ function initResponseCodesChart(data) {
     var chartDom = document.getElementById('response-codes-chart');
     if (!chartDom) return;
 
-    if (data.perSamplerSeries && getVisibleSamplerNames().length === 0 && !isTotalVisible()) {
-        chartDom.style.height = '80px';
-        showNoData(chartDom, 'No samplers selected.');
-        return;
-    }
-
-    /* Build codes data from error records filtered by visible samplers */
-    var filteredRecords = getFilteredErrorRecords(data);
-    if (!filteredRecords || filteredRecords.length === 0) {
-        chartDom.style.height = '80px';
-        showNoData(chartDom, 'No response code data available.');
-        setTruncationNote(chartDom, null);
-        return;
-    }
-
-    /* Group by 1-second bucket and response code */
-    var bucketCodes = {};
-    var allCodes = {};
-    filteredRecords.forEach(function (er) {
-        var bucketKey = Math.floor(er.timestamp / 1000) * 1000;
-        if (!bucketCodes[bucketKey]) bucketCodes[bucketKey] = {};
-        bucketCodes[bucketKey][er.code] = (bucketCodes[bucketKey][er.code] || 0) + 1;
-        allCodes[er.code] = true;
-    });
-
-    var timestamps = Object.keys(bucketCodes).map(Number).sort(function (a, b) { return a - b; });
-    var codes = Object.keys(allCodes);
-
-    if (timestamps.length === 0 || codes.length === 0) {
+    /* Every response per code per second, by end: JMeter's Codes per Second (T5). It was built from
+       the failed samples' detail records — errors only, the first 500, by start, drawn per 1 s whatever
+       the granularity — so it said nothing of the responses that succeeded and stopped where the kept
+       errors did. */
+    var byCode = data.responseCodes || {};
+    var codes = Object.keys(byCode);
+    if (codes.length === 0 || !data.timestamps) {
         chartDom.style.height = '80px';
         showNoData(chartDom, 'No response code data available.');
         setTruncationNote(chartDom, null);
@@ -2308,9 +2286,8 @@ function initResponseCodesChart(data) {
             name: code,
             type: 'bar',
             stack: 'codes',
-            data: timestamps.map(function (t) {
-                return [t, (bucketCodes[t] && bucketCodes[t][code]) || 0];
-            }),
+            /* A rate per window, as JMeter's Codes per Second divides each window by its width */
+            data: zipTimeSeries(data.timestamps, byCode[code], aggOptsForMetric('throughput')),
             itemStyle: { color: color },
             barMaxWidth: 20
         });
@@ -2321,16 +2298,13 @@ function initResponseCodesChart(data) {
     finalizeTimelineChart(chart, {
         tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
         legend: { data: codes, bottom: 10, type: 'scroll' },
-        yAxis: { type: 'value', name: 'Count', min: 0 },
+        yAxis: { type: 'value', name: 'Responses/s', min: 0 },
         series: series
     });
 
-    /* This chart is built from the same 500-capped detail records as the error timeline, so
-     * it stops partway through a run whose errors ramp up late — and it only counts errors,
-     * so a bar chart that simply ends looks like the errors stopped. */
-    setTruncationNote(chartDom, data.errorRecordsTruncated
-        ? 'Built from the first 500 errors only — later errors are not counted in these bars.'
-        : null);
+    /* JMeter's chart is of the whole run, so the sampler filter cannot narrow it: said under it. */
+    setTruncationNote(chartDom, 'Every response of every sampler, per code, as JMeter\'s Codes per Second '
+        + 'counts them: the sampler filter does not apply, and a transaction\'s own result is not a response.');
 }
 
 /* ============================================================

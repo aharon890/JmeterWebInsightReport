@@ -21,6 +21,9 @@ public class TimeSeriesBucket {
     /** The second's Σ Total: every top-level sampler's samples pooled, transaction children left out,
      *  the population of the Summary tiles and the Σ Total row (T1). Null on a bucket built by hand. */
     private SamplerBucketData total;
+    /** Responses that ended in this second, per response code: every sample but a Transaction
+     *  Controller's own result, successes included — JMeter's Codes per Second (T5). */
+    private Map<String, Long> responseCodes = new LinkedHashMap<>();
 
     public TimeSeriesBucket() {
     }
@@ -81,6 +84,14 @@ public class TimeSeriesBucket {
 
     public void setPerSamplerData(Map<String, SamplerBucketData> perSamplerData) {
         this.perSamplerData = perSamplerData;
+    }
+
+    public Map<String, Long> getResponseCodes() {
+        return responseCodes;
+    }
+
+    public void setResponseCodes(Map<String, Long> responseCodes) {
+        this.responseCodes = responseCodes;
     }
 
     public SamplerBucketData getTotal() {

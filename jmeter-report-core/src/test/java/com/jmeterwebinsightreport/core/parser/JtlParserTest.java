@@ -580,6 +580,10 @@ class JtlParserTest {
         assertEquals(6, data.getTopLevelSampleCount(), "Checkout, Home x2, Export, Download, Report");
         assertEquals(1, data.getTopLevelErrorCount(), "the failed transaction, once");
         assertEquals(8, data.getMetadata().getTotalSamples(), "every row is still recorded");
+        // T5: every response but the two transaction rows, by its code, in the second it ended
+        Map<String, Long> codes = new java.util.TreeMap<>();
+        data.getTimeSeries().forEach(b -> b.getResponseCodes().forEach((c, n) -> codes.merge(c, n, Long::sum)));
+        assertEquals(Map.of("200", 5L, "500", 1L), codes);
         // E3: the Errors tab's population leaves the two transaction rows out
         assertEquals(6, data.getRequestSampleCount());
         assertEquals(1, data.requestErrorSummaries().size());

@@ -324,6 +324,8 @@ public class JtlParser {
             }
             if (LiveStatisticsEngine.isTransactionRow(message)) {
                 engine.recordTransactionRow(samples);
+            } else {
+                engine.recordResponseCode(responseCode, LiveStatisticsEngine.endOf(timestamp, elapsed));
             }
             if (!success) {
                 engine.recordError(label, responseCode, message, failureMessage, timestamp, thread, url, null, null);

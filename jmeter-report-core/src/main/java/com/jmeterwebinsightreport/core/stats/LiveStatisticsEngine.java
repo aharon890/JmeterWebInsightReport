@@ -244,6 +244,22 @@ public class LiveStatisticsEngine {
         }
     }
 
+    /** JMeter's series for a response with no code ({@code CodeSeriesSelector}). */
+    public static final String EMPTY_RESPONSE_CODE = "EMPTY_RES_CODE";
+
+    /**
+     * Count a response by its code in the second it ended (T5), as JMeter's Codes per Second counts it:
+     * every sample, successes too, one per result, keyed by end ({@code CodesPerSecondGraphConsumer}).
+     * The caller leaves a Transaction Controller's own result out, as that chart does
+     * ({@code CountValueSelector(true)}). The chart used to count only the failed samples' codes, from
+     * the first 500 errors, by start.
+     */
+    public void recordResponseCode(String responseCode, long endTime) {
+        String code = responseCode == null || responseCode.isEmpty() ? EMPTY_RESPONSE_CODE : responseCode;
+        long bucketKey = endTime / 1000 * 1000;
+        timeBuckets.computeIfAbsent(bucketKey, TimeBucketAggregator::new).addResponseCode(code);
+    }
+
     /** Where a sample's per-second figures go: the second it ended, start + elapsed (T7). */
     public static long endOf(long start, long elapsed) {
         return start + Math.max(0, elapsed);
