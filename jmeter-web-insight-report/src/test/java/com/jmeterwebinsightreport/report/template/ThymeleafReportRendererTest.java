@@ -325,6 +325,18 @@ class ThymeleafReportRendererTest {
      * Confirmed against a real {@code -g} run before this was written.
      */
     @Test
+    void theMeanColumnSaysItRoundsWhereTheAggregateReportTruncates() throws Exception {
+        // B8: the same mean reads 4 in JMeter's Aggregate Report ((long) mean) and 5 here; the column says why
+        ReportData data = createReportDataWithSamplers();
+        String html = renderer.render(data, ChartDataJson.of(data), "", "");
+        java.util.regex.Matcher th = java.util.regex.Pattern
+                .compile("<th[^>]*title=\"([^\"]*)\"[^>]*>Mean \\(ms\\)</th>").matcher(html);
+        assertTrue(th.find(), "the Mean (ms) header carries a title");
+        assertTrue(th.group(1).contains("rounded to the nearest ms"), th.group(1));
+        assertTrue(th.group(1).contains("Aggregate Report"), th.group(1));
+    }
+
+    @Test
     void render_labelsA2xxErrorAsNonProtocolAndSuppressesItsMeaninglessMessage() throws Exception {
         ReportData data = createReportDataWithSamplers();
 
@@ -344,6 +356,7 @@ class ThymeleafReportRendererTest {
         record.setSamplerName("GET /api/items");
         record.setResponseCode("200");
         record.setResponseMessage("OK");
+        record.setFailureMessage("Test failed: text expected to contain /order-id/");
         record.setTimestamp(1785949469000L);
         record.setThreadName("tg 1-1");
         data.setErrorRecords(java.util.Collections.singletonList(record));
@@ -354,10 +367,12 @@ class ThymeleafReportRendererTest {
                 "a 200 in the error set must say it failed for a non-HTTP reason");
         assertTrue(html.contains("HTTP failure"),
                 "the 500 must still be labelled as an HTTP-level failure");
-        // The em-dash replaces the reason phrase. The real reason lives in failureMessage, which
-        // neither ingestion path captures, so printing "OK" asserts something we cannot know.
-        assertTrue(html.contains("error-message-none"),
-                "the meaningless message must be rendered as nothing, not as \"OK\"");
+        // The reason phrase is not the reason: JMeter's type of error is, the failed assertion's
+        // message (E1), and "Assertion failed" where none was saved.
+        assertTrue(html.contains("Test failed: text expected to contain /order-id/"),
+                "a failed 200 shows its assertion's message, not \"OK\"");
+        assertTrue(html.contains(">Assertion failed<"),
+                "the summary's 200 group saved no failure message: JMeter's words for it");
         assertTrue(html.contains("Internal Server Error"),
                 "a real failure message must survive — only the 2xx reason phrase is suppressed");
     }

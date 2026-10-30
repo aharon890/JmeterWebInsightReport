@@ -156,6 +156,51 @@ class OverallMetricsTest {
     }
 
     @Test
+    void apdexIsComputedFromTheCountsWhenTheStatisticsCarryThem() {
+        // a: 0 satisfied of 3, score 0.00. b: 1 satisfied and 2 tolerating of 3, (1 + 1) / 3 =
+        // 0.667, shown as 0.67. From the scores the run is 0.335, rounded again to 0.34; from
+        // the counts it is (1 + 2 / 2) / 6 = 0.333, rounded once to 0.33 (B4).
+        SamplerStatistics a = stat("a", 3, 0, 100, 200, 5, 0.0);
+        a.setApdexSatisfied(0);
+        a.setApdexTolerating(0);
+        SamplerStatistics b = stat("b", 3, 0, 100, 200, 5, 0.67);
+        b.setApdexSatisfied(1);
+        b.setApdexTolerating(2);
+
+        assertEquals(0.33, OverallMetrics.of(data(10_000, 4, a, b)).getApdex(), 1e-9);
+    }
+
+    @Test
+    void apdexFallsBackToTheScoresWhenAnySamplerLacksItsCounts() {
+        SamplerStatistics a = stat("a", 3, 0, 100, 200, 5, 0.0);
+        a.setApdexSatisfied(0);
+        a.setApdexTolerating(0);
+        SamplerStatistics b = stat("b", 3, 0, 100, 200, 5, 0.67);   // assembled: no counts
+
+        assertEquals(0.34, OverallMetrics.of(data(10_000, 4, a, b)).getApdex(), 1e-9);
+    }
+
+    @Test
+    void bytesRatesAreAllBytesOverTheRunNotTheSumOfTheRowsRates() {
+        // B1: "a" ran the whole 20 s, "b" only its last 2 s. Each row's KB/s is over its own
+        // window; the run's is every byte over the run's window, as JMeter's TOTAL row has it.
+        SamplerStatistics a = stat("a", 100, 0, 100, 200, 5, 1.0);
+        a.setTotalReceivedBytes(200_000);
+        a.setTotalSentBytes(20_000);
+        a.setReceivedBytesPerSec(10_000);
+        SamplerStatistics b = stat("b", 100, 0, 100, 200, 50, 1.0);
+        b.setTotalReceivedBytes(200_000);
+        b.setTotalSentBytes(20_000);
+        b.setReceivedBytesPerSec(100_000);
+
+        OverallMetrics m = OverallMetrics.of(data(20_000, 4, a, b));
+
+        assertEquals(20_000.0, m.getReceivedBytesPerSec(), 1e-9);   // 400,000 B / 20 s, not 110,000
+        assertEquals(2_000.0, m.getSentBytesPerSec(), 1e-9);
+        assertEquals(10.0, m.getThroughput(), 1e-9);                // 200 / 20 s, not 5 + 50
+    }
+
+    @Test
     void theFiguresMatchWhatTheRendererUsedToComputeInline() {
         // Guards the extraction itself: these are the formulas that were in
         // ThymeleafReportRenderer, checked against an independent hand calculation.

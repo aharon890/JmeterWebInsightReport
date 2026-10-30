@@ -159,6 +159,71 @@ public class ReportDataSerializer {
         // the annotations document only so a Save writes it back.
     }
 
+    private Map<String, List<Object>> buildTotalSeries(List<TimeSeriesBucket> timeSeries) {
+        Map<String, List<Object>> series = new LinkedHashMap<>();
+        for (String key : SERIES_METRIC_KEYS) {
+            series.put(key, new ArrayList<>(timeSeries.size()));
+        }
+        for (TimeSeriesBucket bucket : timeSeries) {
+            Object[] values = seriesValues(bucket.getTotal());
+            for (int m = 0; m < SERIES_METRIC_KEYS.length; m++) {
+                series.get(SERIES_METRIC_KEYS[m]).add(values[m]);
+            }
+        }
+        return series;
+    }
+
+    /** code -> responses per second, aligned with the timestamps (null where none ended), codes sorted. */
+    private Map<String, List<Long>> buildResponseCodes(List<TimeSeriesBucket> timeSeries) {
+        Set<String> codes = new TreeSet<>();
+        for (TimeSeriesBucket bucket : timeSeries) {
+            codes.addAll(bucket.getResponseCodes().keySet());
+        }
+        Map<String, List<Long>> series = new LinkedHashMap<>();
+        for (String code : codes) {
+            List<Long> counts = new ArrayList<>(timeSeries.size());
+            for (TimeSeriesBucket bucket : timeSeries) {
+                counts.add(bucket.getResponseCodes().get(code));
+            }
+            series.put(code, counts);
+        }
+        return series;
+    }
+
+    private static final String[] SERIES_METRIC_KEYS = {"responseTime", "throughput", "errorRate", "p50", "p90",
+            "p95", "p99", "max", "connectTime", "latency", "receivedBytes", "sentBytes", "samples"};
+
+    /**
+     * One second of one series, in {@link #SERIES_METRIC_KEYS}' order. {@code throughput} is the samples that
+     * started in the second (null when none did); every other value is of the samples that ended in it,
+     * {@code samples} their number, all null when none did (T7).
+     */
+    private static Object[] seriesValues(SamplerBucketData sd) {
+        Object[] v = new Object[SERIES_METRIC_KEYS.length];
+        if (sd == null) {
+            return v;
+        }
+        if (sd.getThroughput() > 0) {
+            v[1] = round2(sd.getThroughput());
+        }
+        if (sd.getSampleCount() == 0) {
+            return v;
+        }
+        v[0] = round2(sd.getMeanResponseTime());
+        v[2] = round2(sd.getErrorRate());
+        v[3] = round2(sd.getP50());
+        v[4] = round2(sd.getP90());
+        v[5] = round2(sd.getP95());
+        v[6] = round2(sd.getP99());
+        v[7] = round2(sd.getMax());
+        v[8] = round2OrNull(sd.getConnectTime());
+        v[9] = round2OrNull(sd.getLatency());
+        v[10] = round2(sd.getReceivedBytes());
+        v[11] = round2(sd.getSentBytes());
+        v[12] = sd.getSampleCount();
+        return v;
+    }
+
     private Map<String, Map<String, List<Object>>> buildPerSamplerSeries(List<TimeSeriesBucket> timeSeries) {
         Set<String> allSamplerNames = new LinkedHashSet<>();
         for (TimeSeriesBucket bucket : timeSeries) {
@@ -166,8 +231,7 @@ public class ReportDataSerializer {
         }
 
         int numBuckets = timeSeries.size();
-        String[] metricKeys = {"responseTime", "throughput", "errorRate", "p50", "p90", "p95",
-                "p99", "max", "connectTime", "latency", "receivedBytes", "sentBytes"};
+        String[] metricKeys = SERIES_METRIC_KEYS;
         int numMetrics = metricKeys.length;
 
         Map<String, Object[][]> samplerArrays = new LinkedHashMap<>(allSamplerNames.size());
@@ -179,19 +243,10 @@ public class ReportDataSerializer {
             TimeSeriesBucket bucket = timeSeries.get(bucketIdx);
             for (Map.Entry<String, SamplerBucketData> entry : bucket.getPerSamplerData().entrySet()) {
                 Object[][] arrays = samplerArrays.get(entry.getKey());
-                SamplerBucketData sd = entry.getValue();
-                arrays[0][bucketIdx] = round2(sd.getMeanResponseTime());
-                arrays[1][bucketIdx] = round2(sd.getThroughput());
-                arrays[2][bucketIdx] = round2(sd.getErrorRate());
-                arrays[3][bucketIdx] = round2(sd.getP50());
-                arrays[4][bucketIdx] = round2(sd.getP90());
-                arrays[5][bucketIdx] = round2(sd.getP95());
-                arrays[6][bucketIdx] = round2(sd.getP99());
-                arrays[7][bucketIdx] = round2(sd.getMax());
-                arrays[8][bucketIdx] = round2OrNull(sd.getConnectTime());
-                arrays[9][bucketIdx] = round2OrNull(sd.getLatency());
-                arrays[10][bucketIdx] = round2(sd.getReceivedBytes());
-                arrays[11][bucketIdx] = round2(sd.getSentBytes());
+                Object[] values = seriesValues(entry.getValue());
+                for (int m = 0; m < numMetrics; m++) {
+                    arrays[m][bucketIdx] = values[m];
+                }
             }
         }
 
@@ -220,9 +275,10 @@ public class ReportDataSerializer {
             List<Double> baseErrorRates = new ArrayList<>(baseTs.size());
             for (TimeSeriesBucket b : baseTs) {
                 baseTimestamps.add(b.getTimestamp().toEpochMilli());
-                baseMeanRT.add(round2(b.getMeanResponseTime()));
-                baseThroughputs.add(round2(b.getThroughput()));
-                baseErrorRates.add(round2(b.getErrorRate()));
+                boolean ended = b.getSampleCount() > 0;
+                baseMeanRT.add(ended ? round2(b.getMeanResponseTime()) : null);
+                baseThroughputs.add(b.getThroughput() > 0 ? round2(b.getThroughput()) : null);
+                baseErrorRates.add(ended ? round2(b.getErrorRate()) : null);
             }
             Map<String, Object> baselineChart = new LinkedHashMap<>();
             baselineChart.put("timestamps", baseTimestamps);
@@ -230,6 +286,7 @@ public class ReportDataSerializer {
             baselineChart.put("throughputs", baseThroughputs);
             baselineChart.put("errorRates", baseErrorRates);
             baselineChart.put("perSamplerSeries", buildPerSamplerSeries(baseTs));
+            baselineChart.put("totalSeries", buildTotalSeries(baseTs));
             chartData.put("baseline", baselineChart);
         }
 
@@ -351,22 +408,37 @@ public class ReportDataSerializer {
         List<Long> timestamps = new ArrayList<>(timeSeries.size());
         List<Double> meanResponseTimes = new ArrayList<>(timeSeries.size());
         List<Double> throughputs = new ArrayList<>(timeSeries.size());
+        List<Long> sampleCounts = new ArrayList<>(timeSeries.size());
         List<Double> errorRates = new ArrayList<>(timeSeries.size());
         List<Integer> activeThreads = new ArrayList<>(timeSeries.size());
 
         for (TimeSeriesBucket bucket : timeSeries) {
             timestamps.add(bucket.getTimestamp().toEpochMilli());
-            meanResponseTimes.add(round2(bucket.getMeanResponseTime()));
-            throughputs.add(round2(bucket.getThroughput()));
-            errorRates.add(round2(bucket.getErrorRate()));
-            activeThreads.add(bucket.getActiveThreads());
+            // Since T7 a second can hold requests that started in it and none that ended, or the
+            // reverse: each series is null where it has nothing, as the per-sampler ones are, so the
+            // line breaks there (C23) rather than drawing a mean of 0 ms or no threads
+            boolean ended = bucket.getSampleCount() > 0;
+            meanResponseTimes.add(ended ? round2(bucket.getMeanResponseTime()) : null);
+            throughputs.add(bucket.getThroughput() > 0 ? round2(bucket.getThroughput()) : null);
+            sampleCounts.add(bucket.getSampleCount());
+            errorRates.add(ended ? round2(bucket.getErrorRate()) : null);
+            activeThreads.add(bucket.getActiveThreads() > 0 ? bucket.getActiveThreads() : null);
         }
 
         chartData.put("timestamps", timestamps);
         chartData.put("meanResponseTimes", meanResponseTimes);
+        // Requests that STARTED in each second (JMeter's Hits per Second); every other series is of the
+        // samples that ENDED in it, sampleCounts their number, the weights of a mean over seconds (T7)
         chartData.put("throughputs", throughputs);
+        chartData.put("sampleCounts", sampleCounts);
         chartData.put("errorRates", errorRates);
         chartData.put("activeThreads", activeThreads);
+        // The Σ Total of every per-sampler metric, the top-level samplers pooled per second (T1): a
+        // percentile of the second's samples, not a mean of the samplers' percentiles, and no
+        // transaction counted beside its requests. The page draws the Σ lines from it alone.
+        chartData.put("totalSeries", buildTotalSeries(timeSeries));
+        // Every response per code per second, by end: JMeter's Codes per Second (T5)
+        chartData.put("responseCodes", buildResponseCodes(timeSeries));
 
         // Sampler summary for bar/comparison charts — includes p50 and max
         List<Map<String, Object>> samplers = new ArrayList<>(
@@ -479,12 +551,18 @@ public class ReportDataSerializer {
             overall.put("totalSamples", m.getTotalSamples());
             overall.put("errorRate", round2(m.getErrorRate()));
             overall.put("throughput", fullPrecision(m.getThroughput()));   // see samplers[] (R2-1)
+            // All bytes over the test duration: the Σ Total row's KB/s columns (B1), which used to
+            // add up the rows' own rates.
+            overall.put("receivedBytesPerSec", round2(m.getReceivedBytesPerSec()));
+            overall.put("sentBytesPerSec", round2(m.getSentBytesPerSec()));
             overall.put("apdex", m.getApdex());
             overall.put("duration", round2(m.getDurationSeconds()));
             overall.put("maxThreads", m.getMaxThreads());
             exact(exact, "mean", m.getMean());
             exact(exact, "errorRate", m.getErrorRate());
             exact(exact, "duration", m.getDurationSeconds());
+            exact(exact, "receivedBytesPerSec", m.getReceivedBytesPerSec());
+            exact(exact, "sentBytesPerSec", m.getSentBytesPerSec());
             if (!exact.isEmpty()) {
                 overall.put("exact", exact);
             }
@@ -515,13 +593,21 @@ public class ReportDataSerializer {
 
 
         // Error breakdown data for Error tab charts
-        if (reportData.getErrorSummaries() != null && !reportData.getErrorSummaries().isEmpty()) {
+        // The failed requests (E3): a transaction's own failures are the asserts', not the Errors tab's.
+        // errorSummaries carries both, the transaction's flagged, because the page re-judges the
+        // errorRate:code=/class= rules over every group, as MetricRef does; every Errors-tab view reads
+        // the request groups only (report.js requestErrorSummaries).
+        List<ErrorSummary> requestErrors = reportData.requestErrorSummaries();
+        List<ErrorSummary> allErrors = reportData.getErrorSummaries() != null
+                ? reportData.getErrorSummaries() : Collections.emptyList();
+        if (!allErrors.isEmpty()) {
             List<Map<String, Object>> errorsByType = new ArrayList<>();
             List<Map<String, Object>> errorSummaries = new ArrayList<>();
-            for (ErrorSummary es : reportData.getErrorSummaries()) {
+            for (ErrorSummary es : allErrors) {
                 Map<String, Object> e = new LinkedHashMap<>();
                 e.put("code", es.getResponseCode());
                 e.put("message", es.getResponseMessage());
+                e.put("errorType", es.getErrorType());
                 e.put("count", es.getOccurrenceCount());
                 e.put("pctErrors", round2(es.getPercentageOfErrors()));
                 // Carried, not re-derived in the browser. Everything client-side that shows an
@@ -531,34 +617,53 @@ public class ReportDataSerializer {
                 e.put("errorClass", es.getErrorClass());
                 e.put("errorClassLabel", es.getErrorClassLabel());
                 e.put("messageMeaningless", es.isMessageMeaningless());
-                errorsByType.add(e);
+                if (!es.isTransactionRow()) {
+                    errorsByType.add(e);
+                }
 
                 // Full error summary for CSV export (includes sampler name)
                 Map<String, Object> full = new LinkedHashMap<>();
                 full.put("samplerName", es.getSamplerName());
                 full.put("responseCode", es.getResponseCode());
                 full.put("responseMessage", es.getResponseMessage());
+                // JMeter's "Type of error", the group's key (E1), and the assertion message behind it
+                full.put("errorType", es.getErrorType());
+                full.put("failureMessage", es.getFailureMessage());
                 full.put("occurrenceCount", es.getOccurrenceCount());
+                // The group's whole span, for the grouped view's first and last seen (E2): the
+                // records it used to read them from are only the first 500 errors.
+                full.put("firstTimestamp", es.getFirstTimestamp());
+                full.put("lastTimestamp", es.getLastTimestamp());
                 full.put("percentageOfErrors", round2(es.getPercentageOfErrors()));
                 full.put("percentageOfAllSamples", round2(es.getPercentageOfAllSamples()));
                 full.put("errorClass", es.getErrorClass());
                 full.put("errorClassLabel", es.getErrorClassLabel());
                 full.put("messageMeaningless", es.isMessageMeaningless());
+                if (es.isTransactionRow()) {
+                    full.put("transactionRow", true);
+                }
                 errorSummaries.add(full);
             }
             chartData.put("errorsByType", errorsByType);
             chartData.put("errorSummaries", errorSummaries);
         }
 
-        // Errors by sampler
+        // Errors by sampler: the failed requests per sampler, from the same groups as the tab's table
+        // (E3). Read off the samplers' error counts, a transaction counted its own failures beside its
+        // requests'.
         if (reportData.getSamplerStatistics() != null) {
+            Map<String, Long> failedBySampler = new LinkedHashMap<>();
+            for (ErrorSummary es : requestErrors) {
+                failedBySampler.merge(es.getSamplerName(), es.getOccurrenceCount(), Long::sum);
+            }
             List<Map<String, Object>> errorsBySampler = new ArrayList<>();
             for (SamplerStatistics stat : reportData.getSamplerStatistics()) {
-                if (stat.getErrorCount() > 0) {
+                Long failed = failedBySampler.get(stat.getSamplerName());
+                if (failed != null && failed > 0) {
                     Map<String, Object> e = new LinkedHashMap<>();
                     e.put("name", stat.getSamplerName());
-                    e.put("count", stat.getErrorCount());
-                    e.put("rate", round2(stat.getErrorRate()));
+                    e.put("count", failed);
+                    e.put("rate", round2(stat.getSampleCount() > 0 ? failed * 100.0 / stat.getSampleCount() : 0));
                     errorsBySampler.add(e);
                 }
             }
@@ -574,6 +679,8 @@ public class ReportDataSerializer {
                 e.put("sampler", er.getSamplerName());
                 e.put("code", er.getResponseCode());
                 e.put("message", er.getResponseMessage());
+                e.put("errorType", er.getErrorType());
+                if (er.getFailureMessage() != null) e.put("failureMessage", er.getFailureMessage());
                 e.put("errorClass", er.getErrorClass());
                 e.put("errorClassLabel", er.getErrorClassLabel());
                 e.put("messageMeaningless", er.isMessageMeaningless());
@@ -588,20 +695,19 @@ public class ReportDataSerializer {
         // Whether the detailed error records are a truncated sample (charts must then use full aggregates).
         chartData.put("errorRecordsTruncated", reportData.isErrorRecordsTruncated());
 
-        // Test-level totals — needed for correct "% of all samples" math on the client (C20).
+        // Test-level totals — needed for correct "% of all samples" math on the client.
         //
-        // Two populations, deliberately, because two parts of the report count different
-        // things and each must be internally consistent:
-        //  - totalSampleCount/totalErrorCount are EVERY recorded sample. The error tab's rows
-        //    include transaction children, so its total row has to divide by the same
-        //    population its rows come from.
+        // Two populations, each a JMeter tool's, and each part of the report internally consistent:
+        //  - requestSampleCount/requestErrorCount are the failed requests and every request: every
+        //    recorded sample but a Transaction Controller's own result, children included. The
+        //    Errors tab's rows are drawn from them and its Total divides by them, as JMeter's HTML
+        //    report's Errors table does (E3). They were every recorded sample (C20), so a failed
+        //    transaction was listed beside the request that failed it.
         //  - topLevelSampleCount/topLevelErrorCount exclude transaction children. That is the
         //    population the header tiles and cicd.json use, since a child's time is already
-        //    counted inside its parent.
-        if (reportData.getMetadata() != null) {
-            chartData.put("totalSampleCount", reportData.getMetadata().getTotalSamples());
-            chartData.put("totalErrorCount", reportData.getMetadata().getTotalErrors());
-        }
+        //    counted inside its parent (JMeter's Aggregate Report in the test plan).
+        chartData.put("requestSampleCount", reportData.getRequestSampleCount());
+        chartData.put("requestErrorCount", requestErrors.stream().mapToLong(ErrorSummary::getOccurrenceCount).sum());
         chartData.put("topLevelSampleCount", reportData.getTopLevelSampleCount());
         chartData.put("topLevelErrorCount", reportData.getTopLevelErrorCount());
 

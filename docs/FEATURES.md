@@ -44,12 +44,12 @@ The time-series charts support:
 ### Available Charts
 
 **Timeline tab:**
-- Response Time Over Time (per sampler, with active threads overlay)
+- Response Time Over Time (per sampler, with a **Max Active Threads** overlay: the most threads running in the window, all thread groups together, as the Max Threads tile counts them — JMeter's Active Threads Over Time draws each group's mean instead)
 - Throughput Over Time (per sampler)
 - Error Rate Over Time (per sampler)
 - Bytes Throughput Over Time (received/sent bytes per sampler)
 - Connect Time vs Latency vs Processing (stacked area breakdown)
-- Response Codes Over Time (stacked bar by response code of the failed samples, built from the first 500 error records)
+- Response Codes Over Time (stacked bars, responses per second by code: every response, successes included, of every sampler — JMeter's Codes per Second; the sampler filter does not apply, and a transaction's own result is not a response)
 - Response Time Percentiles Comparison (grouped bar: p50/p90/p95/p99/max per sampler)
 - Response Time Scatter Plot (one point per sampler per time bucket, at that bucket's mean response time)
 - Response Time Heatmap (response time distribution over time — see below)
@@ -153,6 +153,16 @@ Switch the response time charts between metrics:
 The selected metric applies to the Summary and Timeline response time charts and to the Compare
 tab's Response Time Comparison. Per-sampler percentiles are computed per 1-second time bucket.
 
+**Which second a request belongs to** is JMeter's choice: the second it **ended** (start + elapsed),
+as JMeter's HTML report keys every over-time chart — response times, percentiles, error rate, bytes,
+connect time and latency, the heatmap, active threads — and the second it **started** for the
+Throughput line, which is JMeter's Hits per Second. A 3-second request that started at 0.6 s
+counts in the throughput of second 0 and in the response time of second 3. Both reports of a run
+place it alike (a transaction's idle time does not move it). A second where requests started and none
+ended has a throughput and no response time, and the reverse; the line breaks where it has no value.
+A Statistical-mode result's elapsed is its samples' total, so it lands at its start plus that total,
+which is where JMeter's HTML report puts the row too.
+
 ### Granularity Control
 
 A dropdown in the filter bar lets you adjust the time-series aggregation level: **1s, 5s, 10s, 30s, 1min, 5min, 10min**. Higher granularity smooths charts by folding data points into larger buckets — a sample-weighted average for response times, percentiles and error rates, the bucket's rate for throughput and bytes, the maximum for Max — useful for long tests where 1-second resolution produces too many points.
@@ -192,7 +202,7 @@ All standard chart features: drag-to-reorder, hide/show, fullscreen, PNG/SVG exp
 ## Samplers Tab
 
 ### Statistics Table
-Full table with columns: Sampler, Samples, Errors, Error %, Mean, Median, P90, P95, P99, Min, Max, Throughput, Recv KB/s, Apdex.
+Full table with columns: Sampler, Samples, Errors, Error %, Mean, Median, P90, P95, P99, Min, Max, Throughput, Recv KB/s, Sent KB/s, Apdex (JMeter's Aggregate Report columns, plus Apdex).
 
 - **Sortable** — click any column header (ascending/descending)
 - **Searchable** — text filter box above the table
@@ -244,8 +254,16 @@ Click any sampler row to expand an inline detail panel with **configurable mini-
 
 ### Transaction Controller Hierarchy
 Transaction Controllers are detected from the sample tree the listener receives — a Transaction
-Controller's sample and the sub-samples inside it — never guessed from sampler names. A JTL does not
-keep that tree, so in a `-g` report every sampler is top-level:
+Controller's sample and the sub-samples inside it — never guessed from sampler names. A `-g` report
+rebuilds the same tree from the JTL: a transaction row (response message `Number of samples in
+transaction : N, ...`) whose thread's next row starts inside it generated a parent sample, and its
+thread's next N rows are its children, as JMeter writes them. Both reports of one run therefore count
+the same totals (B5). A request's own sub-results inside a transaction (redirect hops, embedded
+resources, which JMeter writes right after it as `<request>-0`, `<request>-1`) are nested under that
+request as the listener nests them, and are not counted among the transaction's N. Sub-samples
+outside a transaction (embedded resources, redirects) stay rows of their own in a `-g` report, as in
+every JMeter tool that reads the file. When transactions are nested,
+the Summary tab says that each one counts once, as JMeter's Aggregate Report in the test plan counts it:
 - **Default view:** Only parent transactions and standalone samplers are shown — matches JMeter's native Aggregate Report. Child samplers are hidden from the table, filter bar, and charts to avoid double-counting.
 - **"Transaction Details" toggle:** Button in the Samplers tab toolbar. When activated, child samplers appear indented under their parent with full statistics and mini-charts. The toggle also reveals child sampler checkboxes in the filter bar.
 - **Σ Total always correct:** The total row always sums parents + standalone samplers only, regardless of toggle state. Parents already aggregate their children, so children are never double-counted.
@@ -257,6 +275,15 @@ keep that tree, so in a `-g` report every sampler is top-level:
 
 ## Error Deep-Dive
 
+The Errors tab counts **failed requests**, as JMeter's HTML report's Errors table does: a
+Transaction Controller's own result is left out of every view and of "% of All Samples", since a
+transaction fails because a request inside it did, and its requests are listed as rows of their own
+(E3). The Summary tab's Error Rate counts samples as JMeter's Aggregate Report does, transactions
+included, so on a run with transactions a line above the charts says which is which. The asserts'
+`errorRate:code=` / `errorRate:class=` keep counting a failed transaction, as the Error Rate does.
+While Transaction Details is off, the sampler filter shows a request's errors when the transaction
+it is inside is ticked.
+
 The Errors tab provides four views:
 
 1. **Error Breakdown** — side-by-side:
@@ -266,8 +293,9 @@ The Errors tab provides four views:
 2. **Error Timeline** — scatter plot showing individual error occurrences over time, colored by
    sampler. The report keeps the details of the first 500 failed samples; past that the timeline
    plots those 500 and says so under the chart, with the time of the last one plotted
-3. **Error Summary Table** — grouped by sampler + response code, with the error class, count and
-   percentages, counting every error
+3. **Error Summary Table** — grouped by sampler + JMeter's type of error (`500/Internal Server
+   Error`, or a failed assertion's message, read from the sample or the JTL's `failureMessage`), with
+   the code, the error class, count and percentages, counting every failed request
    - Search filter, column toggle, row hide
    - A long sampler name ends in an ellipsis, with the full text in a native title tooltip
    - **⊕ on the Class cell** — opens the assert editor with an `errorRate:class=…` rule for that
@@ -275,7 +303,7 @@ The Errors tab provides four views:
 4. **Error Details Table** — the first 500 error records, with time, sampler, code, class,
    message and thread. A **By time / Grouped** switch beside the heading picks the view, and the
    choice is remembered: *By time* is one row per error, *Grouped* one row per sampler and
-   response code, most frequent first, with first and last seen — click a group to list each
+   type of error, most frequent first, with first and last seen — click a group to list each
    occurrence's time and thread, or use Expand All / Collapse All
    - Search filter, column toggle, row hide
    - A long sampler name or message ends in an ellipsis, with the full text in a native title tooltip
@@ -790,7 +818,7 @@ Updates live when regression thresholds are adjusted via the Compare tab control
 The report auto-detects and handles common patterns:
 - **Auto-hide utility samplers** — samplers matching JSR223*, Debug*, BeanShell*, __* are unchecked in the filter bar by default, so they are off the charts; the Samplers table still lists them (tick them to chart them)
 - **Auto-hide empty samplers** — samplers with 0 requests are unchecked the same way
-- **Transaction Controller detection** — parent/child relationships taken from the sample tree the listener receives (a `-g` report has none, so every sampler is top-level); children collapsed by default
+- **Transaction Controller detection** — parent/child relationships taken from the sample tree the listener receives, or rebuilt from the JTL's transaction rows on `-g`; children collapsed by default
 - **Ramp-up period marking** — when configured, a semi-transparent overlay marks the ramp-up phase on the time-axis charts of the Summary, Timeline and Errors tabs (not the heatmap or the percentile bars)
 
 ---
@@ -1437,7 +1465,7 @@ only age can speak for it.
 | Component | Technology |
 |-----------|-----------|
 | Plugin | Java (JMeter listener) |
-| Percentiles | T-Digest (streaming) |
+| Percentiles | Exact counts per millisecond, ranked as JMeter's Aggregate Report ranks them |
 | Charts | Apache ECharts 5.5.0 |
 | Templating | Apache Thymeleaf |
 | Annotations | Jackson JSON |

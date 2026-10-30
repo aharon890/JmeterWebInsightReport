@@ -14,7 +14,7 @@ Detailed per-sampler statistics table with sorting, filtering, column control, a
 | **Samples** | Total request count | Integer with comma separator |
 | **Errors** | Failed request count | Integer with comma separator |
 | **Error %** | Error rate | Percentage (e.g., "4.05%") |
-| **Mean (ms)** | Average response time | Whole milliseconds |
+| **Mean (ms)** | Average response time | Whole milliseconds, rounded to the nearest: JMeter's Aggregate Report cuts the decimals off (4.86 ms reads 4 there, 5 here), its HTML report shows two (4.86) — the same mean |
 | **Median (ms)** | P50 response time | Whole milliseconds |
 | **P90 (ms)** | 90th percentile | Whole milliseconds |
 | **P95 (ms)** | 95th percentile | Whole milliseconds |
@@ -206,5 +206,8 @@ When the test has Transaction Controllers (parent/child sampler hierarchy):
 The hierarchy comes from the result tree the listener receives, never from sampler names: a
 sample's sub-results are its children — a Transaction Controller's parent sample, and also embedded
 resources and redirect hops. Only a parent that came from a Transaction Controller gets the ▶ icon.
-A report generated from a JTL with `jmeter -g` has no hierarchy, so every sampler is listed at the
-top level there.
+A report generated from a JTL with `jmeter -g` rebuilds the Transaction Controllers' part of that
+tree from the file: a transaction's row is written first and its requests right after it, on its
+thread, so `-g` nests them as the listener did and both reports count the same totals. Embedded
+resources and redirect hops leave no such mark in a JTL, so on `-g` they are listed as samplers of
+their own.

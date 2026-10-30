@@ -99,6 +99,45 @@ public final class ReportRebuild {
     }
 
     /**
+     * {@code sampleresult.timestamp.start} read as {@code JMeterUtils.getPropDefault} reads a boolean:
+     * {@code true}/{@code t} or 1 is true, {@code false}/{@code f} or any other number false, and
+     * anything else JMeter's default, false. Absent is true: {@code jmeter.properties} ships the
+     * line set to true, and a properties source without it here is a test's or a caller's that
+     * never loaded JMeter's file, not a JMeter that stamps at the end.
+     */
+    static boolean stampedAtStart(String value) {
+        return jmeterBoolean(value, false);
+    }
+
+    /**
+     * {@code jmeter.save.saveservice.assertion_results_failure_message}, read as JMeter's HTML report reads it
+     * ({@code ErrorsSummaryConsumer}: {@code getPropDefault(..., true)}): whether a failed assertion's message
+     * names a 2xx failure's type of error (E1).
+     */
+    static boolean failureMessageTypesErrors(String value) {
+        return jmeterBoolean(value, true);
+    }
+
+    /** As {@code JMeterUtils.getPropDefault} reads a boolean, absent read as true (see {@link #stampedAtStart}). */
+    private static boolean jmeterBoolean(String value, boolean unreadable) {
+        if (value == null) {
+            return true;
+        }
+        String v = value.trim();
+        if ("true".equalsIgnoreCase(v) || "t".equalsIgnoreCase(v)) {
+            return true;
+        }
+        if ("false".equalsIgnoreCase(v) || "f".equalsIgnoreCase(v)) {
+            return false;
+        }
+        try {
+            return Integer.parseInt(v) == 1;
+        } catch (NumberFormatException e) {
+            return unreadable;
+        }
+    }
+
+    /**
      * The JTL parsed as the report reads it: under the configured title, which {@code runId} hashes,
      * with the configured ramp-up excluded, the Apdex threshold from {@code webinsight.apdex.threshold}
      * (an unreadable one warned about and the parser's default kept), and the JMeter version in the
@@ -119,6 +158,12 @@ public final class ReportRebuild {
                 log.warn("Invalid webinsight.apdex.threshold: {}", apdexStr);
             }
         }
+
+        // The file is read the way JMeter wrote it (B3): sampleresult.timestamp.start=false
+        // stamps each row at its end.
+        parser.setTimestampIsStart(stampedAtStart(props.apply("sampleresult.timestamp.start")));
+        parser.setFailureMessageTypesErrors(failureMessageTypesErrors(
+                props.apply("jmeter.save.saveservice.assertion_results_failure_message")));
 
         ReportData reportData = parser.parse(jtl, config.getReportTitle());
 

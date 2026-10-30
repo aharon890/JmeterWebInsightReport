@@ -45,6 +45,18 @@ public class SamplerStatistics {
     private String parentSamplerName;
     private java.util.List<String> childSamplerNames;
     private double apdexScore;
+    /**
+     * The Apdex counts behind {@link #apdexScore}: successful samples at or under T, and over T
+     * up to 4T. NaN when the statistics were assembled rather than aggregated, which is how
+     * {@link OverallMetrics} knows to fall back to the scores.
+     *
+     * <p>The score is rounded to two decimals for display, and a whole-run Apdex built from
+     * rounded scores is rounded twice: pilot-C read 0.90 where its counts give 0.906 (B4). The
+     * whole run is computed from these instead, summed over the samplers and rounded once,
+     * the way JMeter's HTML report computes its Total row from raw counts.
+     */
+    private double apdexSatisfied = Double.NaN;
+    private double apdexTolerating = Double.NaN;
 
     public SamplerStatistics() {
     }
@@ -233,5 +245,21 @@ public class SamplerStatistics {
 
     public void setApdexScore(double apdexScore) {
         this.apdexScore = apdexScore;
+    }
+
+    public double getApdexSatisfied() {
+        return apdexSatisfied;
+    }
+
+    public void setApdexSatisfied(double apdexSatisfied) {
+        this.apdexSatisfied = apdexSatisfied;
+    }
+
+    public double getApdexTolerating() {
+        return apdexTolerating;
+    }
+
+    public void setApdexTolerating(double apdexTolerating) {
+        this.apdexTolerating = apdexTolerating;
     }
 }

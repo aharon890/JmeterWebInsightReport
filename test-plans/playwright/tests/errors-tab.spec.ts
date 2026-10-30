@@ -188,11 +188,18 @@ async function readErrorTotal(page: Page) {
       visible: !!total && total.style.display !== 'none',
       rows: data.length,
       shown: shown.length,
-      collapsed: data.filter((r) => r.classList.contains('tc-collapsed')).length,
+      samplers: data.map((r) => r.getAttribute('data-sampler')),
+      rowCounts: data.reduce((m: Record<string, number>, r) => {
+        const name = r.getAttribute('data-sampler') || '';
+        m[name] = (m[name] || 0) + parseInt(text(r, 'Count').replace(/,/g, ''), 10);
+        return m;
+      }, {}),
+      samplerErrors: Object.fromEntries((d.samplers || []).map((s: any) => [s.name, s.errorCount as number])),
       shownSum: shown.reduce((s, r) => s + parseInt(text(r, 'Count').replace(/,/g, ''), 10), 0),
       allSum: data.reduce((s, r) => s + parseInt(text(r, 'Count').replace(/,/g, ''), 10), 0),
-      errors: d.totalErrorCount as number,
-      samples: d.totalSampleCount as number,
+      errors: d.requestErrorCount as number,
+      samples: d.requestSampleCount as number,
+      transactions: (d.samplers || []).filter((s: any) => s.isTransactionController).map((s: any) => s.name as string),
       cells: total ? {
         sampler: text(total, 'Sampler'),
         code: text(total, 'Response Code'),
@@ -246,24 +253,31 @@ test.describe('Errors Tab — Error Summary Total row (B2)', () => {
     expectTotalOfShown(t, 'E05');
   });
 
-  test('[E02] collapsed transaction children are not in the Total, and it says how many rows it covers', async ({ page }) => {
+  test('[E02] the rows are the failed requests: no transaction\'s own row, and every row is shown (E3)', async ({ page }) => {
+    // E3: a transaction's own failure was listed beside the request that failed it, and the
+    // requests' rows were collapsed under it by default. JMeter's HTML report lists the requests.
     await goErrors(page);
     const t = await readErrorTotal(page);
-    expect(t.collapsed, 'E02 no longer has a collapsed transaction child among its error rows').toBeGreaterThan(0);
-    expect(t.shown).toBe(t.rows - t.collapsed);
-    expect(t.allSum, 'the rows do not add up to the run\'s errors').toBe(t.errors);
-    expectTotalOfShown(t, 'E02, children collapsed');
-    expect(t.cells!.pctErrors, 'a Total of some rows called itself 100% of the errors').not.toBe('100.00%');
+    expect(t.transactions.length, 'E02 no longer has a transaction').toBeGreaterThan(0);
+    // A transaction's own failures are not rows. One its thread was cut off from at the test end has no
+    // "Number of samples in transaction" message, and JMeter's HTML report counts it as a request
+    // (Sample.isController): E02 has one, so the transaction's row may hold that one and no more.
+    for (const tx of t.transactions) {
+      expect(t.rowCounts[tx] || 0, `transaction ${tx}'s own failures are rows`).toBeLessThan(t.samplerErrors[tx]);
+    }
+    expect(t.shown).toBe(t.rows);
+    expect(t.allSum, 'the rows do not add up to the run\'s failed requests').toBe(t.errors);
+    expectTotalOfShown(t, 'E02');
+    expect(t.cells!.pctErrors).toBe('100.00%');
+    await expect(page.locator('#tab-errors .wir-population-note')).toContainText('failed requests');
 
-    // Transaction Details on: every row is shown, and the Total is every error.
+    // Transaction Details does not change the error tables: they list requests either way.
     await switchTab(page, 'samplers');
     await page.click('#transactionChildrenBtn');
     await switchTab(page, 'errors');
-    const all = await readErrorTotal(page);
-    expect(all.shown).toBe(all.rows);
-    expectTotalOfShown(all, 'E02, children shown');
-    expect(all.cells!.count).toBe(all.errors.toLocaleString('en-US'));
-    expect(all.cells!.pctErrors).toBe('100.00%');
+    const after = await readErrorTotal(page);
+    expect(after.shown).toBe(t.rows);
+    expect(after.cells).toEqual(t.cells);
   });
 
   test('[E02] the search never hides the Total, and the Total follows it', async ({ page }) => {
@@ -296,12 +310,10 @@ test.describe('Errors Tab — Error Summary Total row (B2)', () => {
     expect(hidden.shown).toBe(before.shown - 1);
     expectTotalOfShown(hidden, 'one row hidden with ×');
 
-    // Show Hidden used to clear every row's display — the collapsed transaction children came
-    // back with the row that was hidden, under a toggle still saying they were collapsed.
+    // Show Hidden used to clear every row's display, bringing back rows nobody had unhidden.
     await page.click('#showHiddenBtn-errorSummaryTable');
     const back = await readErrorTotal(page);
     expect(back.shown, 'Show Hidden revealed rows nobody hid').toBe(before.shown);
-    expect(back.collapsed).toBe(before.collapsed);
     expect(back.cells).toEqual(before.cells);
   });
 
@@ -321,7 +333,7 @@ test.describe('Errors Tab — Error Summary Total row (B2)', () => {
     expectTotalOfShown(back, 'searching, after Show Hidden');
   });
 
-  test('[E02] expanding transaction children keeps the search and what × hid', async ({ page }) => {
+  test('[E02] Transaction Details keeps the search and what × hid', async ({ page }) => {
     await goErrors(page);
     const toggleChildren = async () => {
       await switchTab(page, 'samplers');
@@ -329,13 +341,12 @@ test.describe('Errors Tab — Error Summary Total row (B2)', () => {
       await switchTab(page, 'errors');
     };
 
-    // The search first: no child on E02 is a pricing sampler, so expanding them shows nothing new.
+    // The search first: expanding the transactions changes nothing on the error tables (E3).
     const search = page.locator('#tab-errors .table-toolbar input.table-search').first();
     await search.fill('pricing');
     const searched = await readErrorTotal(page);
     await toggleChildren();
     const expanded = await readErrorTotal(page);
-    expect(expanded.collapsed).toBe(0);
     expect(expanded.shown, 'expanding the children showed rows the search hides').toBe(searched.shown);
     expectTotalOfShown(expanded, 'searching, children expanded');
 

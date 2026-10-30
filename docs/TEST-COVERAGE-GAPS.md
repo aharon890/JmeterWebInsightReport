@@ -250,7 +250,7 @@ rows rather than one with two test names.
 | 11.1 | Sample count matches between our JSON and native statistics.json | [~] | `verify-data-integrity.py`, by hand |
 | 11.2 | Error count matches | [~] | `verify-data-integrity.py`, by hand |
 | 11.3 | Mean response time within ±1ms | [~] | `verify-data-integrity.py`, by hand |
-| 11.4 | P95/P99 within ±5% (different algorithms) | [~] | `verify-data-integrity.py`, by hand (small samples can diverge past 5%: T-Digest) |
+| 11.4 | P95/P99 equal to JMeter's Aggregate Report | [x] | `ResponseTimeDistributionJMeterParityTest` against JMeter's `StatCalculatorLong`; the 69 campaign runs equal value for value (4.2.6) |
 | 11.5 | Throughput within ±2% | [~] | `verify-data-integrity.py`, by hand |
 | 11.6 | Samplers table values match JSON output values | [ ] | — |
 

@@ -240,4 +240,146 @@ class WebInsightReportListenerTest {
         assertNotNull(last);
         assertEquals(new File(thisRun).getAbsoluteFile(), last.jtl(), "the JTL the run wrote, not a fresh evaluation");
     }
+
+    @Test
+    void aTransactionThatExcludesItsTimersIsWindowedToItsRealEnd() throws Exception {
+        // B7: TransactionSampler with "include timers" off sets idle = end - start - children's time
+        // and then the end, so getTime() is 200 ms and getEndTime() a second after the start. Two
+        // back to back ran 2 s; the row's window stopped at start + elapsed (P11: 0.86/s on the row
+        // against 0.76/s on the tile for the same 50 transactions).
+        WebInsightReportListener listener = new WebInsightReportListener();
+        com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine engine =
+                new com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine();
+        Field f = WebInsightReportListener.class.getDeclaredField("statsEngine");
+        f.setAccessible(true);
+        f.set(listener, engine);
+
+        for (long start : new long[]{1_700_000_000_000L, 1_700_000_001_000L}) {
+            SampleResult tx = SampleResult.createTestSample(start, start + 1000);
+            tx.setIdleTime(800);
+            tx.setEndTime(start + 1000);
+            tx.setSampleLabel("Checkout");
+            tx.setSuccessful(true);
+            assertEquals(200, tx.getTime());
+            listener.sampleOccurred(new SampleEvent(tx, "Thread Group"));
+        }
+
+        com.jmeterwebinsightreport.core.model.ReportData data = engine.buildReportData("t");
+        assertEquals(1.0, data.getSamplerStatistics().get(0).getThroughput(), 1e-9);
+        assertEquals(2000, data.getMetadata().getDurationMillis());
+    }
+
+    @Test
+    void aTransactionsOwnResultIsNoRequestOfTheErrorsTab() throws Exception {
+        // E3: a parent sample with a failed child. JMeter's HTML report lists the child's failure and
+        // leaves the transaction's own result out of its Errors table and its "% of all samples".
+        WebInsightReportListener listener = new WebInsightReportListener();
+        com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine engine =
+                new com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine();
+        Field f = WebInsightReportListener.class.getDeclaredField("statsEngine");
+        f.setAccessible(true);
+        f.set(listener, engine);
+
+        SampleResult pay = SampleResult.createTestSample(1_700_000_000_000L, 1_700_000_000_200L);
+        pay.setSampleLabel("Pay");
+        pay.setSuccessful(false);
+        pay.setResponseCode("500");
+        pay.setResponseMessage("Internal Server Error");
+        SampleResult tx = SampleResult.createTestSample(1_700_000_000_000L, 1_700_000_000_200L);
+        tx.setSampleLabel("Checkout");
+        tx.setSuccessful(false);
+        tx.setResponseCode("500");
+        tx.setResponseMessage("Number of samples in transaction : 1, number of failing samples : 1");
+        tx.addSubResult(pay, false);   // as TransactionSampler adds it: the label kept
+        listener.sampleOccurred(new SampleEvent(tx, "Thread Group"));
+
+        com.jmeterwebinsightreport.core.model.ReportData data = engine.buildReportData("t");
+        assertEquals(1, data.getRequestSampleCount());
+        // T5: the response codes count the request, not the transaction
+        assertEquals(java.util.Map.of("500", 1L), data.getTimeSeries().stream()
+                .filter(b -> !b.getResponseCodes().isEmpty()).findFirst().get().getResponseCodes());
+        assertEquals(1, data.requestErrorSummaries().size());
+        assertEquals("Pay", data.requestErrorSummaries().get(0).getSamplerName());
+        assertEquals(1, data.getErrorRecords().size());
+    }
+
+    @Test
+    void aFailedAssertionsMessageIsTheTypeOfErrorOfA200() throws Exception {
+        // E1: what CSVSaveService writes into failureMessage, read off the result itself
+        WebInsightReportListener listener = new WebInsightReportListener();
+        com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine engine =
+                new com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine();
+        Field f = WebInsightReportListener.class.getDeclaredField("statsEngine");
+        f.setAccessible(true);
+        f.set(listener, engine);
+
+        SampleResult search = SampleResult.createTestSample(1_700_000_000_000L, 1_700_000_000_100L);
+        search.setSampleLabel("Search");
+        search.setResponseCode("200");
+        search.setResponseMessage("OK");
+        search.setSuccessful(false);
+        org.apache.jmeter.assertions.AssertionResult failed =
+                new org.apache.jmeter.assertions.AssertionResult("Search Assert");
+        failed.setFailure(true);
+        failed.setFailureMessage("Test failed: text expected to contain /order-id/");
+        search.addAssertionResult(failed);
+        listener.sampleOccurred(new SampleEvent(search, "Thread Group"));
+
+        com.jmeterwebinsightreport.core.model.ReportData data = engine.buildReportData("t");
+        assertEquals("Test failed: text expected to contain /order-id/",
+                data.getErrorSummaries().get(0).getErrorType());
+    }
+
+    @Test
+    void aStatisticalResultCountsItsSamplesAndItsErrors() throws Exception {
+        // B6: a remote engine in Statistical mode sends one StatisticalSampleResult for many samples.
+        WebInsightReportListener listener = new WebInsightReportListener();
+        com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine engine =
+                new com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine();
+        Field f = WebInsightReportListener.class.getDeclaredField("statsEngine");
+        f.setAccessible(true);
+        f.set(listener, engine);
+
+        org.apache.jmeter.samplers.StatisticalSampleResult batch = null;
+        for (int i = 0; i < 4; i++) {
+            SampleResult one = SampleResult.createTestSample(1_700_000_000_000L + i * 100, 1_700_000_000_000L + i * 100 + 50);
+            one.setSampleLabel("GET /a");
+            one.setSuccessful(i != 2);
+            if (batch == null) {
+                batch = new org.apache.jmeter.samplers.StatisticalSampleResult(one);   // counts nothing yet
+            }
+            batch.add(one);
+        }
+        assertEquals(4, batch.getSampleCount());
+        listener.sampleOccurred(new SampleEvent(batch, "Thread Group"));
+
+        com.jmeterwebinsightreport.core.model.SamplerStatistics s = engine.buildReportData("t").getSamplerStatistics().get(0);
+        assertEquals(4, s.getSampleCount());
+        assertEquals(batch.getErrorCount(), s.getErrorCount());
+        assertEquals(batch.getTime() / 4, s.getMaxResponseTime(), 0.0);
+    }
+
+    @Test
+    void aSampleIsRecordedAtItsStartWhateverItsTimeStampSays() throws Exception {
+        // B3: with sampleresult.timestamp.start=false a SampleResult's time stamp is its END. The report
+        // placed and windowed every sample by it (S46: 3 m 10 s where JMeter's Aggregate Report says 3 m 4 s).
+        WebInsightReportListener listener = new WebInsightReportListener();
+        com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine engine =
+                new com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine();
+        Field f = WebInsightReportListener.class.getDeclaredField("statsEngine");
+        f.setAccessible(true);
+        f.set(listener, engine);
+
+        SampleResult result = SampleResult.createTestSample(1_700_000_000_000L, 1_700_000_001_000L);
+        result.setSampleLabel("GET /checkout");
+        result.setSuccessful(false);
+        result.setTimeStamp(1_700_000_001_000L);   // stamped at its end
+        listener.sampleOccurred(new SampleEvent(result, "Thread Group"));
+
+        com.jmeterwebinsightreport.core.model.ReportData data = engine.buildReportData("t");
+        assertEquals(1_700_000_000_000L, data.getMetadata().getStartTime().toEpochMilli());
+        assertEquals(1000, data.getMetadata().getDurationMillis());
+        assertEquals(1_700_000_000_000L, data.getTimeSeries().get(0).getTimestamp().toEpochMilli());
+        assertEquals(1_700_000_000_000L, data.getErrorRecords().get(0).getTimestamp());
+    }
 }

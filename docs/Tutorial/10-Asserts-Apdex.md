@@ -211,8 +211,9 @@ Three things worth knowing:
 **Whole run:** `totalSamples` · `errorRate` (%) · `duration` (s) · `maxThreads` · `mean` ·
 `median` · `throughput` (/s) · `apdex` · **any `pN`, 0 < N < 100** (ms)
 
-Arbitrary percentiles ride the t-digest the report already computes — nothing extra is
-calculated to be displayed, but any quantile can be asserted. The whole-run figures come from
+Arbitrary percentiles come from the exact response-time counts the report already keeps, ranked
+as JMeter's Aggregate Report ranks them — nothing extra is calculated to be displayed, but any
+quantile can be asserted. The whole-run figures come from
 one shared resolver, so the number in a verdict is the number in the header tile.
 
 ---

@@ -150,7 +150,10 @@ public class ThymeleafReportRenderer {
         context.setVariable("metadata", reportData.getMetadata());
         context.setVariable("samplerStats", reportData.getSamplerStatistics());
         context.setVariable("timeSeries", reportData.getTimeSeries());
-        context.setVariable("errorSummaries", reportData.getErrorSummaries());
+        // The Errors tab's rows: the failed requests, a transaction's own result left out (E3)
+        context.setVariable("errorSummaries", reportData.requestErrorSummaries());
+        context.setVariable("errorsLeaveOutTransactions", reportData.getMetadata() != null
+                && reportData.getMetadata().getTotalSamples() > reportData.getRequestSampleCount());
         context.setVariable("errorRecords", reportData.getErrorRecords());
         context.setVariable("inlineCss", cssContent);
         context.setVariable("inlineJs", jsContent);
@@ -234,6 +237,10 @@ public class ThymeleafReportRenderer {
                     .limit(5)
                     .collect(Collectors.toList());
             context.setVariable("top5Slowest", top5Slowest);
+            // Which samples the totals count, said where they are read (B5): JMeter's three tools
+            // count a transaction run three ways, and this report counts it as the listener does.
+            context.setVariable("countsTransactionsOnce", stats.stream()
+                    .anyMatch(SamplerStatistics::isTransactionController));
 
             if (overall.getTotalSamples() > 0) {
                 context.setVariable("overallApdex", overall.getApdex());

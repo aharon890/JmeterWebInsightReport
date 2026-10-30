@@ -3244,13 +3244,6 @@ body.dark-mode .wir-status-menu { box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5); }
     color: var(--badge-warn-text);
 }
 
-/* A message the report knows is meaningless. Rendered as an em-dash, and dimmed so it reads as
-   "nothing to say" rather than as data. */
-.error-message-none {
-    color: var(--color-text-secondary);
-    opacity: 0.6;
-}
-
 /* ---------------------------------------------------------------- broken-rule banner
 
    Rules that could not run, at the top of the Asserts tab. Since the status collapse an
@@ -3631,6 +3624,10 @@ body.dark-mode .wir-status-menu { box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5); }
     font-size: 0.8rem;
     color: var(--color-text-secondary);
     margin: 0 0 10px;
+}
+
+.wir-population-note {
+    margin: 10px 0 0;
 }
 
 .wir-kpi-name {

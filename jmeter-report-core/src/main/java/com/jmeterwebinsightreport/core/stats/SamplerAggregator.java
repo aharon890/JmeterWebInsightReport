@@ -10,9 +10,10 @@ import com.jmeterwebinsightreport.core.model.SamplerStatistics;
 class SamplerAggregator {
 
     private final String samplerName;
-    private final TDigestPercentileCalculator percentileCalculator = new TDigestPercentileCalculator();
+    /** Every response time, exactly: percentiles as JMeter's Aggregate Report computes them (B2). */
+    private final ResponseTimeDistribution responseTimes = new ResponseTimeDistribution();
     /** Response-time distribution of successful samples only — used for a success-aware Apdex. */
-    private final TDigestPercentileCalculator successPercentileCalculator = new TDigestPercentileCalculator();
+    private final ResponseTimeDistribution successResponseTimes = new ResponseTimeDistribution();
     private long sampleCount;
     private long errorCount;
     private double sumResponseTime;
@@ -64,28 +65,60 @@ class SamplerAggregator {
     synchronized void addSample(long responseTime, boolean isSuccess,
                                  long bytesReceived, long bytesSent, long timestamp,
                                  long connectTime, long latency) {
-        sampleCount++;
-        if (!isSuccess) {
-            errorCount++;
-        }
+        addSample(responseTime, isSuccess, bytesReceived, bytesSent, timestamp,
+                timestamp + Math.max(0, responseTime), connectTime, latency);
+    }
+
+    /**
+     * @param endTime when the sample really ended. Usually {@code timestamp + responseTime}, but a
+     *        Transaction Controller's parent sample excludes its timers from its elapsed time and
+     *        still ends after them (B7): its window has to reach that end, as JMeter's Aggregate
+     *        Report reaches {@code getEndTime()}.
+     */
+    synchronized void addSample(long responseTime, boolean isSuccess,
+                                 long bytesReceived, long bytesSent, long timestamp, long endTime,
+                                 long connectTime, long latency) {
+        addSample(responseTime, isSuccess, bytesReceived, bytesSent, timestamp, endTime,
+                connectTime, latency, 1, isSuccess ? 0 : 1);
+    }
+
+    /**
+     * @param samples how many samples this result stands for: 1, or more for a result JMeter
+     *        aggregated (distributed tests in Statistical mode, {@code SampleResult.getSampleCount()}).
+     *        As JMeter's {@code StatCalculator.addValue(value, count)} does, it counts as that many
+     *        samples of {@code responseTime / samples} ms each (whole ms, as JMeter divides a Long),
+     *        and its bytes once (B6).
+     * @param errors how many of them failed ({@code SampleResult.getErrorCount()})
+     */
+    synchronized void addSample(long responseTime, boolean isSuccess,
+                                 long bytesReceived, long bytesSent, long timestamp, long endTime,
+                                 long connectTime, long latency, long samples, long errors) {
+        long n = Math.max(1, samples);
+        long failed = Math.min(n, Math.max(0, errors));
+        long ok = n - failed;
+        long each = responseTime / n;
+        double eachExact = (double) responseTime / n;
+        sampleCount += n;
+        errorCount += failed;
         sumResponseTime += responseTime;
-        double delta = responseTime - runningMean;
-        runningMean += delta / sampleCount;
-        m2 += delta * (responseTime - runningMean);
-        minResponseTime = Math.min(minResponseTime, responseTime);
-        maxResponseTime = Math.max(maxResponseTime, responseTime);
+        // Welford for n equal values: the weighted form of the one-value update
+        double delta = eachExact - runningMean;
+        runningMean += delta * n / sampleCount;
+        m2 += delta * (eachExact - runningMean) * n;
+        minResponseTime = Math.min(minResponseTime, each);
+        maxResponseTime = Math.max(maxResponseTime, each);
         sumBytesReceived += bytesReceived;
         sumBytesSent += bytesSent;
         firstTimestamp = Math.min(firstTimestamp, timestamp);
         lastTimestamp = Math.max(lastTimestamp, timestamp);
-        lastSampleEnd = Math.max(lastSampleEnd, timestamp + Math.max(0, responseTime));
-        percentileCalculator.addValue(responseTime);
-        if (isSuccess) {
-            successPercentileCalculator.addValue(responseTime);
-            if (responseTime <= configuredApdexThreshold) {
-                satisfiedCount++;
-            } else if (responseTime <= configuredApdexThreshold * 4) {
-                toleratingCount++;
+        lastSampleEnd = Math.max(lastSampleEnd, endTime);
+        responseTimes.add(each, n);
+        if (ok > 0) {
+            successResponseTimes.add(each, ok);
+            if (each <= configuredApdexThreshold) {
+                satisfiedCount += ok;
+            } else if (each <= configuredApdexThreshold * 4) {
+                toleratingCount += ok;
             }
         }
 
@@ -99,36 +132,35 @@ class SamplerAggregator {
         }
     }
 
-    /** Merge this sampler's response-time distribution into a target digest (for overall percentiles). */
-    synchronized void mergePercentilesInto(TDigestPercentileCalculator target) {
-        target.merge(percentileCalculator);
+    /** Merge this sampler's response times into a target distribution (for overall percentiles). */
+    synchronized void mergePercentilesInto(ResponseTimeDistribution target) {
+        target.merge(responseTimes);
     }
 
     /**
      * A handle on this sampler's distribution that outlives the four percentiles copied into
      * {@link SamplerStatistics}.
      *
-     * <p>Returns a view rather than the digest itself, and reads under this aggregator's
+     * <p>Returns a view rather than the distribution itself, and reads under this aggregator's
      * monitor: the report is built from {@code testEnded}, but a listener instance is shared
      * by every sampler thread and by RMI workers in distributed mode, so there is no moment
      * at which "no more samples can arrive" is guaranteed by construction. An unsynchronised
-     * {@code quantile()} racing an {@code add()} on a MergingDigest reads a half-merged
-     * centroid buffer, which does not throw — it just returns a wrong number, which is the
-     * worst way for a quality gate to fail.
+     * read racing an {@code add()} walks arrays half-shifted by an insertion, which does not
+     * throw — it just returns a wrong number, which is the worst way for a quality gate to fail.
      */
     PercentileSource percentileSource() {
         return new PercentileSource() {
             @Override
             public double percentile(double percentile) {
                 synchronized (SamplerAggregator.this) {
-                    return percentileCalculator.getPercentile(percentile);
+                    return responseTimes.getPercentile(percentile);
                 }
             }
 
             @Override
             public long sampleCount() {
                 synchronized (SamplerAggregator.this) {
-                    return percentileCalculator.getCount();
+                    return responseTimes.getCount();
                 }
             }
         };
@@ -153,12 +185,12 @@ class SamplerAggregator {
             stats.setStandardDeviation(Math.sqrt(m2 / sampleCount));
         }
 
-        // Percentiles from T-Digest
+        // Percentiles of the exact distribution, as the Aggregate Report computes them
         if (sampleCount > 0) {
-            stats.setMedianResponseTime(percentileCalculator.getPercentile(50));
-            stats.setPercentile90(percentileCalculator.getPercentile(90));
-            stats.setPercentile95(percentileCalculator.getPercentile(95));
-            stats.setPercentile99(percentileCalculator.getPercentile(99));
+            stats.setMedianResponseTime(responseTimes.getPercentile(50));
+            stats.setPercentile90(responseTimes.getPercentile(90));
+            stats.setPercentile95(responseTimes.getPercentile(95));
+            stats.setPercentile99(responseTimes.getPercentile(99));
         }
 
         // Throughput (requests per second). The window runs from the first sample's start to
@@ -202,21 +234,23 @@ class SamplerAggregator {
             } else {
                 // The caller asked for a threshold this aggregator did not count against
                 // (only reachable if the threshold is changed after sampling starts). Fall
-                // back to the digest, evaluating just above the boundary so an integer-ms
+                // back to the distribution, evaluating just above the boundary so an integer-ms
                 // sample equal to T still counts as satisfied.
                 long okCount = sampleCount - errorCount;
                 satisfied = 0;
                 tolerating = 0;
                 if (okCount > 0) {
-                    double satisfiedFraction = successPercentileCalculator.getCdf(apdexT + 0.5);
+                    double satisfiedFraction = successResponseTimes.getCdf(apdexT + 0.5);
                     double toleratingFraction =
-                            successPercentileCalculator.getCdf(apdexT * 4 + 0.5) - satisfiedFraction;
+                            successResponseTimes.getCdf(apdexT * 4 + 0.5) - satisfiedFraction;
                     satisfied = okCount * satisfiedFraction;
                     tolerating = okCount * toleratingFraction;
                 }
             }
             double apdex = (satisfied + tolerating / 2.0) / sampleCount;
             stats.setApdexScore(Math.round(apdex * 100.0) / 100.0);
+            stats.setApdexSatisfied(satisfied);
+            stats.setApdexTolerating(tolerating);
         }
 
         return stats;

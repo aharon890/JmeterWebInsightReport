@@ -354,16 +354,33 @@ class ReportDataSerializerTest {
 
     @Test
     void serializesTotalsAndTruncationFlag() throws JsonProcessingException {
-        // A3/C20: total sample/error counts and the truncation flag are serialized for the client.
+        // A3/E3: the Errors tab's sample and error counts and the truncation flag are serialized for
+        // the client: every request, and the failed ones, a transaction's own result left out.
         ReportData data = createMinimalReportData();
-        data.getMetadata().setTotalSamples(4250);
-        data.getMetadata().setTotalErrors(4250);
+        data.setRequestSampleCount(4250);
+        ErrorSummary request = new ErrorSummary();
+        request.setSamplerName("Pay");
+        request.setResponseCode("500");
+        request.setOccurrenceCount(4200);
+        ErrorSummary transaction = new ErrorSummary();
+        transaction.setSamplerName("Checkout");
+        transaction.setResponseCode("500");
+        transaction.setOccurrenceCount(4200);
+        transaction.setTransactionRow(true);
+        data.setErrorSummaries(new ArrayList<>(Arrays.asList(request, transaction)));
         data.setErrorRecordsTruncated(true);
 
         JsonNode json = objectMapper.readTree(ChartDataJson.of(data));
-        assertEquals(4250, json.get("totalSampleCount").asInt());
-        assertEquals(4250, json.get("totalErrorCount").asInt());
+        assertEquals(4250, json.get("requestSampleCount").asInt());
+        assertEquals(4200, json.get("requestErrorCount").asInt());
+        // The page re-judges errorRate:code=/class= rules over every group, as MetricRef does: the
+        // transaction's own failures ship too, flagged, and the tab leaves them out
+        assertEquals(2, json.get("errorSummaries").size());
+        assertTrue(json.get("errorSummaries").get(1).get("transactionRow").asBoolean());
+        assertFalse(json.get("errorSummaries").get(0).has("transactionRow"));
+        assertEquals(1, json.get("errorsByType").size(), "the tab's pie: the failed requests");
         assertTrue(json.get("errorRecordsTruncated").asBoolean());
+        assertFalse(json.has("totalSampleCount"), "C20's every-sample population is gone");
     }
 
     @Test
@@ -412,7 +429,8 @@ class ReportDataSerializerTest {
 
         assertNotNull(overall, "the overall block must exist whenever there are samplers");
         for (String key : new String[]{"median", "p90", "p95", "p99", "mean", "totalSamples",
-                "errorRate", "throughput", "apdex", "duration", "maxThreads"}) {
+                "errorRate", "throughput", "receivedBytesPerSec", "sentBytesPerSec", "apdex", "duration",
+                "maxThreads"}) {
             assertTrue(overall.has(key), "overall." + key + " is missing from the payload");
         }
     }
@@ -539,6 +557,66 @@ class ReportDataSerializerTest {
         assertEquals(750.0, sampler.get("p75").asDouble(), 3.0);
         assertEquals(999.0, sampler.get("p999").asDouble(), 3.0);
         assertEquals(999.0, aggregated.get("overall").get("p999").asDouble(), 3.0);
+    }
+
+    @Test
+    void theSigmaTotalOfEveryMetricIsShippedFromTheTopLevelSamplers() throws JsonProcessingException {
+        // T1: the page draws the Σ Total lines from totalSeries alone
+        com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine engine =
+                new com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine();
+        long ts = 1700000000000L;
+        engine.recordTransaction("Checkout", "Pay", true);
+        engine.recordSample("Checkout", 300, true, 900, 90, ts, 10, 280);
+        engine.recordSample("Pay", 300, true, 900, 90, ts, 10, 280);
+        engine.recordSample("Home", 100, true, 100, 10, ts + 10, -1, -1);
+        engine.recordSample("Home", 500, true, 100, 10, ts + 20, -1, -1);
+
+        JsonNode json = objectMapper.readTree(ChartDataJson.of(engine.buildReportData("t")));
+        JsonNode total = json.get("totalSeries");
+        assertEquals(3, json.get("throughputs").get(0).asInt(), "Checkout and Home twice, not Pay");
+        assertEquals(300.0, total.get("p50").get(0).asDouble(), 1e-9);
+        assertEquals(500.0, total.get("max").get(0).asDouble(), 1e-9);
+        assertEquals(1100.0, total.get("receivedBytes").get(0).asDouble(), 1e-9);
+        assertEquals(10.0, total.get("connectTime").get(0).asDouble(), 1e-9);
+        assertEquals(json.get("perSamplerSeries").get("Home").size(), total.size(),
+                "every per-sampler metric has its total");
+    }
+
+    @Test
+    void theThroughputIsOfStartsAndEveryOtherSeriesOfEnds() throws JsonProcessingException {
+        // T7: JMeter's Hits per Second keys a request by its start, its other charts by its end
+        com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine engine =
+                new com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine();
+        long t0 = 1700000000000L;
+        engine.recordSample("Slow", 1500, true, 800, 80, t0 + 600, -1, -1);   // ends at t0 + 2.1 s
+
+        JsonNode json = objectMapper.readTree(ChartDataJson.of(engine.buildReportData("t")));
+        assertEquals("[1700000000000,1700000002000]", json.get("timestamps").toString());
+        assertEquals("[1.0,null]", json.get("throughputs").toString());
+        assertEquals("[0,1]", json.get("sampleCounts").toString());
+        // nothing ended in the first second, nothing started in the second: no value, not 0 (C23)
+        assertEquals("[null,1500.0]", json.get("meanResponseTimes").toString());
+        assertEquals("[null,0.0]", json.get("errorRates").toString());
+        JsonNode slow = json.get("perSamplerSeries").get("Slow");
+        assertEquals("[1.0,null]", slow.get("throughput").toString());
+        assertEquals("[null,1500.0]", slow.get("responseTime").toString());
+        assertEquals("[null,1]", slow.get("samples").toString(), "the weights of a mean over seconds");
+    }
+
+    @Test
+    void theResponseCodesAreShippedPerCodeAlignedWithTheTimestamps() throws JsonProcessingException {
+        // T5: every response per code per second, null where none of a code ended
+        com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine engine =
+                new com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine();
+        long t0 = 1700000000000L;
+        engine.recordSample("A", 100, true, 0, 0, t0, -1, -1);
+        engine.recordResponseCode("200", t0 + 100);
+        engine.recordSample("A", 100, false, 0, 0, t0 + 1000, -1, -1);
+        engine.recordResponseCode("503", t0 + 1100);
+
+        JsonNode json = objectMapper.readTree(ChartDataJson.of(engine.buildReportData("t")));
+        assertEquals("[1700000000000,1700000001000]", json.get("timestamps").toString());
+        assertEquals("{\"200\":[1,null],\"503\":[null,1]}", json.get("responseCodes").toString());
     }
 
     @Test
@@ -672,6 +750,7 @@ class ReportDataSerializerTest {
         // Error summaries
         List<ErrorSummary> errorSummaries = new ArrayList<>();
         ErrorSummary es = new ErrorSummary();
+        es.setSamplerName("GET /api/users");
         es.setResponseCode("500");
         es.setResponseMessage("Internal Server Error");
         es.setOccurrenceCount(5);

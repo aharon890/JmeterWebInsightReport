@@ -175,6 +175,119 @@ class LiveStatisticsEngineTest {
     }
 
     @Test
+    void theSecondsTotalsCountTheTopLevelSamplersAsTheTilesDo() {
+        // T1: P11's Σ Total throughput line added up to 450 requests while the tile said 50, and its
+        // bytes line read twice the requests' bytes
+        long ts = 1700000000000L;
+        engine.recordTransaction("Checkout", "Cart", true);
+        engine.recordTransaction("Checkout", "Pay", true);
+        engine.recordSample("Checkout", 300, false, 900, 90, ts, 10, 280);
+        engine.recordSample("Cart", 100, true, 400, 40, ts, 5, 90);
+        engine.recordSample("Pay", 200, false, 500, 50, ts + 100, 5, 190);
+        engine.recordSample("Home", 10, true, 100, 10, ts + 200, -1, -1);
+
+        TimeSeriesBucket b = engine.getTimeSeries().get(0);
+        assertEquals(2, b.getSampleCount(), "Checkout and Home; Cart and Pay are inside Checkout");
+        assertEquals(155.0, b.getMeanResponseTime(), 1e-9);
+        assertEquals(2.0, b.getThroughput(), 1e-9);
+        assertEquals(50.0, b.getErrorRate(), 1e-9, "the failed transaction, once");
+        TimeSeriesBucket.SamplerBucketData total = b.getTotal();
+        assertEquals(1000.0, total.getReceivedBytes(), 1e-9, "a transaction's bytes are its requests'");
+        assertEquals(300.0, total.getMax(), 1e-9);
+        assertEquals(10.0, total.getConnectTime(), 1e-9, "a mean over the samples that have one");
+        assertEquals(4, b.getPerSamplerData().size(), "every sampler keeps its own series");
+        assertEquals(engine.buildReportData("t").getTopLevelSampleCount(), b.getSampleCount(),
+                "the seconds add up to the Total Samples tile");
+    }
+
+    @Test
+    void theSecondsTotalPercentileIsAPercentileOfItsSamplesNotAMeanOfTheSamplers() {
+        long ts = 1700000000000L;
+        for (int i = 0; i < 99; i++) {
+            engine.recordSample("busy", 100, true, 0, 0, ts + i, -1, -1);
+        }
+        engine.recordSample("rare", 4000, true, 0, 0, ts + 500 - 4000, -1, -1);   // ends in the second (T7)
+
+        TimeSeriesBucket.SamplerBucketData total = bucketAt(engine.getTimeSeries(), ts).getTotal();
+        // The rank rule over the second's 100 samples: rank 95 is 100 ms. The page used to draw the
+        // samplers' P95s weighted by count: (100 x 99 + 4000) / 100 = 139.
+        assertEquals(100.0, total.getP95(), 1e-9);
+        assertEquals(4000.0, total.getMax(), 1e-9);
+    }
+
+    @Test
+    void theErrorsTabCountsFailedRequestsAsJMetersHtmlReportDoes() {
+        // E3: pilot-D listed "Checkout Flow | 500 x69" beside the "Payment | 500 x69" that failed it
+        String tx = "Number of samples in transaction : 2, number of failing samples : 1";
+        long ts = 1700000000000L;
+        engine.recordTransaction("Checkout", "Cart", true);
+        engine.recordTransaction("Checkout", "Pay", true);
+        engine.recordSample("Checkout", 300, false, 900, 90, ts, 0, 0);
+        engine.recordTransactionRow(1);
+        engine.recordError("Checkout", "500", tx, ts, "TG 1-1");
+        engine.recordSample("Cart", 100, true, 400, 40, ts, 5, 90);
+        engine.recordSample("Pay", 200, false, 500, 50, ts + 100, 5, 190);
+        engine.recordError("Pay", "500", "Internal Server Error", ts + 100, "TG 1-1");
+        engine.recordSample("Home", 10, false, 100, 10, ts + 200, 1, 9);
+        engine.recordError("Home", "503", "Service Unavailable", ts + 200, "TG 1-2");
+
+        ReportData data = engine.buildReportData("t");
+        assertEquals(3, data.getRequestSampleCount(), "Cart, Pay, Home: the transaction's own result is not a request");
+        List<ErrorSummary> requests = data.requestErrorSummaries();
+        assertEquals(2, requests.size());
+        assertEquals(2, data.requestErrorCount());
+        for (ErrorSummary s : requests) {
+            assertFalse(s.isTransactionRow());
+            assertEquals(50.0, s.getPercentageOfErrors(), 1e-9);
+            assertEquals(100.0 / 3, s.getPercentageOfAllSamples(), 1e-9);
+        }
+        assertEquals(3, data.getErrorSummaries().size(), "the asserts still read the transaction's failure");
+        assertTrue(data.getErrorSummaries().stream().anyMatch(ErrorSummary::isTransactionRow));
+        assertEquals(2, data.getErrorRecords().size(), "no detail record for the transaction's own result");
+        assertEquals(2, data.getTopLevelErrorCount(), "the Error Rate tile counts the failed transaction and Home");
+    }
+
+    @Test
+    void errorsAreGroupedPerSamplerByJMetersTypeOfError() {
+        // E1: pilot-D "Payment | 500 x69" is JMeter's "500/Internal Server Error x44" and
+        // "500/Database timeout x25"; its failed assertions on a 200 are their failure message
+        long ts = 1700000000000L;
+        for (int i = 0; i < 3; i++) {
+            engine.recordError("Payment", "500", "Internal Server Error", null, ts + i, "TG 1-1", null, null, null);
+        }
+        engine.recordError("Payment", "500", "Database timeout", null, ts + 5, "TG 1-1", null, null, null);
+        engine.recordError("Search", "200", "OK", "Test failed: text expected to contain /order-id/", ts + 6,
+                "TG 1-1", null, null, null);
+        engine.recordError("Search", "200", "OK", null, ts + 7, "TG 1-1", null, null, null);
+
+        List<ErrorSummary> groups = engine.buildReportData("t").getErrorSummaries();
+        assertEquals(4, groups.size());
+        assertEquals(3, groups.stream().filter(g -> g.getErrorType().equals("500/Internal Server Error"))
+                .findFirst().get().getOccurrenceCount());
+        assertTrue(groups.stream().anyMatch(g -> g.getErrorType().equals("500/Database timeout")));
+        ErrorSummary assertion = groups.stream()
+                .filter(g -> g.getErrorType().startsWith("Test failed")).findFirst().get();
+        assertEquals("Test failed: text expected to contain /order-id/", assertion.getFailureMessage());
+        assertTrue(groups.stream().anyMatch(g -> g.getErrorType().equals("Assertion failed")));
+        assertEquals("Test failed: text expected to contain /order-id/",
+                engine.getErrorRecords().get(4).getErrorType(), "the record carries its type too");
+    }
+
+    @Test
+    void theDetailRecordsAreTruncatedOnlyByFailedRequests() {
+        String tx = "Number of samples in transaction : 1, number of failing samples : 1";
+        for (int i = 0; i < 500; i++) {
+            engine.recordSample("Flow", 10, false, 0, 0, 1700000000000L + i, -1, -1);
+            engine.recordTransactionRow(1);
+            engine.recordError("Flow", "500", tx, 1700000000000L + i, "TG 1-1");
+            engine.recordSample("Pay", 10, false, 0, 0, 1700000000000L + i, -1, -1);
+            engine.recordError("Pay", "500", "Internal Server Error", 1700000000000L + i, "TG 1-1");
+        }
+        assertFalse(engine.isErrorRecordsTruncated(), "500 failed requests, all kept");
+        assertEquals(500, engine.getErrorRecords().size());
+    }
+
+    @Test
     void recordSample_noFalseTransactionFromNamePrefix() {
         long ts = 1700000000000L;
         // REST-style names share a prefix but are independent samplers — must NOT be nested (B8).
@@ -559,6 +672,127 @@ class LiveStatisticsEngineTest {
     }
 
     @Test
+    void anAggregatedResultCountsAsTheSamplesItStandsFor() {
+        // B6: JMeter's Statistical mode sends one result for 10 samples, 1,000 ms in all, 3 failed.
+        // JMeter's Aggregate Report counts 10 samples of 100 ms (StatCalculator.addValue(1000, 10)).
+        long ts = 1700000000000L;
+        engine.recordSample("S", 1000, false, 5000, 500, ts, ts + 1000, -1, -1, 10, 3);
+        engine.recordSample("S", 40, true, 500, 50, ts + 1000, ts + 1040, -1, -1, 1, 0);
+
+        ReportData data = engine.buildReportData("t");
+        SamplerStatistics s = findSampler(data, "S");
+        assertEquals(11, s.getSampleCount());
+        assertEquals(3, s.getErrorCount());
+        assertEquals(1040 / 11.0, s.getMeanResponseTime(), 1e-9);
+        assertEquals(40, s.getMinResponseTime(), 0.0);
+        assertEquals(100, s.getMaxResponseTime(), 0.0, "each of the 10 took 100 ms");
+        assertEquals(100, s.getMedianResponseTime(), 0.0);
+        assertEquals(5500, s.getTotalReceivedBytes(), 0.0, "bytes once per result");
+        assertEquals(11, data.getMetadata().getTotalSamples());
+        assertEquals(3, data.getMetadata().getTotalErrors());
+        assertEquals(11, data.getTimeSeries().get(0).getSampleCount() + data.getTimeSeries().get(1).getSampleCount());
+    }
+
+    @Test
+    void aBusySecondsPercentilesAndHistogramCountEverySample() {
+        // T6: 300 requests in one second of one sampler. The second used to keep a random 128 of
+        // them, so its percentiles and heatmap cells moved between two builds of one file. Now
+        // they are the Samplers table's rule over all 300, and the bins are true counts.
+        long ts = 1700000000000L;
+        LiveStatisticsEngine again = new LiveStatisticsEngine();
+        for (int i = 0; i < 300; i++) {
+            long rt = i < 200 ? 10 + i % 40 : (i < 297 ? 300 + i : 6000);   // 200 fast, 97 at 500-596, 3 at 6 s
+            // each ends inside the second, where its figures go (T7)
+            engine.recordSample("Busy", rt, true, 10, 10, ts + i - rt, 1, 1);
+            again.recordSample("Busy", rt, true, 10, 10, ts + 299 - i - rt, 1, 1);
+        }
+
+        TimeSeriesBucket.SamplerBucketData second =
+                bucketAt(engine.buildReportData("t").getTimeSeries(), ts).getPerSamplerData().get("Busy");
+        assertEquals(39, second.getP50(), 0.0);    // rank 150 of 300: the 30th fast value, 10 + 29
+        assertEquals(569, second.getP90(), 0.0);   // rank round(300 * 0.9f) = 270: 300 + 269
+        assertEquals(584, second.getP95(), 0.0);   // rank 285: 300 + 284
+        assertEquals(596, second.getP99(), 0.0);   // rank round(297.0000029) = 297: the last before the 6 s ones
+        assertArrayEquals(new int[]{200, 0, 0, 0, 97, 0, 0, 3}, second.getHistogramBins());
+
+        TimeSeriesBucket.SamplerBucketData other =
+                bucketAt(again.buildReportData("t").getTimeSeries(), ts).getPerSamplerData().get("Busy");
+        assertEquals(second.getP90(), other.getP90(), 0.0, "fed in another order, the same second");
+        assertArrayEquals(second.getHistogramBins(), other.getHistogramBins());
+    }
+
+    @Test
+    void errorSummariesSpanEveryErrorPastTheKeptRecords() {
+        // E2: 800 errors of one sampler and code, 1 s apart. The detail records stop at 500; the
+        // summary's count, first and last cover all 800, so the grouped view can say so.
+        long ts = 1700000000000L;
+        for (int i = 0; i < 800; i++) {
+            engine.recordSample("Pay", 10, false, 10, 10, ts + i * 1000L, 1, 1);
+            engine.recordError("Pay", "500", "Internal", ts + i * 1000L, "T 1-1");
+        }
+        ReportData data = engine.buildReportData("t");
+        assertEquals(500, data.getErrorRecords().size());
+        ErrorSummary s = data.getErrorSummaries().get(0);
+        assertEquals(800, s.getOccurrenceCount());
+        assertEquals(ts, s.getFirstTimestamp());
+        assertEquals(ts + 799_000L, s.getLastTimestamp());
+    }
+
+    @Test
+    void errorRecordsAreListedByStartThenSamplerThenThread() {
+        // E4: records arrive as samples finish, which the listener and the results file do not see in
+        // one order. Listed by start, then sampler, then thread, two builds of one run read alike.
+        long ts = 1700000000000L;
+        engine.recordError("B", "500", "x", ts + 5, "T 1-2");
+        engine.recordError("B", "500", "x", ts + 5, "T 1-1");
+        engine.recordError("A", "500", "x", ts + 5, "T 1-9");
+        engine.recordError("C", "503", "y", ts, "T 1-3");
+
+        List<String> order = new java.util.ArrayList<>();
+        for (ErrorRecord r : engine.getErrorRecords()) {
+            order.add(r.getSamplerName() + "/" + r.getThreadName());
+        }
+        assertEquals(List.of("C/T 1-3", "A/T 1-9", "B/T 1-1", "B/T 1-2"), order);
+    }
+
+    @Test
+    void aSampleThatEndsAfterItsElapsedTimeIsWindowedToItsEnd() {
+        // B7: a Transaction Controller's parent sample with "include timers" off. Its elapsed time is
+        // its children's 200 ms; it really ran 1 s, the rest think time. Two of them back to back
+        // ran 2 s, so 1/s, where windowing to start + elapsed read 2 over 1.2 s.
+        long ts = 1700000000000L;
+        engine.recordSample("Checkout", 200, true, 10, 10, ts, ts + 1000, -1, -1);
+        engine.recordSample("Checkout", 200, true, 10, 10, ts + 1000, ts + 2000, -1, -1);
+
+        ReportData data = engine.buildReportData("t");
+        assertEquals(1.0, findSampler(data, "Checkout").getThroughput(), 1e-9);
+        assertEquals(2000, data.getMetadata().getDurationMillis());
+        assertEquals(200.0, findSampler(data, "Checkout").getMeanResponseTime(), 1e-9, "the elapsed time is untouched");
+    }
+
+    @Test
+    void apdex_wholeRunIsComputedFromTheCountsAndRoundedOnce() {
+        // "slow": 3 frustrated, scores 0.00. "mixed": 2 satisfied + 1 frustrated, 0.6667, shown
+        // as 0.67. The mean of the shown scores is (0 * 3 + 0.67 * 3) / 6 = 0.335, which a second
+        // rounding made 0.34; the run's own counts give 2 / 6 = 0.333, 0.33 (B4, pilot-C 0.90 vs
+        // 0.906).
+        long ts = 1700000000000L;
+        for (int i = 0; i < 3; i++) {
+            engine.recordSample("slow", 5000, true, 10, 10, ts + i, 1, 1);
+        }
+        engine.recordSample("mixed", 100, true, 10, 10, ts, 1, 1);
+        engine.recordSample("mixed", 100, true, 10, 10, ts + 1, 1, 1);
+        engine.recordSample("mixed", 5000, true, 10, 10, ts + 2, 1, 1);
+
+        ReportData data = engine.buildReportData("t");
+        assertEquals(0.0, findSampler(data, "slow").getApdexScore(), 1e-9);
+        assertEquals(0.67, findSampler(data, "mixed").getApdexScore(), 1e-9);
+        assertEquals(2.0, findSampler(data, "mixed").getApdexSatisfied(), 1e-9);
+        assertEquals(0.0, findSampler(data, "mixed").getApdexTolerating(), 1e-9);
+        assertEquals(0.33, OverallMetrics.of(data).getApdex(), 1e-9);
+    }
+
+    @Test
     void apdex_mixedBucketsScoreProportionally() {
         long ts = 1700000000000L;
         // 50 satisfied (at T), 50 tolerating (at 4T) → (50 + 25) / 100 = 0.75
@@ -890,5 +1124,46 @@ class LiveStatisticsEngineTest {
         List<TimeSeriesBucket> buckets = engine.getTimeSeries();
         assertEquals(1, buckets.size(), "the bucket must be created on demand");
         assertEquals(42, buckets.get(0).getActiveThreads());
+    }
+
+    private static TimeSeriesBucket bucketAt(List<TimeSeriesBucket> buckets, long ts) {
+        return buckets.stream().filter(b -> b.getTimestamp().toEpochMilli() == ts).findFirst()
+                .orElseThrow(() -> new AssertionError("no bucket at " + ts));
+    }
+
+    @Test
+    void everyResponseIsCountedByItsCodeInTheSecondItEnded() {
+        // T5: JMeter's Codes per Second, successes included, a response with no code its own series
+        long t0 = 1700000000000L;
+        engine.recordResponseCode("200", t0 + 100);
+        engine.recordResponseCode("200", t0 + 900);
+        engine.recordResponseCode("500", t0 + 950);
+        engine.recordResponseCode("", t0 + 1200);
+
+        List<TimeSeriesBucket> buckets = engine.getTimeSeries();
+        assertEquals(Map.of("200", 2L, "500", 1L), bucketAt(buckets, t0).getResponseCodes());
+        assertEquals(Map.of(LiveStatisticsEngine.EMPTY_RESPONSE_CODE, 1L), bucketAt(buckets, t0 + 1000).getResponseCodes());
+    }
+
+    @Test
+    void aSamplesFiguresGoToTheSecondItEndedAndItsHitToTheSecondItStarted() {
+        // T7: JMeter's charts key a sample by its end (TimeStampKeysSelector), Hits per Second by its
+        // start. A 1.5 s request started at 0.6 s ends at 2.1 s.
+        long t0 = 1700000000000L;
+        engine.recordSample("Slow", 1500, false, 800, 80, t0 + 600, 7, 900);
+        engine.updateActiveThreads(4, LiveStatisticsEngine.endOf(t0 + 600, 1500));
+
+        List<TimeSeriesBucket> buckets = engine.getTimeSeries();
+        TimeSeriesBucket started = bucketAt(buckets, t0);
+        TimeSeriesBucket ended = bucketAt(buckets, t0 + 2000);
+        assertEquals(1.0, started.getThroughput(), 0.0, "the hit, where it started");
+        assertEquals(0, started.getSampleCount(), "no figure of it where it started");
+        assertEquals(0.0, ended.getThroughput(), 0.0);
+        assertEquals(1, ended.getSampleCount());
+        assertEquals(1500.0, ended.getMeanResponseTime(), 0.0);
+        assertEquals(100.0, ended.getErrorRate(), 0.0);
+        assertEquals(800.0, ended.getPerSamplerData().get("Slow").getReceivedBytes(), 0.0);
+        assertEquals(4, ended.getActiveThreads(), "the threads at its end");
+        assertEquals(2, buckets.size(), "nothing in the second between");
     }
 }

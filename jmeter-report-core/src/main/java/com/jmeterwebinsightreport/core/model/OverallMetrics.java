@@ -35,6 +35,8 @@ public final class OverallMetrics {
     private final double p95;
     private final double p99;
     private final double throughput;
+    private final double receivedBytesPerSec;
+    private final double sentBytesPerSec;
     private final double apdex;
     private final double durationSeconds;
     private final int maxThreads;
@@ -42,6 +44,7 @@ public final class OverallMetrics {
 
     private OverallMetrics(long totalSamples, long totalErrors, double errorRate, double mean,
                            double median, double p90, double p95, double p99, double throughput,
+                           double receivedBytesPerSec, double sentBytesPerSec,
                            double apdex, double durationSeconds, int maxThreads,
                            PercentileSource percentiles) {
         this.totalSamples = totalSamples;
@@ -53,6 +56,8 @@ public final class OverallMetrics {
         this.p95 = p95;
         this.p99 = p99;
         this.throughput = throughput;
+        this.receivedBytesPerSec = receivedBytesPerSec;
+        this.sentBytesPerSec = sentBytesPerSec;
         this.apdex = apdex;
         this.durationSeconds = durationSeconds;
         this.maxThreads = maxThreads;
@@ -73,12 +78,27 @@ public final class OverallMetrics {
         long errors = 0;
         double weightedResponseTime = 0;
         double weightedApdex = 0;
+        double satisfied = 0;
+        double tolerating = 0;
+        boolean apdexCounted = true;
         for (SamplerStatistics s : topLevel) {
             samples += s.getSampleCount();
             errors += s.getErrorCount();
             weightedResponseTime += s.getMeanResponseTime() * s.getSampleCount();
             weightedApdex += s.getApdexScore() * s.getSampleCount();
+            if (Double.isNaN(s.getApdexSatisfied()) || Double.isNaN(s.getApdexTolerating())) {
+                apdexCounted = false;
+            } else {
+                satisfied += s.getApdexSatisfied();
+                tolerating += s.getApdexTolerating();
+            }
         }
+        // From the counts, rounded once (B4). The count-weighted mean of the per-sampler scores
+        // rounds every score to 2 dp first, so the whole run was rounded twice; it stays only
+        // for statistics assembled without their counts.
+        double apdex = samples <= 0 ? 0
+                : apdexCounted ? (satisfied + tolerating / 2.0) / samples
+                : weightedApdex / samples;
 
         TestMetadata meta = data.getMetadata();
         double durationSeconds = meta != null ? meta.getDurationMillis() / 1000.0 : 0;
@@ -87,15 +107,30 @@ public final class OverallMetrics {
         // of those is computed over its own first-to-last-sample window, so adding them up
         // over-counts whenever the samplers did not all run for the whole test. Summing is the
         // fallback only when the duration is unknown.
+        // The bytes rates likewise: all bytes over the test duration, as JMeter's TOTAL row
+        // divides them (B1).
         double throughput;
+        double receivedBytesPerSec;
+        double sentBytesPerSec;
         if (durationSeconds > 0) {
-            throughput = samples / durationSeconds;
-        } else {
-            double sum = 0;
+            double received = 0;
+            double sent = 0;
             for (SamplerStatistics s : topLevel) {
-                sum += s.getThroughput();
+                received += s.getTotalReceivedBytes();
+                sent += s.getTotalSentBytes();
             }
-            throughput = sum;
+            throughput = samples / durationSeconds;
+            receivedBytesPerSec = received / durationSeconds;
+            sentBytesPerSec = sent / durationSeconds;
+        } else {
+            throughput = 0;
+            receivedBytesPerSec = 0;
+            sentBytesPerSec = 0;
+            for (SamplerStatistics s : topLevel) {
+                throughput += s.getThroughput();
+                receivedBytesPerSec += s.getReceivedBytesPerSec();
+                sentBytesPerSec += s.getSentBytesPerSec();
+            }
         }
 
         // Percentiles of the merged distribution when it survived, which is the true overall
@@ -114,10 +149,9 @@ public final class OverallMetrics {
                 samples > 0 ? errors * 100.0 / samples : 0,
                 samples > 0 ? weightedResponseTime / samples : 0,
                 median, p90, p95, p99,
-                throughput,
-                // Rounded to 2 dp to match the per-sampler scores, which SamplerAggregator
-                // already rounds. An unrounded overall next to rounded parts reads as a bug.
-                samples > 0 ? Math.round(weightedApdex / samples * 100.0) / 100.0 : 0,
+                throughput, receivedBytesPerSec, sentBytesPerSec,
+                // Rounded to 2 dp like the per-sampler scores beside it, once.
+                Math.round(apdex * 100.0) / 100.0,
                 durationSeconds,
                 meta != null ? meta.getTotalThreads() : 0,
                 data.overallPercentileSource());
@@ -182,6 +216,8 @@ public final class OverallMetrics {
     public double getP95() { return p95; }
     public double getP99() { return p99; }
     public double getThroughput() { return throughput; }
+    public double getReceivedBytesPerSec() { return receivedBytesPerSec; }
+    public double getSentBytesPerSec() { return sentBytesPerSec; }
     public double getApdex() { return apdex; }
     public double getDurationSeconds() { return durationSeconds; }
     public int getMaxThreads() { return maxThreads; }

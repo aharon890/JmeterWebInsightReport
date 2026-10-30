@@ -7,7 +7,7 @@ package com.jmeterwebinsightreport.core.model;
  * <p>{@link SamplerStatistics} carries four fixed percentiles — median, p90, p95, p99 —
  * because those are the ones the report displays. Assertion rules are not limited to what
  * the report displays: a tail-latency tool that cannot gate on p99.9 is answering a
- * different question than the one being asked. The digest that produced those four numbers
+ * different question than the one being asked. The distribution that produced those four numbers
  * can answer any of them, but it used to be read four times and dropped on the floor
  * inside {@code SamplerAggregator}.
  *
@@ -26,30 +26,24 @@ package com.jmeterwebinsightreport.core.model;
  * p90, p95, p99 — resolve the stored value, not this source.</strong> Use this source only
  * for quantiles that have no stored counterpart.
  *
- * <p>Not a stylistic preference. Computing the overall percentiles merges every sampler's
- * digest into one, and {@code MergingDigest.add(List)} force-compresses the digests it reads:
- * the source is left with a different centroid layout and answers subsequent queries slightly
- * differently. Measured on a 1..1000 ms ramp, p99 is 991.0 before the merge and 990.5 after.
- * The four stored percentiles are snapshotted before it, this source is read after it, so they
- * disagree by a fraction of a millisecond.
- *
- * <p>The difference is far too small to matter as a measurement and exactly large enough to
- * matter as a verdict: a threshold sitting between the two values makes the report show PASS
- * beside a number, and the pipeline show FAIL against the same named metric. Preferring the
- * stored value keeps "what the report displays is what the gate judged" true by construction,
- * and costs nothing — the quantiles only this source can answer are precisely the ones the
- * report does not display.
+ * <p>It began as a workaround: the overall percentiles were computed by merging every
+ * sampler's t-digest, the merge force-compressed the digests it read, and a source read after it
+ * answered p99 990.5 where the stored value read 991.0 — a PASS beside a number on the page and
+ * a FAIL in the pipeline for one threshold. The distributions are exact counts now
+ * ({@code ResponseTimeDistribution}, B2): a merge leaves its source as it was, and the stored
+ * value and this source answer the same number. The rule stays because it costs nothing and
+ * keeps "what the report displays is what the gate judged" true by construction.
  */
 public interface PercentileSource {
 
     /**
-     * The estimated value at the given percentile.
+     * The value at the given percentile.
      *
      * @param percentile 0–100, fractional allowed ({@code 99.9}, {@code 99.99})
-     * @return the estimate, or {@code 0.0} when nothing was recorded
+     * @return the value, or {@code 0.0} when nothing was recorded
      */
     double percentile(double percentile);
 
-    /** How many values back the estimate. Zero means every quantile is meaningless. */
+    /** How many values back the answer. Zero means every quantile is meaningless. */
     long sampleCount();
 }

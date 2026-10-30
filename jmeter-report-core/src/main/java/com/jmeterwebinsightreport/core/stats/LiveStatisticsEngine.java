@@ -19,6 +19,15 @@ import java.util.stream.Collectors;
 public class LiveStatisticsEngine {
 
     private static final int MAX_ERROR_RECORDS = 500;
+
+    /** How a Transaction Controller's own result begins its response message ({@code TransactionSampler}).
+     *  JMeter's HTML report finds controller rows by the same text ({@code Sample.isController}). */
+    public static final String TRANSACTION_MESSAGE = "Number of samples in transaction";
+
+    /** True for a Transaction Controller's own result, by its response message. */
+    public static boolean isTransactionRow(String responseMessage) {
+        return responseMessage != null && responseMessage.startsWith(TRANSACTION_MESSAGE);
+    }
     private static final int DEFAULT_MAX_BODY_LENGTH = 16384; // 16KB
     private static final int MAX_HEADERS_LENGTH = 2048;
     private int maxResponseBodyLength = DEFAULT_MAX_BODY_LENGTH;
@@ -35,8 +44,10 @@ public class LiveStatisticsEngine {
     private final Map<Long, TimeBucketAggregator> timeBuckets = new ConcurrentHashMap<>();
     private final List<ErrorRecord> errorRecords = new ArrayList<>();
     /** Unbounded per-(sampler|code) error aggregation — feeds summaries and error charts.
-     *  Detailed {@link #errorRecords} are capped for memory, but these counts never are.
-     *  Guarded by the {@code errorRecords} monitor. */
+     *  Detailed {@link #errorRecords} are capped for memory, but these counts never are:
+     *  {count, earliest start, latest start}, so the grouped view's first and last seen are the
+     *  group's whole span, not the first 500 errors' (E2). Guarded by the {@code errorRecords}
+     *  monitor. */
     private final Map<String, long[]> errorSummaryCounts = new LinkedHashMap<>();
     private final Map<String, ErrorRecord> errorSummaryFirst = new LinkedHashMap<>();
     /** Real transaction-controller hierarchy, captured from actual sample sub-results
@@ -53,6 +64,11 @@ public class LiveStatisticsEngine {
 
     private final AtomicLong totalSamples = new AtomicLong();
     private final AtomicLong totalErrors = new AtomicLong();
+    /** Of {@link #totalSamples}, a Transaction Controller's own results (E3). */
+    private final AtomicLong transactionRowSamples = new AtomicLong();
+    /** Failed requests seen — every error but a transaction's own: the detail records' population.
+     *  Guarded by the {@code errorRecords} monitor. */
+    private long requestErrorsSeen;
     private final AtomicInteger maxActiveThreads = new AtomicInteger();
     private final AtomicLong firstTimestamp = new AtomicLong(Long.MAX_VALUE);
     private final AtomicLong lastTimestamp = new AtomicLong(Long.MIN_VALUE);
@@ -80,27 +96,70 @@ public class LiveStatisticsEngine {
     public void recordSample(String samplerName, long responseTime, boolean isSuccess,
                              long bytesReceived, long bytesSent, long timestamp,
                              long connectTime, long latency) {
+        recordSample(samplerName, responseTime, isSuccess, bytesReceived, bytesSent, timestamp,
+                timestamp + Math.max(0, responseTime), connectTime, latency);
+    }
+
+    /**
+     * Record a single sample result that ended at {@code endTime}. That is
+     * {@code timestamp + responseTime} for every sample but one kind: a Transaction Controller's
+     * parent sample with "include timers" off, whose elapsed time is its children's and whose
+     * pauses are its idle time. It ends after them, and the throughput windows end there (B7).
+     */
+    public void recordSample(String samplerName, long responseTime, boolean isSuccess,
+                             long bytesReceived, long bytesSent, long timestamp, long endTime,
+                             long connectTime, long latency) {
+        recordSample(samplerName, responseTime, isSuccess, bytesReceived, bytesSent, timestamp,
+                endTime, connectTime, latency, 1, isSuccess ? 0 : 1);
+    }
+
+    /**
+     * Record a result that stands for {@code samples} samples, {@code errors} of them failed: what
+     * JMeter's Statistical mode sends from a remote engine, and what a results file saved with
+     * {@code jmeter.save.saveservice.sample_count=true} holds. JMeter's Aggregate Report counts it as
+     * that many samples ({@code SamplingStatCalculator.addSample}); one per result undercounted every
+     * figure of such a run (B6).
+     */
+    public void recordSample(String samplerName, long responseTime, boolean isSuccess,
+                             long bytesReceived, long bytesSent, long timestamp, long endTime,
+                             long connectTime, long latency, long samples, long errors) {
+        long n = Math.max(1, samples);
+        long failed = Math.min(n, Math.max(0, errors));
         // Per-sampler aggregation
         // The aggregator counts Apdex buckets as samples arrive, so it needs the threshold now.
         // setApdexThreshold is always called during setup, before any sample is recorded.
         aggregators.computeIfAbsent(samplerName, k -> new SamplerAggregator(k, apdexThreshold))
-                .addSample(responseTime, isSuccess, bytesReceived, bytesSent, timestamp,
-                        connectTime, latency);
+                .addSample(responseTime, isSuccess, bytesReceived, bytesSent, timestamp, endTime,
+                        connectTime, latency, n, failed);
 
-        // Time-series bucketing (1-second granularity)
-        long bucketKey = timestamp / 1000 * 1000;
-        timeBuckets.computeIfAbsent(bucketKey, k -> new TimeBucketAggregator(k))
-                .addSample(responseTime, isSuccess, samplerName, bytesReceived, bytesSent,
-                        connectTime, latency);
+        // Time-series bucketing (1-second granularity). A sample counts in the second it ended, as
+        // JMeter's charts key it (TimeStampKeysSelector, end time but for Hits per Second), and its
+        // hit in the second it started, which the Throughput line draws as JMeter's Hits per Second
+        // does (T7). The end is start + elapsed on both paths, which is where JMeter's HTML report
+        // puts a row of the file: a transaction's idle time does not move it (the windows do, B7).
+        long endKey = endOf(timestamp, responseTime) / 1000 * 1000;
+        timeBuckets.computeIfAbsent(endKey, k -> new TimeBucketAggregator(k))
+                .addSample(responseTime, samplerName, bytesReceived, bytesSent,
+                        connectTime, latency, n, failed);
+        long startKey = timestamp / 1000 * 1000;
+        timeBuckets.computeIfAbsent(startKey, k -> new TimeBucketAggregator(k)).addHits(samplerName, n);
 
         // Global counters
-        totalSamples.incrementAndGet();
-        if (!isSuccess) {
-            totalErrors.incrementAndGet();
-        }
+        totalSamples.addAndGet(n);
+        totalErrors.addAndGet(failed);
         updateMinLong(firstTimestamp, timestamp);
         updateMaxLong(lastTimestamp, timestamp);
-        updateMaxLong(lastSampleEnd, timestamp + Math.max(0, responseTime));
+        updateMaxLong(lastSampleEnd, endTime);
+    }
+
+    /**
+     * Note that the sample just recorded was a Transaction Controller's own result
+     * ({@link #isTransactionRow}). JMeter's HTML report leaves such results out of its Errors tables
+     * and out of what their "% of all samples" divides by: a transaction's failure is its requests'
+     * failure. The Errors tab does the same (E3); every other figure still counts them.
+     */
+    public void recordTransactionRow(long samples) {
+        transactionRowSamples.addAndGet(Math.max(1, samples));
     }
 
     /**
@@ -118,22 +177,47 @@ public class LiveStatisticsEngine {
     public void recordError(String samplerName, String responseCode, String responseMessage,
                             long timestamp, String threadName,
                             String requestUrl, String requestHeaders, String responseBody) {
+        recordError(samplerName, responseCode, responseMessage, null, timestamp, threadName,
+                requestUrl, requestHeaders, responseBody);
+    }
+
+    /**
+     * Record an error with its first failed assertion's message ({@code failureMessage}), which decides
+     * JMeter's type of error for a 2xx failure ({@link ErrorType}).
+     */
+    public void recordError(String samplerName, String responseCode, String responseMessage,
+                            String failureMessage, long timestamp, String threadName,
+                            String requestUrl, String requestHeaders, String responseBody) {
+        boolean transactionRow = isTransactionRow(responseMessage);
         synchronized (errorRecords) {
-            // Unbounded aggregation for summaries and error charts — updated for every error.
-            String key = samplerName + "|" + responseCode;
+            // Unbounded aggregation for summaries and error charts — updated for every error. Grouped
+            // per sampler by JMeter's type of error, as the HTML report's Top 5 Errors by Sampler
+            // groups them (E1): a code alone made one row of two messages. A transaction's own
+            // failures are a group of their own: the asserts count them, the Errors tab does not (E3).
+            String key = samplerName + "|" + ErrorType.of(responseCode, responseMessage, failureMessage)
+                    + (transactionRow ? "|transaction" : "");
             long[] c = errorSummaryCounts.get(key);
             if (c == null) {
-                c = new long[]{0};
+                c = new long[]{0, timestamp, timestamp};
                 errorSummaryCounts.put(key, c);
                 ErrorRecord agg = new ErrorRecord();
                 agg.setSamplerName(samplerName);
                 agg.setResponseCode(responseCode);
                 agg.setResponseMessage(responseMessage);
+                agg.setFailureMessage(failureMessage);
                 agg.setTimestamp(timestamp);
                 errorSummaryFirst.put(key, agg);
             }
             c[0]++;
+            c[1] = Math.min(c[1], timestamp);
+            c[2] = Math.max(c[2], timestamp);
 
+            // The detail records are the Errors tab's, so a transaction's own failure takes no place
+            // among them: its requests' failures are listed.
+            if (transactionRow) {
+                return;
+            }
+            requestErrorsSeen++;
             // Detailed records (URL/headers/body) are capped to bound memory.
             if (errorRecords.size() >= MAX_ERROR_RECORDS) {
                 return;
@@ -142,6 +226,7 @@ public class LiveStatisticsEngine {
             record.setSamplerName(samplerName);
             record.setResponseCode(responseCode);
             record.setResponseMessage(responseMessage);
+            record.setFailureMessage(failureMessage);
             record.setTimestamp(timestamp);
             record.setThreadName(threadName);
             if (requestUrl != null) {
@@ -159,8 +244,30 @@ public class LiveStatisticsEngine {
         }
     }
 
+    /** JMeter's series for a response with no code ({@code CodeSeriesSelector}). */
+    public static final String EMPTY_RESPONSE_CODE = "EMPTY_RES_CODE";
+
     /**
-     * Update the max active threads seen.
+     * Count a response by its code in the second it ended (T5), as JMeter's Codes per Second counts it:
+     * every sample, successes too, one per result, keyed by end ({@code CodesPerSecondGraphConsumer}).
+     * The caller leaves a Transaction Controller's own result out, as that chart does
+     * ({@code CountValueSelector(true)}). The chart used to count only the failed samples' codes, from
+     * the first 500 errors, by start.
+     */
+    public void recordResponseCode(String responseCode, long endTime) {
+        String code = responseCode == null || responseCode.isEmpty() ? EMPTY_RESPONSE_CODE : responseCode;
+        long bucketKey = endTime / 1000 * 1000;
+        timeBuckets.computeIfAbsent(bucketKey, TimeBucketAggregator::new).addResponseCode(code);
+    }
+
+    /** Where a sample's per-second figures go: the second it ended, start + elapsed (T7). */
+    public static long endOf(long start, long elapsed) {
+        return start + Math.max(0, elapsed);
+    }
+
+    /**
+     * Update the max active threads seen, in the second of {@code timestamp}: the sample's end
+     * ({@link #endOf}), where JMeter's Active Threads Over Time keys it (T7).
      */
     public void updateActiveThreads(int activeThreads, long timestamp) {
         maxActiveThreads.updateAndGet(current -> Math.max(current, activeThreads));
@@ -244,27 +351,49 @@ public class LiveStatisticsEngine {
      * Get time-series data sorted by timestamp.
      */
     public List<TimeSeriesBucket> getTimeSeries() {
+        // The samplers detectTransactionHierarchy nests: every child of a recorded relationship
+        Set<String> nested = new HashSet<>();
+        for (Set<String> children : explicitTransactions.values()) {
+            synchronized (children) {
+                nested.addAll(children);
+            }
+        }
         return timeBuckets.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
-                .map(e -> e.getValue().toBucket())
+                .map(e -> e.getValue().toBucket(nested))
                 .collect(Collectors.toList());
     }
 
     /**
-     * Get recorded errors.
+     * Get recorded errors, in time order: by when the sample started, then by sampler and thread.
+     *
+     * <p>They are kept in the order they arrived, which is when each sample finished, and the
+     * listener and the results file do not see concurrent samples finish in the same order. Two
+     * reports of one run listed the same errors in a different order (S36: 22 of 500 positions,
+     * campaign F17, E4). Sorted, they read alike, and a "by time" list is in time order.
      */
     public List<ErrorRecord> getErrorRecords() {
+        List<ErrorRecord> copy;
         synchronized (errorRecords) {
-            return new ArrayList<>(errorRecords);
+            copy = new ArrayList<>(errorRecords);
         }
+        copy.sort(ERROR_RECORD_ORDER);
+        return copy;
     }
+
+    private static final Comparator<ErrorRecord> ERROR_RECORD_ORDER =
+            Comparator.comparingLong(ErrorRecord::getTimestamp)
+                    .thenComparing(ErrorRecord::getSamplerName, Comparator.nullsFirst(Comparator.naturalOrder()))
+                    .thenComparing(ErrorRecord::getThreadName, Comparator.nullsFirst(Comparator.naturalOrder()));
 
     /**
      * True when the number of errors exceeded the detailed-record cap, i.e. the detailed
      * {@link #getErrorRecords()} list is a truncated sample of all errors.
      */
     public boolean isErrorRecordsTruncated() {
-        return totalErrors.get() > MAX_ERROR_RECORDS;
+        synchronized (errorRecords) {
+            return requestErrorsSeen > MAX_ERROR_RECORDS;
+        }
     }
 
     /**
@@ -312,6 +441,7 @@ public class LiveStatisticsEngine {
         // Error records
         data.setErrorRecords(getErrorRecords());
         data.setErrorRecordsTruncated(isErrorRecordsTruncated());
+        data.setRequestSampleCount(totalSamples.get() - transactionRowSamples.get());
 
         // Auto-hide utility samplers and 0-request samplers
         data.setHiddenSamplers(computeHiddenSamplers(data.getSamplerStatistics()));
@@ -333,21 +463,21 @@ public class LiveStatisticsEngine {
     }
 
     /**
-     * Merge the response-time digests of all top-level samplers, set the true overall
+     * Merge the response times of all top-level samplers, set the true overall
      * percentiles, and keep every distribution reachable from the report data.
      *
-     * <p>The four percentiles below are the ones the report renders. The digests they came
+     * <p>The four percentiles below are the ones the report renders. The distributions they came
      * from used to be dropped here, which meant p99.9 — or any quantile a rule names — could
      * not be answered afterwards at any price. They are now attached to {@link ReportData};
      * see {@link com.jmeterwebinsightreport.core.model.PercentileSource} for why that is
      * preferable to deciding the percentile set before the statistics are built.
      *
-     * <p>The merged digest excludes transaction children for the same reason the percentiles
+     * <p>The merged distribution excludes transaction children for the same reason the percentiles
      * always did: their time is already inside their parent, so including them weights those
      * samples twice.
      */
     private void computeOverallPercentiles(ReportData data) {
-        TDigestPercentileCalculator overall = new TDigestPercentileCalculator();
+        ResponseTimeDistribution overall = new ResponseTimeDistribution();
         Map<String, com.jmeterwebinsightreport.core.model.PercentileSource> sources =
                 new LinkedHashMap<>();
 
@@ -401,8 +531,9 @@ public class LiveStatisticsEngine {
      * Build the transaction-controller hierarchy from real relationships observed via sample
      * sub-results (see {@link #recordTransaction}). Only genuine parent/child pairs are grouped —
      * there is no name-prefix guessing, so REST-style names are never falsely nested or hidden.
-     * When no sub-result relationships were seen (e.g. JTL/CLI mode, where sub-results are flattened),
-     * this returns an empty hierarchy and every sampler is treated as top-level.
+     * A JTL keeps no sub-results, but the parser finds a Transaction Controller's children by its row
+     * and calls {@link #recordTransaction} too (B5, {@code TransactionRows}). When no relationship was
+     * seen this returns an empty hierarchy and every sampler is treated as top-level.
      */
     private Map<String, List<String>> detectTransactionHierarchy(List<SamplerStatistics> stats) {
         Map<String, List<String>> hierarchy = new LinkedHashMap<>();
@@ -450,39 +581,58 @@ public class LiveStatisticsEngine {
     /**
      * Build error summaries by grouping error records by response code.
      *
-     * <p>The rows include transaction children — a failing child is worth showing even though
-     * its parent also counts as failed — so "% of all samples" divides by EVERY recorded
-     * sample, the population those rows are drawn from. Dividing by the top-level count
-     * instead mixed a child-inclusive numerator with a child-free denominator, which can push
-     * a row past 100% and makes the rows disagree with their own total.
+     * <p>Two populations, each over its own: the failed requests (every sample but a Transaction
+     * Controller's own result, transaction children included), which are the Errors tab's rows and
+     * divide by every request — JMeter's HTML report's Errors table; and a transaction's own failures,
+     * which only the asserts read. Each group's percentages divide by its own population, so a
+     * population's rows add up to 100% of its errors and never past 100% of its samples.
      */
     private List<ErrorSummary> buildErrorSummaries() {
-        long total = totalSamples.get();
-        long errors = totalErrors.get();
-        if (errors == 0) {
-            return Collections.emptyList();
-        }
+        long transactionSamples = transactionRowSamples.get();
+        long requestSamples = totalSamples.get() - transactionSamples;
 
         // Group by sampler + response code — from the UNBOUNDED aggregation (not the capped list),
         // so counts and percentages are correct even when > MAX_ERROR_RECORDS errors occurred.
         Map<String, Long> counts = new LinkedHashMap<>();
+        Map<String, long[]> spans = new LinkedHashMap<>();
         Map<String, ErrorRecord> firstRecords;
         synchronized (errorRecords) {
             for (Map.Entry<String, long[]> e : errorSummaryCounts.entrySet()) {
                 counts.put(e.getKey(), e.getValue()[0]);
+                spans.put(e.getKey(), new long[]{e.getValue()[1], e.getValue()[2]});
             }
             firstRecords = new LinkedHashMap<>(errorSummaryFirst);
+        }
+
+        if (counts.isEmpty()) {
+            return Collections.emptyList();
+        }
+        long requestErrors = 0;
+        long transactionErrors = 0;
+        for (Map.Entry<String, Long> entry : counts.entrySet()) {
+            if (isTransactionRow(firstRecords.get(entry.getKey()).getResponseMessage())) {
+                transactionErrors += entry.getValue();
+            } else {
+                requestErrors += entry.getValue();
+            }
         }
 
         List<ErrorSummary> result = new ArrayList<>(counts.size());
         for (Map.Entry<String, Long> entry : counts.entrySet()) {
             ErrorRecord rec = firstRecords.get(entry.getKey());
+            boolean transactionRow = isTransactionRow(rec.getResponseMessage());
+            long errors = transactionRow ? transactionErrors : requestErrors;
+            long total = transactionRow ? transactionSamples : requestSamples;
             ErrorSummary s = new ErrorSummary();
+            s.setTransactionRow(transactionRow);
             s.setSamplerName(rec.getSamplerName());
             s.setResponseCode(rec.getResponseCode());
             s.setResponseMessage(rec.getResponseMessage());
-            s.setErrorType(rec.getResponseCode());
+            s.setFailureMessage(rec.getFailureMessage());
+            s.setErrorType(rec.getErrorType());
             s.setOccurrenceCount(entry.getValue());
+            s.setFirstTimestamp(spans.get(entry.getKey())[0]);
+            s.setLastTimestamp(spans.get(entry.getKey())[1]);
             s.setPercentageOfErrors(errors > 0 ? (entry.getValue() * 100.0) / errors : 0);
             s.setPercentageOfAllSamples(total > 0 ? (entry.getValue() * 100.0) / total : 0);
             result.add(s);
@@ -506,6 +656,10 @@ public class LiveStatisticsEngine {
         transactionControllerParents.clear();
         totalSamples.set(0);
         totalErrors.set(0);
+        transactionRowSamples.set(0);
+        synchronized (errorRecords) {
+            requestErrorsSeen = 0;
+        }
         maxActiveThreads.set(0);
         firstTimestamp.set(Long.MAX_VALUE);
         lastTimestamp.set(Long.MIN_VALUE);

@@ -34,7 +34,7 @@ Open work as of 4.0.4. Line numbers are at 4.0.1 unless marked otherwise; `repor
 14. **Server `pN` method** (2026-10-27). WIR's server side uses nearest rank, as JMeter's Aggregate
     Report does. JMeter's HTML dashboard interpolates (commons-math `LEGACY`,
     `backend_metrics_percentile_estimator`), Prometheus `quantile_over_time` uses R-7, and WIR's
-    client side uses a t-digest. Recommendation: keep nearest rank and document it.
+    client side uses nearest rank too since 4.2.6 (exact counts). Recommendation: keep nearest rank and document it.
 15. **A dead or replaced pod.** `kubernetes-pod` restarts cannot see one (4.1.26 says so). The
     standard signal is the replica gap (`kube_deployment_status_replicas_unavailable`): add it to the
     catalogue?

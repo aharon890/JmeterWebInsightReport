@@ -39,8 +39,8 @@ report. Two Maven modules:
 - `jmeter-report-core` — models, JTL parser, statistics engine, assertion engine, baseline comparison, and the server-assert model, evaluator and collection (`core/servermetrics/`)
 - `jmeter-web-insight-report` — the JMeter plugin: listener, `-g -o` exporter, Thymeleaf template, report JS/CSS, and the `wir-collect` collector (`WirCollect`)
 
-`jmeter-web-insight-report-*.jar` is a shaded fat JAR containing core, Thymeleaf and
-T-Digest. It is the **only** artifact that gets deployed — copying
+`jmeter-web-insight-report-*.jar` is a shaded fat JAR containing core and Thymeleaf
+(T-Digest left it in 4.2.8: percentiles are exact counts, `ResponseTimeDistribution`). It is the **only** artifact that gets deployed — copying
 `jmeter-report-core-*.jar` alongside it puts duplicate classes on JMeter's flat
 `lib/ext` classpath and which copy wins becomes non-deterministic.
 

@@ -107,33 +107,27 @@ test.describe('Error truncation captions', () => {
   });
 });
 
-test.describe('Response-codes chart truncation', () => {
-  test('[C/R] the response-codes chart warns that it counts only the first 500 errors',
+test.describe('Response-codes chart', () => {
+  test('[C/R] the response-codes chart counts every response, not the first 500 errors (T5)',
       async ({ page }) => {
+    // It was built from the 500-capped error records and said so; it is JMeter's Codes per Second
+    // now, every response by code, so whether the records were truncated no longer matters to it.
     await loadClean(page, 'E07');
     await switchTab(page, 'timeline');
-    await page.evaluate(() => {
+    const sums = await page.evaluate(() => {
       const w = window as any;
       w.globalChartData.errorRecordsTruncated = true;
       w.initResponseCodesChart(w.globalChartData);
+      const total = Object.values(w.globalChartData.responseCodes as Record<string, (number | null)[]>)
+        .reduce((a, counts) => a + counts.reduce((b: number, c) => b + (c || 0), 0), 0);
+      return { total, samples: w.globalChartData.requestSampleCount as number };
     });
     await page.waitForTimeout(200);
 
+    expect(sums.total, 'one count per response').toBe(sums.samples);
     const text = await noteText(page, 'response-codes-chart');
-    expect(text, 'the response-codes chart is built from the same capped records').toBeTruthy();
-    expect(text).toContain('first 500');
-  });
-
-  test('[C/R] no caption when the records are not truncated', async ({ page }) => {
-    await loadClean(page, 'E07');
-    await switchTab(page, 'timeline');
-    await page.evaluate(() => {
-      const w = window as any;
-      w.globalChartData.errorRecordsTruncated = false;
-      w.initResponseCodesChart(w.globalChartData);
-    });
-    await page.waitForTimeout(200);
-    expect(await noteCount(page, 'response-codes-chart')).toBe(0);
+    expect(text).toContain('Every response');
+    expect(text).not.toContain('first 500');
   });
 
   test('[C/R] the timeline keeps its caption when the filter hides every kept error',

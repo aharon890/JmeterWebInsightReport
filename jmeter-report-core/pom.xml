@@ -19,12 +19,6 @@
     <description>Shared models, statistics engine, assertion engine, and utilities for the JMeter Web Insight Suite. JMeter-agnostic.</description>
 
     <dependencies>
-        <!-- T-Digest for percentile calculation (compile — shaded by consuming modules) -->
-        <dependency>
-            <groupId>com.tdunning</groupId>
-            <artifactId>t-digest</artifactId>
-        </dependency>
-
         <!-- Jackson for serialization (compile scope for core dev; provided at runtime by JMeter) -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>

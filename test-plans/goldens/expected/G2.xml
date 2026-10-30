@@ -6,15 +6,15 @@
     </properties>
     <testcase name="GET /api/products" classname="performance">
       <failure message="ASSERT FAIL: p99.97 292 ms breached &gt; 1 ms">
-P95: 183ms (PASS)
+P95: 182ms (PASS)
 p99.97: 292 ms (FAIL)
       </failure>
     </testcase>
     <testcase name="GET /api/search" classname="performance">
     </testcase>
     <testcase name="POST /api/checkout" classname="performance">
-      <failure message="ASSERT FAIL: P95 611ms exceeds threshold">
-P95: 611ms (FAIL)
+      <failure message="ASSERT FAIL: P95 608ms exceeds threshold">
+P95: 608ms (FAIL)
       </failure>
     </testcase>
   </testsuite>
@@ -25,11 +25,11 @@ P95: 611ms (FAIL)
     <testcase name="products-p95-passes" classname="assertions">
     </testcase>
     <testcase name="checkout-p95-fails" classname="assertions">
-      <failure message="Assertion &apos;checkout-p95-fails&apos;: p95 610.50 ms on POST /api/checkout breached &gt; 20 ms - a real breach, measured">
+      <failure message="Assertion &apos;checkout-p95-fails&apos;: p95 608 ms on POST /api/checkout breached &gt; 20 ms - a real breach, measured">
 target:   POST /api/checkout
 metric:   p95
 criteria: warn &gt; 10 ms  ·  fail &gt; 20 ms
-  [FAIL] POST /api/checkout = 610.50 ms
+  [FAIL] POST /api/checkout = 608 ms
       </failure>
     </testcase>
     <testcase name="search-mean-warns" classname="assertions">

@@ -21,17 +21,22 @@ same as an HTTP error, and the report says which is which.
 > `errorRate:class=transport`, the selector written to gate on exactly that, and none under
 > `class=protocol`.
 
-> **This is inferred, not read.** The class comes from the response code of a sample already known
-> to have failed — nothing more. The report cannot tell you *which* assertion fired, or whether an
-> assertion fired at all rather than a JSR223 marking the sample failed: `failureMessage` and
-> `getAssertionResults()` are captured neither by the listener nor from a JTL. It says **where** the
-> failure was decided, never why. That is also why it is the same answer on a live listener run and
-> on a JTL re-parsed by `-g`.
+> **The class is inferred from the code.** It comes from the response code of a sample already
+> known to have failed, and says **where** the failure was decided, never why — so it is the same
+> answer on a live listener run and on a JTL re-parsed by `-g`, whatever the JTL saved. The *why* is
+> the **type of error** below.
 
-**Why a non-protocol row shows no message.** Its response message is the HTTP reason phrase —
-`OK` — which says nothing about why the sampler failed it. Printing that in an errors table
-asserts something untrue, so it renders as `—`. A 500's message and a transport exception are
-real and are never suppressed.
+**The type of error is JMeter's.** Errors are grouped per sampler by the "Type of error" JMeter's
+HTML report groups them by: the code and the response message (`500/Internal Server Error` and
+`500/Database timeout` are two rows), or, for a failed response JMeter counts as a success (a code
+from 200 to 399) or one with no code, the first failed assertion's message (`Test failed: text
+expected to contain /order-id/`) — `Assertion failed` when the results file saved none. The
+listener reads that message off the sample; `-g` reads the JTL's `failureMessage` column, which
+JMeter writes by default. With `jmeter.save.saveservice.assertion_results_failure_message=false`
+JMeter types every such failure `Assertion failed`, and so does the report (JMeter's own `-g` then
+refuses the file, which lacks the column). A non-protocol row's response message is the HTTP reason phrase — `OK` —
+which says nothing about why the sampler failed it, so the tab shows the type of error there
+instead.
 
 The class appears on every surface: both tables, the grouped error view, the by-response-code
 chart, and both CSV exports.
@@ -80,20 +85,26 @@ The Error Breakdown card and the Error Timeline each have:
 
 ![Error Summary Table](images/12c-error-summary-table.png)
 
-Groups errors by **sampler + response code** with aggregate counts.
+Groups errors by **sampler + type of error** with aggregate counts.
 
 | Column | Description |
 |--------|-------------|
 | **Sampler** | Request label |
 | **Response Code** | HTTP status code (e.g., 500, 404) |
+| **Type of error** | As JMeter's HTML report words it: `500/Internal Server Error`, or a failed assertion's message |
 | **Class** | Where the failure was decided — see [Error classes](#error-classes-where-a-failure-was-decided) |
 | **Count** | Number of occurrences |
 | **% of Errors** | Percentage of total errors |
 | **% of All Samples** | Percentage of all requests |
 
-Both percentages count every recorded sample, transaction children included — the population the
-rows are drawn from — so they can differ from the Summary tab's Error Rate card, which leaves
-children out.
+The tab counts **failed requests**, as JMeter's HTML report's Errors table does: every sample but a
+Transaction Controller's own result, transaction children included. A transaction fails because a
+request inside it failed, so its own result is left out of the rows, the charts and both
+percentages' totals — listing it as well counted that failure twice. The Summary tab's Error Rate
+card counts samples as JMeter's Aggregate Report does, transactions included and their requests
+inside them, so on a run with transactions the two differ, and the tab says so above its charts.
+The asserts' `errorRate:code=` and `errorRate:class=` still count a failed transaction, as the
+Error Rate card does.
 
 **The Total row is the sum of the rows shown.** Its Count adds up the Count column above it, and
 its two percentages are that count's share of every error and of every sample — the same two
@@ -101,21 +112,20 @@ numbers each row divides by. Each row's percentage is rounded to two decimals an
 worked out from the count, so a percentage column can add up to a hundredth or two more or less
 than the Total says: the rows' % of Errors can add up to 100.01% above a Total of 100.00%.
 
-A row the search, an X or a collapsed transaction child hides is not in the Total, and the Total
-changes as soon as one of those does: it reads **100.00%** of errors only when every row is
-counted, and when some are not, its first cell says how many are — `Total (12 of 17 rows)`. The
-search never hides the Total itself.
+A row the search or an X hides is not in the Total, and the Total changes as soon as one of those
+does: it reads **100.00%** of errors only when every row is counted, and when some are not, its
+first cell says how many are — `Total (12 of 17 rows)`. The search never hides the Total itself.
 
-On a run with Transaction Controllers the children start collapsed, so the Total opens on the
-top-level rows and its % of Errors is below 100% — the children's errors are the rest. Turn on
-**Transaction Details** (Samplers tab) and it covers every row.
+**Transaction Details** (Samplers tab) does not collapse anything here: the rows are the requests,
+and no transaction row stands for them. While it is off, the sampler filter shows a request's
+errors in the charts when the transaction it is inside is ticked.
 
 **Controls:**
 - **Search** — filter rows by text
 - **Sort** — click a column header
 - **Column toggle** — show/hide columns; drag a header's right edge to resize a column
 - **Row hide** — X button per row; "Show N Hidden Rows" brings back what X hid and nothing else —
-  the search and the collapsed transaction children keep theirs
+  the search keeps its rows
 - **CSV download** — exports as `error-summary.csv`, every row, with the response message
 - **⊕ on the Class cell** — opens the assert editor on the Asserts tab with a rule for that
   sampler's error rate in that class (`errorRate:class=transport`, for example), seeded from the
@@ -138,13 +148,13 @@ One row per error, in the order they happened.
 | **Sampler** | Request label |
 | **Code** | HTTP response code |
 | **Class** | Where the failure was decided — see [Error classes](#error-classes-where-a-failure-was-decided) |
-| **Message** | Response message text |
+| **Message** | Response message text; for a failed 2xx, the type of error (the assertion's message) |
 | **Thread** | JMeter thread name |
 
 ### Grouped
 
-One row per sampler and response code, most frequent first: **Count**, **Code** (with its class),
-**Sampler**, **Message**, **First seen** and **Last seen**. Click a group to list each occurrence's
+One row per sampler and type of error, most frequent first: **Count**, **Code** (with its class),
+**Sampler**, **Type of error**, **First seen** and **Last seen**. Click a group to list each occurrence's
 time and thread; **Expand All** and **Collapse All** open or close every group, and the search box
 filters the groups.
 

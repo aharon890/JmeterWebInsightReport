@@ -257,10 +257,10 @@ class JtlParserTest {
 
     @Test
     void parseTransactionControllers_noHierarchyFromNamesAlone() throws IOException {
-        // JTL rows carry no sub-result structure, so transaction grouping cannot be reliably
-        // reconstructed. Transaction hierarchy is now derived only from real sub-result
-        // relationships (listener mode), never guessed from name prefixes — this avoids falsely
-        // nesting/hiding REST-style samplers (audit finding B8).
+        // Names never nest anything: the hierarchy comes from real sub-result relationships (the
+        // listener) or from a Transaction Controller's own row (B5, the test below), never from name
+        // prefixes, which falsely nested and hid REST-style samplers (audit finding B8). This file has
+        // no transaction rows.
         JtlParser parser = new JtlParser();
         ReportData data = parser.parse(getResourceFile("transaction-controllers.jtl"), "TCTest");
 
@@ -326,15 +326,17 @@ class JtlParserTest {
                     @Override
                     public void recordSample(String samplerName, long responseTime, boolean isSuccess,
                                              long bytesReceived, long bytesSent, long timestamp,
-                                             long connectTime, long latency) {
+                                             long endTime, long connectTime, long latency,
+                                             long samples, long errors) {
                         recorded.incrementAndGet();
                         super.recordSample(samplerName, responseTime, isSuccess, bytesReceived,
-                                bytesSent, timestamp, connectTime, latency);
+                                bytesSent, timestamp, endTime, connectTime, latency, samples, errors);
                     }
 
                     @Override
                     public void recordError(String samplerName, String responseCode,
-                                            String responseMessage, long timestamp, String threadName,
+                                            String responseMessage, String failureMessage,
+                                            long timestamp, String threadName,
                                             String requestUrl, String requestHeaders,
                                             String responseBody) {
                         throw new IllegalStateException("engine broke");
@@ -484,5 +486,142 @@ class JtlParserTest {
 
         assertEquals(2, data.getMetadata().getTotalSamples());
         assertEquals(2, data.getSamplerStatistics().size());
+    }
+
+    @Test
+    void endStampedRowsArePlacedAtTheirStart() throws IOException {
+        // sampleresult.timestamp.start=false: each row's timeStamp is its END (B3). A: 1,000 ms ending at
+        // ...001000 (started ...000000) and 500 ms ending at ...003000 (started ...002500).
+        File jtl = writeJtl("end-stamped.jtl", HEADER + "\n"
+                + "1700000001000,1000,A,200,OK,T 1-1,text,true,,100,10,1,1,http://x/a,900,0,5\n"
+                + "1700000003000,500,A,200,OK,T 1-1,text,true,,100,10,1,1,http://x/a,400,0,5\n");
+
+        JtlParser parser = new JtlParser();
+        parser.setTimestampIsStart(false);
+        ReportData data = parser.parse(jtl, "end-stamped");
+
+        assertEquals(1700000000000L, data.getMetadata().getStartTime().toEpochMilli(), "the first start");
+        assertEquals(3000, data.getMetadata().getDurationMillis(), "first start to last end, as JMeter reads the file");
+        assertEquals(2 / 3.0, findSampler(data, "A").getThroughput(), 1e-9);
+        assertEquals(1700000000000L, data.getTimeSeries().get(0).getTimestamp().toEpochMilli(), "bucketed by start");
+    }
+
+    @Test
+    void startStampedRowsAreReadAsTheyAlwaysWere() throws IOException {
+        File jtl = writeJtl("start-stamped.jtl", HEADER + "\n"
+                + "1700000001000,1000,A,200,OK,T 1-1,text,true,,100,10,1,1,http://x/a,900,0,5\n"
+                + "1700000003000,500,A,200,OK,T 1-1,text,true,,100,10,1,1,http://x/a,400,0,5\n");
+
+        ReportData data = new JtlParser().parse(jtl, "start-stamped");
+
+        assertEquals(1700000001000L, data.getMetadata().getStartTime().toEpochMilli());
+        assertEquals(2500, data.getMetadata().getDurationMillis());
+    }
+
+    @Test
+    void aRowWithASampleCountStandsForThatManySamples() throws IOException {
+        // B6: jmeter.save.saveservice.sample_count=true writes SampleCount and ErrorCount. JMeter's
+        // Aggregate Report opened on the file reads each row as a StatisticalSampleResult and counts
+        // both.
+        File jtl = writeJtl("sample-count.jtl", "timeStamp,elapsed,label,responseCode,responseMessage,threadName,"
+                + "success,bytes,sentBytes,SampleCount,ErrorCount" + "\n"
+                + "1700000000000,1000,S,500,x,T 1-1,false,5000,500,10,3" + "\n"
+                + "1700000001000,40,S,200,OK,T 1-1,true,500,50,1,0" + "\n");
+
+        ReportData data = new JtlParser().parse(jtl, "sample-count");
+
+        SamplerStatistics s = findSampler(data, "S");
+        assertEquals(11, s.getSampleCount());
+        assertEquals(3, s.getErrorCount(), "the row's ErrorCount, as JMeter reads the file");
+        assertEquals(100, s.getMaxResponseTime(), 0.0);
+        assertEquals(1040 / 11.0, s.getMeanResponseTime(), 1e-9);
+    }
+
+    @Test
+    void withFailureMessagesOffAFailedAssertionIsJMetersAssertionFailed() throws IOException {
+        // jmeter.save.saveservice.assertion_results_failure_message=false: JMeter's HTML report types the
+        // error "Assertion failed" whatever the file holds
+        File jtl = writeJtl("assertions-off.jtl", HEADER + "\n"
+                + "1700000000000,100,Search,200,OK,TG 1-1,text,false,Test failed: x,500,50,1,1,http://x/s,90,0,5\n");
+        JtlParser parser = new JtlParser();
+        parser.setFailureMessageTypesErrors(false);
+
+        ReportData data = parser.parse(jtl, "assertions-off");
+
+        assertEquals("Assertion failed", data.getErrorSummaries().get(0).getErrorType());
+    }
+
+    @Test
+    void anEndStampedTransactionIsNestedFromItsRealStart() throws IOException {
+        // sampleresult.timestamp.start=false: the stamp is the end. Checkout really ran 0..350 ms (Cart
+        // 0..100, a 50 ms pause, Pay 150..350): elapsed 300, idle 50, stamped at 350. Read as stamp -
+        // elapsed it started at 50, after Cart did, and nothing was nested.
+        String tx2 = "\"Number of samples in transaction : 2, number of failing samples : 0\"";
+        File jtl = writeJtl("end-stamped-tx.jtl", HEADER + "\n"
+                + "1700000000350,300,Checkout,200," + tx2 + ",TG 1-1,,true,,600,60,1,1,,0,50,0\n"
+                + "1700000000100,100,Cart,200,OK,TG 1-1,text,true,,300,30,1,1,http://x/cart,90,0,5\n"
+                + "1700000000350,200,Pay,200,OK,TG 1-1,text,true,,300,30,1,1,http://x/pay,190,0,5\n");
+        JtlParser parser = new JtlParser();
+        parser.setTimestampIsStart(false);
+
+        ReportData data = parser.parse(jtl, "end-stamped-tx");
+
+        assertEquals(Map.of("Checkout", List.of("Cart", "Pay")), data.getTransactionHierarchy());
+        assertEquals(1, data.getTopLevelSampleCount());
+    }
+
+    @Test
+    void aFailedAssertionsMessageIsReadFromTheFailureMessageColumn() throws IOException {
+        // E1: the column JMeter writes the first failed assertion's message into
+        File jtl = writeJtl("assertions.jtl", HEADER + "\n"
+                + "1700000000000,100,Search,200,OK,TG 1-1,text,false,Test failed: text expected to contain /order-id/,500,50,1,1,http://x/s,90,0,5\n"
+                + "1700000000100,100,Search,200,OK,TG 1-1,text,false,,500,50,1,1,http://x/s,90,0,5\n");
+
+        ReportData data = new JtlParser().parse(jtl, "assertions");
+
+        assertEquals(2, data.getErrorSummaries().size());
+        assertTrue(data.getErrorSummaries().stream()
+                .anyMatch(s -> s.getErrorType().equals("Test failed: text expected to contain /order-id/")));
+        assertTrue(data.getErrorSummaries().stream().anyMatch(s -> s.getErrorType().equals("Assertion failed")));
+        assertEquals("Test failed: text expected to contain /order-id/", data.getErrorRecords().get(0).getFailureMessage());
+    }
+
+    @Test
+    void aTransactionsParentSampleNestsTheRowsWrittenAfterItAsTheListenerDoes() throws IOException {
+        // B5: P11's rebuilt report counted 450 samples (every row) where its run report counted 50
+        // (the transactions, each with its requests inside). "Checkout" generated a parent sample: its
+        // row first, its two children right after, on its thread. "Report" did not: its children came
+        // first and its row after them, so the listener received all three and so does the file.
+        String tx2 = "\"Number of samples in transaction : 2, number of failing samples : 1\"";
+        File jtl = writeJtl("transactions.jtl", HEADER + "\n"
+                + "1700000000000,300,Checkout,500," + tx2 + ",TG 1-1,,false,,900,90,1,2,,0,40,0\n"
+                + "1700000000000,100,Cart,200,OK,TG 1-1,text,true,,400,40,1,2,http://x/cart,90,0,5\n"
+                + "1700000000120,200,Pay,500,Internal Server Error,TG 1-1,text,false,,500,50,1,2,http://x/pay,190,0,5\n"
+                + "1700000000000,50,Home,200,OK,TG 1-2,text,true,,100,10,1,2,http://x/,40,0,5\n"
+                + "1700000001000,100,Export,200,OK,TG 1-2,text,true,,100,10,1,2,http://x/export,90,0,5\n"
+                + "1700000001100,100,Download,200,OK,TG 1-2,text,true,,100,10,1,2,http://x/dl,90,0,5\n"
+                + "1700000001000,200,Report,200," + tx2.replace("1", "0") + ",TG 1-2,,true,,200,20,1,2,,0,0,0\n"
+                + "1700000001300,50,Home,200,OK,TG 1-2,text,true,,100,10,1,2,http://x/,40,0,5\n");
+
+        ReportData data = new JtlParser().parse(jtl, "transactions");
+
+        assertEquals(Map.of("Checkout", List.of("Cart", "Pay")), data.getTransactionHierarchy());
+        assertTrue(findSampler(data, "Checkout").isTransactionController());
+        assertEquals("Checkout", findSampler(data, "Pay").getParentSamplerName());
+        assertNull(findSampler(data, "Export").getParentSamplerName(), "no parent sample, nothing nested");
+        assertNull(findSampler(data, "Report").getParentSamplerName());
+        assertEquals(6, data.getTopLevelSampleCount(), "Checkout, Home x2, Export, Download, Report");
+        assertEquals(1, data.getTopLevelErrorCount(), "the failed transaction, once");
+        assertEquals(8, data.getMetadata().getTotalSamples(), "every row is still recorded");
+        // T5: every response but the two transaction rows, by its code, in the second it ended
+        Map<String, Long> codes = new java.util.TreeMap<>();
+        data.getTimeSeries().forEach(b -> b.getResponseCodes().forEach((c, n) -> codes.merge(c, n, Long::sum)));
+        assertEquals(Map.of("200", 5L, "500", 1L), codes);
+        // E3: the Errors tab's population leaves the two transaction rows out
+        assertEquals(6, data.getRequestSampleCount());
+        assertEquals(1, data.requestErrorSummaries().size());
+        assertEquals("Pay", data.requestErrorSummaries().get(0).getSamplerName());
+        assertTrue(data.getErrorSummaries().stream().anyMatch(s -> s.isTransactionRow()
+                && s.getSamplerName().equals("Checkout")), "the asserts still see the failed transaction");
     }
 }

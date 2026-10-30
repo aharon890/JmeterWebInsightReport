@@ -83,7 +83,7 @@
             </resource>
         </resources>
         <plugins>
-            <!-- Shade plugin — produces fat JAR with core + t-digest + thymeleaf -->
+            <!-- Shade plugin — produces fat JAR with core + thymeleaf -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
@@ -98,7 +98,6 @@
                             <artifactSet>
                                 <includes>
                                     <include>com.jmeterwebinsightreport:jmeter-report-core</include>
-                                    <include>com.tdunning:t-digest</include>
                                     <include>org.thymeleaf:*</include>
                                     <include>org.attoparser:*</include>
                                     <include>org.unbescape:*</include>
@@ -143,10 +142,6 @@
                                 <relocation>
                                     <pattern>javassist</pattern>
                                     <shadedPattern>com.jmeterwebinsightreport.shaded.javassist</shadedPattern>
-                                </relocation>
-                                <relocation>
-                                    <pattern>com.tdunning</pattern>
-                                    <shadedPattern>com.jmeterwebinsightreport.shaded.tdunning</shadedPattern>
                                 </relocation>
                             </relocations>
                             <filters>

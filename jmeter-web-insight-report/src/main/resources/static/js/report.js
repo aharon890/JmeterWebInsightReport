@@ -41,6 +41,12 @@ var visibleTimeRangeMs = 0; /* updated on dataZoom events */
 /* Virtual "Total" sampler — aggregate across all real samplers */
 var TOTAL_SAMPLER_NAME = '\u03A3 Total';
 
+/* The threads line over the response times (T8): the most threads running in the window, every thread
+   group together, as the Max Threads tile counts them. JMeter's Active Threads Over Time draws each
+   thread group's mean instead and has no all-groups line, so this one is named for what it is, and a
+   window above 1 s takes its seconds' maximum, not the mean of their maxima. */
+var MAX_THREADS_SERIES = 'Max Active Threads';
+
 /* Transaction Controller children visibility — false = hide children (like JMeter native) */
 var showTransactionChildren = false;
 
@@ -598,6 +604,13 @@ function zipTimeSeries(timestamps, values, opts) {
  *
  * The server emits a bucket only for seconds that actually had samples, so a plain
  * average silently divides by "seconds with data" rather than by the bucket window.
+ *
+ * Windows are multiples of the granularity counted from the epoch, and each point is drawn at
+ * its window's start, as JMeter's charts do (TimeStampKeysSelector: time - time % granularity)
+ * (T2). They used to open at the run's first second for every series, move on at the next second
+ * with data, and draw at the window's middle: a sampler that started late had its first point
+ * drawn at run start + half a window however late it began (S17's "Admin Dashboard", 240 s in,
+ * drawn 235 s early), and the last point fell past the axis's end.
  */
 function aggregateTimeSeries(timestamps, values, granularityMs, opts) {
     if (!timestamps || timestamps.length === 0) return [];
@@ -605,10 +618,10 @@ function aggregateTimeSeries(timestamps, values, granularityMs, opts) {
     var mode = opts.mode || 'avg';
     var counts = opts.counts || null;
     var result = [];
-    var bucketStart = timestamps[0];
-    var sum = 0, wsum = 0, count = 0, maxv = -Infinity, lastTs = timestamps[0];
+    var bucketStart = null;
+    var sum = 0, wsum = 0, count = 0, maxv = -Infinity;
 
-    function flush(isFinal) {
+    function flush() {
         if (count === 0) return;
         var v;
         if (mode === 'max') {
@@ -618,24 +631,24 @@ function aggregateTimeSeries(timestamps, values, granularityMs, opts) {
         } else if (mode === 'rate') {
             /* Per-second rate over the whole bucket window, counting idle seconds.
              * Averaging only the seconds that had samples reports a bursty minute at
-             * its burst rate instead of its true average. The last bucket is usually
-             * partial, so divide it by the span it actually covers rather than by a
-             * full window — otherwise every chart ends in a spurious dip. */
-            var spanMs = isFinal
-                ? Math.min(granularityMs, lastTs - bucketStart + 1000)
-                : granularityMs;
-            v = sum / Math.max(1, spanMs / 1000);
+             * its burst rate instead of its true average. Every window is divided by its
+             * full width, the last one too, as JMeter's charts (TimeRateAggregator) and
+             * Grafana's rate do (T3): a window the run only partly filled shows the dip it
+             * had. Dividing the last one by the seconds a series was active read a single
+             * request in a 10 s window as 1/s (campaign F14). */
+            v = sum / (granularityMs / 1000);
         } else {
             v = sum / count;
         }
-        result.push([bucketStart + Math.floor(granularityMs / 2), v]);
+        result.push([bucketStart, v]);
     }
 
     for (var i = 0; i < timestamps.length; i++) {
         if (values[i] == null) continue;
-        if (timestamps[i] - bucketStart >= granularityMs && count > 0) {
-            flush(false);
-            bucketStart = timestamps[i];
+        var key = Math.floor(timestamps[i] / granularityMs) * granularityMs;
+        if (key !== bucketStart) {
+            flush();
+            bucketStart = key;
             sum = 0; wsum = 0; count = 0; maxv = -Infinity;
         }
         var val = values[i];
@@ -648,16 +661,16 @@ function aggregateTimeSeries(timestamps, values, granularityMs, opts) {
         } else {
             sum += val;
         }
-        lastTs = timestamps[i];
         count++;
     }
-    flush(true);
+    flush();
     return result;
 }
 
 /**
  * Aggregation options appropriate for a given metric key.
- * `counts` is the matching per-bucket sample count series (per-second throughput).
+ * `counts` is the matching per-bucket sample count series: the samples that ENDED in each second, which
+ * every series but the throughput is of (T7). The throughput is the samples that started in it.
  */
 function aggOptsForMetric(metric, counts) {
     if (metric === 'max') return { mode: 'max' };
@@ -1222,6 +1235,40 @@ function refreshAllCharts() {
     updateTotalRow();
 }
 
+/* The Σ Total row's figures (B1). JMeter's Aggregate Report computes its TOTAL row with a
+ * calculator of its own, fed every sample: the rate is all samples over the run's window, the
+ * mean is the mean of every sample. Adding up the rows' rates is right only when every sampler
+ * ran for the whole run (P17 read 41.69/s where JMeter's TOTAL is 11.31/s), and a mean of the
+ * rows' 2-decimal means is not the run's mean. So everything that is a figure of the whole run
+ * comes from chartData.overall — the numbers the Summary tiles show, from one resolver
+ * (OverallMetrics) — and only counts, min and max are taken from the rows, where summing or
+ * taking the extreme is exact. Transaction children are left out, as the overall block leaves
+ * them out: their time is already inside their parent. */
+function totalRowFigures(data, isChild) {
+    var f = { samples: 0, errors: 0, min: Infinity, max: 0 };
+    (data.samplers || []).forEach(function (s) {
+        if (isChild(s.name)) return;
+        var count = s.sampleCount || s.count || 0;
+        f.samples += count;
+        f.errors += s.errorCount || Math.round((s.errorRate || 0) * count / 100) || 0;
+        if ((s.min != null) && s.min < f.min) f.min = s.min;
+        if ((s.max || 0) > f.max) f.max = s.max;
+    });
+    if (f.min === Infinity) f.min = 0;
+    f.errorPct = f.samples > 0 ? (f.errors / f.samples * 100) : 0;
+    var o = data.overall || {};
+    f.mean = o.mean;
+    f.median = o.median;
+    f.p90 = o.p90;
+    f.p95 = o.p95;
+    f.p99 = o.p99;
+    f.throughput = o.throughput;
+    f.receivedKBs = o.receivedBytesPerSec != null ? o.receivedBytesPerSec / 1024.0 : null;
+    f.sentKBs = o.sentBytesPerSec != null ? o.sentBytesPerSec / 1024.0 : null;
+    f.apdex = o.apdex;
+    return f;
+}
+
 function updateTotalRow() {
     var table = document.querySelector('#tab-samplers table');
     if (!table || !globalChartData) return;
@@ -1237,42 +1284,8 @@ function updateTotalRow() {
     var samplers = globalChartData.samplers;
     if (!samplers || samplers.length === 0) return;
 
-    var totalSamples = 0, totalErrors = 0, wMean = 0, wMedian = 0;
-    var wP90 = 0, wP95 = 0, wP99 = 0, minRT = Infinity, maxRT = 0;
-    var totalThroughput = 0, totalRecvKBs = 0, wApdex = 0;
-
-    samplers.forEach(function (s) {
-        /* Always skip transaction children in total — parents already aggregate them */
-        if (isTransactionChild(s.name)) return;
-        var count = s.sampleCount || s.count || 0;
-        totalSamples += count;
-        totalErrors += s.errorCount || Math.round((s.errorRate || 0) * count / 100) || 0;
-        wMean += (s.mean || 0) * count;
-        wMedian += (s.median || 0) * count;
-        wP90 += (s.p90 || 0) * count;
-        wP95 += (s.p95 || 0) * count;
-        wP99 += (s.p99 || 0) * count;
-        if ((s.min != null) && s.min < minRT) minRT = s.min;
-        if ((s.max || 0) > maxRT) maxRT = s.max;
-        totalThroughput += s.throughput || 0;
-        totalRecvKBs += (s.receivedBytesPerSec || 0) / 1024.0;
-        wApdex += (s.apdex || 0) * count;
-    });
-
-    var errorPct = totalSamples > 0 ? (totalErrors / totalSamples * 100) : 0;
-    if (totalSamples > 0) { wMean /= totalSamples; wMedian /= totalSamples; wP90 /= totalSamples; wP95 /= totalSamples; wP99 /= totalSamples; wApdex /= totalSamples; }
-    wApdex = Math.round(wApdex * 100) / 100;
-    if (minRT === Infinity) minRT = 0;
-
-    /* Prefer TRUE overall percentiles (merged distribution) over count-weighted averages of
-     * per-sampler percentiles, which understate the real global percentile (B11). */
-    var overall = globalChartData.overall;
-    if (overall) {
-        if (overall.median != null) wMedian = overall.median;
-        if (overall.p90 != null) wP90 = overall.p90;
-        if (overall.p95 != null) wP95 = overall.p95;
-        if (overall.p99 != null) wP99 = overall.p99;
-    }
+    var t = totalRowFigures(globalChartData, isTransactionChild);
+    var errorPct = t.errorPct;
 
     var fmt = function (v) { return v == null || isNaN(v) ? '0' : Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 }); };
 
@@ -1281,19 +1294,20 @@ function updateTotalRow() {
 
     var cells = [
         TOTAL_SAMPLER_NAME,
-        fmt(totalSamples),
-        fmt(totalErrors),
+        fmt(t.samples),
+        fmt(t.errors),
         errorPct.toFixed(2) + '%',
-        fmt(wMean),
-        fmt(wMedian),
-        fmt(wP90),
-        fmt(wP95),
-        fmt(wP99),
-        fmt(minRT),
-        fmt(maxRT),
-        fmt(totalThroughput) + '/s',
-        fmt(totalRecvKBs),
-        '__apdex__' + wApdex
+        fmt(t.mean),
+        fmt(t.median),
+        fmt(t.p90),
+        fmt(t.p95),
+        fmt(t.p99),
+        fmt(t.min),
+        fmt(t.max),
+        fmt(t.throughput) + '/s',
+        fmt(t.receivedKBs),
+        fmt(t.sentKBs),
+        '__apdex__' + t.apdex
     ];
 
     /* Match column count of existing rows (may include extra action columns) */
@@ -1391,7 +1405,8 @@ function initCharts(data) {
     pendingChartInits.push({ tab: 'errors', fn: function () { initErrorBreakdownCharts(data); } });
 
     // Error Details grouped view (DOM-only — the error tables are parsed before this script runs)
-    buildErrorGroups(data.errorRecords);
+    buildErrorGroups(data.errorRecords, requestErrorSummaries(data));
+    noteKeptErrorRecords(data);
     restoreErrorDetailsView();
 
     // Comparison tab
@@ -1455,33 +1470,18 @@ function initCharts(data) {
  * ============================================================ */
 
 /**
- * A Σ Total series for a metric that has no server-side total (percentiles, max, connect,
- * latency): combined across samplers per second, each weighted by its sample count in that second
- * — an unweighted mean lets a 10 req/s sampler drag the line as hard as a 990 req/s one — and
- * `max` taken as the maximum across samplers. Shared by the Timeline charts and the Compare tab.
+ * The Σ Total series of a metric, one value per second: the run's top-level samplers pooled, as the
+ * Summary tiles and the Σ Total row count them (T1). Java builds it (`totalSeries`), so a percentile
+ * is the percentile of the second's samples and a transaction is not counted beside its requests. It
+ * used to be combined here across every sampler, transaction children included: P11's Σ throughput
+ * line added up to 450 requests under a tile of 50, and its Σ P95 was a mean of the samplers' P95s.
+ * Shared by the Timeline charts and the Compare tab; `run` is the payload or its baseline.
  */
-function combinedTotalValues(perSampler, names, length, metric) {
-    var isMaxMetric = metric === 'max';
-    var computed = new Array(length);
-    for (var ti = 0; ti < length; ti++) {
-        var sum = 0, weight = 0, maxAcross = null;
-        names.forEach(function (n) {
-            var values = perSampler[n] && perSampler[n][metric];
-            if (!values || values[ti] == null) return;
-            var v = values[ti];
-            if (isMaxMetric) {
-                if (maxAcross === null || v > maxAcross) maxAcross = v;
-                return;
-            }
-            var counts = perSampler[n].throughput;
-            var w = (counts && counts[ti] != null) ? counts[ti] : 1;
-            sum += v * w;
-            weight += w;
-        });
-        if (isMaxMetric) computed[ti] = maxAcross;
-        else computed[ti] = weight > 0 ? sum / weight : null;
-    }
-    return computed;
+function totalSeriesFor(run, metric) {
+    var direct = { responseTime: run.meanResponseTimes, throughput: run.throughputs,
+        errorRate: run.errorRates }[metric];
+    if (direct) return direct;
+    return (run.totalSeries && run.totalSeries[metric]) || null;
 }
 
 function buildPerSamplerSeries(data, metric, overrideMetric) {
@@ -1502,7 +1502,7 @@ function buildPerSamplerSeries(data, metric, overrideMetric) {
         if (colorIdx < 0) colorIdx = 0;
 
         var seriesColor = getColorForSampler(name, colorIdx);
-        var aggOpts = aggOptsForMetric(effectiveMetric, perSampler[name].throughput);
+        var aggOpts = aggOptsForMetric(effectiveMetric, perSampler[name].samples);
         series.push({
             name: name,
             type: 'line',
@@ -1516,27 +1516,12 @@ function buildPerSamplerSeries(data, metric, overrideMetric) {
 
     /* Append aggregate Total series when visible */
     if (isTotalVisible()) {
-        var totalMetricMap = {
-            'responseTime': data.meanResponseTimes,
-            'throughput': data.throughputs,
-            'errorRate': data.errorRates
-        };
-        var totalValues = totalMetricMap[effectiveMetric];
-        /* Metrics with no server-side total (percentiles, max, connect, latency) are
-         * combined across samplers here. Weight by each sampler's sample count in that
-         * second — an unweighted mean lets a 10 req/s sampler drag the Total line as
-         * hard as a 990 req/s one, so the chart contradicts the Σ Total table row and
-         * the percentile bar, which both use the properly merged digest. `max` is a
-         * maximum, not an average, so take the max across samplers. */
-        if (!totalValues && perSampler) {
-            var allNames = data.samplers ? data.samplers.map(function (s) { return s.name; }) : [];
-            totalValues = combinedTotalValues(perSampler, allNames, data.timestamps.length, effectiveMetric);
-        }
+        var totalValues = totalSeriesFor(data, effectiveMetric);
         if (totalValues) {
             series.push({
                 name: TOTAL_SAMPLER_NAME,
                 type: 'line',
-                data: zipTimeSeries(data.timestamps, totalValues, aggOptsForMetric(effectiveMetric, data.throughputs)),
+                data: zipTimeSeries(data.timestamps, totalValues, aggOptsForMetric(effectiveMetric, data.sampleCounts)),
                 smooth: true,
                 symbol: 'none',
                 lineStyle: { width: lineThickness + 1, type: 'dashed' },
@@ -1640,11 +1625,15 @@ function activateTimelineChart(ctx) {
  * it, and at 390px its labels printed over one another, "22:1226:2…" (XLOG-1).
  */
 function timelineXAxis() {
+    var start = getTestStart();
+    /* Above 1 s a point sits at its window's start (T2), and the run's first window can open before
+       its first second: the axis starts there, or that point would be clipped. */
+    var min = start && chartGranularity > 1000 ? Math.floor(start / chartGranularity) * chartGranularity : start;
     return {
         type: 'time',
         axisLabel: { formatter: formatTimeAxis, hideOverlap: true },
-        min: getTestStart() || undefined,
-        max: getTestStart() ? getTestStart() + getTestDurationMs() : undefined
+        min: min || undefined,
+        max: start ? start + getTestDurationMs() : undefined
     };
 }
 
@@ -1688,7 +1677,7 @@ function initSummaryResponseTimeChart(data) {
         series.push({
             name: getMetricLabel() + ' Response Time',
             type: 'line',
-            data: zipTimeSeries(data.timestamps, data.meanResponseTimes, aggOptsForMetric('responseTime', data.throughputs)),
+            data: zipTimeSeries(data.timestamps, data.meanResponseTimes, aggOptsForMetric('responseTime', data.sampleCounts)),
             smooth: true,
             symbol: 'none',
             lineStyle: { width: 2 },
@@ -1700,10 +1689,10 @@ function initSummaryResponseTimeChart(data) {
     var hasThreads = data.activeThreads && data.activeThreads.some(function (v) { return v > 0; });
     if (hasThreads) {
         series.push({
-            name: 'Active Threads',
+            name: MAX_THREADS_SERIES,
             type: 'line',
             yAxisIndex: 1,
-            data: zipTimeSeries(data.timestamps, data.activeThreads),
+            data: zipTimeSeries(data.timestamps, data.activeThreads, aggOptsForMetric('max')),
             smooth: true,
             symbol: 'none',
             lineStyle: { width: 1, type: 'dashed', color: '#91cc75' },
@@ -1711,7 +1700,7 @@ function initSummaryResponseTimeChart(data) {
         });
     }
 
-    var rtSeries = series.filter(function (s) { return s.name !== 'Active Threads'; });
+    var rtSeries = series.filter(function (s) { return s.name !== MAX_THREADS_SERIES; });
     var maxRT = getMaxFromSeries(rtSeries);
     var yAxes = [responseTimeYAxis(maxRT, 'Response Time')];
     if (hasThreads) {
@@ -1753,16 +1742,16 @@ function initResponseTimeChart(data) {
     var chart = activateTimelineChart(ctx);
 
     if (series.length === 0) {
-        series.push({ name: getMetricLabel() + ' Response Time', type: 'line', data: zipTimeSeries(data.timestamps, data.meanResponseTimes, aggOptsForMetric('responseTime', data.throughputs)), smooth: true, symbol: 'none', lineStyle: { width: 2 }, itemStyle: { color: '#5470c6' }, areaStyle: { color: 'rgba(84, 112, 198, 0.1)' } });
+        series.push({ name: getMetricLabel() + ' Response Time', type: 'line', data: zipTimeSeries(data.timestamps, data.meanResponseTimes, aggOptsForMetric('responseTime', data.sampleCounts)), smooth: true, symbol: 'none', lineStyle: { width: 2 }, itemStyle: { color: '#5470c6' }, areaStyle: { color: 'rgba(84, 112, 198, 0.1)' } });
     }
 
     var hasThreads = data.activeThreads && data.activeThreads.some(function (v) { return v > 0; });
     if (hasThreads) {
         series.push({
-            name: 'Active Threads',
+            name: MAX_THREADS_SERIES,
             type: 'line',
             yAxisIndex: 1,
-            data: zipTimeSeries(data.timestamps, data.activeThreads),
+            data: zipTimeSeries(data.timestamps, data.activeThreads, aggOptsForMetric('max')),
             smooth: true,
             symbol: 'none',
             lineStyle: { width: 1, type: 'dashed', color: '#91cc75' },
@@ -1770,7 +1759,7 @@ function initResponseTimeChart(data) {
         });
     }
 
-    var rtSeries = series.filter(function (s) { return s.name !== 'Active Threads'; });
+    var rtSeries = series.filter(function (s) { return s.name !== MAX_THREADS_SERIES; });
     var maxRT = getMaxFromSeries(rtSeries);
     var yAxes = [responseTimeYAxis(maxRT, 'Response Time')];
     if (hasThreads) {
@@ -1986,7 +1975,7 @@ function initErrorRateChart(data) {
     var chart = activateTimelineChart(ctx);
 
     if (series.length === 0) {
-        series.push({ name: 'Error Rate', type: 'line', data: zipTimeSeries(data.timestamps, data.errorRates, aggOptsForMetric('errorRate', data.throughputs)), smooth: true, symbol: 'none', lineStyle: { width: 2 }, itemStyle: { color: '#ee6666' }, areaStyle: { color: 'rgba(238, 102, 102, 0.15)' } });
+        series.push({ name: 'Error Rate', type: 'line', data: zipTimeSeries(data.timestamps, data.errorRates, aggOptsForMetric('errorRate', data.sampleCounts)), smooth: true, symbol: 'none', lineStyle: { width: 2 }, itemStyle: { color: '#ee6666' }, areaStyle: { color: 'rgba(238, 102, 102, 0.15)' } });
     }
 
     injectMarkLines(series, data, 'errorRate');
@@ -2060,17 +2049,12 @@ function initBytesThroughputChart(data) {
         }
     });
 
-    /* Total aggregate bytes series */
+    /* Total aggregate bytes series: the top-level samplers' bytes (T1), so a transaction's bytes and
+       its requests' are not both counted (P11's Σ line read exactly twice the requests' bytes, F6) */
     if (isTotalVisible()) {
-        var allNames = data.samplers ? data.samplers.map(function (s) { return s.name; }) : [];
-        var totalRecv = new Array(data.timestamps.length).fill(0);
-        var totalSent = new Array(data.timestamps.length).fill(0);
-        var hasRecv = false, hasSent = false;
-        allNames.forEach(function (n) {
-            if (!perSampler[n]) return;
-            if (perSampler[n].receivedBytes) { hasRecv = true; perSampler[n].receivedBytes.forEach(function (v, i) { if (v != null) totalRecv[i] += v; }); }
-            if (perSampler[n].sentBytes) { hasSent = true; perSampler[n].sentBytes.forEach(function (v, i) { if (v != null) totalSent[i] += v; }); }
-        });
+        var totalRecv = totalSeriesFor(data, 'receivedBytes');
+        var totalSent = totalSeriesFor(data, 'sentBytes');
+        var hasRecv = !!totalRecv, hasSent = !!totalSent;
         if (hasRecv) series.push({ name: TOTAL_SAMPLER_NAME + ' (Recv)', type: 'line', data: zipTimeSeries(data.timestamps, totalRecv, aggOptsForMetric('receivedBytes')), smooth: true, symbol: 'none', lineStyle: { width: lineThickness + 1, type: 'dashed' }, itemStyle: { color: getTotalColor() }, z: 10 });
         if (hasSent) series.push({ name: TOTAL_SAMPLER_NAME + ' (Sent)', type: 'line', data: zipTimeSeries(data.timestamps, totalSent, aggOptsForMetric('sentBytes')), smooth: true, symbol: 'none', lineStyle: { width: lineThickness + 1, type: 'dashed', opacity: 0.6 }, itemStyle: { color: getTotalColor() }, z: 10 });
     }
@@ -2111,33 +2095,20 @@ function initBytesThroughputChart(data) {
  *  Connect Time vs Latency vs Processing (Stacked Area)
  * ============================================================ */
 
-function initConnectLatencyChart(data) {
-    var ctx = initTimelineChart('connect-latency-chart', data);
-    if (!ctx) return;
-
-    var perSampler = data.perSamplerSeries;
-    if (!perSampler) {
-        ctx.chartDom.style.height = '80px';
-        showNoData(ctx.chartDom, 'No connect/latency data available.');
-        return;
-    }
-
-    var chart = activateTimelineChart(ctx);
-    var chartDom = ctx.chartDom;
-
-    var series = [];
-    var visibleNames = getVisibleSamplerNames();
-    /* When Total is checked, aggregate across ALL samplers */
-    if (isTotalVisible()) visibleNames = data.samplers ? data.samplers.map(function (s) { return s.name; }) : [];
-    var samplerNames = data.samplers ? data.samplers.map(function (s) { return s.name; }) : [];
-
-    /* Aggregate the three stacked components across visible samplers. Each component
-     * carries its own weight, because a sampler can report elapsed with no connect or
-     * latency (non-HTTP samplers, JSR223, cached connections). Sharing one counter made
-     * those buckets average a 0 ms connect time into the stack and flattened the chart
-     * (B14 remnant). Weighted by sample count so a low-volume sampler doesn't outweigh
-     * a busy one. */
-    var n = data.timestamps.length;
+/* The Connect / Latency / Processing breakdown of the named samplers, per second: each component a
+ * count-weighted mean over the samplers that reported it, null where none did (so the line breaks
+ * instead of dropping to the axis), and beside it the weight it was taken over.
+ *
+ * Each component carries its own weight, because a sampler can report elapsed with no connect or
+ * latency (non-HTTP samplers, JSR223, cached connections). Sharing one counter made those buckets
+ * average a 0 ms connect time into the stack and flattened the chart (B14 remnant). Weighted by
+ * sample count so a low-volume sampler doesn't outweigh a busy one.
+ *
+ * The weights are what a window above 1 s folds the seconds with (T4). It folded them with the
+ * bucket's count of every sample, hidden samplers and transaction children included, so a second
+ * the shown samplers barely touched weighed as much as their busiest (pilot-D at 10 s: Connect
+ * 7.36 ms where the shown samplers' own weights give 7.61). */
+function connectLatencyBreakdown(perSampler, names, n) {
     var connectSum = new Array(n), connectW = new Array(n);
     var latencySum = new Array(n), latencyW = new Array(n);
     var processingSum = new Array(n), processingW = new Array(n);
@@ -2148,12 +2119,12 @@ function initConnectLatencyChart(data) {
     }
 
     var hasData = false;
-    visibleNames.forEach(function (name) {
+    names.forEach(function (name) {
         if (!perSampler[name]) return;
         var ct = perSampler[name].connectTime;
         var lat = perSampler[name].latency;
         var elapsed = perSampler[name].responseTime || perSampler[name].elapsed;
-        var counts = perSampler[name].throughput;
+        var counts = perSampler[name].samples;
         if (!ct && !lat) return;
 
         for (var i = 0; i < n; i++) {
@@ -2182,21 +2153,58 @@ function initConnectLatencyChart(data) {
         }
     });
 
+    var connect = new Array(n), latency = new Array(n), processing = new Array(n);
+    for (var j = 0; j < n; j++) {
+        connect[j] = connectW[j] > 0 ? connectSum[j] / connectW[j] : null;
+        latency[j] = latencyW[j] > 0 ? latencySum[j] / latencyW[j] : null;
+        processing[j] = processingW[j] > 0 ? processingSum[j] / processingW[j] : null;
+    }
+    return {
+        hasData: hasData,
+        connect: connect, latency: latency, processing: processing,
+        connectWeights: connectW, latencyWeights: latencyW, processingWeights: processingW
+    };
+}
+
+function initConnectLatencyChart(data) {
+    var ctx = initTimelineChart('connect-latency-chart', data);
+    if (!ctx) return;
+
+    var perSampler = data.perSamplerSeries;
+    if (!perSampler) {
+        ctx.chartDom.style.height = '80px';
+        showNoData(ctx.chartDom, 'No connect/latency data available.');
+        return;
+    }
+
+    var chart = activateTimelineChart(ctx);
+    var chartDom = ctx.chartDom;
+
+    var series = [];
+    var visibleNames = getVisibleSamplerNames();
+    /* When Total is checked, break the Σ Total down: the top-level samplers pooled per second (T1),
+       weighted by their sample counts. It used to fold every sampler, transaction parents beside
+       their own requests. */
+    if (isTotalVisible() && data.totalSeries) {
+        var totalBreakdown = {};
+        totalBreakdown[TOTAL_SAMPLER_NAME] = {
+            connectTime: data.totalSeries.connectTime,
+            latency: data.totalSeries.latency,
+            responseTime: data.meanResponseTimes,
+            samples: data.sampleCounts
+        };
+        perSampler = totalBreakdown;
+        visibleNames = [TOTAL_SAMPLER_NAME];
+    }
+
+    var b = connectLatencyBreakdown(perSampler, visibleNames, data.timestamps.length);
+    var hasData = b.hasData;
+    var connectAgg = b.connect, latencyAgg = b.latency, processingAgg = b.processing;
+
     if (!hasData) {
         chartDom.style.height = '80px';
         showNoData(chartDom, 'No connect/latency breakdown data for selected samplers.');
         return;
-    }
-
-    /* null (not 0) where a component had no data, so the line breaks instead of
-     * dropping to the axis. */
-    var connectAgg = new Array(n);
-    var latencyAgg = new Array(n);
-    var processingAgg = new Array(n);
-    for (var j = 0; j < n; j++) {
-        connectAgg[j] = connectW[j] > 0 ? connectSum[j] / connectW[j] : null;
-        latencyAgg[j] = latencyW[j] > 0 ? latencySum[j] / latencyW[j] : null;
-        processingAgg[j] = processingW[j] > 0 ? processingSum[j] / processingW[j] : null;
     }
 
     series.push({
@@ -2204,7 +2212,7 @@ function initConnectLatencyChart(data) {
         type: 'line',
         stack: 'breakdown',
         areaStyle: { opacity: 0.6 },
-        data: zipTimeSeries(data.timestamps, connectAgg, aggOptsForMetric('connectTime', data.throughputs)),
+        data: zipTimeSeries(data.timestamps, connectAgg, { mode: 'wavg', counts: b.connectWeights }),
         smooth: true,
         symbol: 'none',
         lineStyle: { width: 1 },
@@ -2215,7 +2223,7 @@ function initConnectLatencyChart(data) {
         type: 'line',
         stack: 'breakdown',
         areaStyle: { opacity: 0.6 },
-        data: zipTimeSeries(data.timestamps, latencyAgg, aggOptsForMetric('latency', data.throughputs)),
+        data: zipTimeSeries(data.timestamps, latencyAgg, { mode: 'wavg', counts: b.latencyWeights }),
         smooth: true,
         symbol: 'none',
         lineStyle: { width: 1 },
@@ -2226,7 +2234,7 @@ function initConnectLatencyChart(data) {
         type: 'line',
         stack: 'breakdown',
         areaStyle: { opacity: 0.6 },
-        data: zipTimeSeries(data.timestamps, processingAgg, aggOptsForMetric('responseTime', data.throughputs)),
+        data: zipTimeSeries(data.timestamps, processingAgg, { mode: 'wavg', counts: b.processingWeights }),
         smooth: true,
         symbol: 'none',
         lineStyle: { width: 1 },
@@ -2257,35 +2265,13 @@ function initResponseCodesChart(data) {
     var chartDom = document.getElementById('response-codes-chart');
     if (!chartDom) return;
 
-    if (data.perSamplerSeries && getVisibleSamplerNames().length === 0 && !isTotalVisible()) {
-        chartDom.style.height = '80px';
-        showNoData(chartDom, 'No samplers selected.');
-        return;
-    }
-
-    /* Build codes data from error records filtered by visible samplers */
-    var filteredRecords = getFilteredErrorRecords(data);
-    if (!filteredRecords || filteredRecords.length === 0) {
-        chartDom.style.height = '80px';
-        showNoData(chartDom, 'No response code data available.');
-        setTruncationNote(chartDom, null);
-        return;
-    }
-
-    /* Group by 1-second bucket and response code */
-    var bucketCodes = {};
-    var allCodes = {};
-    filteredRecords.forEach(function (er) {
-        var bucketKey = Math.floor(er.timestamp / 1000) * 1000;
-        if (!bucketCodes[bucketKey]) bucketCodes[bucketKey] = {};
-        bucketCodes[bucketKey][er.code] = (bucketCodes[bucketKey][er.code] || 0) + 1;
-        allCodes[er.code] = true;
-    });
-
-    var timestamps = Object.keys(bucketCodes).map(Number).sort(function (a, b) { return a - b; });
-    var codes = Object.keys(allCodes);
-
-    if (timestamps.length === 0 || codes.length === 0) {
+    /* Every response per code per second, by end: JMeter's Codes per Second (T5). It was built from
+       the failed samples' detail records — errors only, the first 500, by start, drawn per 1 s whatever
+       the granularity — so it said nothing of the responses that succeeded and stopped where the kept
+       errors did. */
+    var byCode = data.responseCodes || {};
+    var codes = Object.keys(byCode);
+    if (codes.length === 0 || !data.timestamps) {
         chartDom.style.height = '80px';
         showNoData(chartDom, 'No response code data available.');
         setTruncationNote(chartDom, null);
@@ -2306,9 +2292,8 @@ function initResponseCodesChart(data) {
             name: code,
             type: 'bar',
             stack: 'codes',
-            data: timestamps.map(function (t) {
-                return [t, (bucketCodes[t] && bucketCodes[t][code]) || 0];
-            }),
+            /* A rate per window, as JMeter's Codes per Second divides each window by its width */
+            data: zipTimeSeries(data.timestamps, byCode[code], aggOptsForMetric('throughput')),
             itemStyle: { color: color },
             barMaxWidth: 20
         });
@@ -2319,16 +2304,13 @@ function initResponseCodesChart(data) {
     finalizeTimelineChart(chart, {
         tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
         legend: { data: codes, bottom: 10, type: 'scroll' },
-        yAxis: { type: 'value', name: 'Count', min: 0 },
+        yAxis: { type: 'value', name: 'Responses/s', min: 0 },
         series: series
     });
 
-    /* This chart is built from the same 500-capped detail records as the error timeline, so
-     * it stops partway through a run whose errors ramp up late — and it only counts errors,
-     * so a bar chart that simply ends looks like the errors stopped. */
-    setTruncationNote(chartDom, data.errorRecordsTruncated
-        ? 'Built from the first 500 errors only — later errors are not counted in these bars.'
-        : null);
+    /* JMeter's chart is of the whole run, so the sampler filter cannot narrow it: said under it. */
+    setTruncationNote(chartDom, 'Every response of every sampler, per code, as JMeter\'s Codes per Second '
+        + 'counts them: the sampler filter does not apply, and a transaction\'s own result is not a response.');
 }
 
 /* ============================================================
@@ -2453,7 +2435,7 @@ function initScatterChart(data) {
         series.push({
             name: name,
             type: 'scatter',
-            data: zipTimeSeries(data.timestamps, rtData, aggOptsForMetric(rtKey, perSampler[name].throughput)),
+            data: zipTimeSeries(data.timestamps, rtData, aggOptsForMetric(rtKey, perSampler[name].samples)),
             symbolSize: 4,
             itemStyle: {
                 color: getColorForSampler(name, colorIdx),
@@ -2467,7 +2449,7 @@ function initScatterChart(data) {
         series.push({
             name: TOTAL_SAMPLER_NAME,
             type: 'scatter',
-            data: zipTimeSeries(data.timestamps, data.meanResponseTimes, aggOptsForMetric('responseTime', data.throughputs)),
+            data: zipTimeSeries(data.timestamps, data.meanResponseTimes, aggOptsForMetric('responseTime', data.sampleCounts)),
             symbolSize: 6,
             itemStyle: { color: getTotalColor(), opacity: 0.8 }
         });
@@ -2719,11 +2701,23 @@ function errorCodeWithClass(code, shortClass) {
 function getFilteredErrorRecords(data) {
     if (!data.errorRecords) return [];
     if (isTotalVisible()) return data.errorRecords;
-    var visible = getVisibleSamplerNames();
-    if (visible.length === 0) return [];
+    var visible = {};
+    getVisibleSamplerNames().forEach(function (n) { visible[n] = true; });
     return data.errorRecords.filter(function (er) {
-        return visible.indexOf(er.sampler) >= 0;
+        return errorsShownFor(er.sampler, visible);
     });
+}
+
+/* Whether the filter shows a sampler's errors. The errors are the failed requests (E3), and a
+   transaction's failures are its requests' — so while the children are collapsed, a request inside a
+   shown transaction has its errors shown, as the transaction's row stands for it everywhere else. */
+function errorsShownFor(name, visible) {
+    if (visible[name]) return true;
+    if (showTransactionChildren) return false;
+    for (var parent = transactionChildNames[name]; parent !== undefined; parent = transactionChildNames[parent]) {
+        if (visible[parent]) return true;
+    }
+    return false;
 }
 
 /* Error counts by response code. When the detailed record list is truncated (errors > cap),
@@ -2793,15 +2787,14 @@ function initErrorBreakdownCharts(data) {
  * their headers now, as decorateErrorTable finds Class. The error tables cannot be reordered, so
  * a header's place is fixed for the life of the page.
  *
- * Which rows: the ones shown — not those the search, a × or a collapsed transaction child hides.
- * Each row's % of Errors divides by every error and its % of All Samples by every sample (both
- * populations include transaction children, C20); the Total divides its count by the same two. So
- * its Count is the sum of the Count column above it, its percentages are that count's exact share
- * of each — the sum of their column up to each row's own rounding to two decimals — and it says
- * 100.00% of errors only when every row is in it. A Total of every row would sit under rows that
- * add up to less whenever one is hidden — on E02 by default, whose collapsed transaction children
- * hold dozens of its errors — with nothing on screen to say why. So when not every row is
- * counted, its first cell says how many are.
+ * Which rows: the ones shown — not those the search or a × hides. Each row's % of Errors divides by
+ * every failed request and its % of All Samples by every request (a transaction's own result left
+ * out of both, as JMeter's HTML report leaves it out, E3); the Total divides its count by the same
+ * two. So its Count is the sum of the Count column above it, its percentages are that count's exact
+ * share of each — the sum of their column up to each row's own rounding to two decimals — and it
+ * says 100.00% of errors only when every row is in it. A Total of every row would sit under rows
+ * that add up to less whenever one is hidden, with nothing on screen to say why. So when not every
+ * row is counted, its first cell says how many are.
  * Rebuilt by whatever changes what is shown (refreshTableTotal); the search never hides it.
  */
 function buildErrorSummaryTotalRow() {
@@ -2835,8 +2828,8 @@ function buildErrorSummaryTotalRow() {
 
     /* The two populations the rows divided by, from the serialized totals (metadata is not
        embedded in chartData). */
-    var errors = (globalChartData && globalChartData.totalErrorCount) || every;
-    var samples = (globalChartData && globalChartData.totalSampleCount) || 0;
+    var errors = (globalChartData && globalChartData.requestErrorCount) || every;
+    var samples = (globalChartData && globalChartData.requestSampleCount) || 0;
     var share = function (of) { return of > 0 ? (count * 100.0 / of).toFixed(2) + '%' : ''; };
     var labelCol = col['Sampler'] !== undefined ? col['Sampler'] : 0;
 
@@ -2851,8 +2844,8 @@ function buildErrorSummaryTotalRow() {
                 ? 'Total' : 'Total (' + shown.length + ' of ' + rows.length + ' rows)';
             td.title = 'The sum of the rows shown: % of Errors is their share of all '
                 + errors.toLocaleString('en-US') + ' errors, % of All Samples their share of all '
-                + samples.toLocaleString('en-US') + ' samples. Rows the search, a × or a '
-                + 'collapsed transaction child hides are not in it.';
+                + samples.toLocaleString('en-US') + ' samples. Rows the search or a × hides '
+                + 'are not in it.';
         }
         else if (c === countCol) td.textContent = count.toLocaleString('en-US');
         else if (c === col['% of Errors']) td.textContent = share(errors);
@@ -3315,7 +3308,7 @@ function pad(n) {
  * rendering as '1500 ms' where they should read '1500'.
  */
 function formatChartValue(val, seriesName) {
-    if (seriesName === 'Active Threads') return Math.round(val);
+    if (seriesName === MAX_THREADS_SERIES) return Math.round(val);
     return formatResponseTime(val);
 }
 
@@ -3935,9 +3928,10 @@ function getChartTheme() {
  *  Sampler table: search, column toggle
  * ============================================================ */
 
+/* The Aggregate Report's columns (StatGraphVisualizer), Sent KB/s included (B8), plus Apdex. */
 var COLUMN_NAMES = ['Sampler', 'Samples', 'Errors', 'Error %', 'Mean (ms)',
     'Median (ms)', 'P90 (ms)', 'P95 (ms)', 'P99 (ms)', 'Min (ms)', 'Max (ms)',
-    'Throughput', 'Recv KB/s', 'Apdex'];
+    'Throughput', 'Recv KB/s', 'Sent KB/s', 'Apdex'];
 
 var hiddenColumns = {};
 
@@ -4094,11 +4088,6 @@ function initTransactionHierarchy(data) {
         }
     });
 
-    /* Also hide children in error tables on initial load */
-    if (!showTransactionChildren) {
-        hideTransactionChildrenInTable('errorSummaryTable', 0);
-        hideTransactionChildrenInTable('errorDetailsTable', 1);
-    }
 }
 
 function toggleTransactionChildrenVisibility() {
@@ -4131,33 +4120,12 @@ function toggleTransactionChildrenVisibility() {
         label.style.display = showTransactionChildren ? '' : 'none';
     });
 
-    /* Show/hide child rows in error tables */
-    hideTransactionChildrenInTable('errorSummaryTable', 0);
-    hideTransactionChildrenInTable('errorDetailsTable', 1);
+    /* The error tables are not collapsed with them: their rows are the failed requests, transaction
+       children included, and no transaction's own row stands for them there (E3). */
 
     /* Recalculate total row and refresh charts */
     updateTotalRow();
     debouncedRefreshAllCharts();
-}
-
-function hideTransactionChildrenInTable(tableId, samplerColIdx) {
-    var table = document.getElementById(tableId);
-    if (!table || !table.tBodies[0]) return;
-    var rows = table.tBodies[0].rows;
-    for (var i = 0; i < rows.length; i++) {
-        if (rows[i].classList.contains('error-detail-row')) continue;
-        if (rows[i].classList.contains('error-summary-total')) continue;
-        var cell = rows[i].cells[samplerColIdx];
-        if (!cell) continue;
-        var samplerName = cell.textContent.trim();
-        if (isTransactionChild(samplerName)) {
-            /* Mark so a search filter doesn't accidentally reveal collapsed children (C18). */
-            rows[i].classList.toggle('tc-collapsed', !showTransactionChildren);
-        }
-    }
-    /* Shown or not is the search's and the ×'s call as well as the toggle's: expanding used to
-       show every child, a row the reader had hidden with × and one the search hides included. */
-    reapplyGenericRowDisplay(tableId);
 }
 
 /* ============================================================
@@ -4456,7 +4424,7 @@ function renderDetailTimeSeries(samplerName, containerId, def) {
         var s = {
             name: m.name || samplerName,
             type: 'line',
-            data: zipTimeSeries(ts, vals, aggOptsForMetric(m.key, sd.throughput)),
+            data: zipTimeSeries(ts, vals, aggOptsForMetric(m.key, sd.samples)),
             smooth: true,
             symbol: 'none',
             lineStyle: { width: lineThickness },
@@ -4741,38 +4709,71 @@ function formatErrorClock(ts) {
 /* Group error records by sampler + response code, sorted by count desc. Each group renders a head
  * row plus a hidden body row holding one line per occurrence. Field names are the serializer's
  * short keys (sampler/code/message/thread), not the Thymeleaf model's long ones. */
-function buildErrorGroups(records) {
-    var table = document.getElementById('errorGroupsTable');
-    if (!table || !table.tBodies[0]) return;
-    var tbody = table.tBodies[0];
-    tbody.innerHTML = '';
-    if (!records || !records.length) return;
+/* The grouped view's groups, one per sampler + response code (E2).
+ *
+ * Each group's count and its first and last seen come from the error summaries, which count every
+ * error; the occurrences listed under it are the detail records the report kept, the first 500
+ * errors. It used to build everything from those records, so past 500 errors the counts and the
+ * last seen were the first 500's and said nothing about it (S38: 3,559 errors, its groups added up
+ * to 500; 21 of its 108 groups were missing). A payload with no summaries (no errors, or an older
+ * one) still groups the records. */
+/* The Errors tab's groups: the failed requests. The payload's errorSummaries also holds a transaction's own
+   failures (transactionRow), which the asserts count, as Java does, and the tab does not (E3). */
+function requestErrorSummaries(data) {
+    return ((data && data.errorSummaries) || []).filter(function (e) { return !e.transactionRow; });
+}
 
+function errorGroupsFrom(records, summaries) {
     /* Null-prototype map so sampler names like "constructor" can't collide with Object.prototype. */
     var byKey = Object.create(null);
     var groups = [];
-    records.forEach(function (er) {
-        var key = (er.sampler || '') + '||' + (er.code || '');
+    /* Per sampler and JMeter's type of error, the group the engine counted (E1); a payload without
+       one groups by code. */
+    function groupFor(sampler, code, from) {
+        var type = from.errorType || code || '';
+        var key = (sampler || '') + '||' + type;
         var g = byKey[key];
         if (!g) {
-            g = { key: key, sampler: er.sampler || '', code: er.code || '', message: er.message || '',
+            g = { key: key, sampler: sampler || '', code: code || '', errorType: type,
+                  message: from.message || from.responseMessage || '',
                   /* Carried through from the payload so the grouped view says the same thing as
                      the server-rendered table it replaces. */
-                  errorClass: er.errorClass || '', errorClassLabel: er.errorClassLabel || '',
-                  messageMeaningless: !!er.messageMeaningless,
-                  first: null, last: null, occurrences: [] };
+                  errorClass: from.errorClass || '', errorClassLabel: from.errorClassLabel || '',
+                  messageMeaningless: !!from.messageMeaningless,
+                  count: 0, first: null, last: null, occurrences: [] };
             byKey[key] = g;
             groups.push(g);
         }
+        return g;
+    }
+    var counted = !!(summaries && summaries.length);
+    (counted ? summaries : []).forEach(function (es) {
+        var g = groupFor(es.samplerName, es.responseCode, es);
+        g.count = es.occurrenceCount || 0;
+        if (es.firstTimestamp) g.first = es.firstTimestamp;
+        if (es.lastTimestamp) g.last = es.lastTimestamp;
+    });
+    (records || []).forEach(function (er) {
+        var g = groupFor(er.sampler, er.code, er);
         g.occurrences.push(er);
+        if (!counted) g.count++;
         var ts = er.timestamp;
-        if (ts != null) {
+        if (ts != null && (!counted || g.first == null)) {
             if (g.first == null || ts < g.first) g.first = ts;
             if (g.last == null || ts > g.last) g.last = ts;
         }
     });
+    groups.sort(function (a, b) { return b.count - a.count; });
+    return groups;
+}
 
-    groups.sort(function (a, b) { return b.occurrences.length - a.occurrences.length; });
+function buildErrorGroups(records, summaries) {
+    var table = document.getElementById('errorGroupsTable');
+    if (!table || !table.tBodies[0]) return;
+    var tbody = table.tBodies[0];
+    tbody.innerHTML = '';
+    var groups = errorGroupsFrom(records, summaries);
+    if (!groups.length) return;
 
     groups.forEach(function (g) {
         var head = document.createElement('tr');
@@ -4780,7 +4781,7 @@ function buildErrorGroups(records) {
         head.style.cursor = 'pointer';
         head.innerHTML =
             '<td style="text-align:center;color:var(--color-text-secondary);font-size:0.7rem;">&#9654;</td>' +
-            '<td><strong>' + g.occurrences.length + '&times;</strong></td>' +
+            '<td><strong>' + g.count + '&times;</strong></td>' +
             '<td><span class="error-code">' + escapeHtml(String(g.code)) + '</span>' +
                 (g.errorClassLabel
                     ? '<span class="error-class error-class-' + escapeHtml(g.errorClass) + '">' +
@@ -4788,10 +4789,9 @@ function buildErrorGroups(records) {
                     : '') + '</td>' +
             '<td title="' + escapeHtml(String(g.sampler)) + '" style="max-width:380px;overflow:hidden;' +
                 'text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(String(g.sampler)) + '</td>' +
-            /* An em-dash, not "OK": the HTTP reason phrase of a 2xx says nothing about why the
-               sampler failed it, and the reason that would is captured on neither path. */
-            '<td class="' + (g.messageMeaningless ? 'error-message-none' : '') + '">' +
-                (g.messageMeaningless ? '&mdash;' : escapeHtml(String(g.message))) + '</td>' +
+            /* JMeter's type of error, the group's key: code/message, or a failed assertion's message
+               where the HTTP reason phrase of a 2xx ("OK") says nothing (E1). */
+            '<td title="' + escapeHtml(String(g.errorType)) + '">' + escapeHtml(String(g.errorType)) + '</td>' +
             '<td>' + formatErrorClock(g.first) + '</td>' +
             '<td>' + formatErrorClock(g.last) + '</td>';
         /* Listener rather than an inline onclick: sampler names may contain quotes. */
@@ -4806,6 +4806,13 @@ function buildErrorGroups(records) {
             '<td style="border-bottom:1px solid var(--color-border);"></td>' +
             '<td colspan="6" style="padding:0 8px 10px;border-bottom:1px solid var(--color-border);">' +
             '<div style="display:flex;flex-direction:column;gap:2px;padding-top:6px;">' +
+            (g.occurrences.length < g.count
+                ? '<div class="truncation-note" style="font-size:0.72rem;color:var(--color-text-secondary,#64748b);padding:0 8px 4px;">' +
+                  (g.occurrences.length
+                      ? 'The ' + g.occurrences.length + ' of these ' + g.count + ' among the first 500 errors the report keeps in detail.'
+                      : 'None of these ' + g.count + ' is among the first 500 errors the report keeps in detail.') +
+                  '</div>'
+                : '') +
             g.occurrences.map(function (er) {
                 return '<div style="display:flex;align-items:baseline;gap:12px;font-size:0.76rem;' +
                     'padding:2px 8px;border-left:2px solid var(--color-border);">' +
@@ -4818,6 +4825,25 @@ function buildErrorGroups(records) {
             '</div></td>';
         tbody.appendChild(body);
     });
+}
+
+/* The By-time list is the detail records, the first 500 errors: say so over it when there were more (E2).
+   The codes chart and the error timeline carried that note; the list and the grouped view did not. */
+function noteKeptErrorRecords(data) {
+    var table = document.getElementById('errorDetailsTable');
+    if (!table || !data || !data.errorRecordsTruncated) return;
+    var wrapper = table.parentNode;
+    if (!wrapper || !wrapper.parentNode || wrapper.parentNode.querySelector('.kept-errors-note')) return;
+    var note = document.createElement('div');
+    note.className = 'truncation-note kept-errors-note';
+    note.style.cssText = 'font-size:0.72rem;color:var(--color-text-secondary,#64748b);margin:2px 0 6px;';
+    note.textContent = keptErrorsNote((data.errorRecords || []).length, data.requestErrorCount);
+    wrapper.parentNode.insertBefore(note, wrapper);
+}
+
+function keptErrorsNote(kept, total) {
+    return 'The first ' + kept + ' of ' + (total != null ? total : 'more') + ' errors, kept in detail. ' +
+        'The Error Summary, the charts and the Grouped counts include every error.';
 }
 
 /* Open state lives on the body row (data-open) so search can re-hide a group without losing it. */
@@ -6780,15 +6806,8 @@ function buildComparisonSeries(data, metric) {
         var totalColor = getTotalColor();
         /* The selected metric, as the Timeline's Σ Total draws it. This drew the mean whatever
            the Metric toggle said, beside per-sampler lines of the selected metric. */
-        var totalOf = function (run, perSampler) {
-            var direct = { responseTime: run.meanResponseTimes, throughput: run.throughputs,
-                errorRate: run.errorRates }[metric];
-            if (direct) return direct;
-            if (!run.timestamps) return null;
-            return combinedTotalValues(perSampler, Object.keys(perSampler), run.timestamps.length, metric);
-        };
-        var currGlobal = totalOf(data, currPerSampler);
-        var baseGlobal = totalOf(data.baseline, basePerSampler);
+        var currGlobal = totalSeriesFor(data, metric);
+        var baseGlobal = totalSeriesFor(data.baseline, metric);
 
         if (currGlobal) {
             series.push({
@@ -7400,11 +7419,10 @@ function sortGenericTable(tableId, colId, type) {
 }
 
 /**
- * Whether each row of a generic table shows: it matches the search, and neither a × (user-hidden)
- * nor a collapsed transaction child (tc-collapsed, C18) hides it. The one place that decides it —
- * Show Hidden and the transaction toggle re-apply it with the search's last text rather than
- * clearing every row's display, which brought back collapsed children nobody had hidden and undid
- * a search whose box still showed the text (B2).
+ * Whether each row of a generic table shows: it matches the search, and no × (user-hidden) hides
+ * it. The one place that decides it — Show Hidden re-applies it with the search's last text rather
+ * than clearing every row's display, which brought back rows nobody had unhidden and undid a search
+ * whose box still showed the text (B2).
  */
 function filterGenericTable(tableId, filterText) {
     var table = document.getElementById(tableId);
@@ -7418,8 +7436,8 @@ function filterGenericTable(tableId, filterText) {
         /* The Total sums the rows shown; it is not a row the search can hide (B2). */
         if (rows[i].classList.contains('error-summary-total')) continue;
         var matches = rows[i].textContent.toLowerCase().indexOf(filter) >= 0;
-        /* Don't un-hide rows the user explicitly hid or collapsed transaction children (C18). */
-        var suppressed = rows[i].classList.contains('user-hidden') || rows[i].classList.contains('tc-collapsed');
+        /* Don't un-hide rows the user explicitly hid. */
+        var suppressed = rows[i].classList.contains('user-hidden');
         rows[i].style.display = (matches && !suppressed) ? '' : 'none';
     }
     refreshTableTotal(tableId);
@@ -7556,11 +7574,11 @@ function exportTop5SlowestCsv() {
 
 function exportErrorSummaryCsv() {
     if (!globalChartData) return;
-    var records = globalChartData.errorSummaries || globalChartData.errorsByType || [];
-    var headers = ['Sampler', 'Response Code', 'Error Class', 'Response Message', 'Count',
+    var records = globalChartData.errorSummaries ? requestErrorSummaries(globalChartData) : (globalChartData.errorsByType || []);
+    var headers = ['Sampler', 'Response Code', 'Type of Error', 'Error Class', 'Response Message', 'Count',
         '% of Errors', '% of All Samples'];
     var rows = records.map(function (e) {
-        return [e.samplerName || e.sampler || '', e.responseCode || e.code || '',
+        return [e.samplerName || e.sampler || '', e.responseCode || e.code || '', e.errorType || '',
             errorClassLabelOf(e),
             /* Blank rather than "OK": exporting the HTML reason phrase of a 2xx as a failure
                message is the same untruth as printing it. */
@@ -7573,11 +7591,11 @@ function exportErrorSummaryCsv() {
 
 function exportErrorDetailsCsv() {
     if (!globalChartData || !globalChartData.errorRecords) return;
-    var headers = ['Timestamp', 'Sampler', 'Response Code', 'Error Class', 'Response Message',
+    var headers = ['Timestamp', 'Sampler', 'Response Code', 'Type of Error', 'Error Class', 'Response Message',
         'Thread', 'URL', 'Request Headers', 'Response Body'];
     var rows = globalChartData.errorRecords.map(function (e) {
         var ts = e.timestamp ? new Date(e.timestamp).toISOString() : '';
-        return [ts, e.samplerName || e.sampler || '', e.responseCode || e.code || '',
+        return [ts, e.samplerName || e.sampler || '', e.responseCode || e.code || '', e.errorType || '',
             errorClassLabelOf(e),
             e.messageMeaningless ? '' : (e.responseMessage || e.message || ''),
             e.threadName || e.thread || '',
@@ -14363,6 +14381,7 @@ WIR.asserts = (function () {
            the payload carries — see MetricRef.Unit.KILOBYTES_PER_SECOND. This column used to be
            the documented example of "no assertable counterpart, so no button that cannot work". */
         'Recv KB/s': 'receivedKbPerSec',
+        'Sent KB/s': 'sentKbPerSec',
         'Apdex': 'apdex'
     };
 

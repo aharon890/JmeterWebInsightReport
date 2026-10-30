@@ -239,6 +239,12 @@
                         <div class="card-label">Max Threads</div>
                     </div>
                 </div>
+                <!-- Which samples the totals count (B5). JMeter counts a transaction run three ways:
+                     a listener in the plan the transactions, the Aggregate Report opened on the file
+                     every row, the HTML report the requests. Both paths here count as the listener. -->
+                <p class="wir-window-note wir-population-note" th:if="${countsTransactionsOnce != null and countsTransactionsOnce}">
+                    Each transaction counts once, with its requests inside it, as JMeter's Aggregate Report in the test
+                    plan counts them. The Samplers table lists the requests under their transaction.</p>
                 <!-- Extra metric cards row -->
                 <div class="summary-cards" style="margin-top: 16px;" th:if="${avgP95 != null}">
                     <div class="summary-card">
@@ -475,7 +481,8 @@
                                 <th draggable="true" onclick="sortTable(1, 'num')">Samples</th>
                                 <th draggable="true" onclick="sortTable(2, 'num')">Errors</th>
                                 <th draggable="true" onclick="sortTable(3, 'num')">Error %</th>
-                                <th draggable="true" onclick="sortTable(4, 'num')">Mean (ms)</th>
+                                <th draggable="true" onclick="sortTable(4, 'num')"
+                                    title="The mean response time, rounded to the nearest ms. JMeter's Aggregate Report shows the same mean with its decimals cut off (4.86 ms reads 4), its HTML report with two decimals (4.86).">Mean (ms)</th>
                                 <th draggable="true" onclick="sortTable(5, 'num')">Median (ms)</th>
                                 <th draggable="true" onclick="sortTable(6, 'num')">P90 (ms)</th>
                                 <th draggable="true" onclick="sortTable(7, 'num')">P95 (ms)</th>
@@ -484,7 +491,8 @@
                                 <th draggable="true" onclick="sortTable(10, 'num')">Max (ms)</th>
                                 <th draggable="true" onclick="sortTable(11, 'num')">Throughput</th>
                                 <th draggable="true" onclick="sortTable(12, 'num')">Recv KB/s</th>
-                                <th draggable="true" onclick="sortTable(13, 'num')">Apdex</th>
+                                <th draggable="true" onclick="sortTable(13, 'num')">Sent KB/s</th>
+                                <th draggable="true" onclick="sortTable(14, 'num')">Apdex</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -520,6 +528,7 @@
                                 <td th:text="${fmt.millis(stat.maxResponseTime)}">0</td>
                                 <td th:text="${fmt.number(stat.throughput)} + '/s'">0/s</td>
                                 <td th:text="${fmt.number(stat.receivedBytesPerSec / 1024.0)}">0</td>
+                                <td th:text="${fmt.number(stat.sentBytesPerSec / 1024.0)}">0</td>
                                 <td><span class="apdex-badge"
                                           th:text="${stat.apdexScore}"
                                           th:classappend="${stat.apdexScore > 0.94} ? 'apdex-excellent' : (${stat.apdexScore > 0.85} ? 'apdex-good' : (${stat.apdexScore > 0.70} ? 'apdex-fair' : (${stat.apdexScore > 0.50} ? 'apdex-poor' : 'apdex-unacceptable')))">0</span></td>
@@ -532,6 +541,13 @@
 
         <!-- ===== TAB: Errors ===== -->
         <div id="tab-errors" class="tab-panel">
+            <!-- Which failures the tab counts (E3). JMeter's HTML report leaves a Transaction
+                 Controller's own result out of its Errors tables; the Error Rate tile counts it, as
+                 the Aggregate Report does, so the two can differ on a run with transactions. -->
+            <p class="wir-window-note wir-population-note" th:if="${errorsLeaveOutTransactions}">
+                This tab counts failed requests, as JMeter's HTML report does: a transaction's own result is left out,
+                because its failure is the failure of a request inside it. The Error Rate on the Summary tab counts
+                failed transactions, as JMeter's Aggregate Report does.</p>
             <div class="timeline-toolbar">
                 <button class="filter-link-btn" id="showHiddenErrorChartsBtn" onclick="showAllErrorCharts()" style="display:none;">Show Hidden Charts</button>
             </div>
@@ -595,10 +611,13 @@
                             <tr>
                                 <th onclick="sortGenericTable('errorSummaryTable', 0, 'text')">Sampler</th>
                                 <th onclick="sortGenericTable('errorSummaryTable', 1, 'text')">Response Code</th>
-                                <th onclick="sortGenericTable('errorSummaryTable', 2, 'text')">Class</th>
-                                <th onclick="sortGenericTable('errorSummaryTable', 3, 'num')">Count</th>
-                                <th onclick="sortGenericTable('errorSummaryTable', 4, 'num')">% of Errors</th>
-                                <th onclick="sortGenericTable('errorSummaryTable', 5, 'num')">% of All Samples</th>
+                                <!-- JMeter's "Type of error" (E1): code/message, or a failed assertion's message -->
+                                <th onclick="sortGenericTable('errorSummaryTable', 2, 'text')"
+                                    title="As JMeter's HTML report words it: the code and message, or for a failed assertion its message">Type of error</th>
+                                <th onclick="sortGenericTable('errorSummaryTable', 3, 'text')">Class</th>
+                                <th onclick="sortGenericTable('errorSummaryTable', 4, 'num')">Count</th>
+                                <th onclick="sortGenericTable('errorSummaryTable', 5, 'num')">% of Errors</th>
+                                <th onclick="sortGenericTable('errorSummaryTable', 6, 'num')">% of All Samples</th>
                                 <th></th>
                             </tr>
                         </thead>
@@ -607,9 +626,10 @@
                                 th:data-sampler="${err.samplerName}" th:data-error-class="${err.errorClass}">
                                 <td th:text="${err.samplerName}" th:title="${err.samplerName}">Sampler</td>
                                 <td th:text="${err.responseCode}" th:title="${err.responseCode}">500</td>
+                                <td th:text="${err.errorType}" th:title="${err.errorType}">500/Internal Server Error</td>
                                 <td><span class="error-class" th:classappend="'error-class-' + ${err.errorClass}"
                                        th:text="${err.errorClassLabel}"
-                                       th:title="'Inferred from the response code — the report cannot see which assertion fired'">HTTP failure</span></td>
+                                       th:title="'Inferred from the response code: where the failure was decided'">HTTP failure</span></td>
                                 <td th:text="${fmt.number(err.occurrenceCount)}">0</td>
                                 <td th:text="${fmt.percentage(err.percentageOfErrors)}">0%</td>
                                 <td th:text="${fmt.percentage(err.percentageOfAllSamples)}">0%</td>
@@ -627,7 +647,7 @@
                         <h2 style="margin-bottom:0;">Error Details</h2>
                         <div class="filter-btn-group" id="errorViewToggle">
                             <button class="filter-toggle-btn active" id="errViewTimeBtn" onclick="setErrorDetailsView('time')" title="Chronological list &mdash; trace failures over time">By time</button>
-                            <button class="filter-toggle-btn" id="errViewGroupBtn" onclick="setErrorDetailsView('group')" title="Aggregated by sampler + response code">Grouped</button>
+                            <button class="filter-toggle-btn" id="errViewGroupBtn" onclick="setErrorDetailsView('group')" title="By sampler and type of error, as JMeter's HTML report groups errors">Grouped</button>
                         </div>
                     </div>
                     <button class="table-csv-btn" onclick="exportErrorDetailsCsv()" title="Download as CSV">
@@ -665,9 +685,10 @@
                                     <td th:text="${er.responseCode}" th:title="${er.responseCode}">500</td>
                                     <td><span class="error-class" th:classappend="'error-class-' + ${er.errorClass}"
                                            th:text="${er.errorClassLabel}"
-                                           th:title="'Inferred from the response code — the report cannot see which assertion fired'">HTTP failure</span></td>
-                                    <td th:if="${er.messageMeaningless}" class="error-message-none"
-                                        th:title="'The sampler failed a 2xx response. The reason lives in failureMessage, which is not captured on either ingestion path.'">&mdash;</td>
+                                           th:title="'Inferred from the response code: where the failure was decided'">HTTP failure</span></td>
+                                    <!-- A failed 2xx's "OK" says nothing: JMeter's type of error, its assertion's message (E1) -->
+                                    <td th:if="${er.messageMeaningless}" th:text="${er.errorType}"
+                                        th:title="${er.errorType}">Assertion failed</td>
                                     <td th:unless="${er.messageMeaningless}"
                                         th:text="${er.responseMessage}" th:title="${er.responseMessage}">Error</td>
                                     <td th:text="${er.threadName}" th:title="${er.threadName}">Thread</td>
@@ -679,7 +700,7 @@
                     </div>
                 </div>
 
-                <!-- Grouped view: one row per sampler+code signature; tbody built by buildErrorGroups(). -->
+                <!-- Grouped view: one row per sampler and type of error; tbody built by buildErrorGroups(). -->
                 <div id="errViewGroup" style="display:none;">
                     <div class="table-toolbar">
                         <input type="text" class="table-search" placeholder="Filter errors..." oninput="filterErrorGroups(this.value)"/>
@@ -694,7 +715,7 @@
                                     <th>Count</th>
                                     <th>Code</th>
                                     <th>Sampler</th>
-                                    <th>Message</th>
+                                    <th>Type of error</th>
                                     <th>First seen</th>
                                     <th>Last seen</th>
                                 </tr>

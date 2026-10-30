@@ -221,7 +221,7 @@ mvn test -pl jmeter-report-core -Dtest=JtlParserTest
 | core | LiveStatisticsEngineTest | Aggregation, Apdex, body truncation, thread safety |
 | core | ComparisonResultTest | Regression detection, custom thresholds |
 | core | ComparisonThresholdsTest | Threshold defaults, isEnabled() |
-| core | TDigestPercentileCalculatorTest | Percentiles, CDF for Apdex |
+| core | ResponseTimeDistributionTest | Percentiles as JMeter's Aggregate Report ranks them, CDF for Apdex, histogram bins |
 | core | FormatUtilTest | Duration, bytes, percentage formatting |
 | core | SamplerFilterTest | Include/exclude patterns |
 | core | AssertionParityTest | The Java evaluator against `assert-parity-vectors.json` |

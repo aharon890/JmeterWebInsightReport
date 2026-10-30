@@ -475,15 +475,30 @@ public class WebInsightReportListener extends ResultCollector {
      * Transaction Controllers with parent=true wrap child samples as sub-results.
      */
     private void processSampleResult(LiveStatisticsEngine statsEngine, SampleResult result) {
+        // The sample's start, whatever sampleresult.timestamp.start says: getTimeStamp() is its
+        // END when that property is false, and every sample was then placed and windowed by its
+        // end (S46: duration 3 m 10 s against JMeter's 3 m 4 s, B3). JMeter's Aggregate Report
+        // reads getStartTime() too. A result that never set one keeps its time stamp.
+        long start = result.getStartTime() > 0 ? result.getStartTime() : result.getTimeStamp();
+        // And its real end: a Transaction Controller's parent sample with "include timers" off
+        // counts only its children's time as elapsed and its pauses as idle time, and still ends
+        // after them. Its row's throughput window stopped at start + elapsed (P11: 0.86/s on the
+        // transaction row, 0.76/s on the Summary tile for the same 50 transactions, B7).
+        long end = Math.max(result.getEndTime(), start + Math.max(0, result.getTime()));
         statsEngine.recordSample(
                 result.getSampleLabel(),
                 result.getTime(),
                 result.isSuccessful(),
                 result.getBytesAsLong(),
                 result.getSentBytes(),
-                result.getTimeStamp(),
+                start,
+                end,
                 result.getConnectTime(),
-                result.getLatency()
+                result.getLatency(),
+                // 1 and 0/1 for every sample but one JMeter aggregated (Statistical mode), which
+                // stands for that many, that many failed (B6)
+                result.getSampleCount(),
+                result.getErrorCount()
         );
 
         // Track active threads — total across all thread groups, not just this sampler's group.
@@ -491,7 +506,15 @@ public class WebInsightReportListener extends ResultCollector {
         if (activeThreads <= 0) {
             activeThreads = result.getGroupThreads();
         }
-        statsEngine.updateActiveThreads(activeThreads, result.getTimeStamp());
+        statsEngine.updateActiveThreads(activeThreads, LiveStatisticsEngine.endOf(start, result.getTime()));
+        if (LiveStatisticsEngine.isTransactionRow(result.getResponseMessage())) {
+            // Left out of the Errors tab, as JMeter's HTML report leaves it out (E3)
+            statsEngine.recordTransactionRow(result.getSampleCount());
+        } else {
+            // and out of the response codes, as its Codes per Second does (T5)
+            statsEngine.recordResponseCode(result.getResponseCode(),
+                    LiveStatisticsEngine.endOf(start, result.getTime()));
+        }
 
         // Record error details with URL and response body
         if (!result.isSuccessful()) {
@@ -507,7 +530,11 @@ public class WebInsightReportListener extends ResultCollector {
                     result.getSampleLabel(),
                     result.getResponseCode(),
                     result.getResponseMessage(),
-                    result.getTimeStamp(),
+                    // what a results file's failureMessage column holds (CSVSaveService), when JMeter would
+                    // type the error by it: the property is on (its default), as the HTML report reads it (E1)
+                    JMeterUtils.getPropDefault("jmeter.save.saveservice.assertion_results_failure_message", true)
+                            ? result.getFirstAssertionFailureMessage() : null,
+                    start,
                     result.getThreadName(),
                     url,
                     null,

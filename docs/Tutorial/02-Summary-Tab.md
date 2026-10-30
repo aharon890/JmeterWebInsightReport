@@ -90,7 +90,10 @@ A line chart showing response time trends per sampler during the test.
 - **+ Assert from chart** — and the rule lines drawn on it, as on the Timeline tab's response
   time chart (see [Timeline](03-Timeline-Tab.md#threshold-lines-are-rules))
 
-**Active threads overlay:** A dashed line showing thread count over time (right Y-axis).
+**Max Active Threads overlay:** A dashed line showing the most threads running in each window, all
+thread groups together (right Y-axis), as the Max Threads tile counts them; above 1 s a window takes
+its seconds' maximum. JMeter's Active Threads Over Time draws one line per thread group, each its mean
+over the window — it has no all-groups line, so this one is named for what it shows.
 
 ## Top 5 Slowest Samplers (by P95)
 
