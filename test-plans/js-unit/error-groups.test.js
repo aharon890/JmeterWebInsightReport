@@ -68,6 +68,16 @@ test('E1: one sampler\'s errors are grouped by JMeter\'s type of error, not by c
     assert.strictEqual(groups[1].occurrences.length, 1, 'the record joins its own type\'s group');
 });
 
+test('E3: the tab reads the failed requests; a transaction\'s own failures are the asserts\'', () => {
+    const scope = loadReportScope();
+    const data = { errorSummaries: [
+        { samplerName: 'Pay', responseCode: '500', occurrenceCount: 69 },
+        { samplerName: 'Checkout', responseCode: '500', occurrenceCount: 69, transactionRow: true },
+    ] };
+    assert.deepStrictEqual(Array.from(scope.requestErrorSummaries(data), (e) => e.samplerName), ['Pay']);
+    assert.strictEqual(scope.errorGroupsFrom([], scope.requestErrorSummaries(data)).length, 1);
+});
+
 test('E2: the By-time list says it holds the first 500 of N', () => {
     const scope = loadReportScope();
     assert.strictEqual(scope.keptErrorsNote(500, 3559),

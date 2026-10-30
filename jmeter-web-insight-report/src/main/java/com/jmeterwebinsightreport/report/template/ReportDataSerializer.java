@@ -588,12 +588,17 @@ public class ReportDataSerializer {
 
 
         // Error breakdown data for Error tab charts
-        // The failed requests (E3): a transaction's own failures are the asserts', not the Errors tab's
+        // The failed requests (E3): a transaction's own failures are the asserts', not the Errors tab's.
+        // errorSummaries carries both, the transaction's flagged, because the page re-judges the
+        // errorRate:code=/class= rules over every group, as MetricRef does; every Errors-tab view reads
+        // the request groups only (report.js requestErrorSummaries).
         List<ErrorSummary> requestErrors = reportData.requestErrorSummaries();
-        if (!requestErrors.isEmpty()) {
+        List<ErrorSummary> allErrors = reportData.getErrorSummaries() != null
+                ? reportData.getErrorSummaries() : Collections.emptyList();
+        if (!allErrors.isEmpty()) {
             List<Map<String, Object>> errorsByType = new ArrayList<>();
             List<Map<String, Object>> errorSummaries = new ArrayList<>();
-            for (ErrorSummary es : requestErrors) {
+            for (ErrorSummary es : allErrors) {
                 Map<String, Object> e = new LinkedHashMap<>();
                 e.put("code", es.getResponseCode());
                 e.put("message", es.getResponseMessage());
@@ -607,7 +612,9 @@ public class ReportDataSerializer {
                 e.put("errorClass", es.getErrorClass());
                 e.put("errorClassLabel", es.getErrorClassLabel());
                 e.put("messageMeaningless", es.isMessageMeaningless());
-                errorsByType.add(e);
+                if (!es.isTransactionRow()) {
+                    errorsByType.add(e);
+                }
 
                 // Full error summary for CSV export (includes sampler name)
                 Map<String, Object> full = new LinkedHashMap<>();
@@ -627,6 +634,9 @@ public class ReportDataSerializer {
                 full.put("errorClass", es.getErrorClass());
                 full.put("errorClassLabel", es.getErrorClassLabel());
                 full.put("messageMeaningless", es.isMessageMeaningless());
+                if (es.isTransactionRow()) {
+                    full.put("transactionRow", true);
+                }
                 errorSummaries.add(full);
             }
             chartData.put("errorsByType", errorsByType);

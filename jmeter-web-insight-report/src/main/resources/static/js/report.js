@@ -1405,7 +1405,7 @@ function initCharts(data) {
     pendingChartInits.push({ tab: 'errors', fn: function () { initErrorBreakdownCharts(data); } });
 
     // Error Details grouped view (DOM-only — the error tables are parsed before this script runs)
-    buildErrorGroups(data.errorRecords, data.errorSummaries);
+    buildErrorGroups(data.errorRecords, requestErrorSummaries(data));
     noteKeptErrorRecords(data);
     restoreErrorDetailsView();
 
@@ -4717,6 +4717,12 @@ function formatErrorClock(ts) {
  * last seen were the first 500's and said nothing about it (S38: 3,559 errors, its groups added up
  * to 500; 21 of its 108 groups were missing). A payload with no summaries (no errors, or an older
  * one) still groups the records. */
+/* The Errors tab's groups: the failed requests. The payload's errorSummaries also holds a transaction's own
+   failures (transactionRow), which the asserts count, as Java does, and the tab does not (E3). */
+function requestErrorSummaries(data) {
+    return ((data && data.errorSummaries) || []).filter(function (e) { return !e.transactionRow; });
+}
+
 function errorGroupsFrom(records, summaries) {
     /* Null-prototype map so sampler names like "constructor" can't collide with Object.prototype. */
     var byKey = Object.create(null);
@@ -7568,7 +7574,7 @@ function exportTop5SlowestCsv() {
 
 function exportErrorSummaryCsv() {
     if (!globalChartData) return;
-    var records = globalChartData.errorSummaries || globalChartData.errorsByType || [];
+    var records = globalChartData.errorSummaries ? requestErrorSummaries(globalChartData) : (globalChartData.errorsByType || []);
     var headers = ['Sampler', 'Response Code', 'Type of Error', 'Error Class', 'Response Message', 'Count',
         '% of Errors', '% of All Samples'];
     var rows = records.map(function (e) {

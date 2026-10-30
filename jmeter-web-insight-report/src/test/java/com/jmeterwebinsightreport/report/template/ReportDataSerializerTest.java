@@ -373,7 +373,12 @@ class ReportDataSerializerTest {
         JsonNode json = objectMapper.readTree(ChartDataJson.of(data));
         assertEquals(4250, json.get("requestSampleCount").asInt());
         assertEquals(4200, json.get("requestErrorCount").asInt());
-        assertEquals(1, json.get("errorSummaries").size(), "the transaction's own failures are not the tab's");
+        // The page re-judges errorRate:code=/class= rules over every group, as MetricRef does: the
+        // transaction's own failures ship too, flagged, and the tab leaves them out
+        assertEquals(2, json.get("errorSummaries").size());
+        assertTrue(json.get("errorSummaries").get(1).get("transactionRow").asBoolean());
+        assertFalse(json.get("errorSummaries").get(0).has("transactionRow"));
+        assertEquals(1, json.get("errorsByType").size(), "the tab's pie: the failed requests");
         assertTrue(json.get("errorRecordsTruncated").asBoolean());
         assertFalse(json.has("totalSampleCount"), "C20's every-sample population is gone");
     }
