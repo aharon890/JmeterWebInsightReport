@@ -540,6 +540,13 @@
 
         <!-- ===== TAB: Errors ===== -->
         <div id="tab-errors" class="tab-panel">
+            <!-- Which failures the tab counts (E3). JMeter's HTML report leaves a Transaction
+                 Controller's own result out of its Errors tables; the Error Rate tile counts it, as
+                 the Aggregate Report does, so the two can differ on a run with transactions. -->
+            <p class="wir-window-note wir-population-note" th:if="${errorsLeaveOutTransactions}">
+                This tab counts failed requests, as JMeter's HTML report does: a transaction's own result is left out,
+                because its failure is the failure of a request inside it. The Error Rate on the Summary tab counts
+                failed transactions, as JMeter's Aggregate Report does.</p>
             <div class="timeline-toolbar">
                 <button class="filter-link-btn" id="showHiddenErrorChartsBtn" onclick="showAllErrorCharts()" style="display:none;">Show Hidden Charts</button>
             </div>

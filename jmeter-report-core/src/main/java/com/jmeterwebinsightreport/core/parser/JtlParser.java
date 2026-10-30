@@ -317,6 +317,9 @@ public class JtlParser {
             if (threads > 0) {
                 engine.updateActiveThreads(threads, timestamp);
             }
+            if (LiveStatisticsEngine.isTransactionRow(message)) {
+                engine.recordTransactionRow(samples);
+            }
             if (!success) {
                 engine.recordError(label, responseCode, message, timestamp, thread, url, null, null);
             }

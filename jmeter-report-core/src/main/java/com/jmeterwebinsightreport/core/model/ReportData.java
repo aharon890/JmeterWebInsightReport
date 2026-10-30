@@ -17,6 +17,9 @@ public class ReportData {
     private java.util.Map<String, List<String>> transactionHierarchy = new java.util.LinkedHashMap<>();
     /** True when {@link #errorRecords} is a truncated sample (more errors occurred than the detail cap). */
     private boolean errorRecordsTruncated;
+    /** Every recorded sample but a Transaction Controller's own results: what the Errors tab's
+     *  "% of all samples" divides by, as JMeter's HTML report does (E3). */
+    private long requestSampleCount;
     /** Overall response-time percentiles across the merged distribution of top-level samplers
      *  (the true percentile of all samples — not an average of per-sampler percentiles). */
     private double overallMedian;
@@ -104,6 +107,42 @@ public class ReportData {
 
     public boolean isErrorRecordsTruncated() {
         return errorRecordsTruncated;
+    }
+
+    public long getRequestSampleCount() {
+        return requestSampleCount;
+    }
+
+    public void setRequestSampleCount(long requestSampleCount) {
+        this.requestSampleCount = requestSampleCount;
+    }
+
+    /**
+     * The Errors tab's groups: the failed requests, a Transaction Controller's own results left out —
+     * JMeter's HTML report's Errors population ({@code Sample.isController}). A failed transaction is
+     * its requests' failure, and counting both listed it twice (pilot-D "Checkout Flow | 500 x69"
+     * beside "Payment | 500 x69", E3). Not a bean property: the asserts read
+     * {@link #getErrorSummaries()}, every group.
+     */
+    public List<ErrorSummary> requestErrorSummaries() {
+        List<ErrorSummary> requests = new ArrayList<>();
+        if (errorSummaries != null) {
+            for (ErrorSummary s : errorSummaries) {
+                if (!s.isTransactionRow()) {
+                    requests.add(s);
+                }
+            }
+        }
+        return requests;
+    }
+
+    /** The failed requests: the sum of {@link #requestErrorSummaries()}' counts. */
+    public long requestErrorCount() {
+        long n = 0;
+        for (ErrorSummary s : requestErrorSummaries()) {
+            n += s.getOccurrenceCount();
+        }
+        return n;
     }
 
     public void setErrorRecordsTruncated(boolean errorRecordsTruncated) {

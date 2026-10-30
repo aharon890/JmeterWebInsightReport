@@ -354,16 +354,28 @@ class ReportDataSerializerTest {
 
     @Test
     void serializesTotalsAndTruncationFlag() throws JsonProcessingException {
-        // A3/C20: total sample/error counts and the truncation flag are serialized for the client.
+        // A3/E3: the Errors tab's sample and error counts and the truncation flag are serialized for
+        // the client: every request, and the failed ones, a transaction's own result left out.
         ReportData data = createMinimalReportData();
-        data.getMetadata().setTotalSamples(4250);
-        data.getMetadata().setTotalErrors(4250);
+        data.setRequestSampleCount(4250);
+        ErrorSummary request = new ErrorSummary();
+        request.setSamplerName("Pay");
+        request.setResponseCode("500");
+        request.setOccurrenceCount(4200);
+        ErrorSummary transaction = new ErrorSummary();
+        transaction.setSamplerName("Checkout");
+        transaction.setResponseCode("500");
+        transaction.setOccurrenceCount(4200);
+        transaction.setTransactionRow(true);
+        data.setErrorSummaries(new ArrayList<>(Arrays.asList(request, transaction)));
         data.setErrorRecordsTruncated(true);
 
         JsonNode json = objectMapper.readTree(ChartDataJson.of(data));
-        assertEquals(4250, json.get("totalSampleCount").asInt());
-        assertEquals(4250, json.get("totalErrorCount").asInt());
+        assertEquals(4250, json.get("requestSampleCount").asInt());
+        assertEquals(4200, json.get("requestErrorCount").asInt());
+        assertEquals(1, json.get("errorSummaries").size(), "the transaction's own failures are not the tab's");
         assertTrue(json.get("errorRecordsTruncated").asBoolean());
+        assertFalse(json.has("totalSampleCount"), "C20's every-sample population is gone");
     }
 
     @Test
@@ -696,6 +708,7 @@ class ReportDataSerializerTest {
         // Error summaries
         List<ErrorSummary> errorSummaries = new ArrayList<>();
         ErrorSummary es = new ErrorSummary();
+        es.setSamplerName("GET /api/users");
         es.setResponseCode("500");
         es.setResponseMessage("Internal Server Error");
         es.setOccurrenceCount(5);

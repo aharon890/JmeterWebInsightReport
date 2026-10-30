@@ -563,5 +563,11 @@ class JtlParserTest {
         assertEquals(6, data.getTopLevelSampleCount(), "Checkout, Home x2, Export, Download, Report");
         assertEquals(1, data.getTopLevelErrorCount(), "the failed transaction, once");
         assertEquals(8, data.getMetadata().getTotalSamples(), "every row is still recorded");
+        // E3: the Errors tab's population leaves the two transaction rows out
+        assertEquals(6, data.getRequestSampleCount());
+        assertEquals(1, data.requestErrorSummaries().size());
+        assertEquals("Pay", data.requestErrorSummaries().get(0).getSamplerName());
+        assertTrue(data.getErrorSummaries().stream().anyMatch(s -> s.isTransactionRow()
+                && s.getSamplerName().equals("Checkout")), "the asserts still see the failed transaction");
     }
 }

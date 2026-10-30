@@ -16,8 +16,20 @@ public class ErrorSummary {
      *  first 500 the report keeps in detail (E2). 0 when not known. */
     private long firstTimestamp;
     private long lastTimestamp;
+    /** A Transaction Controller's own failed results (their message is "Number of samples in
+     *  transaction ..."). The asserts count them, as the Aggregate Report counts a failed transaction;
+     *  the Errors tab does not, as JMeter's HTML report does not (E3). */
+    private boolean transactionRow;
 
     public ErrorSummary() {
+    }
+
+    public boolean isTransactionRow() {
+        return transactionRow;
+    }
+
+    public void setTransactionRow(boolean transactionRow) {
+        this.transactionRow = transactionRow;
     }
 
     public String getSamplerName() {

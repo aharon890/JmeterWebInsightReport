@@ -554,10 +554,12 @@ public class ReportDataSerializer {
 
 
         // Error breakdown data for Error tab charts
-        if (reportData.getErrorSummaries() != null && !reportData.getErrorSummaries().isEmpty()) {
+        // The failed requests (E3): a transaction's own failures are the asserts', not the Errors tab's
+        List<ErrorSummary> requestErrors = reportData.requestErrorSummaries();
+        if (!requestErrors.isEmpty()) {
             List<Map<String, Object>> errorsByType = new ArrayList<>();
             List<Map<String, Object>> errorSummaries = new ArrayList<>();
-            for (ErrorSummary es : reportData.getErrorSummaries()) {
+            for (ErrorSummary es : requestErrors) {
                 Map<String, Object> e = new LinkedHashMap<>();
                 e.put("code", es.getResponseCode());
                 e.put("message", es.getResponseMessage());
@@ -593,15 +595,22 @@ public class ReportDataSerializer {
             chartData.put("errorSummaries", errorSummaries);
         }
 
-        // Errors by sampler
+        // Errors by sampler: the failed requests per sampler, from the same groups as the tab's table
+        // (E3). Read off the samplers' error counts, a transaction counted its own failures beside its
+        // requests'.
         if (reportData.getSamplerStatistics() != null) {
+            Map<String, Long> failedBySampler = new LinkedHashMap<>();
+            for (ErrorSummary es : requestErrors) {
+                failedBySampler.merge(es.getSamplerName(), es.getOccurrenceCount(), Long::sum);
+            }
             List<Map<String, Object>> errorsBySampler = new ArrayList<>();
             for (SamplerStatistics stat : reportData.getSamplerStatistics()) {
-                if (stat.getErrorCount() > 0) {
+                Long failed = failedBySampler.get(stat.getSamplerName());
+                if (failed != null && failed > 0) {
                     Map<String, Object> e = new LinkedHashMap<>();
                     e.put("name", stat.getSamplerName());
-                    e.put("count", stat.getErrorCount());
-                    e.put("rate", round2(stat.getErrorRate()));
+                    e.put("count", failed);
+                    e.put("rate", round2(stat.getSampleCount() > 0 ? failed * 100.0 / stat.getSampleCount() : 0));
                     errorsBySampler.add(e);
                 }
             }
@@ -631,20 +640,19 @@ public class ReportDataSerializer {
         // Whether the detailed error records are a truncated sample (charts must then use full aggregates).
         chartData.put("errorRecordsTruncated", reportData.isErrorRecordsTruncated());
 
-        // Test-level totals — needed for correct "% of all samples" math on the client (C20).
+        // Test-level totals — needed for correct "% of all samples" math on the client.
         //
-        // Two populations, deliberately, because two parts of the report count different
-        // things and each must be internally consistent:
-        //  - totalSampleCount/totalErrorCount are EVERY recorded sample. The error tab's rows
-        //    include transaction children, so its total row has to divide by the same
-        //    population its rows come from.
+        // Two populations, each a JMeter tool's, and each part of the report internally consistent:
+        //  - requestSampleCount/requestErrorCount are the failed requests and every request: every
+        //    recorded sample but a Transaction Controller's own result, children included. The
+        //    Errors tab's rows are drawn from them and its Total divides by them, as JMeter's HTML
+        //    report's Errors table does (E3). They were every recorded sample (C20), so a failed
+        //    transaction was listed beside the request that failed it.
         //  - topLevelSampleCount/topLevelErrorCount exclude transaction children. That is the
         //    population the header tiles and cicd.json use, since a child's time is already
-        //    counted inside its parent.
-        if (reportData.getMetadata() != null) {
-            chartData.put("totalSampleCount", reportData.getMetadata().getTotalSamples());
-            chartData.put("totalErrorCount", reportData.getMetadata().getTotalErrors());
-        }
+        //    counted inside its parent (JMeter's Aggregate Report in the test plan).
+        chartData.put("requestSampleCount", reportData.getRequestSampleCount());
+        chartData.put("requestErrorCount", requestErrors.stream().mapToLong(ErrorSummary::getOccurrenceCount).sum());
         chartData.put("topLevelSampleCount", reportData.getTopLevelSampleCount());
         chartData.put("topLevelErrorCount", reportData.getTopLevelErrorCount());
 

@@ -270,6 +270,37 @@ class WebInsightReportListenerTest {
     }
 
     @Test
+    void aTransactionsOwnResultIsNoRequestOfTheErrorsTab() throws Exception {
+        // E3: a parent sample with a failed child. JMeter's HTML report lists the child's failure and
+        // leaves the transaction's own result out of its Errors table and its "% of all samples".
+        WebInsightReportListener listener = new WebInsightReportListener();
+        com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine engine =
+                new com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine();
+        Field f = WebInsightReportListener.class.getDeclaredField("statsEngine");
+        f.setAccessible(true);
+        f.set(listener, engine);
+
+        SampleResult pay = SampleResult.createTestSample(1_700_000_000_000L, 1_700_000_000_200L);
+        pay.setSampleLabel("Pay");
+        pay.setSuccessful(false);
+        pay.setResponseCode("500");
+        pay.setResponseMessage("Internal Server Error");
+        SampleResult tx = SampleResult.createTestSample(1_700_000_000_000L, 1_700_000_000_200L);
+        tx.setSampleLabel("Checkout");
+        tx.setSuccessful(false);
+        tx.setResponseCode("500");
+        tx.setResponseMessage("Number of samples in transaction : 1, number of failing samples : 1");
+        tx.addSubResult(pay, false);   // as TransactionSampler adds it: the label kept
+        listener.sampleOccurred(new SampleEvent(tx, "Thread Group"));
+
+        com.jmeterwebinsightreport.core.model.ReportData data = engine.buildReportData("t");
+        assertEquals(1, data.getRequestSampleCount());
+        assertEquals(1, data.requestErrorSummaries().size());
+        assertEquals("Pay", data.requestErrorSummaries().get(0).getSamplerName());
+        assertEquals(1, data.getErrorRecords().size());
+    }
+
+    @Test
     void aStatisticalResultCountsItsSamplesAndItsErrors() throws Exception {
         // B6: a remote engine in Statistical mode sends one StatisticalSampleResult for many samples.
         WebInsightReportListener listener = new WebInsightReportListener();

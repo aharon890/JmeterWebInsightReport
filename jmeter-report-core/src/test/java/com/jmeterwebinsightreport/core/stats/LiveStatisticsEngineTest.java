@@ -216,6 +216,52 @@ class LiveStatisticsEngineTest {
     }
 
     @Test
+    void theErrorsTabCountsFailedRequestsAsJMetersHtmlReportDoes() {
+        // E3: pilot-D listed "Checkout Flow | 500 x69" beside the "Payment | 500 x69" that failed it
+        String tx = "Number of samples in transaction : 2, number of failing samples : 1";
+        long ts = 1700000000000L;
+        engine.recordTransaction("Checkout", "Cart", true);
+        engine.recordTransaction("Checkout", "Pay", true);
+        engine.recordSample("Checkout", 300, false, 900, 90, ts, 0, 0);
+        engine.recordTransactionRow(1);
+        engine.recordError("Checkout", "500", tx, ts, "TG 1-1");
+        engine.recordSample("Cart", 100, true, 400, 40, ts, 5, 90);
+        engine.recordSample("Pay", 200, false, 500, 50, ts + 100, 5, 190);
+        engine.recordError("Pay", "500", "Internal Server Error", ts + 100, "TG 1-1");
+        engine.recordSample("Home", 10, false, 100, 10, ts + 200, 1, 9);
+        engine.recordError("Home", "503", "Service Unavailable", ts + 200, "TG 1-2");
+
+        ReportData data = engine.buildReportData("t");
+        assertEquals(3, data.getRequestSampleCount(), "Cart, Pay, Home: the transaction's own result is not a request");
+        List<ErrorSummary> requests = data.requestErrorSummaries();
+        assertEquals(2, requests.size());
+        assertEquals(2, data.requestErrorCount());
+        for (ErrorSummary s : requests) {
+            assertFalse(s.isTransactionRow());
+            assertEquals(50.0, s.getPercentageOfErrors(), 1e-9);
+            assertEquals(100.0 / 3, s.getPercentageOfAllSamples(), 1e-9);
+        }
+        assertEquals(3, data.getErrorSummaries().size(), "the asserts still read the transaction's failure");
+        assertTrue(data.getErrorSummaries().stream().anyMatch(ErrorSummary::isTransactionRow));
+        assertEquals(2, data.getErrorRecords().size(), "no detail record for the transaction's own result");
+        assertEquals(2, data.getTopLevelErrorCount(), "the Error Rate tile counts the failed transaction and Home");
+    }
+
+    @Test
+    void theDetailRecordsAreTruncatedOnlyByFailedRequests() {
+        String tx = "Number of samples in transaction : 1, number of failing samples : 1";
+        for (int i = 0; i < 500; i++) {
+            engine.recordSample("Flow", 10, false, 0, 0, 1700000000000L + i, -1, -1);
+            engine.recordTransactionRow(1);
+            engine.recordError("Flow", "500", tx, 1700000000000L + i, "TG 1-1");
+            engine.recordSample("Pay", 10, false, 0, 0, 1700000000000L + i, -1, -1);
+            engine.recordError("Pay", "500", "Internal Server Error", 1700000000000L + i, "TG 1-1");
+        }
+        assertFalse(engine.isErrorRecordsTruncated(), "500 failed requests, all kept");
+        assertEquals(500, engine.getErrorRecords().size());
+    }
+
+    @Test
     void recordSample_noFalseTransactionFromNamePrefix() {
         long ts = 1700000000000L;
         // REST-style names share a prefix but are independent samplers — must NOT be nested (B8).

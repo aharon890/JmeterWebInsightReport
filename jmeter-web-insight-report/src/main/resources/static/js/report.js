@@ -2720,11 +2720,23 @@ function errorCodeWithClass(code, shortClass) {
 function getFilteredErrorRecords(data) {
     if (!data.errorRecords) return [];
     if (isTotalVisible()) return data.errorRecords;
-    var visible = getVisibleSamplerNames();
-    if (visible.length === 0) return [];
+    var visible = {};
+    getVisibleSamplerNames().forEach(function (n) { visible[n] = true; });
     return data.errorRecords.filter(function (er) {
-        return visible.indexOf(er.sampler) >= 0;
+        return errorsShownFor(er.sampler, visible);
     });
+}
+
+/* Whether the filter shows a sampler's errors. The errors are the failed requests (E3), and a
+   transaction's failures are its requests' — so while the children are collapsed, a request inside a
+   shown transaction has its errors shown, as the transaction's row stands for it everywhere else. */
+function errorsShownFor(name, visible) {
+    if (visible[name]) return true;
+    if (showTransactionChildren) return false;
+    for (var parent = transactionChildNames[name]; parent !== undefined; parent = transactionChildNames[parent]) {
+        if (visible[parent]) return true;
+    }
+    return false;
 }
 
 /* Error counts by response code. When the detailed record list is truncated (errors > cap),
@@ -2794,15 +2806,14 @@ function initErrorBreakdownCharts(data) {
  * their headers now, as decorateErrorTable finds Class. The error tables cannot be reordered, so
  * a header's place is fixed for the life of the page.
  *
- * Which rows: the ones shown — not those the search, a × or a collapsed transaction child hides.
- * Each row's % of Errors divides by every error and its % of All Samples by every sample (both
- * populations include transaction children, C20); the Total divides its count by the same two. So
- * its Count is the sum of the Count column above it, its percentages are that count's exact share
- * of each — the sum of their column up to each row's own rounding to two decimals — and it says
- * 100.00% of errors only when every row is in it. A Total of every row would sit under rows that
- * add up to less whenever one is hidden — on E02 by default, whose collapsed transaction children
- * hold dozens of its errors — with nothing on screen to say why. So when not every row is
- * counted, its first cell says how many are.
+ * Which rows: the ones shown — not those the search or a × hides. Each row's % of Errors divides by
+ * every failed request and its % of All Samples by every request (a transaction's own result left
+ * out of both, as JMeter's HTML report leaves it out, E3); the Total divides its count by the same
+ * two. So its Count is the sum of the Count column above it, its percentages are that count's exact
+ * share of each — the sum of their column up to each row's own rounding to two decimals — and it
+ * says 100.00% of errors only when every row is in it. A Total of every row would sit under rows
+ * that add up to less whenever one is hidden, with nothing on screen to say why. So when not every
+ * row is counted, its first cell says how many are.
  * Rebuilt by whatever changes what is shown (refreshTableTotal); the search never hides it.
  */
 function buildErrorSummaryTotalRow() {
@@ -2836,8 +2847,8 @@ function buildErrorSummaryTotalRow() {
 
     /* The two populations the rows divided by, from the serialized totals (metadata is not
        embedded in chartData). */
-    var errors = (globalChartData && globalChartData.totalErrorCount) || every;
-    var samples = (globalChartData && globalChartData.totalSampleCount) || 0;
+    var errors = (globalChartData && globalChartData.requestErrorCount) || every;
+    var samples = (globalChartData && globalChartData.requestSampleCount) || 0;
     var share = function (of) { return of > 0 ? (count * 100.0 / of).toFixed(2) + '%' : ''; };
     var labelCol = col['Sampler'] !== undefined ? col['Sampler'] : 0;
 
@@ -2852,8 +2863,8 @@ function buildErrorSummaryTotalRow() {
                 ? 'Total' : 'Total (' + shown.length + ' of ' + rows.length + ' rows)';
             td.title = 'The sum of the rows shown: % of Errors is their share of all '
                 + errors.toLocaleString('en-US') + ' errors, % of All Samples their share of all '
-                + samples.toLocaleString('en-US') + ' samples. Rows the search, a × or a '
-                + 'collapsed transaction child hides are not in it.';
+                + samples.toLocaleString('en-US') + ' samples. Rows the search or a × hides '
+                + 'are not in it.';
         }
         else if (c === countCol) td.textContent = count.toLocaleString('en-US');
         else if (c === col['% of Errors']) td.textContent = share(errors);
@@ -4096,11 +4107,6 @@ function initTransactionHierarchy(data) {
         }
     });
 
-    /* Also hide children in error tables on initial load */
-    if (!showTransactionChildren) {
-        hideTransactionChildrenInTable('errorSummaryTable', 0);
-        hideTransactionChildrenInTable('errorDetailsTable', 1);
-    }
 }
 
 function toggleTransactionChildrenVisibility() {
@@ -4133,33 +4139,12 @@ function toggleTransactionChildrenVisibility() {
         label.style.display = showTransactionChildren ? '' : 'none';
     });
 
-    /* Show/hide child rows in error tables */
-    hideTransactionChildrenInTable('errorSummaryTable', 0);
-    hideTransactionChildrenInTable('errorDetailsTable', 1);
+    /* The error tables are not collapsed with them: their rows are the failed requests, transaction
+       children included, and no transaction's own row stands for them there (E3). */
 
     /* Recalculate total row and refresh charts */
     updateTotalRow();
     debouncedRefreshAllCharts();
-}
-
-function hideTransactionChildrenInTable(tableId, samplerColIdx) {
-    var table = document.getElementById(tableId);
-    if (!table || !table.tBodies[0]) return;
-    var rows = table.tBodies[0].rows;
-    for (var i = 0; i < rows.length; i++) {
-        if (rows[i].classList.contains('error-detail-row')) continue;
-        if (rows[i].classList.contains('error-summary-total')) continue;
-        var cell = rows[i].cells[samplerColIdx];
-        if (!cell) continue;
-        var samplerName = cell.textContent.trim();
-        if (isTransactionChild(samplerName)) {
-            /* Mark so a search filter doesn't accidentally reveal collapsed children (C18). */
-            rows[i].classList.toggle('tc-collapsed', !showTransactionChildren);
-        }
-    }
-    /* Shown or not is the search's and the ×'s call as well as the toggle's: expanding used to
-       show every child, a row the reader had hidden with × and one the search hides included. */
-    reapplyGenericRowDisplay(tableId);
 }
 
 /* ============================================================
@@ -4862,7 +4847,7 @@ function noteKeptErrorRecords(data) {
     var note = document.createElement('div');
     note.className = 'truncation-note kept-errors-note';
     note.style.cssText = 'font-size:0.72rem;color:var(--color-text-secondary,#64748b);margin:2px 0 6px;';
-    note.textContent = keptErrorsNote((data.errorRecords || []).length, data.totalErrorCount);
+    note.textContent = keptErrorsNote((data.errorRecords || []).length, data.requestErrorCount);
     wrapper.parentNode.insertBefore(note, wrapper);
 }
 
@@ -7444,11 +7429,10 @@ function sortGenericTable(tableId, colId, type) {
 }
 
 /**
- * Whether each row of a generic table shows: it matches the search, and neither a × (user-hidden)
- * nor a collapsed transaction child (tc-collapsed, C18) hides it. The one place that decides it —
- * Show Hidden and the transaction toggle re-apply it with the search's last text rather than
- * clearing every row's display, which brought back collapsed children nobody had hidden and undid
- * a search whose box still showed the text (B2).
+ * Whether each row of a generic table shows: it matches the search, and no × (user-hidden) hides
+ * it. The one place that decides it — Show Hidden re-applies it with the search's last text rather
+ * than clearing every row's display, which brought back rows nobody had unhidden and undid a search
+ * whose box still showed the text (B2).
  */
 function filterGenericTable(tableId, filterText) {
     var table = document.getElementById(tableId);
@@ -7462,8 +7446,8 @@ function filterGenericTable(tableId, filterText) {
         /* The Total sums the rows shown; it is not a row the search can hide (B2). */
         if (rows[i].classList.contains('error-summary-total')) continue;
         var matches = rows[i].textContent.toLowerCase().indexOf(filter) >= 0;
-        /* Don't un-hide rows the user explicitly hid or collapsed transaction children (C18). */
-        var suppressed = rows[i].classList.contains('user-hidden') || rows[i].classList.contains('tc-collapsed');
+        /* Don't un-hide rows the user explicitly hid. */
+        var suppressed = rows[i].classList.contains('user-hidden');
         rows[i].style.display = (matches && !suppressed) ? '' : 'none';
     }
     refreshTableTotal(tableId);

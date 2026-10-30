@@ -19,6 +19,15 @@ import java.util.stream.Collectors;
 public class LiveStatisticsEngine {
 
     private static final int MAX_ERROR_RECORDS = 500;
+
+    /** How a Transaction Controller's own result begins its response message ({@code TransactionSampler}).
+     *  JMeter's HTML report finds controller rows by the same text ({@code Sample.isController}). */
+    public static final String TRANSACTION_MESSAGE = "Number of samples in transaction";
+
+    /** True for a Transaction Controller's own result, by its response message. */
+    public static boolean isTransactionRow(String responseMessage) {
+        return responseMessage != null && responseMessage.startsWith(TRANSACTION_MESSAGE);
+    }
     private static final int DEFAULT_MAX_BODY_LENGTH = 16384; // 16KB
     private static final int MAX_HEADERS_LENGTH = 2048;
     private int maxResponseBodyLength = DEFAULT_MAX_BODY_LENGTH;
@@ -55,6 +64,11 @@ public class LiveStatisticsEngine {
 
     private final AtomicLong totalSamples = new AtomicLong();
     private final AtomicLong totalErrors = new AtomicLong();
+    /** Of {@link #totalSamples}, a Transaction Controller's own results (E3). */
+    private final AtomicLong transactionRowSamples = new AtomicLong();
+    /** Failed requests seen — every error but a transaction's own: the detail records' population.
+     *  Guarded by the {@code errorRecords} monitor. */
+    private long requestErrorsSeen;
     private final AtomicInteger maxActiveThreads = new AtomicInteger();
     private final AtomicLong firstTimestamp = new AtomicLong(Long.MAX_VALUE);
     private final AtomicLong lastTimestamp = new AtomicLong(Long.MIN_VALUE);
@@ -133,6 +147,16 @@ public class LiveStatisticsEngine {
     }
 
     /**
+     * Note that the sample just recorded was a Transaction Controller's own result
+     * ({@link #isTransactionRow}). JMeter's HTML report leaves such results out of its Errors tables
+     * and out of what their "% of all samples" divides by: a transaction's failure is its requests'
+     * failure. The Errors tab does the same (E3); every other figure still counts them.
+     */
+    public void recordTransactionRow(long samples) {
+        transactionRowSamples.addAndGet(Math.max(1, samples));
+    }
+
+    /**
      * Record an error with details (backward-compatible overload).
      */
     public void recordError(String samplerName, String responseCode, String responseMessage,
@@ -147,9 +171,12 @@ public class LiveStatisticsEngine {
     public void recordError(String samplerName, String responseCode, String responseMessage,
                             long timestamp, String threadName,
                             String requestUrl, String requestHeaders, String responseBody) {
+        boolean transactionRow = isTransactionRow(responseMessage);
         synchronized (errorRecords) {
-            // Unbounded aggregation for summaries and error charts — updated for every error.
-            String key = samplerName + "|" + responseCode;
+            // Unbounded aggregation for summaries and error charts — updated for every error. A
+            // transaction's own failures are a group of their own: the asserts count them, the
+            // Errors tab does not (E3).
+            String key = samplerName + "|" + responseCode + (transactionRow ? "|transaction" : "");
             long[] c = errorSummaryCounts.get(key);
             if (c == null) {
                 c = new long[]{0, timestamp, timestamp};
@@ -165,6 +192,12 @@ public class LiveStatisticsEngine {
             c[1] = Math.min(c[1], timestamp);
             c[2] = Math.max(c[2], timestamp);
 
+            // The detail records are the Errors tab's, so a transaction's own failure takes no place
+            // among them: its requests' failures are listed.
+            if (transactionRow) {
+                return;
+            }
+            requestErrorsSeen++;
             // Detailed records (URL/headers/body) are capped to bound memory.
             if (errorRecords.size() >= MAX_ERROR_RECORDS) {
                 return;
@@ -315,7 +348,9 @@ public class LiveStatisticsEngine {
      * {@link #getErrorRecords()} list is a truncated sample of all errors.
      */
     public boolean isErrorRecordsTruncated() {
-        return totalErrors.get() > MAX_ERROR_RECORDS;
+        synchronized (errorRecords) {
+            return requestErrorsSeen > MAX_ERROR_RECORDS;
+        }
     }
 
     /**
@@ -363,6 +398,7 @@ public class LiveStatisticsEngine {
         // Error records
         data.setErrorRecords(getErrorRecords());
         data.setErrorRecordsTruncated(isErrorRecordsTruncated());
+        data.setRequestSampleCount(totalSamples.get() - transactionRowSamples.get());
 
         // Auto-hide utility samplers and 0-request samplers
         data.setHiddenSamplers(computeHiddenSamplers(data.getSamplerStatistics()));
@@ -502,18 +538,15 @@ public class LiveStatisticsEngine {
     /**
      * Build error summaries by grouping error records by response code.
      *
-     * <p>The rows include transaction children — a failing child is worth showing even though
-     * its parent also counts as failed — so "% of all samples" divides by EVERY recorded
-     * sample, the population those rows are drawn from. Dividing by the top-level count
-     * instead mixed a child-inclusive numerator with a child-free denominator, which can push
-     * a row past 100% and makes the rows disagree with their own total.
+     * <p>Two populations, each over its own: the failed requests (every sample but a Transaction
+     * Controller's own result, transaction children included), which are the Errors tab's rows and
+     * divide by every request — JMeter's HTML report's Errors table; and a transaction's own failures,
+     * which only the asserts read. Each group's percentages divide by its own population, so a
+     * population's rows add up to 100% of its errors and never past 100% of its samples.
      */
     private List<ErrorSummary> buildErrorSummaries() {
-        long total = totalSamples.get();
-        long errors = totalErrors.get();
-        if (errors == 0) {
-            return Collections.emptyList();
-        }
+        long transactionSamples = transactionRowSamples.get();
+        long requestSamples = totalSamples.get() - transactionSamples;
 
         // Group by sampler + response code — from the UNBOUNDED aggregation (not the capped list),
         // so counts and percentages are correct even when > MAX_ERROR_RECORDS errors occurred.
@@ -528,10 +561,27 @@ public class LiveStatisticsEngine {
             firstRecords = new LinkedHashMap<>(errorSummaryFirst);
         }
 
+        if (counts.isEmpty()) {
+            return Collections.emptyList();
+        }
+        long requestErrors = 0;
+        long transactionErrors = 0;
+        for (Map.Entry<String, Long> entry : counts.entrySet()) {
+            if (isTransactionRow(firstRecords.get(entry.getKey()).getResponseMessage())) {
+                transactionErrors += entry.getValue();
+            } else {
+                requestErrors += entry.getValue();
+            }
+        }
+
         List<ErrorSummary> result = new ArrayList<>(counts.size());
         for (Map.Entry<String, Long> entry : counts.entrySet()) {
             ErrorRecord rec = firstRecords.get(entry.getKey());
+            boolean transactionRow = isTransactionRow(rec.getResponseMessage());
+            long errors = transactionRow ? transactionErrors : requestErrors;
+            long total = transactionRow ? transactionSamples : requestSamples;
             ErrorSummary s = new ErrorSummary();
+            s.setTransactionRow(transactionRow);
             s.setSamplerName(rec.getSamplerName());
             s.setResponseCode(rec.getResponseCode());
             s.setResponseMessage(rec.getResponseMessage());
@@ -562,6 +612,10 @@ public class LiveStatisticsEngine {
         transactionControllerParents.clear();
         totalSamples.set(0);
         totalErrors.set(0);
+        transactionRowSamples.set(0);
+        synchronized (errorRecords) {
+            requestErrorsSeen = 0;
+        }
         maxActiveThreads.set(0);
         firstTimestamp.set(Long.MAX_VALUE);
         lastTimestamp.set(Long.MIN_VALUE);

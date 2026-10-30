@@ -262,6 +262,15 @@ the Summary tab says that each one counts once, as JMeter's Aggregate Report in 
 
 ## Error Deep-Dive
 
+The Errors tab counts **failed requests**, as JMeter's HTML report's Errors table does: a
+Transaction Controller's own result is left out of every view and of "% of All Samples", since a
+transaction fails because a request inside it did, and its requests are listed as rows of their own
+(E3). The Summary tab's Error Rate counts samples as JMeter's Aggregate Report does, transactions
+included, so on a run with transactions a line above the charts says which is which. The asserts'
+`errorRate:code=` / `errorRate:class=` keep counting a failed transaction, as the Error Rate does.
+While Transaction Details is off, the sampler filter shows a request's errors when the transaction
+it is inside is ticked.
+
 The Errors tab provides four views:
 
 1. **Error Breakdown** — side-by-side:
