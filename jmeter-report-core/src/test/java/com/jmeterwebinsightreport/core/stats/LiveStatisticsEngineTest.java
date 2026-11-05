@@ -221,10 +221,19 @@ class LiveStatisticsEngineTest {
         engine.recordTransaction("Open", "Get", true);
         recordChild("Get", 30, true, 300, 30, ts, 5, 20);
         engine.recordSample("Open", 60, false, 300, 30, ts + 1000, ts + 1060, 0, 0, 1, 1, true);
+        engine.recordError("Open", "404", "Number of samples in transaction : 1, number of failing samples : 1",
+                null, ts + 1000, "TG 1-1", null, null, null, true);
         engine.recordTransaction("Open", "Get", true);
         recordChild("Get", 60, false, 300, 30, ts + 1000, 5, 50);
+        engine.recordError("Get", "404", "Not Found", null, ts + 1000, "TG 1-1", null, null, null, false);
 
         ReportData data = engine.buildReportData("t");
+        // An overall code=404 rule counts the whole run's failure once: Open's own, not the request
+        // inside it (and not zero, which the names with no parent gave)
+        long topLevel404s = data.getErrorSummaries().stream()
+                .filter(s -> "404".equals(s.getResponseCode()))
+                .mapToLong(ErrorSummary::getTopLevelOccurrenceCount).sum();
+        assertEquals(1, topLevel404s);
         assertEquals(2, data.getTopLevelSampleCount(), "Whole, and Open on its own");
         assertEquals(1, data.getTopLevelErrorCount(), "Open's own failure");
         OverallMetrics overall = OverallMetrics.of(data);

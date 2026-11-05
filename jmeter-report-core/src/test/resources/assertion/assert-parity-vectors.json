@@ -1709,7 +1709,12 @@
         "parent": "Open the conversation"
       }
     ],
-    "errorSummaries": [],
+    "errorSummaries": [
+      { "samplerName": "Open the conversation", "responseCode": "404", "errorClass": "protocol",
+        "occurrenceCount": 5, "topLevelOccurrenceCount": 5 },
+      { "samplerName": "GET conversation (stale link)", "responseCode": "404", "errorClass": "protocol",
+        "occurrenceCount": 5, "topLevelOccurrenceCount": 0 }
+    ],
     "hiddenSamplers": [],
     "metadata": {
       "durationMillis": 10000,
@@ -1774,6 +1779,21 @@
           "status": "PASS",
           "matched": 1
         }
+      },
+      {
+        "name": "an overall code= rule counts the whole run's failures, by sample",
+        "_comment": [
+          "topLevelOccurrenceCount is how many of a group's failures a listener in the plan received:",
+          "Open the conversation's 5 on its own; the stale link's 5 are inside them. 5 of 56 is 8.93%.",
+          "Counting the groups of the names with no parent counts Heartbeat's and Whole session's: 0."
+        ],
+        "rule": { "id": "mixed-run-404s", "target": { "scope": "overall" }, "metric": "errorRate:code=404", "fail": { "gt": 5 } },
+        "expect": { "status": "FAIL", "matched": 1 }
+      },
+      {
+        "name": "and so does an overall class= rule",
+        "rule": { "id": "mixed-run-protocol", "target": { "scope": "overall" }, "metric": "errorRate:class=protocol", "fail": { "gt": 5 } },
+        "expect": { "status": "FAIL", "matched": 1 }
       }
     ]
   }

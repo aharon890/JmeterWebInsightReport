@@ -635,6 +635,11 @@ public class ReportDataSerializer {
                 full.put("errorType", es.getErrorType());
                 full.put("failureMessage", es.getFailureMessage());
                 full.put("occurrenceCount", es.getOccurrenceCount());
+                // Of them, the whole run's (top-level): what the page's overall code= and class=
+                // rules count, as MetricRef does
+                if (es.getTopLevelOccurrenceCount() >= 0) {
+                    full.put("topLevelOccurrenceCount", es.getTopLevelOccurrenceCount());
+                }
                 // The group's whole span, for the grouped view's first and last seen (E2): the
                 // records it used to read them from are only the first 500 errors.
                 full.put("firstTimestamp", es.getFirstTimestamp());

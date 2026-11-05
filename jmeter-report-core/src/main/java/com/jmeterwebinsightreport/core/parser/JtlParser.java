@@ -343,7 +343,8 @@ public class JtlParser {
                 engine.recordResponseCode(responseCode, LiveStatisticsEngine.endOf(timestamp, elapsed));
             }
             if (!success) {
-                engine.recordError(label, responseCode, message, failureMessage, timestamp, thread, url, null, null);
+                engine.recordError(label, responseCode, message, failureMessage, timestamp, thread, url, null, null,
+                        topLevel);
             }
         }
     }

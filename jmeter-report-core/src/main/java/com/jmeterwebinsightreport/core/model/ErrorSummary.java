@@ -10,6 +10,11 @@ public class ErrorSummary {
     private String responseCode;
     private String responseMessage;
     private long occurrenceCount;
+    /** Of {@link #occurrenceCount}, the failures that were samples of the whole run: received by a
+     *  listener in the test plan itself, not inside a parent sample. An overall code= or class= rule
+     *  counts these, so a group whose name also ran inside a transaction counts its own failures. -1
+     *  on a summary assembled without it, where the rule falls back to the names with no parent. */
+    private long topLevelOccurrenceCount = -1;
     private double percentageOfErrors;
     private double percentageOfAllSamples;
     /** When the group's earliest and latest error started, over every error of it — not only the
@@ -22,6 +27,14 @@ public class ErrorSummary {
     private boolean transactionRow;
     /** The group's first failed assertion message, or null (E1). */
     private String failureMessage;
+
+    public long getTopLevelOccurrenceCount() {
+        return topLevelOccurrenceCount;
+    }
+
+    public void setTopLevelOccurrenceCount(long topLevelOccurrenceCount) {
+        this.topLevelOccurrenceCount = topLevelOccurrenceCount;
+    }
 
     public ErrorSummary() {
     }

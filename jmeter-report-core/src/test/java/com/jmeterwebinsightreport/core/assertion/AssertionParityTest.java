@@ -110,6 +110,9 @@ class AssertionParityTest {
                 es.setSamplerName(e.get("samplerName").asText());
                 es.setResponseCode(e.get("responseCode").asText());
                 es.setOccurrenceCount(e.get("occurrenceCount").asLong());
+                if (e.hasNonNull("topLevelOccurrenceCount")) {
+                    es.setTopLevelOccurrenceCount(e.get("topLevelOccurrenceCount").asLong());
+                }
                 summaries.add(es);
 
                 // The vector's errorClass is what the BROWSER is handed — the payload carries

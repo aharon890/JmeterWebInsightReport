@@ -339,7 +339,7 @@ class JtlParserTest {
                                             String responseMessage, String failureMessage,
                                             long timestamp, String threadName,
                                             String requestUrl, String requestHeaders,
-                                            String responseBody) {
+                                            String responseBody, boolean topLevel) {
                         throw new IllegalStateException("engine broke");
                     }
                 };

@@ -530,15 +530,23 @@ public final class MetricRef {
 
         long matched = 0;
         for (com.jmeterwebinsightreport.core.model.ErrorSummary es : data.getErrorSummaries()) {
+            long count;
             if (samplerName != null) {
                 if (!samplerName.equals(es.getSamplerName())) {
                     continue;
                 }
-            } else if (!topLevel.contains(es.getSamplerName())) {
+                count = es.getOccurrenceCount();
+            } else if (es.getTopLevelOccurrenceCount() >= 0) {
+                // The whole run's failures, by sample: a name that also ran inside a transaction
+                // keeps its own; counting the groups of the names with no parent lost them (2026-11)
+                count = es.getTopLevelOccurrenceCount();
+            } else if (topLevel.contains(es.getSamplerName())) {
+                count = es.getOccurrenceCount();   // a summary assembled without the count
+            } else {
                 continue;
             }
             if (matches(es)) {
-                matched += es.getOccurrenceCount();
+                matched += count;
             }
         }
 

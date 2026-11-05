@@ -542,7 +542,8 @@ public class WebInsightReportListener extends ResultCollector {
                     result.getThreadName(),
                     url,
                     null,
-                    responseBody
+                    responseBody,
+                    topLevel
             );
         }
 

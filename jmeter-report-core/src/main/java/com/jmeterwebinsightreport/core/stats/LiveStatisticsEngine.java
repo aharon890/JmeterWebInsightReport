@@ -50,6 +50,9 @@ public class LiveStatisticsEngine {
      *  monitor. */
     private final Map<String, long[]> errorSummaryCounts = new LinkedHashMap<>();
     private final Map<String, ErrorRecord> errorSummaryFirst = new LinkedHashMap<>();
+    /** Per group, the failures that were samples of the whole run (top-level): what an overall
+     *  code= or class= rule counts. Guarded by the {@code errorRecords} monitor. */
+    private final Map<String, Long> errorSummaryTopLevelCounts = new HashMap<>();
     /** Real transaction-controller hierarchy, captured from actual sample sub-results
      *  (parent label -> ordered child labels). Used instead of guessing from name prefixes,
      *  which false-positives on REST-style names like "GET /api/users" vs "GET /api/users/{id}".
@@ -220,6 +223,18 @@ public class LiveStatisticsEngine {
     public void recordError(String samplerName, String responseCode, String responseMessage,
                             String failureMessage, long timestamp, String threadName,
                             String requestUrl, String requestHeaders, String responseBody) {
+        recordError(samplerName, responseCode, responseMessage, failureMessage, timestamp, threadName,
+                requestUrl, requestHeaders, responseBody, true);
+    }
+
+    /**
+     * @param topLevel whether the failed sample was the whole run's: received by a listener in the plan
+     *        itself, not inside a parent sample ({@link #recordSample}'s flag of the same name)
+     */
+    public void recordError(String samplerName, String responseCode, String responseMessage,
+                            String failureMessage, long timestamp, String threadName,
+                            String requestUrl, String requestHeaders, String responseBody,
+                            boolean topLevel) {
         boolean transactionRow = isTransactionRow(responseMessage);
         synchronized (errorRecords) {
             // Unbounded aggregation for summaries and error charts — updated for every error. Grouped
@@ -243,6 +258,9 @@ public class LiveStatisticsEngine {
             c[0]++;
             c[1] = Math.min(c[1], timestamp);
             c[2] = Math.max(c[2], timestamp);
+            if (topLevel) {
+                errorSummaryTopLevelCounts.merge(key, 1L, Long::sum);
+            }
 
             // The detail records are the Errors tab's, so a transaction's own failure takes no place
             // among them: its requests' failures are listed.
@@ -628,7 +646,9 @@ public class LiveStatisticsEngine {
         Map<String, Long> counts = new LinkedHashMap<>();
         Map<String, long[]> spans = new LinkedHashMap<>();
         Map<String, ErrorRecord> firstRecords;
+        Map<String, Long> topLevelCounts;
         synchronized (errorRecords) {
+            topLevelCounts = new HashMap<>(errorSummaryTopLevelCounts);
             for (Map.Entry<String, long[]> e : errorSummaryCounts.entrySet()) {
                 counts.put(e.getKey(), e.getValue()[0]);
                 spans.put(e.getKey(), new long[]{e.getValue()[1], e.getValue()[2]});
@@ -663,6 +683,7 @@ public class LiveStatisticsEngine {
             s.setFailureMessage(rec.getFailureMessage());
             s.setErrorType(rec.getErrorType());
             s.setOccurrenceCount(entry.getValue());
+            s.setTopLevelOccurrenceCount(topLevelCounts.getOrDefault(entry.getKey(), 0L));
             s.setFirstTimestamp(spans.get(entry.getKey())[0]);
             s.setLastTimestamp(spans.get(entry.getKey())[1]);
             s.setPercentageOfErrors(errors > 0 ? (entry.getValue() * 100.0) / errors : 0);
@@ -684,6 +705,7 @@ public class LiveStatisticsEngine {
             errorRecords.clear();
             errorSummaryCounts.clear();
             errorSummaryFirst.clear();
+            errorSummaryTopLevelCounts.clear();
         }
         explicitTransactions.clear();
         transactionControllerParents.clear();

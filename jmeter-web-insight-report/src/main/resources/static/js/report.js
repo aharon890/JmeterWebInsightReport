@@ -9581,11 +9581,23 @@ WIR.asserts = (function () {
         var matched = 0;
         summaries.forEach(function (e) {
             var name = e.samplerName || e.sampler;
-            if (samplerName === null ? !topLevel[name] : name !== samplerName) return;
+            var count;
+            if (samplerName !== null) {
+                if (name !== samplerName) return;
+                count = e.occurrenceCount || e.count || 0;
+            } else if (typeof e.topLevelOccurrenceCount === 'number' && e.topLevelOccurrenceCount >= 0) {
+                /* The whole run's failures, by sample, as MetricRef counts them: a name that also ran
+                   inside a transaction keeps its own (2026-11) */
+                count = e.topLevelOccurrenceCount;
+            } else if (topLevel[name]) {
+                count = e.occurrenceCount || e.count || 0;   /* a payload without the count */
+            } else {
+                return;
+            }
             var hit = metric.selectorKey === 'class'
                 ? e.errorClass === metric.selectorValue
                 : re.test(String(e.responseCode === undefined ? '' : e.responseCode));
-            if (hit) matched += (e.occurrenceCount || e.count || 0);
+            if (hit) matched += count;
         });
 
         if (metric.base === 'errorCount') return matched;
