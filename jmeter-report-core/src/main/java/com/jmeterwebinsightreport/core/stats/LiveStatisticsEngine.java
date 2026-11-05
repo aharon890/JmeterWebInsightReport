@@ -402,7 +402,12 @@ public class LiveStatisticsEngine {
 
     public void setApdexThreshold(double apdexThreshold) {
         this.apdexThreshold = apdexThreshold;
-        this.wholeRun = new SamplerAggregator(WHOLE_RUN, apdexThreshold);
+        // Every caller sets T before the first sample. One that did not would drop the samples already
+        // in the whole run from every whole-run figure while the rows kept theirs; the rows keep the T
+        // they were made with, and so does the whole run once it has a sample.
+        if (totalSamples.get() == 0) {
+            this.wholeRun = new SamplerAggregator(WHOLE_RUN, apdexThreshold);
+        }
     }
 
     public double getApdexThreshold() {

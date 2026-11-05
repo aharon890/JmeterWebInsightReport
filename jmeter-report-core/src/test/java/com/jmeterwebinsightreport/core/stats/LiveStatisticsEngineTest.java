@@ -253,6 +253,15 @@ class LiveStatisticsEngineTest {
     }
 
     @Test
+    void anApdexThresholdSetAfterTheFirstSampleKeepsTheWholeRun() {
+        // Review finding (2026-11-05): the whole run was created again when T was set, so a T set after
+        // sampling dropped every sample from every whole-run figure while the rows kept theirs
+        engine.recordSample("A", 100, true, 10, 1, 1700000000000L, -1, -1);
+        engine.setApdexThreshold(100);
+        assertEquals(1, engine.buildReportData("t").getTopLevelSampleCount());
+    }
+
+    @Test
     void aNameInsideTwoTransactionsIsPlacedUnderTheFirstByNameAndNamesTheOther() {
         // One row per name, so one parent: it was whichever the hash map visited last, and the page
         // listed the row under both. Now the first by name, every run, and the row names the other
