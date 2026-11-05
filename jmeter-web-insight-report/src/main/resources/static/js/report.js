@@ -4051,7 +4051,7 @@ var hiddenColumns = {};
  * transaction child. The search filter must not override these (C18). */
 /* Whether a Samplers row is kept out of sight whatever the search: the reader hid it, or a transaction
  * it is inside, with ×; or it is inside a transaction while Transaction Details is off. */
-function isSamplerRowSuppressed(row) {
+function isSamplerRowSuppressed(row, rowByName) {
     if (row.classList.contains('user-hidden')) return true;
     if (row.classList.contains('transaction-child') && !showTransactionChildren) return true;
     var name = row.getAttribute('data-sampler');
@@ -4059,7 +4059,7 @@ function isSamplerRowSuppressed(row) {
     var seen = Object.create(null);
     for (var p = transactionChildNames[name]; p !== undefined && !seen[p]; p = transactionChildNames[p]) {
         seen[p] = true;
-        var parentRow = samplerRowNamed(row.parentNode, p);
+        var parentRow = rowByName ? rowByName[p] : samplerRowNamed(row.parentNode, p);
         if (parentRow && parentRow.classList.contains('user-hidden')) return true;
     }
     return false;
@@ -4090,28 +4090,29 @@ function applySamplerRowVisibility() {
     var input = document.getElementById('samplerSearch');
     var filter = input ? input.value.toLowerCase() : '';
     var rows = Array.from(tbody.rows).filter(function (r) { return !isSamplerCompanionRow(r); });
-    var kept = null;
+    /* One name -> row map per pass: each row's ancestors are looked up in it, not by a scan */
+    var rowByName = Object.create(null);
+    rows.forEach(function (r) {
+        var name = r.getAttribute('data-sampler');
+        if (name !== null && rowByName[name] === undefined) rowByName[name] = r;
+    });
+    var matches = Object.create(null);   /* by name: a match, or a transaction holding one */
     if (filter) {
-        kept = [];
-        var keepName = Object.create(null);
-        rows.forEach(function (r) {
-            if (samplerRowText(r).indexOf(filter) < 0) return;
-            kept.push(r);
-            var seen = Object.create(null);
-            for (var p = transactionChildNames[r.getAttribute('data-sampler')]; p !== undefined && !seen[p];
-                 p = transactionChildNames[p]) {
-                seen[p] = true;
-                keepName[p] = true;
-            }
-        });
         rows.forEach(function (r) {
             var name = r.getAttribute('data-sampler');
-            if (name !== null && keepName[name] && kept.indexOf(r) < 0) kept.push(r);
+            if (name === null || samplerRowText(r).indexOf(filter) < 0) return;
+            matches[name] = true;
+            var seen = Object.create(null);
+            for (var p = transactionChildNames[name]; p !== undefined && !seen[p]; p = transactionChildNames[p]) {
+                seen[p] = true;
+                matches[p] = true;
+            }
         });
     }
     rows.forEach(function (r) {
-        var shown = !isSamplerRowSuppressed(r) && (kept === null || kept.indexOf(r) >= 0);
-        r.style.display = shown ? '' : 'none';
+        var name = r.getAttribute('data-sampler');
+        var searched = !filter || (name !== null ? matches[name] === true : samplerRowText(r).indexOf(filter) >= 0);
+        r.style.display = (searched && !isSamplerRowSuppressed(r, rowByName)) ? '' : 'none';
     });
     return syncSamplerCompanionRows(tbody);
 }
@@ -4208,13 +4209,14 @@ function showAllColumns() {
  * ============================================================ */
 
 function initTransactionHierarchy(data) {
-    if (!data.transactionHierarchy) return;
-
-    var hierarchy = data.transactionHierarchy;
+    /* No hierarchy is a run of its own: a parent that is no Transaction Controller is left out of it
+       when every name inside it also ran on its own, and those names still say where else they ran */
+    var hierarchy = data.transactionHierarchy || {};
     var table = document.getElementById('samplerTable');
     if (!table) return;
     var tbody = table.tBodies[0];
     if (!tbody) return;
+    var hasHierarchy = Object.keys(hierarchy).length > 0;
 
     /* Show the switch, in the filter bar's Samplers row, when there are transactions */
     var toggleBtn = document.getElementById('transactionChildrenBtn');
@@ -4269,8 +4271,10 @@ function initTransactionHierarchy(data) {
             addTitle(row, 'Also contains: ' + elsewhere[samplerName].join(', ') + ' (listed elsewhere in this table)');
         }
     });
-    arrangeSamplerRows(tbody, null);
-    applySamplerRowVisibility();
+    if (hasHierarchy) {
+        arrangeSamplerRows(tbody, null);
+        applySamplerRowVisibility();
+    }
 }
 
 /* on: the checkbox's own state when it calls (a click on it, or on its label); absent, a flip. Taking

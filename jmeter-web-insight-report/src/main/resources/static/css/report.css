@@ -1617,13 +1617,14 @@ body.dark-mode.cb-mode sup.delta-bad { color: #fb923c; }
 }
 
 /* Transaction Controller Hierarchy */
-.transaction-parent td:first-child {
+/* On the name cell, wherever the Sampler column was dragged (review, 2026-11-05) */
+.transaction-parent td.sampler-name-td {
     font-weight: 600;
 }
 
 /* A step per level: a request inside a transaction, a request inside a nested one (--wir-depth,
    set by arrangeSamplerRows). Level 1 is the 32px it always was. */
-.transaction-child td:first-child {
+.transaction-child td.sampler-name-td {
     padding-left: calc(12px + 20px * var(--wir-depth, 1)) !important;
 }
 

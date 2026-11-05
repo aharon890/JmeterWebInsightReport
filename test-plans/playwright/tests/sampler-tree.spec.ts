@@ -124,6 +124,21 @@ test.describe('Samplers table as a tree [E31]', () => {
     await expectEveryChildUnderItsTransaction(page);
   });
 
+  test('the indent stays on the name cell when the Sampler column is dragged away from the first place', async ({ page }) => {
+    // Review finding (2026-11-05): the indent and the parent's bold were on td:first-child
+    await goSamplers(page);
+    await transactionDetails(page, true);
+    await page.evaluate(() => {
+      const table = document.getElementById('samplerTable');
+      (window as any).reorderColumns(table, 0, 2);
+    });
+    const cell = page.locator('#samplerTable tbody tr[data-sampler="GET conversation"] td.sampler-name-td');
+    expect(await cell.evaluate(td => getComputedStyle(td).paddingLeft)).toBe('32px');
+    const first = page.locator('#samplerTable tbody tr[data-sampler="GET conversation"] td').first();
+    expect(await first.evaluate(td => td.classList.contains('sampler-name-td'))).toBe(false);
+    expect(await first.evaluate(td => getComputedStyle(td).paddingLeft), 'not the column now first').not.toBe('32px');
+  });
+
   test('the sampler chips follow the same order, and keep their colours', async ({ page }) => {
     await goSamplers(page);
     await transactionDetails(page, true);
