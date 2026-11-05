@@ -288,7 +288,7 @@
                     </div>
                     <div class="summary-card" id="apdexCard">
                         <div class="card-value" th:if="${overallApdex != null}">
-                            <span class="apdex-badge" th:text="${overallApdex}"
+                            <span class="apdex-badge" th:text="${fmt.apdex(overallApdex)}"
                                   th:classappend="${overallApdex > 0.94} ? 'apdex-excellent' : (${overallApdex > 0.85} ? 'apdex-good' : (${overallApdex > 0.70} ? 'apdex-fair' : (${overallApdex > 0.50} ? 'apdex-poor' : 'apdex-unacceptable')))">0</span>
                         </div>
                         <div class="card-value" th:unless="${overallApdex != null}">N/A</div>
@@ -532,11 +532,11 @@
                                 <td th:text="${fmt.millis(stat.percentile99)}">0</td>
                                 <td th:text="${fmt.millis(stat.minResponseTime)}">0</td>
                                 <td th:text="${fmt.millis(stat.maxResponseTime)}">0</td>
-                                <td th:text="${fmt.number(stat.throughput)} + '/s'">0/s</td>
-                                <td th:text="${fmt.number(stat.receivedBytesPerSec / 1024.0)}">0</td>
-                                <td th:text="${fmt.number(stat.sentBytesPerSec / 1024.0)}">0</td>
+                                <td th:text="${fmt.rate(stat.throughput)}">0/s</td>
+                                <td th:text="${fmt.twoDecimals(stat.receivedBytesPerSec / 1024.0)}">0</td>
+                                <td th:text="${fmt.twoDecimals(stat.sentBytesPerSec / 1024.0)}">0</td>
                                 <td><span class="apdex-badge"
-                                          th:text="${stat.apdexScore}"
+                                          th:text="${fmt.apdex(stat.apdexScore)}"
                                           th:classappend="${stat.apdexScore > 0.94} ? 'apdex-excellent' : (${stat.apdexScore > 0.85} ? 'apdex-good' : (${stat.apdexScore > 0.70} ? 'apdex-fair' : (${stat.apdexScore > 0.50} ? 'apdex-poor' : 'apdex-unacceptable')))">0</span></td>
                             </tr>
                         </tbody>

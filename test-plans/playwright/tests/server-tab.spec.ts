@@ -458,7 +458,7 @@ test.describe('Server tab — the board', () => {
         return Array.from(row.children).map((td) => td.textContent!.trim());
       });
       expect(cells[2]).toBe('2.24 % ÷ load:throughput');           // Actual
-      expect(cells[3]).toBe('fail > 10,000 % ÷ load:throughput');  // Criteria
+      expect(cells[3]).toBe('fail > 10000 % ÷ load:throughput');  // Criteria
       await openChart(page, 'cpu-per-rps');
       expect((await chartOf(page, 'cpu-per-rps'))!.yName).toBe('% ÷ load:throughput');
       // A plain assert is unchanged: its declared unit, once.

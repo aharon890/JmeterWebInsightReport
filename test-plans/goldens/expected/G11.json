@@ -47,7 +47,7 @@
       "p99": 403.0,
       "errorRate": 2.0,
       "throughput": 8.28,
-      "apdex": 0.98
+      "apdex": 0.979
     },
     {
       "name": "POST /api/checkout",
@@ -57,7 +57,7 @@
       "p99": 692.0,
       "errorRate": 4.25,
       "throughput": 8.26,
-      "apdex": 0.87
+      "apdex": 0.866
     }
   ],
   "serverComponents": [

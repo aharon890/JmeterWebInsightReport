@@ -261,7 +261,7 @@ test.describe('Drag to retune', () => {
 
     await switchTab(page, 'asserts');
     await expect(page.locator('tr[data-rule-id="slow-api-p95"] .wir-criteria'))
-      .toContainText('fail > 5,000 ms');
+      .toContainText('fail > 5000 ms');
     await expect(page.locator('#assertsUnsavedPill')).toBeVisible();
     await expect(page.locator('tr[data-rule-id="slow-api-p95"] .wir-tag-draft'))
       .toHaveText('EDITED');
@@ -318,7 +318,7 @@ test.describe('The chart agrees with the table', () => {
 
     const labels = await markLineLabels(page, 'response-time-chart');
     expect(before).not.toBe(3333);
-    expect(labels.some(l => l.startsWith('slow-api-p95 fail') && l.includes('3,333')),
+    expect(labels.some(l => l.startsWith('slow-api-p95 fail') && l.includes('3333')),
       `the chart still draws the old threshold: ${labels.join(' | ')}`).toBe(true);
   });
 

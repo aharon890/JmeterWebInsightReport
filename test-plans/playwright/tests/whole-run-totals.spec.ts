@@ -268,11 +268,20 @@ for (const id of REQUIRED_FIXTURES) {
         const bar = chart('error-by-sampler-chart');
         const pie = chart('error-by-type-chart');
         const valueOf = (d: any) => (d && typeof d === 'object' ? d.value : d);
+        // The Error Details list, one row per recorded failure with its message (capped, and said so)
+        const details = document.getElementById('errorDetailsTable') as HTMLTableElement | null;
+        const detailHeads = details ? Array.from(details.tHead!.rows[0].cells).map(c => (c.textContent || '').trim()) : [];
+        const records = details ? Array.from(details.tBodies[0].rows).filter(r => r.classList.contains('error-row-main')).map(r => ({
+          sampler: (r.cells[detailHeads.indexOf('Sampler')]?.textContent || '').trim(),
+          message: (r.cells[detailHeads.indexOf('Message')]?.textContent || '').trim(),
+        })) : [];
         return {
           rows: all.filter(r => r !== total).map(r => ({ sampler: r.getAttribute('data-sampler') || '', count: cell(r, 'Count') })),
           total: total ? { label: cell(total, 'Sampler'), count: cell(total, 'Count'), ofSamples: cell(total, '% of All Samples') } : null,
           bySampler: bar ? (bar.xAxis[0].data as string[]).map((name, i) => ({ name, value: valueOf(bar.series[0].data[i]) })) : null,
           byCode: pie ? (pie.series[0].data as any[]).map(valueOf) : null,
+          records,
+          recordsComplete: !(window as any).globalChartData.errorRecordsTruncated,
         };
       });
 
@@ -298,10 +307,25 @@ for (const id of REQUIRED_FIXTURES) {
       for (const [sampler, count] of perSampler) {
         const row = rows.get(sampler);
         expect(row, `"${sampler}" is on the Errors tab, so it has a row in the Samplers table`).toBeDefined();
-        expect(row!.transactionController,
-          `"${sampler}" is a Transaction Controller: its own result is left out of the Errors tab, as the tab's note says`).toBe(false);
-        expect(count, `"${sampler}": its failures on the Errors tab are its Errors in the Samplers table`)
-          .toBe(numberIn(row!.cells['Errors']));
+        if (!row!.transactionController) {
+          expect(count, `"${sampler}": its failures on the Errors tab are its Errors in the Samplers table`)
+            .toBe(numberIn(row!.cells['Errors']));
+          continue;
+        }
+        // A Transaction Controller's own result is left out (E3), as JMeter's HTML report leaves out a
+        // result carrying the "Number of samples in transaction" message. A transaction the test end or a
+        // "Stop Thread" cut off is written without that message, and JMeter's HTML report and this tab
+        // count it as a failed request: so a transaction's row here is only ever those results.
+        const own = errorsTab.records.filter(r => r.sampler === sampler);
+        for (const r of own) {
+          expect(r.message, `"${sampler}" on the Errors tab: a transaction's own completed result, left out (E3)`)
+            .not.toContain('Number of samples in transaction');
+        }
+        if (errorsTab.recordsComplete) {
+          expect(own.length, `"${sampler}": its failures on the Errors tab are the ones its Error Details list`).toBe(count);
+        }
+        expect(count, `"${sampler}": the Errors tab counts no more of its failures than the Samplers table`)
+          .toBeLessThanOrEqual(numberIn(row!.cells['Errors']));
       }
       for (const [name, r] of rows) {
         if (numberIn(r.cells['Errors']) === 0 || perSampler.has(name)) continue;

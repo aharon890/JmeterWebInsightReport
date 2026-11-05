@@ -13,17 +13,27 @@ import java.util.Locale;
  */
 public final class FormatUtil {
 
-    // Fixed locale (US) so rendered numbers use '.' decimals / ',' grouping regardless of the
-    // JVM default locale. The report's JavaScript parses these values assuming this format;
-    // a locale-dependent format (e.g. "1.234,56") would corrupt client-side table sorting.
+    // Numbers are written as JMeter writes them, whatever the JVM's locale: '.' for decimals and no
+    // thousands separator (JMeter's Aggregate Report and HTML report never group, 1200 not 1,200).
+    // The report's JavaScript parses these values assuming this format; a locale-dependent format
+    // (e.g. "1.234,56") would corrupt client-side table sorting.
     private static final DecimalFormatSymbols US_SYMBOLS = DecimalFormatSymbols.getInstance(Locale.US);
     // ThreadLocal because DecimalFormat is explicitly documented as not thread-safe. Only
     // the single report-generation thread uses these today, but this is a public utility in a
     // module whose engine is advertised as thread-safe — a latent trap, and the fix is free.
     private static final ThreadLocal<DecimalFormat> DECIMAL_FORMAT =
-            ThreadLocal.withInitial(() -> new DecimalFormat("#,##0.##", US_SYMBOLS));
+            ThreadLocal.withInitial(() -> new DecimalFormat("#0.##", US_SYMBOLS));
     private static final ThreadLocal<DecimalFormat> PERCENTAGE_FORMAT =
             ThreadLocal.withInitial(() -> new DecimalFormat("#0.00", US_SYMBOLS));
+    // The Aggregate Report's own column patterns (StatGraphVisualizer.getRenderers): Throughput
+    // RateRenderer("#.0"), Received/Sent KB/sec NumberRenderer("#0.00"); and the HTML report's Apdex,
+    // toFixed(3) (dashboard.js.fmkr)
+    private static final ThreadLocal<DecimalFormat> RATE_FORMAT =
+            ThreadLocal.withInitial(() -> new DecimalFormat("#.0", US_SYMBOLS));
+    private static final ThreadLocal<DecimalFormat> TWO_DECIMALS_FORMAT =
+            ThreadLocal.withInitial(() -> new DecimalFormat("#0.00", US_SYMBOLS));
+    private static final ThreadLocal<DecimalFormat> APDEX_FORMAT =
+            ThreadLocal.withInitial(() -> new DecimalFormat("#0.000", US_SYMBOLS));
     // Includes the zone (e.g. "2026-07-17 13:00:00 IDT") so the generation time is unambiguous —
     // chart axes render in the viewer's local zone, which can differ from the generation machine's.
     private static final DateTimeFormatter TIMESTAMP_FORMAT =
@@ -34,7 +44,8 @@ public final class FormatUtil {
     }
 
     /**
-     * Format a duration in milliseconds to a human-readable string (e.g., "2m 30s", "150ms").
+     * Format a duration in milliseconds to a human-readable string (e.g., "2m 30s", "150ms"), in
+     * Latin digits whatever the JVM's locale (an Arabic or Persian JVM wrote "٤٨.٤s").
      */
     public static String formatDuration(long millis) {
         if (millis < 1000) {
@@ -46,19 +57,56 @@ public final class FormatUtil {
         long seconds = duration.toSecondsPart();
 
         if (hours > 0) {
-            return String.format("%dh %dm %ds", hours, minutes, seconds);
+            return String.format(Locale.ROOT, "%dh %dm %ds", hours, minutes, seconds);
         } else if (minutes > 0) {
-            return String.format("%dm %ds", minutes, seconds);
+            return String.format(Locale.ROOT, "%dm %ds", minutes, seconds);
         } else {
-            return String.format("%d.%ds", seconds, duration.toMillisPart() / 100);
+            return String.format(Locale.ROOT, "%d.%ds", seconds, duration.toMillisPart() / 100);
         }
     }
 
     /**
-     * Format a decimal number with grouping (e.g., 1,234.56).
+     * Format a decimal number as JMeter writes one: no thousands separator, up to two decimals
+     * (e.g., 1234.56, 1200).
      */
     public static String formatNumber(double value) {
         return DECIMAL_FORMAT.get().format(value);
+    }
+
+    /**
+     * A throughput as the Aggregate Report's Throughput column writes it (JMeter's RateRenderer):
+     * one decimal, per second, and per minute or per hour when fewer than one a second or a minute
+     * (34.2/s, 20.7/min, 43.0/hour). The unit is written "/s" where JMeter writes "/sec".
+     */
+    public static String formatRate(double perSecond) {
+        if (Double.isNaN(perSecond) || Double.isInfinite(perSecond) || perSecond == Double.MAX_VALUE) {
+            return "#N/A";
+        }
+        double rate = perSecond;
+        String unit = "s";
+        if (rate < 1.0) {
+            rate *= 60.0;
+            unit = "min";
+        }
+        if (rate < 1.0) {
+            rate *= 60.0;
+            unit = "hour";
+        }
+        return RATE_FORMAT.get().format(rate) + "/" + unit;
+    }
+
+    /**
+     * Two decimals, as the Aggregate Report writes its Received and Sent KB/sec columns (0.60, 19.82).
+     */
+    public static String formatTwoDecimals(double value) {
+        return TWO_DECIMALS_FORMAT.get().format(value);
+    }
+
+    /**
+     * An Apdex score as JMeter's HTML report writes it: three decimals (0.948, 1.000).
+     */
+    public static String formatApdex(double score) {
+        return APDEX_FORMAT.get().format(score);
     }
 
     /**

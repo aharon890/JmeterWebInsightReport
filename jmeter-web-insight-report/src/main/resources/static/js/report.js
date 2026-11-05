@@ -609,8 +609,44 @@ function showNoData(el, msg, small) {
  * #100c2a, a purple-navy rectangle inside the report's slate card, and every colour drawn on it was
  * chosen against a background the page does not have. A setOption after this one merges, so the
  * background holds; one that replaces the whole option (notMerge) passes it again. */
+/* ECharts writes a value axis's labels and its axis-pointer label through IntervalScale.getLabel,
+   which groups thousands ("4,000"), and a default tooltip's numbers through addCommas. JMeter writes
+   no thousands separator anywhere, so neither does a chart here: the scale's label loses its commas
+   (its own rounding kept), once, and a chart's tooltip gets a value formatter when it has none. */
+var plainChartNumbersInstalled = false;
+function installPlainChartNumbers() {
+    if (plainChartNumbersInstalled) return;
+    plainChartNumbersInstalled = true;
+    try {
+        var scale = echarts.helper.createScale([0, 1], { type: 'value' });
+        var proto = Object.getPrototypeOf(scale);
+        var getLabel = proto.getLabel;
+        proto.getLabel = function () {
+            var label = getLabel.apply(this, arguments);
+            return typeof label === 'string' ? label.replace(/,/g, '') : label;
+        };
+    } catch (e) { /* an ECharts without helper.createScale draws its own labels */ }
+}
+function plainTooltipValue(v) {
+    if (typeof v === 'number') return isFinite(v) ? String(v) : '-';
+    return v == null ? '-' : String(v);
+}
+function withPlainTooltips(option) {
+    var tips = option && option.tooltip;
+    (Array.isArray(tips) ? tips : (tips ? [tips] : [])).forEach(function (t) {
+        if (t && !t.formatter && !t.valueFormatter) t.valueFormatter = plainTooltipValue;
+    });
+    return option;
+}
+
 function createChart(el) {
+    installPlainChartNumbers();
     var chart = echarts.init(el, getChartTheme());
+    var setOption = chart.setOption;
+    chart.setOption = function (option) {
+        withPlainTooltips(option);
+        return setOption.apply(chart, arguments);
+    };
     if (isDarkTheme()) chart.setOption({ backgroundColor: 'transparent' });
     chart.group = chartGroup;
     chartInstances.push(chart);
@@ -1339,6 +1375,26 @@ function totalRowFigures(data, isChild) {
     return f;
 }
 
+/**
+ * A throughput as the Aggregate Report's Throughput column writes it, FormatUtil.formatRate's twin
+ * (JMeter's RateRenderer, pattern "#.0"): one decimal, per second, and per minute or per hour when
+ * fewer than one a second or a minute (34.2/s, 20.7/min, 43.0/hour). The unit is "/s" where JMeter
+ * writes "/sec".
+ */
+function formatRate(perSecond) {
+    if (perSecond == null || !isFinite(perSecond)) return '#N/A';
+    var rate = perSecond;
+    var unit = 's';
+    if (rate < 1) { rate *= 60; unit = 'min'; }
+    if (rate < 1) { rate *= 60; unit = 'hour'; }
+    return WIR.javaText.decimalFormat(rate, 1, false) + '/' + unit;
+}
+
+/** An Apdex score as JMeter's HTML report writes it, FormatUtil.formatApdex's twin: 0.948. */
+function formatApdex(score) {
+    return WIR.javaText.decimalFormat(score, 3);
+}
+
 function updateTotalRow() {
     var table = document.querySelector('#tab-samplers table');
     if (!table || !globalChartData) return;
@@ -1357,26 +1413,30 @@ function updateTotalRow() {
     var t = totalRowFigures(globalChartData, isTransactionChild);
     var errorPct = t.errorPct;
 
-    var fmt = function (v) { return v == null || isNaN(v) ? '0' : Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 }); };
+    /* Each cell written as the rows below it are (FormatUtil, the Aggregate Report's patterns), never
+       in the reader's language: it took the browser's (a German reader saw 7.225 and 218,56 above
+       rows reading 2766 and 219). Counts and milliseconds are whole numbers with no separator. */
+    var whole = function (v) { return v == null || isNaN(v) ? '0' : String(Math.round(v)); };
+    var twoDecimals = function (v) { return WIR.javaText.decimalFormat(v == null || isNaN(v) ? 0 : v, 2); };
 
     var tr = document.createElement('tr');
     tr.className = 'total-sampler-row';
 
     var cells = [
         TOTAL_SAMPLER_NAME,
-        fmt(t.samples),
-        fmt(t.errors),
-        errorPct.toFixed(2) + '%',
-        fmt(t.mean),
-        fmt(t.median),
-        fmt(t.p90),
-        fmt(t.p95),
-        fmt(t.p99),
-        fmt(t.min),
-        fmt(t.max),
-        fmt(t.throughput) + '/s',
-        fmt(t.receivedKBs),
-        fmt(t.sentKBs),
+        whole(t.samples),
+        whole(t.errors),
+        twoDecimals(errorPct) + '%',
+        whole(t.mean),
+        whole(t.median),
+        whole(t.p90),
+        whole(t.p95),
+        whole(t.p99),
+        whole(t.min),
+        whole(t.max),
+        formatRate(t.throughput),
+        twoDecimals(t.receivedKBs),
+        twoDecimals(t.sentKBs),
         '__apdex__' + t.apdex
     ];
 
@@ -1400,7 +1460,7 @@ function updateTotalRow() {
             var apdexVal = parseFloat(val.replace('__apdex__', ''));
             var badge = document.createElement('span');
             badge.className = 'apdex-badge ' + getApdexClass(apdexVal);
-            badge.textContent = isNaN(apdexVal) ? '0' : apdexVal.toFixed(2);
+            badge.textContent = isNaN(apdexVal) ? '0' : formatApdex(apdexVal);
             td.appendChild(badge);
         } else {
             td.textContent = val;
@@ -2923,11 +2983,11 @@ function buildErrorSummaryTotalRow() {
             td.textContent = shown.length === rows.length
                 ? 'Total' : 'Total (' + shown.length + ' of ' + rows.length + ' rows)';
             td.title = 'The sum of the rows shown: % of Errors is their share of all '
-                + errors.toLocaleString('en-US') + ' errors, % of All Samples their share of all '
-                + samples.toLocaleString('en-US') + ' samples. Rows the search or a × hides '
+                + errors + ' errors, % of All Samples their share of all '
+                + samples + ' samples. Rows the search or a × hides '
                 + 'are not in it.';
         }
-        else if (c === countCol) td.textContent = count.toLocaleString('en-US');
+        else if (c === countCol) td.textContent = String(count);
         else if (c === col['% of Errors']) td.textContent = share(errors);
         else if (c === col['% of All Samples']) td.textContent = share(samples);
         tr.appendChild(td);
@@ -8295,9 +8355,39 @@ WIR.javaText = (function () {
         return r;
     }
 
+    /**
+     * java.text.DecimalFormat's text for a pattern of exactly `decimals` decimals ("#0.00", "#0.000",
+     * "#.0"), as FormatUtil writes the Samplers rows: the double's exact value rounded half-even, as
+     * DecimalFormat rounds it, every decimal written, and no grouping. toFixed differs on an exact tie
+     * (8.25 at one decimal: toFixed writes 8.3, DecimalFormat 8.2). `leadingZero` false is the "#.0"
+     * pattern JMeter's RateRenderer uses, which writes 0.5 as ".5". Checked against DecimalFormat over
+     * 2,309 values (tmp/number-format-and-what-changed/dev/DfCheck.java): equal but for one whose
+     * shortest digits stop on the tie digit while its exact value lies just past it (0.0005 at three
+     * decimals: DecimalFormat 0.000, this 0.001), which no cell here meets, an Apdex being stored at
+     * three decimals already.
+     */
+    function decimalFormat(value, decimals, leadingZero) {
+        if (!isFinite(value)) return value !== value ? 'NaN' : (value > 0 ? '\u221E' : '-\u221E');
+        var negative = value < 0 || (value === 0 && 1 / value < 0);
+        var exact = Math.abs(value).toFixed(100);       // the double's exact decimal expansion
+        var point = exact.indexOf('.');
+        var whole = exact.slice(0, point);
+        var fraction = exact.slice(point + 1);
+        var kept = BigInt(whole + fraction.slice(0, decimals));
+        var next = fraction.charAt(decimals);
+        var rest = fraction.slice(decimals + 1);
+        if (next > '5' || (next === '5' && (/[1-9]/.test(rest) || kept % 2n === 1n))) kept += 1n;
+        var digits = kept.toString();
+        while (digits.length < decimals + 1) digits = '0' + digits;
+        var intPart = decimals ? digits.slice(0, digits.length - decimals) : digits;
+        var text = intPart + (decimals ? '.' + digits.slice(digits.length - decimals) : '');
+        if (leadingZero === false && intPart === '0') text = text.slice(1);
+        return (negative && /[1-9]/.test(text) ? '-' : '') + text;
+    }
+
     return { double: javaDouble, long: javaLong, trim: trim, durationsTrim: durationsTrim,
         numberText: numberText, text: text, describe: describe, jacksonCopy: jacksonCopy,
-        stringTrim: stringTrim, parseDouble: parseDouble };
+        stringTrim: stringTrim, parseDouble: parseDouble, decimalFormat: decimalFormat };
 }());
 
 /* ============================================================
@@ -8400,7 +8490,7 @@ WIR.digits = (function () {
     function enDigits(n) {
         if (n === 0) return '0';
         if (Math.abs(n) < 1e-20) return WIR.javaText.double(n);
-        return n.toLocaleString('en-US', { maximumFractionDigits: 20 });
+        return n.toLocaleString('en-US', { maximumFractionDigits: 20, useGrouping: false });
     }
 
     /**

@@ -43,6 +43,10 @@ import org.apache.jorphan.gui.ObjectTableModel;
  * transaction cut off at the test end without that message, so it counted that transaction's requests
  * too (E02: 7,264 where a listener in the plan receives 7,224). The plan's own writer has no such gap.
  *
+ * <p>A row read from a file ends at start + elapsed, where the {@code SampleResult} a listener in the plan
+ * receives ends at start + elapsed + idle; the referee puts the file's IdleTime back, so a Transaction
+ * Controller's Throughput and KB/sec windows run to its real end, as the report measures them (B7).
+ *
  * <p>Beside the counts, each row carries the text the Aggregate Report's table shows in every cell
  * ({@code shown_*}), drawn by JMeter's own table model and cell renderers
  * ({@code StatGraphVisualizer.createObjectTableModel} and {@code getRenderers}), and the exact mean, which
@@ -79,6 +83,14 @@ public class AggregateReportReferee {
         Visualizer aggregateReport = new Visualizer() {
             @Override public void add(SampleResult res) {
                 seen[0]++;
+                // The end a listener in the plan sees: a SampleResult's own end is start + elapsed + idle,
+                // and a row loaded from a file ends at start + elapsed, losing the IdleTime column, so a
+                // Transaction Controller (whose pauses are idle time) would be measured short of its real
+                // end. The report measures to the real end, as the Aggregate Report listener does (B7);
+                // only the windows of Throughput and KB/sec move, never a count.
+                if (res.getIdleTime() > 0) {
+                    res.setEndTime(res.getEndTime() + res.getIdleTime());
+                }
                 String message = res.getResponseMessage();
                 if (message != null && message.startsWith(TRANSACTION_MARKER)) {
                     seen[1]++;

@@ -248,7 +248,8 @@ class SamplerAggregator {
                 }
             }
             double apdex = (satisfied + tolerating / 2.0) / sampleCount;
-            stats.setApdexScore(Math.round(apdex * 100.0) / 100.0);
+            // Three decimals, as JMeter's HTML report writes an Apdex (toFixed(3)), rounded once
+            stats.setApdexScore(Math.round(apdex * 1000.0) / 1000.0);
             stats.setApdexSatisfied(satisfied);
             stats.setApdexTolerating(tolerating);
         }

@@ -147,7 +147,7 @@ test.describe('Assert threshold lines on charts [E12 — blanket rules in annota
     await page.click('#percentileToggle .filter-toggle-btn[data-metric="p95"]');
     await page.waitForTimeout(500);
     const label = await page.evaluate(RULE_LABEL_SCRIPT);
-    expect(label).toBe('default:p95 fail > 1,000 ms');
+    expect(label).toBe('default:p95 fail > 1000 ms');
   });
 
   test('[U] P99 metric: the line names the rule, at the same 2000ms', async ({ page }) => {
@@ -157,7 +157,7 @@ test.describe('Assert threshold lines on charts [E12 — blanket rules in annota
     await page.click('#percentileToggle .filter-toggle-btn[data-metric="p99"]');
     await page.waitForTimeout(500);
     const label = await page.evaluate(RULE_LABEL_SCRIPT);
-    expect(label).toBe('default:p99 fail > 2,000 ms');
+    expect(label).toBe('default:p99 fail > 2000 ms');
   });
 
   test('[U] Max metric: no threshold configured → no markLine', async ({ page }) => {

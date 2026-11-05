@@ -99,11 +99,11 @@ test('measured is beside with only the never-zero band', () => {
 });
 
 test('enDigits writes every digit en-US, and formatBand never rounds a band', () => {
-    assert.strictEqual(D.enDigits(1234.5678), '1,234.5678');
+    assert.strictEqual(D.enDigits(1234.5678), '1234.5678');
     assert.strictEqual(D.enDigits(-0), '0');
     assert.strictEqual(D.enDigits(1e-21), '1.0E-21', 'below ICU\'s 20 decimals, as Java writes it');
     assert.strictEqual(D.formatBand(373.86), '373.86');
-    assert.strictEqual(D.formatBand(10000), '10,000');
+    assert.strictEqual(D.formatBand(10000), '10000');
     assert.strictEqual(D.formatBand(null), '—');
     assert.strictEqual(D.formatBand(NaN), '—');
 });

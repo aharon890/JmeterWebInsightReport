@@ -41,12 +41,12 @@ const CASES: Case[] = [
 
   // ---- ordinary magnitudes must be untouched by the fix ----
   { value: 5.6, unit: '/s', expected: '5.6 /s', why: 'a normal throughput' },
-  { value: 1250, unit: 'ms', expected: '1,250 ms', why: 'thousands separator kept' },
+  { value: 1250, unit: 'ms', expected: '1250 ms', why: 'no thousands separator, as JMeter writes none' },
   { value: 12.5, unit: '%', expected: '12.5 %', why: 'a normal error rate' },
   { value: 0.98, unit: '', expected: '0.98', why: 'apdex, unitless' },
   // A rate is the Test Summary card's "#,##0.##": grouped, two decimals (SF17). "2000 /s" until
   // 3.1.33; one decimal put "24.8 /s" one card from the Throughput card's "24.76/s".
-  { value: 2000, unit: '/s', expected: '2,000 /s', why: 'a large rate gains no decimals, and is grouped' },
+  { value: 2000, unit: '/s', expected: '2000 /s', why: 'a large rate gains no decimals, and no thousands separator' },
   { value: 24.7606, unit: '/s', expected: '24.76 /s', why: "E26's throughput, as the Throughput card writes it" },
 
   // ---- zero is a real measurement and must stay zero ----

@@ -628,7 +628,7 @@ test.describe('Batch 2: the numbers a band is taken from are the ones Java compa
     await expect(page.locator('.wir-pick-row[data-metric="consumer.lag.final"] .wir-pick-peak'))
       .toHaveText('last 100 msgs');
     await page.click('.wir-pick-name:has-text("Consumer lag, all partitions")');
-    await expect(page.locator('.wir-pick-detail')).toContainText('fail > 15,000 msgs · warn > 12,500 msgs');
+    await expect(page.locator('.wir-pick-detail')).toContainText('fail > 15000 msgs · warn > 12500 msgs');
   });
 
   test('[U] SF8: a capped series judged over another window than the build\'s proposes nothing from it', async ({ page }) => {
@@ -710,7 +710,7 @@ test.describe('Batch 2: the numbers a band is taken from are the ones Java compa
       .toHaveText(/^slope 60,?000,?000 B\/min$/);
     await page.click('.wir-pick-name:has-text("Database size growth (bytes/min)")');
     await expect(page.locator('.wir-pick-detail')).toContainText(/slope 60,?000,?000 B\/min over 2 instances/);
-    await expect(page.locator('.wir-pick-detail')).toContainText('fail > 90,000,000 B/min · warn > 75,000,000 B/min');
+    await expect(page.locator('.wir-pick-detail')).toContainText('fail > 90000000 B/min · warn > 75000000 B/min');
 
     await page.check('[data-wir-dlg="pick:database.size.growth"]');
     await page.click('#serverPickNext');
