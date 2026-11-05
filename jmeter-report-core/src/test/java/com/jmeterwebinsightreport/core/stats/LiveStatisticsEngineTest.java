@@ -253,6 +253,63 @@ class LiveStatisticsEngineTest {
     }
 
     @Test
+    void aNameInsideTwoTransactionsIsPlacedUnderTheFirstByNameAndNamesTheOther() {
+        // One row per name, so one parent: it was whichever the hash map visited last, and the page
+        // listed the row under both. Now the first by name, every run, and the row names the other
+        long ts = 1700000000000L;
+        engine.recordSample("Whole B", 40, true, 300, 30, ts, ts + 40, 0, 0, 1, 0, true);
+        engine.recordTransaction("Whole B", "Open", true);
+        recordChild("Open", 30, true, 300, 30, ts, 0, 0);
+        engine.recordSample("Whole A", 40, true, 300, 30, ts + 100, ts + 140, 0, 0, 1, 0, true);
+        engine.recordTransaction("Whole A", "Open", true);
+        recordChild("Open", 30, true, 300, 30, ts + 100, 0, 0);
+
+        ReportData data = engine.buildReportData("t");
+        assertEquals("Whole A", findSampler(data, "Open").getParentSamplerName());
+        assertEquals(List.of("Open"), data.getTransactionHierarchy().get("Whole A"));
+        assertEquals(List.of(), data.getTransactionHierarchy().get("Whole B"), "listed under one parent only");
+        assertTrue(findSampler(data, "Whole B").isTransactionController());
+        assertEquals(List.of("Whole B"), findSampler(data, "Open").getAlsoRunsInside());
+    }
+
+    @Test
+    void aNameThatAlsoRunsOnItsOwnNamesTheTransactionsItRanInside() {
+        long ts = 1700000000000L;
+        engine.recordSample("Whole", 40, true, 300, 30, ts, ts + 40, 0, 0, 1, 0, true);
+        engine.recordTransaction("Whole", "Open", true);
+        recordChild("Open", 30, true, 300, 30, ts, 0, 0);
+        engine.recordSample("Open", 30, true, 300, 30, ts + 1000, ts + 1030, 0, 0, 1, 0, true);
+
+        ReportData data = engine.buildReportData("t");
+        assertNull(findSampler(data, "Open").getParentSamplerName());
+        assertEquals(List.of("Whole"), findSampler(data, "Open").getAlsoRunsInside());
+        assertEquals(List.of(), findSampler(data, "Whole").getAlsoRunsInside());
+    }
+
+    @Test
+    void aParentThatWouldCloseALoopIsNotTaken() {
+        // X holds A holds B in one session, Y holds B holds A in another: by name A would go under B and
+        // B under A, and no row of either would be reachable from the top
+        long ts = 1700000000000L;
+        engine.recordSample("X", 40, true, 300, 30, ts, ts + 40, 0, 0, 1, 0, true);
+        engine.recordTransaction("X", "A", true);
+        recordChild("A", 30, true, 300, 30, ts, 0, 0);
+        engine.recordTransaction("A", "B", true);
+        recordChild("B", 20, true, 300, 30, ts, 0, 0);
+        engine.recordSample("Y", 40, true, 300, 30, ts + 100, ts + 140, 0, 0, 1, 0, true);
+        engine.recordTransaction("Y", "B", true);
+        recordChild("B", 30, true, 300, 30, ts + 100, 0, 0);
+        engine.recordTransaction("B", "A", true);
+        recordChild("A", 20, true, 300, 30, ts + 100, 0, 0);
+
+        ReportData data = engine.buildReportData("t");
+        assertEquals("B", findSampler(data, "A").getParentSamplerName(), "A's first parent by name");
+        assertEquals("Y", findSampler(data, "B").getParentSamplerName(), "A would close a loop, so Y");
+        assertEquals(List.of("X"), findSampler(data, "A").getAlsoRunsInside());
+        assertEquals(List.of("A"), findSampler(data, "B").getAlsoRunsInside());
+    }
+
+    @Test
     void theSecondsTotalsCountANameThatAlsoRunsNestedInTheSecondsItRanOnItsOwn() {
         // The Σ Total lines pooled the seconds' names that were no child, so a second in which "Open"
         // ran on its own and failed drew no sample and 0% errors (tails: the Σ error line was 0 in all

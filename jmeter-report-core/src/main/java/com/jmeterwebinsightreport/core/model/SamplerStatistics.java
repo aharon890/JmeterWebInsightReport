@@ -44,6 +44,11 @@ public class SamplerStatistics {
     private boolean transactionController;
     private String parentSamplerName;
     private java.util.List<String> childSamplerNames;
+    /** The transactions this name also ran inside, besides the one it is listed under
+     *  ({@link #parentSamplerName}): all of them for a name that also ran on its own, the others for a
+     *  name inside several. One row per name means one place in the table, so the row says where else
+     *  it ran. Empty for most rows. */
+    private java.util.List<String> alsoRunsInside = new java.util.ArrayList<>();
     private double apdexScore;
     /**
      * The Apdex counts behind {@link #apdexScore}: successful samples at or under T, and over T
@@ -225,6 +230,14 @@ public class SamplerStatistics {
 
     public String getParentSamplerName() {
         return parentSamplerName;
+    }
+
+    public java.util.List<String> getAlsoRunsInside() {
+        return alsoRunsInside;
+    }
+
+    public void setAlsoRunsInside(java.util.List<String> alsoRunsInside) {
+        this.alsoRunsInside = alsoRunsInside != null ? alsoRunsInside : new java.util.ArrayList<>();
     }
 
     public void setParentSamplerName(String parentSamplerName) {

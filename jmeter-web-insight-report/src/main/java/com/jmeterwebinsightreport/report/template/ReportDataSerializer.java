@@ -480,6 +480,11 @@ public class ReportDataSerializer {
                 exact(exact, "max", stat.getMaxResponseTime());
                 exact(exact, "errorRate", stat.getErrorRate());
                 s.put("errorCount", stat.getErrorCount());
+                // Where else the name ran (a name that also ran on its own, or inside several
+                // transactions): the row says so, since one row per name has one place in the table
+                if (stat.getAlsoRunsInside() != null && !stat.getAlsoRunsInside().isEmpty()) {
+                    s.put("alsoInside", stat.getAlsoRunsInside());
+                }
                 // Full precision, unlike its neighbours: throughput is the number requiresLoad and
                 // divideBy judge, and the browser re-judges server KPIs from this payload. Java
                 // judges stat.getThroughput() as is, so a round2'd 12.496 req/s sat ON a `lt 12.5`

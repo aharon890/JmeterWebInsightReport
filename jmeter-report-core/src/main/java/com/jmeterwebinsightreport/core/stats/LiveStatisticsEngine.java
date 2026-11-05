@@ -596,28 +596,57 @@ public class LiveStatisticsEngine {
             statsByName.put(stat.getSamplerName(), stat);
         }
 
+        // Each parent's children in the order first seen (snapshot under the set's own monitor —
+        // Collections.synchronizedSet does not guard iteration), parents by name: the map's own order
+        // is a hash map's, and the payload's hierarchy and every choice below are the same every run.
+        Map<String, List<String>> observed = new TreeMap<>();
+        Map<String, java.util.SortedSet<String>> parentsOf = new TreeMap<>();
         for (Map.Entry<String, Set<String>> entry : explicitTransactions.entrySet()) {
             String parent = entry.getKey();
-            SamplerStatistics parentStat = statsByName.get(parent);
-            if (parentStat == null) continue;
-
-            // Snapshot under the set's own monitor — Collections.synchronizedSet does not
-            // guard iteration.
+            if (!statsByName.containsKey(parent)) continue;
             Set<String> childSet = entry.getValue();
-            List<String> observedChildren;
+            List<String> children;
             synchronized (childSet) {
-                observedChildren = new ArrayList<>(childSet);
+                children = new ArrayList<>(childSet);
             }
-
-            List<String> children = new ArrayList<>();
-            for (String child : observedChildren) {
-                SamplerStatistics childStat = statsByName.get(child);
-                if (childStat == null || child.equals(parent)) continue;
-                if (namesSeenTopLevel.contains(child)) {
-                    continue;   // it also ran on its own: a top-level row (namesSeenTopLevel)
+            observed.put(parent, children);
+            for (String child : children) {
+                if (statsByName.containsKey(child) && !child.equals(parent)) {
+                    parentsOf.computeIfAbsent(child, k -> new java.util.TreeSet<>()).add(parent);
                 }
-                children.add(child);
-                childStat.setParentSamplerName(parent);
+            }
+        }
+
+        // One row per name, so one place in the table: the first parent by name that closes no loop.
+        // It used to be whichever parent the hash map visited last, and the page listed the row under
+        // every parent. A name that also ran on its own is a top-level row (namesSeenTopLevel). Every
+        // other parent is named on the row instead.
+        Map<String, String> placedUnder = new HashMap<>();
+        for (Map.Entry<String, java.util.SortedSet<String>> entry : parentsOf.entrySet()) {
+            String child = entry.getKey();
+            List<String> elsewhere = new ArrayList<>(entry.getValue());
+            if (!namesSeenTopLevel.contains(child)) {
+                for (String candidate : entry.getValue()) {
+                    if (!closesALoop(child, candidate, placedUnder)) {
+                        placedUnder.put(child, candidate);
+                        elsewhere.remove(candidate);
+                        break;
+                    }
+                }
+            }
+            SamplerStatistics childStat = statsByName.get(child);
+            childStat.setParentSamplerName(placedUnder.get(child));
+            childStat.setAlsoRunsInside(elsewhere);
+        }
+
+        for (Map.Entry<String, List<String>> entry : observed.entrySet()) {
+            String parent = entry.getKey();
+            SamplerStatistics parentStat = statsByName.get(parent);
+            List<String> children = new ArrayList<>();
+            for (String child : entry.getValue()) {
+                if (parent.equals(placedUnder.get(child))) {
+                    children.add(child);
+                }
             }
             boolean transactionController = transactionControllerParents.contains(parent);
             if (!children.isEmpty() || transactionController) {
@@ -631,6 +660,17 @@ public class LiveStatisticsEngine {
         }
 
         return hierarchy;
+    }
+
+    /** Whether placing {@code child} under {@code parent} would make the child its own ancestor. */
+    private static boolean closesALoop(String child, String parent, Map<String, String> placedUnder) {
+        Set<String> seen = new HashSet<>();
+        for (String p = parent; p != null; p = placedUnder.get(p)) {
+            if (p.equals(child) || !seen.add(p)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
