@@ -108,6 +108,10 @@ shared count, so they agreed with each other on totals JMeter disagreed with: a 
 its own and inside another one lost its standalone samples from every whole-run figure at once
 (tails-conversation-flows, 2026-11; E31 is that shape). A fixture in `FIXTURE_IDS` that R07 has no
 reference for is a FAIL, never a skip. It needs Python 3 and a JDK (`javac` compiles the referee).
+`whole-run-totals.spec.ts` closes the other half: it reads each tab as displayed (Summary tiles, Σ
+Total row, Timeline Σ lines, every Samplers row, the Errors tab) and holds it to that JSON, over every
+fixture in `REQUIRED_FIXTURES` (exported from `global-setup.ts` for it), so a tab that one day stops
+reading the shared count fails even though every unit test of the count still passes.
 
 The suites cover the JMeter scenarios Playwright actually opens (E02, E05-E12, E19, E25-E29, E31)
 plus CMP — the same list as `FIXTURE_IDS` in `common.sh`, which is where to check rather than

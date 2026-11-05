@@ -252,7 +252,9 @@ rows rather than one with two test names.
 | 11.3 | Mean response time | [ ] | no tracked check; the 2026-10 Aggregate Report retests measured it equal on 69 runs |
 | 11.4 | P95/P99 equal to JMeter's Aggregate Report | [x] | `ResponseTimeDistributionJMeterParityTest` against JMeter's `StatCalculatorLong`; the 69 campaign runs equal value for value (4.2.6) |
 | 11.5 | Throughput | [ ] | no tracked check; the 2026-10 Aggregate Report retests measured it equal on 69 runs |
-| 11.6 | Samplers table values match JSON output values | [ ] | — |
+| 11.6 | Samplers table values match JSON output values | [x] | `whole-run-totals.spec.ts` (Samples, Errors and Error % of every row, every fixture) |
+| 11.7 | Every tab shows the whole run's counts: the Summary tiles, the Σ Total row and the Timeline's Σ Total lines equal the JSON's totals | [x] | `whole-run-totals.spec.ts`, read off each tab, over every fixture; with R07 holding the JSON to JMeter, a tab that differs from JMeter fails one of the two |
+| 11.8 | The Errors tab counts each sampler's failures as the Samplers table does, and names no sampler the table and the filter bar leave out | [x] | `whole-run-totals.spec.ts` |
 
 R07 compares counts only, exactly, but for an error count it cannot tell from a 2-decimal rate (a row
 of more than about 10,000 samples: UNDECIDED, not a failure); how is in § 7 of Instructions.md. It used to be a by-hand comparison

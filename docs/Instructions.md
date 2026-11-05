@@ -594,6 +594,14 @@ python3 test-plans/scripts/verify-data-integrity.py --fixture E02 \
   --report test-results/E02/E02-report.json --every-row rows.csv --in-test-plan in-test.csv
 ```
 
+R07 checks the JSON; `whole-run-totals.spec.ts` (R05) checks what each tab shows against that JSON,
+reading the page as a reader does and knowing nothing of where a number comes from: the Summary
+tiles, the Samplers Σ Total row and the Timeline's Σ Total lines must show its `totalSamples`,
+`totalErrors` and `errorRate`, each Samplers row its figures for that sampler, and the Errors tab
+must count each sampler's failures as the Samplers table does (a transaction's own result left out,
+as the tab's note says). Every tab read one shared count when it was written, which is exactly why it
+reads the page and not that count: a tab that one day computes its own number fails it.
+
 ## 8. Docker Tests
 
 ```bash
