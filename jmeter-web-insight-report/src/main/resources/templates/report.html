@@ -203,7 +203,7 @@
                  the Samplers table all read it. It used to be a button in the Samplers table's toolbar. -->
             <label class="filter-transaction-details" id="transactionChildrenBtn" style="display:none;"
                    title="Show the requests and nested transactions inside each Transaction Controller: in this list, on the charts, in the Errors tab's sampler filter and in the Samplers table">
-                <input type="checkbox" id="transactionChildrenCheckbox" onchange="toggleTransactionChildrenVisibility()">
+                <input type="checkbox" id="transactionChildrenCheckbox" autocomplete="off" onchange="toggleTransactionChildrenVisibility(this.checked)">
                 <span>Show transaction details</span>
             </label>
             <div class="filter-sampler-list" id="samplerFilterList">

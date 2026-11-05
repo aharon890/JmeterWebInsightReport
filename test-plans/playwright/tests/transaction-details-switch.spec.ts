@@ -63,6 +63,35 @@ test.describe('Show transaction details, in the Samplers row [E31]', () => {
   });
 });
 
+test.describe('Show transaction details keeps in step [E31]', () => {
+  test('the checkbox says the state whoever flips it, and takes the box\'s own value', async ({ page }) => {
+    await loadClean(page, 'E31');
+    const box = page.locator(`${SWITCH} input[type="checkbox"]`);
+    await page.evaluate(() => (window as any).toggleTransactionChildrenVisibility());
+    await expect(box).toBeChecked();
+    // the box's own value wins over a flip: a box the browser restored ticked stays ticked when ticked
+    await page.evaluate(() => (window as any).toggleTransactionChildrenVisibility(true));
+    await expect(box).toBeChecked();
+    expect(await page.evaluate(() => (window as any).showTransactionChildren)).toBe(true);
+    await box.click();
+    await expect(box).not.toBeChecked();
+    expect(await page.evaluate(() => (window as any).showTransactionChildren)).toBe(false);
+  });
+
+  test('a flip keeps the search: a Σ Total row the search hides stays hidden', async ({ page }) => {
+    await loadClean(page, 'E31');
+    await switchTab(page, 'samplers');
+    await page.locator('#samplerFilterList label[data-sampler-name="σ total"]').click();
+    await expect(page.locator('#samplerTable tr.total-sampler-row')).toBeVisible();
+    await page.locator('#samplerSearch').fill('stale');
+    await page.waitForTimeout(150);
+    await expect(page.locator('#samplerTable tr.total-sampler-row')).toBeHidden();
+    await page.locator(SWITCH).click();
+    await page.waitForTimeout(200);
+    await expect(page.locator('#samplerTable tr.total-sampler-row'), 'the flip rebuilt it shown').toBeHidden();
+  });
+});
+
 test.describe('Show transaction details, on a run without transactions [E05]', () => {
   test('there is nothing to show, so there is no switch', async ({ page }) => {
     await loadClean(page, 'E05');

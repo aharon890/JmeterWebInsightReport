@@ -4273,9 +4273,15 @@ function initTransactionHierarchy(data) {
     applySamplerRowVisibility();
 }
 
-function toggleTransactionChildrenVisibility() {
-    showTransactionChildren = !showTransactionChildren;
-    localStorage.setItem('wir_showTransactionChildren', showTransactionChildren ? 'true' : 'false');
+/* on: the checkbox's own state when it calls (a click on it, or on its label); absent, a flip. Taking
+   the box's value keeps the two in step when the browser restored the box on Back: flipping then
+   left it ticked over children hidden (review, 2026-11-05). */
+function toggleTransactionChildrenVisibility(on) {
+    showTransactionChildren = typeof on === 'boolean' ? on : !showTransactionChildren;
+    /* where storage writes throw (site data blocked) the choice is this page's only, and still takes */
+    try {
+        localStorage.setItem('wir_showTransactionChildren', showTransactionChildren ? 'true' : 'false');
+    } catch (e) { /* not remembered */ }
 
     /* Update the switch: the checkbox says it, whoever flipped it */
     var btn = document.getElementById('transactionChildrenBtn');
@@ -4285,9 +4291,11 @@ function toggleTransactionChildrenVisibility() {
     var box = document.getElementById('transactionChildrenCheckbox');
     if (box) box.checked = showTransactionChildren;
 
-    /* Show/hide child rows in samplers table, by the one rule: × and the search still hold. What
+    /* The Σ Total row first, rebuilt as it always was, then every row by the one rule, so × and the
+       search still hold, the Σ row's included (it came back after a flip, review 2026-11-05). What
        belongs to a child goes with it: a chart panel or judging row open under a child stayed on
        screen under nothing once the children were collapsed. */
+    updateTotalRow();
     if (applySamplerRowVisibility()) setTimeout(resizeDetailCharts, 0);
 
     /* Show/hide child checkboxes in filter bar */
@@ -4299,8 +4307,7 @@ function toggleTransactionChildrenVisibility() {
     /* The error tables are not collapsed with them: their rows are the failed requests, transaction
        children included, and no transaction's own row stands for them there (E3). */
 
-    /* Recalculate total row and refresh charts */
-    updateTotalRow();
+    /* Refresh the charts */
     debouncedRefreshAllCharts();
 }
 
