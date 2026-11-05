@@ -868,7 +868,7 @@ _several_plugin_jars_sentence() {
 # much JMeter work an automated cycle has to do — every other scenario in
 # run-all-tests.sh validates only "a report was produced" and is manual-tier.
 # Keep in step with REQUIRED_FIXTURES in test-plans/playwright/global-setup.ts.
-FIXTURE_IDS="E02 E05 E06 E07 E08 E09 E10 E11 E12 E19 E25 E26 E27 E28 E29 E31 CMP"
+FIXTURE_IDS="E02 E05 E06 E07 E08 E09 E10 E11 E12 E19 E25 E26 E27 E28 E29 E31 CMP CMP31"
 
 # Every tracked .sh and git hook must be committed 100755.
 #
@@ -1443,11 +1443,12 @@ run_counts_against_jmeter() {
         case "$id" in
             E26|E27|E28) _check_g "$id" "$TEST_PLANS/goldens/plain.jtl" || fail=1 ;;
             E29)         _check_g "$id" "$RESULTS_DIR/E29-inputs/soak.jtl" || fail=1 ;;
-            CMP)
-                _check CMP "$RESULTS_DIR/CMP/CMP-report.json" "$RESULTS_DIR/CMP/results.jtl" \
-                    "$RESULTS_DIR/CMP/in-test-plan.jtl" || fail=1
-                _check CMP-baseline "$RESULTS_DIR/CMP/baseline.json" "$RESULTS_DIR/CMP/baseline.jtl" \
-                    "$RESULTS_DIR/CMP/baseline-in-test-plan.jtl" || fail=1 ;;
+            CMP|CMP31)
+                # A comparison fixture: both of its runs, each held to its own files
+                _check "$id" "$RESULTS_DIR/$id/$id-report.json" "$RESULTS_DIR/$id/results.jtl" \
+                    "$RESULTS_DIR/$id/in-test-plan.jtl" || fail=1
+                _check "$id-baseline" "$RESULTS_DIR/$id/baseline.json" "$RESULTS_DIR/$id/baseline.jtl" \
+                    "$RESULTS_DIR/$id/baseline-in-test-plan.jtl" || fail=1 ;;
             E31)
                 # The run report's title, which runId hashes: without it -g names the run otherwise
                 local title

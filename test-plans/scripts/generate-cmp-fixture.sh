@@ -10,16 +10,35 @@
 #  It runs the same plan twice — the first run becomes the baseline, the second
 #  is compared against it — because the Compare tab only renders when a baseline
 #  JTL is configured.
+#
+#  Two comparison fixtures come from it, chosen by CMP_ID:
+#    CMP    quick-smoke-test.jmx, 30 s of two thread groups (the default)
+#    CMP31  E31's plan (transaction-alone-and-nested-test.jmx): a transaction run on its
+#           own and inside another one, and transactions the test end cuts off. The
+#           comparison in which the rows added up are not the whole run, so the Compare
+#           tab's Σ Total row and the Notes tab's "What Changed" are held to each run's
+#           own whole run on it (plan v2 items 3-4).
+#  CMP_JMX and CMP_LOAD_ARGS override the plan and its -J load arguments.
 # =============================================================================
 set -uo pipefail
 
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../scripts/lib/common.sh"
 
-CMP_DIR="$RESULTS_DIR/CMP"
-JMX="${CMP_JMX:-quick-smoke-test.jmx}"
-LOAD_ARGS=(-Jthreads_browse=5 -Jthreads_purchase=5 -Jduration=30 -Jrampup=5)
+CMP_ID="${CMP_ID:-CMP}"
+case "$CMP_ID" in
+    CMP)   DEFAULT_JMX=quick-smoke-test.jmx
+           DEFAULT_LOAD="-Jthreads_browse=5 -Jthreads_purchase=5 -Jduration=30 -Jrampup=5" ;;
+    CMP31) DEFAULT_JMX=transaction-alone-and-nested-test.jmx
+           DEFAULT_LOAD="" ;;
+    *)     echo "[CMP] FAILED: no comparison fixture called $CMP_ID (CMP or CMP31)" >&2; exit 1 ;;
+esac
+CMP_DIR="$RESULTS_DIR/$CMP_ID"
+JMX="${CMP_JMX:-$DEFAULT_JMX}"
+# shellcheck disable=SC2206 # word splitting is the point: one -J argument per word
+LOAD_ARGS=(${CMP_LOAD_ARGS-$DEFAULT_LOAD})
+REPORT="$CMP_ID-report.html"
 
-print_banner "CMP Comparison Fixture — Web Insight Report"
+print_banner "$CMP_ID Comparison Fixture — Web Insight Report"
 
 require_jmeter
 # SKIP_BUILD=1 when an orchestrator has already built and deployed this same JAR.
@@ -49,8 +68,8 @@ fi
 # both current.
 rm -rf "$CMP_DIR"
 mkdir -p "$CMP_DIR"
-if [[ -e "$CMP_DIR/CMP-report.html" ]]; then
-    echo "[CMP] FAILED: could not remove the previous $CMP_DIR/CMP-report.html; not running over it" >&2
+if [[ -e "$CMP_DIR/$REPORT" ]]; then
+    echo "[CMP] FAILED: could not remove the previous $CMP_DIR/$REPORT; not running over it" >&2
     exit 1
 fi
 
@@ -64,7 +83,7 @@ echo "[CMP] Baseline run ..."
     -Jwebinsight.report.output="$CMP_DIR" \
     -Jwebinsight.report.filename="baseline.html" \
     -Jwebinsight.report.title="Comparison Baseline" \
-    "${LOAD_ARGS[@]}" > "$CMP_DIR/jmeter-baseline.log" 2>&1
+    ${LOAD_ARGS[@]+"${LOAD_ARGS[@]}"} > "$CMP_DIR/jmeter-baseline.log" 2>&1
 
 if ! file_exists "$CMP_DIR/baseline.jtl"; then
     echo "[CMP] FAILED: baseline run produced no JTL — see $CMP_DIR/jmeter-baseline.log" >&2
@@ -80,10 +99,10 @@ echo "[CMP] Current run (comparing against the baseline) ..."
     -l "$CMP_DIR/results.jtl" \
     -Jin_test_plan_results_file="$CMP_DIR/in-test-plan.jtl" \
     -Jwebinsight.report.output="$CMP_DIR" \
-    -Jwebinsight.report.filename="CMP-report.html" \
+    -Jwebinsight.report.filename="$REPORT" \
     -Jwebinsight.report.title="Comparison Run" \
     -Jwebinsight.report.baseline="$CMP_DIR/baseline.jtl" \
-    "${LOAD_ARGS[@]}" > "$CMP_DIR/jmeter-current.log" 2>&1
+    ${LOAD_ARGS[@]+"${LOAD_ARGS[@]}"} > "$CMP_DIR/jmeter-current.log" 2>&1
 
 # --- Validate -----------------------------------------------------------------
 # "The file exists" is not enough: the whole point of this fixture is the Compare
@@ -95,12 +114,12 @@ echo "[CMP] Current run (comparing against the baseline) ..."
 # passes on E02, which is precisely the false green this check exists to prevent.
 # The escaped \"hasComparison\":true only occurs in the embedded JSON.
 COMPARISON_MARKER='\"hasComparison\":true'
-if ! file_exists "$CMP_DIR/CMP-report.html"; then
-    record CMP "Comparison fixture" FAIL "report not generated"
-elif ! assert_contains "$CMP_DIR/CMP-report.html" "$COMPARISON_MARKER"; then
-    record CMP "Comparison fixture" FAIL "report has no comparison data — baseline was not applied"
+if ! file_exists "$CMP_DIR/$REPORT"; then
+    record "$CMP_ID" "Comparison fixture" FAIL "report not generated"
+elif ! assert_contains "$CMP_DIR/$REPORT" "$COMPARISON_MARKER"; then
+    record "$CMP_ID" "Comparison fixture" FAIL "report has no comparison data — baseline was not applied"
 else
-    record CMP "Comparison fixture" PASS "$(stat_size "$CMP_DIR/CMP-report.html") bytes"
+    record "$CMP_ID" "Comparison fixture" PASS "$(stat_size "$CMP_DIR/$REPORT") bytes"
 fi
 
 # Record which report sources produced this fixture, so the Playwright suite can refuse
@@ -111,12 +130,12 @@ fi
 # can be: the stamp is a claim about where the HTML came from. A report without the
 # comparison marker is still stamped, because it is still this build's; that case is the
 # FAIL recorded above and the non-zero exit below.
-if file_exists "$CMP_DIR/CMP-report.html"; then
+if file_exists "$CMP_DIR/$REPORT"; then
     write_fixture_stamp "$CMP_DIR"
 fi
 
-print_summary "CMP FIXTURE SUMMARY"
+print_summary "$CMP_ID FIXTURE SUMMARY"
 echo ""
-echo "  Fixture: $CMP_DIR/CMP-report.html"
+echo "  Fixture: $CMP_DIR/$REPORT"
 
 exit $FAIL

@@ -43,13 +43,14 @@ const RESULTS_DIR = path.join(PROJECT_ROOT, 'test-results');
  * missing from this list is simply unchecked, not an error.
  */
 export const REQUIRED_FIXTURES = [
-  'E02', 'E05', 'E06', 'E07', 'E08', 'E09', 'E10', 'E11', 'E12', 'E19', 'E25', 'E26', 'E27', 'E28', 'E29', 'E31', 'CMP',
+  'E02', 'E05', 'E06', 'E07', 'E08', 'E09', 'E10', 'E11', 'E12', 'E19', 'E25', 'E26', 'E27', 'E28', 'E29', 'E31', 'CMP', 'CMP31',
 ];
 
 const REGENERATE_HINT = [
   '  ./scripts/build-and-deploy.sh                  # first, when a fixture names its JAR',
-  '  ./test-plans/scripts/run-all-tests.sh          # every fixture above except CMP',
+  '  ./test-plans/scripts/run-all-tests.sh          # every fixture above except CMP and CMP31',
   '  ./test-plans/scripts/generate-cmp-fixture.sh   # CMP (not covered by the above)',
+  '  CMP_ID=CMP31 ./test-plans/scripts/generate-cmp-fixture.sh   # CMP31, E31\'s plan compared with itself',
 ].join('\n');
 
 export default function globalSetup(): void {

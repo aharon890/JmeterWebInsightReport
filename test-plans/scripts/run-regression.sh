@@ -147,6 +147,7 @@ else
     fixture_fail=0
     SKIP_BUILD=1 bash "$TEST_PLANS/scripts/run-all-tests.sh" --suite fixtures || fixture_fail=1
     SKIP_BUILD=1 bash "$TEST_PLANS/scripts/generate-cmp-fixture.sh"           || fixture_fail=1
+    CMP_ID=CMP31 SKIP_BUILD=1 bash "$TEST_PLANS/scripts/generate-cmp-fixture.sh" || fixture_fail=1
 
     # The smoke suite as well (E24, and E30's live server-data flow): the fixture suite holds
     # neither, so a regeneration alone would never run the live flow on exactly the change that

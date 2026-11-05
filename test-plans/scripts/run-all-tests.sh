@@ -9,8 +9,8 @@
 #    --suite smoke      one 5s scenario, just proves JMeter loads (~20 s)
 #    --suite full       all 19, incl. E20 external-data           (~4.5 min)  [default]
 #
-#  fixtures is FIXTURE_IDS minus CMP, which no scenario here produces —
-#  generate-cmp-fixture.sh owns it. Do not "fix" the count by adding CMP.
+#  fixtures is FIXTURE_IDS minus CMP and CMP31, which no scenario here produces —
+#  generate-cmp-fixture.sh owns them. Do not "fix" the count by adding them.
 #
 #  --only E26,E27 narrows the suite to the ids listed, to regenerate just the
 #  fixtures a targeted spec opens while developing. The others stay stale, so
@@ -88,8 +88,8 @@ in_suite() {
 }
 
 ONLY_IDS="${ONLY_IDS//,/ }"
-if [[ " $ONLY_IDS " == *" CMP "* ]]; then
-    echo "ERROR: --only CMP — no scenario here produces CMP; run generate-cmp-fixture.sh" >&2
+if [[ " $ONLY_IDS " == *" CMP "* || " $ONLY_IDS " == *" CMP31 "* ]]; then
+    echo "ERROR: --only CMP / CMP31 — no scenario here produces them; run generate-cmp-fixture.sh (CMP_ID=CMP31 for CMP31)" >&2
     exit 2
 fi
 ONLY_RAN=""
