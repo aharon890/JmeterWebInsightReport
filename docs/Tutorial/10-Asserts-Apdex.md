@@ -443,8 +443,8 @@ field: `loadValidity.target must be a finite number, not NaN`.
 
 Apdex scores each sample against a threshold **T**: satisfied at or under T, tolerating at or
 under 4×T, frustrated beyond — and a failed sample is frustrated whatever its time. A sampler's
-score is `(satisfied + tolerating / 2) / samples`, to two decimals; the whole run's is the
-top-level samplers' scores weighted by sample count. The report's T defaults to 500 ms and is set
+score is `(satisfied + tolerating / 2) / samples`, to two decimals; the whole run's is the same
+over the whole run's samples, every sample a listener in the test plan received. The report's T defaults to 500 ms and is set
 with `-Jwebinsight.apdex.threshold`.
 
 An apdex assertion therefore asserts that configuration as much as the score — "apdex fell below

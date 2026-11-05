@@ -107,7 +107,7 @@ listener in the plan received; `-Jin_test_plan_results_file`), each sampler agai
 shared count, so they agreed with each other on totals JMeter disagreed with: a transaction that ran on
 its own and inside another one lost its standalone samples from every whole-run figure at once
 (tails-conversation-flows, 2026-11; E31 is that shape). A fixture in `FIXTURE_IDS` that R07 has no
-reference for is a FAIL, never a skip. It needs Python 3.
+reference for is a FAIL, never a skip. It needs Python 3 and a JDK (`javac` compiles the referee).
 
 The suites cover the JMeter scenarios Playwright actually opens (E02, E05-E12, E19, E25-E29, E31)
 plus CMP — the same list as `FIXTURE_IDS` in `common.sh`, which is where to check rather than
@@ -146,7 +146,7 @@ referenced — so they are manual-tier.
 Run them before a release:
 
 ```bash
-./test-plans/scripts/run-all-tests.sh      # E01-E13, E15, E19, E20, E22, E24-E29
+./test-plans/scripts/run-all-tests.sh      # E01-E13, E15, E19, E20, E22, E24-E29, E31
 ./test-plans/scripts/run-config-tests.sh   # C01-C43 plus C17b, C19 records once
 ./test-plans/scripts/run-error-tests.sh    # N01-N09
 ./test-plans/scripts/run-docker-tests.sh   # E16, E17
@@ -460,7 +460,9 @@ ingestion paths plus every serializer must follow.
 fed only the samples a listener in the test plan received, as JMeter's Aggregate Report feeds its TOTAL
 (`StatVisualizer.add`): the engine's `recordSample(..., topLevel)`, true for the listener's event and
 false for its sub-results, and on `-g` the nesting `TransactionRows` gives each row (a transaction the
-test end cut off, written without its "Number of samples" message, nests by its name). Every whole-run
+test end or a "Stop Thread" cut off, written without its "Number of samples" message, nests by its
+name, read from the whole file first; a name that never completed anywhere in the file cannot be told
+from a request). Every whole-run
 figure reads it: the tiles, the CI/CD JSON, JUnit, `RunIdentity`, the overall asserts (an overall
 `code=`/`class=` rule counts `ErrorSummary.topLevelOccurrenceCount`), the Σ Total row and the Timeline's
 Σ lines (a per-second whole-run accumulator). The transaction hierarchy is a relation between names,

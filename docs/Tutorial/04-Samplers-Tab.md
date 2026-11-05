@@ -32,8 +32,9 @@ Detailed per-sampler statistics table with sorting, filtering, column control, a
 A virtual aggregate row that always appears at the top of the table:
 - **Default state:** Hidden (Σ Total checkbox is unchecked in the filter bar)
 - **Enable:** Check the "Σ Total" checkbox in the sampler filter bar
-- **Values:** Summed counts, throughput and Recv KB/s; overall error rate; the true whole-run
-  median and percentiles; sample-weighted mean and Apdex; transaction children left out
+- **Values:** The whole run, counted per sample as JMeter's Aggregate Report counts its TOTAL:
+  every sample a listener in the test plan received, a transaction's requests inside it. Not the sum
+  of the rows shown: a name that also ran inside a transaction counts those runs in its own row too
 - **Chart behavior:** When enabled, appears as a dashed line in time-series charts
 
 ### Assert badges on the row
@@ -185,9 +186,10 @@ When the test has Transaction Controllers (parent/child sampler hierarchy):
 
 ### Default Behavior
 
-- Only **parent transactions** and **standalone samplers** are shown
+- Only **transactions** and **samplers a listener in the test plan received on their own** are shown;
+  a name that runs both on its own and inside a transaction is shown, its row counting every run of it
 - Child samplers are hidden from the table, filter bar, charts and the Errors tab's tables
-- This matches JMeter's native Aggregate Report behavior
+- This matches an Aggregate Report in the test plan
 - **No double-counting:** Parents aggregate their children
 - A parent that came from a Transaction Controller carries a ▶ icon before its name
 

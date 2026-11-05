@@ -69,7 +69,7 @@ Two things to know when reading a citation:
 | 3.5 | JSON `status` field: PASS when the asserts pass | [x] | E10 |
 | 3.6 | JSON `status` field: FAIL when an assert fails | [x] | E11 |
 | 3.7 | JSON `status` field: UNKNOWN when no asserts are configured | [x] | R06 G1 |
-| 3.8 | JSON samplers array has correct count | [x] | R06 goldens (`verify-data-integrity.py` also checks it, by hand) |
+| 3.8 | JSON samplers array has correct count | [x] | R06 goldens, and R07 against JMeter's Aggregate Report |
 | 3.9 | JSON samplers have apdex field | [x] | CiCdJsonSerializerTest |
 | 3.10 | JSON assertViolations populated when an assert fails | [x] | CiCdJsonSerializerTest |
 | 3.11 | JUnit XML generated when `-Jwebinsight.report.junit=true` | [x] | C10 |
@@ -254,7 +254,8 @@ rows rather than one with two test names.
 | 11.5 | Throughput | [ ] | no tracked check; the 2026-10 Aggregate Report retests measured it equal on 69 runs |
 | 11.6 | Samplers table values match JSON output values | [ ] | — |
 
-R07 compares counts only, exactly; how is in § 7 of Instructions.md. It used to be a by-hand comparison
+R07 compares counts only, exactly, but for an error count it cannot tell from a 2-decimal rate (a row
+of more than about 10,000 samples: UNDECIDED, not a failure); how is in § 7 of Instructions.md. It used to be a by-hand comparison
 with the HTML report's `statistics.json`, which no runner called.
 
 ## 12. Error Handling / Negative Tests

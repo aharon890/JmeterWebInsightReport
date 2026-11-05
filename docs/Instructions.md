@@ -20,7 +20,7 @@ with the number of failed stages.
 | Suite | Command | Time | What it covers |
 |-------|---------|------|----------------|
 | Sanity | `./test-plans/scripts/run-sanity.sh` | ~2 min | Build + shade guard, S02 "Unit tests (Java + report.js)" — every `mvn test` plus the `test-plans/js-unit/` suite in node, S03 static checks (shell syntax, fixture-list agreement, script modes, line endings, NUL bytes, the `report.js` source rules, the release tier, the jq idioms, and the self-tests that feed each guard a known defect), a live JMeter run, the whole Playwright suite against existing fixtures |
-| Regression | `./test-plans/scripts/run-regression.sh` | ~2 min, ~5 min when fixtures are stale | Everything above, plus regenerating the report fixtures when they no longer match the source, and R06 — the golden artifacts (see [The golden harness](#the-golden-harness-r06)) |
+| Regression | `./test-plans/scripts/run-regression.sh` | ~2 min, ~5 min when fixtures are stale | Everything above, plus regenerating the report fixtures when they no longer match the source, R06 — the golden artifacts (see [The golden harness](#the-golden-harness-r06)) — and R07, every fixture's counts against JMeter's Aggregate Report (§ 7) |
 
 Regression skips fixture regeneration when the provenance stamps show the fixtures
 were built from exactly the source now in the tree — so a change touching no plugin
@@ -38,7 +38,7 @@ stage S05 and points at regression rather than testing an old build.
 ### What the automated suites leave out
 
 They run the JMeter scenarios the Playwright specs actually open (E02, E05-E12, E19, E25,
-E26-E29) plus CMP — the authoritative list is `FIXTURE_IDS` in `scripts/lib/common.sh`, which
+E26-E29, E31) plus CMP — the authoritative list is `FIXTURE_IDS` in `scripts/lib/common.sh`, which
 is where to check rather than here. The remaining scenarios in `run-all-tests.sh` are
 validated only by "an HTML and a JSON file appeared" — except E20, which asserts the
 external-data payload was written and referenced. Run the full set, plus the config, error,
@@ -446,6 +446,7 @@ jmeter -n -t test-plans/quick-smoke-test.jmx \
 | E25 | Assertion rules | asserts-scenario-test + asserts.json — every rule state in one run | 30s |
 | E26 | Server metrics | no JMX: `-g -o` over `goldens/plain.jtl` + `server-metrics/` (annotations, CSV data, payload), no report title | — (not a timed run) |
 | E27 | Server metrics, catalogue | no JMX: `-g -o` over `goldens/plain.jtl` + `server-catalogue/` (two catalogue components), no report title | — (not a timed run) |
+| E31 | Nested transactions | transaction-alone-and-nested-test — a transaction run on its own and inside another one, plus transactions a timed group leaves open; R07 also rebuilds it with `-g` | ~5s |
 
 The `run_test` lines in `run-all-tests.sh`, and its E20, E26 and E27 blocks, are the list; trust
 them over this table. `./scripts/list-scenarios.sh` (`--text`, `--csv`, `--count`) generates the
@@ -570,14 +571,18 @@ Aggregate Report, computed by JMeter's own classes from the run's own files:
 - **Whole run** (`totalSamples`, `totalErrors`): the file the plan's "In-test-plan results" Simple Data
   Writer writes with "Save sub-results" off, one row per sample a listener in the test plan received.
   `run_test_jmeter` and `generate-cmp-fixture.sh` name it with `-Jin_test_plan_results_file`. The `-g`
-  fixtures (E26-E29) have none: their input is the reference, after `--require-no-nesting` confirms it
-  has no transaction or sub-result rows.
+  fixtures (E26-E29) have none: their input is the reference, after `--require-no-nesting` finds no
+  transaction row and no renamed sub-result row in it (it reads no timing: the goldens' `plain.jtl` is
+  generated and its rows of one thread overlap).
 - **Each sampler** (`sampleCount`, and the error count behind its 2-decimal `errorRate`): the
   Aggregate Report over `results.jtl`, every row.
 - **E31** is also rebuilt with `-g` from its own `results.jtl`; totals and `runId` must equal the run
   report's.
 
-Every count is compared exactly. Mean, percentiles and throughput are not part of it (see
+Every count is compared exactly, but one: a sampler's error count is worked back from the JSON's
+2-decimal `errorRate`, and on a row of more than about 10,000 samples, where two counts round to the
+same rate, the check says UNDECIDED and does not fail. Mean, percentiles and throughput are not part
+of it (see
 `docs/TEST-COVERAGE-GAPS.md` section 11). By hand, for one run:
 
 ```bash
@@ -650,8 +655,8 @@ thought to assert; this asserts that the same fixed input keeps producing the sa
 once per case, canonicalises the CI/CD JSON and the JUnit XML, and diffs them against
 `test-plans/goldens/expected/G*.json` and `G*.xml`. Because the input is fixed, every number is a
 constant, and a diff means the code moved a status, a count, an attainment number, a finding
-message, a wire name or a key order on an unedited file. It is stage R06, the last stage of
-`run-regression.sh`, and needs JMeter with the plugin deployed and Python (it refuses loudly
+message, a wire name or a key order on an unedited file. It is stage R06 of
+`run-regression.sh`, before R07's counts, and needs JMeter with the plugin deployed and Python (it refuses loudly
 without either — a golden check that cannot run must not look like one that passed).
 
 | Case | Annotations (in `test-plans/goldens/`) | What it pins |

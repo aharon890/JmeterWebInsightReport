@@ -42,7 +42,9 @@ import java.util.Set;
  * nested under their request, as the listener nests them, and take no place among the N; counting
  * them used up the transaction's places and left its last requests at the top level. JMeter does
  * not rename them in functional mode or with {@code subresults.disable_renaming=true}, and then they
- * cannot be told from the next request.
+ * cannot be told from the next request: such a row takes a place among the N and leaves the
+ * transaction's last request at the top level, which since the whole run is counted per sample
+ * (4.2.29) counts it in the whole run and makes it a top-level row, where the run report nests it.
  *
  * <p>Sub-results outside a transaction (S47, "Home Page-0") are left as rows: no JMeter tool that
  * reads a file nests them, and nothing here anchors them.
