@@ -1597,8 +1597,10 @@ body.dark-mode.cb-mode sup.delta-bad { color: #fb923c; }
     font-weight: 600;
 }
 
+/* A step per level: a request inside a transaction, a request inside a nested one (--wir-depth,
+   set by arrangeSamplerRows). Level 1 is the 32px it always was. */
 .transaction-child td:first-child {
-    padding-left: 32px !important;
+    padding-left: calc(12px + 20px * var(--wir-depth, 1)) !important;
 }
 
 .tc-icon {

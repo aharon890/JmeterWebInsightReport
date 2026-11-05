@@ -64,6 +64,60 @@ function isTransactionChild(name) {
     return transactionChildNames[name] !== undefined;
 }
 
+/* The Samplers table's tree order: each transaction followed by its own rows (requests, nested
+ * transactions, a request's sub-results), in the order the run first saw them, a level deeper each
+ * time. With Transaction Details on, the rows used to keep the alphabetical order and only gain an
+ * indent, so each looked like it belonged to the row above it: on tails-conversation-flows the
+ * stale-link request sat under "Edit and pin my message", "Open the conversation" under "Login".
+ *
+ * names: every row's name, in its current order (the top-level rows keep it). childrenOf: parent ->
+ * its children, first seen (the payload's transactionHierarchy, which lists a name under one parent
+ * only). compare: optional, orders siblings — the top-level rows among themselves and each
+ * transaction's rows among themselves, so a sort never takes a row out of its transaction. A parent
+ * not in the table leaves its child at the top, a name listed twice goes under the first parent that
+ * lists it, and a loop is cut where it closes. Returns [{name, depth}], every name once. */
+function samplerTreeOrder(names, childrenOf, compare) {
+    var present = {};
+    names.forEach(function (n) { present[n] = true; });
+    var parentOf = {};
+    Object.keys(childrenOf || {}).forEach(function (p) {
+        if (!present[p] || !Array.isArray(childrenOf[p])) return;
+        childrenOf[p].forEach(function (c) {
+            if (present[c] && c !== p && parentOf[c] === undefined) parentOf[c] = p;
+        });
+    });
+    names.forEach(function (n) {
+        var seen = {};
+        for (var p = parentOf[n]; p !== undefined; p = parentOf[p]) {
+            if (p === n || seen[p]) { delete parentOf[n]; return; }
+            seen[p] = true;
+        }
+    });
+    var kids = {};
+    names.forEach(function (n) {
+        var p = parentOf[n];
+        if (p !== undefined) (kids[p] = kids[p] || []).push(n);
+    });
+    Object.keys(kids).forEach(function (p) {
+        var firstSeen = childrenOf[p];
+        kids[p].sort(function (a, b) { return firstSeen.indexOf(a) - firstSeen.indexOf(b); });
+        if (compare) kids[p].sort(compare);
+    });
+    var top = names.filter(function (n) { return parentOf[n] === undefined; });
+    if (compare) top = top.slice().sort(compare);
+    var out = [];
+    var placed = {};
+    var visit = function (n, depth) {
+        if (placed[n]) return;
+        placed[n] = true;
+        out.push({ name: n, depth: depth });
+        (kids[n] || []).forEach(function (c) { visit(c, depth + 1); });
+    };
+    top.forEach(function (n) { visit(n, 0); });
+    names.forEach(function (n) { visit(n, 0); });
+    return out;
+}
+
 function getTotalColor() {
     if (typeof customColors !== 'undefined' && customColors[TOTAL_SAMPLER_NAME]) return customColors[TOTAL_SAMPLER_NAME];
     return document.body.classList.contains('dark-mode') ? '#e2e8f0' : '#1a1a1a';
@@ -889,7 +943,13 @@ function initFilterBar(data) {
         container.appendChild(sep);
     })();
 
-    samplerNames.forEach(function (name, idx) {
+    /* In the table's tree order, a transaction's chips right after its own; each chip keeps the colour
+       of its place in the data, as its chart lines do (getColorForSampler's index) */
+    var dataIndex = {};
+    samplerNames.forEach(function (name, i) { dataIndex[name] = i; });
+    samplerTreeOrder(samplerNames, hierarchy).forEach(function (entry) {
+        var name = entry.name;
+        var idx = dataIndex[name];
         if (samplerVisibility[name] === undefined) {
             samplerVisibility[name] = autoHidden.indexOf(name) < 0;
         }
@@ -898,10 +958,10 @@ function initFilterBar(data) {
         label.setAttribute('data-sampler-name', name.toLowerCase());
         if (samplerVisibility[name]) label.classList.add('checked');
 
-        /* Indent child samplers of transaction controllers */
+        /* Indent child samplers of transaction controllers, a step per level */
         if (childSet[name]) {
             label.classList.add('transaction-child-filter');
-            label.style.paddingLeft = '24px';
+            label.style.paddingLeft = (12 + 12 * Math.max(1, entry.depth)) + 'px';
             if (!showTransactionChildren) label.style.display = 'none';
         }
         if (hierarchy[name]) {
@@ -2725,7 +2785,10 @@ function getFilteredErrorRecords(data) {
 function errorsShownFor(name, visible) {
     if (visible[name]) return true;
     if (showTransactionChildren) return false;
-    for (var parent = transactionChildNames[name]; parent !== undefined; parent = transactionChildNames[parent]) {
+    var seen = {};
+    for (var parent = transactionChildNames[name]; parent !== undefined && !seen[parent];
+         parent = transactionChildNames[parent]) {
+        seen[parent] = true;
         if (visible[parent]) return true;
     }
     return false;
@@ -3439,34 +3502,71 @@ function sortTable(colId, type) {
         if (r.classList.contains('total-sampler-row')) totalGroup = owner; else groups.push(owner);
     });
 
-    groups.sort(function (ga, gb) {
-        var a = ga.row, b = gb.row;
-        var cellA = a.cells[effectiveCol], cellB = b.cells[effectiveCol];
-        if (!cellA || !cellB) return 0;
-        var nameA = cellA.querySelector('.sampler-name-text'), nameB = cellB.querySelector('.sampler-name-text');
+    var valueOf = function (row) {
+        var cell = row.cells[effectiveCol];
+        if (!cell) return null;
+        var nameEl = cell.querySelector('.sampler-name-text');
         /* Sort text columns on the raw label. The old normalizer ran
          * .replace(/[,%/s]/g, '') on EVERY column — a character class that strips the
          * literal letter "s" and "/" as well as "," and "%", so "signup" compared as
          * "ignup" and "GET /users" as "GET uer". Unit stripping belongs to numeric
          * columns only. */
-        var va = (nameA ? nameA.textContent : cellA.textContent).trim();
-        var vb = (nameB ? nameB.textContent : cellB.textContent).trim();
-        if (type === 'num') {
-            va = parseNumericCell(va);
-            vb = parseNumericCell(vb);
-        }
+        var v = (nameEl ? nameEl.textContent : cell.textContent).trim();
+        return type === 'num' ? parseNumericCell(v) : v;
+    };
+    var byName = {};
+    groups.forEach(function (g) { byName[g.row.getAttribute('data-sampler')] = valueOf(g.row); });
+    var compare = function (a, b) {
+        var va = byName[a], vb = byName[b];
+        if (va === null || vb === null || va === undefined || vb === undefined) return 0;
         if (va < vb) return asc ? -1 : 1;
         if (va > vb) return asc ? 1 : -1;
         return 0;
-    });
+    };
 
-    /* The Σ Total row first (C17), then every row in order, each followed by its own companions. */
+    arrangeSamplerRows(tbody, compare);
+}
+
+/* The Samplers table's rows in tree order (samplerTreeOrder), each with its companions, the Σ Total row
+ * first (C17), a row's depth on it for the indent (--wir-depth). compare: optional sibling order. */
+function arrangeSamplerRows(tbody, compare) {
+    var hierarchy = (globalChartData && globalChartData.transactionHierarchy) || {};
+    var totalGroup = null;
+    var groups = [];
+    var orphans = [];
+    var owner = null;
+    var byName = {};
+    Array.from(tbody.rows).forEach(function (r) {
+        if (isSamplerCompanionRow(r)) {
+            if (owner) owner.companions.push(r); else orphans.push(r);
+            return;
+        }
+        owner = { row: r, companions: [] };
+        if (r.classList.contains('total-sampler-row')) { totalGroup = owner; return; }
+        groups.push(owner);
+        var name = r.getAttribute('data-sampler');
+        if (name !== null && byName[name] === undefined) byName[name] = owner;
+    });
     var appendGroup = function (g) {
         tbody.appendChild(g.row);
         g.companions.forEach(function (c) { tbody.appendChild(c); });
     };
     if (totalGroup) appendGroup(totalGroup);
-    groups.forEach(appendGroup);
+    var names = groups.map(function (g) { return g.row.getAttribute('data-sampler'); })
+        .filter(function (n) { return n !== null; });
+    var arranged = {};
+    samplerTreeOrder(names, hierarchy, compare).forEach(function (entry) {
+        var g = byName[entry.name];
+        if (!g) return;
+        arranged[entry.name] = true;
+        g.row.style.setProperty('--wir-depth', String(entry.depth));
+        appendGroup(g);
+    });
+    /* a row with no name, or a second row of one name, keeps its place after them */
+    groups.forEach(function (g) {
+        var name = g.row.getAttribute('data-sampler');
+        if (name === null || byName[name] !== g) appendGroup(g);
+    });
     orphans.forEach(function (c) { tbody.appendChild(c); });
 }
 
@@ -3948,30 +4048,78 @@ var hiddenColumns = {};
 
 /* A row is suppressed independently of the search box: explicitly hidden via ×, or a collapsed
  * transaction child. The search filter must not override these (C18). */
+/* Whether a Samplers row is kept out of sight whatever the search: the reader hid it, or a transaction
+ * it is inside, with ×; or it is inside a transaction while Transaction Details is off. */
 function isSamplerRowSuppressed(row) {
     if (row.classList.contains('user-hidden')) return true;
     if (row.classList.contains('transaction-child') && !showTransactionChildren) return true;
+    var name = row.getAttribute('data-sampler');
+    if (name === null || !row.parentNode) return false;
+    var seen = {};
+    for (var p = transactionChildNames[name]; p !== undefined && !seen[p]; p = transactionChildNames[p]) {
+        seen[p] = true;
+        var parentRow = samplerRowNamed(row.parentNode, p);
+        if (parentRow && parentRow.classList.contains('user-hidden')) return true;
+    }
     return false;
 }
 
-function filterSamplerTable() {
-    var input = document.getElementById('samplerSearch');
-    if (!input) return;
-    var filter = input.value.toLowerCase();
-    var table = document.getElementById('samplerTable');
-    if (!table) return;
-    var rows = table.tBodies[0].rows;
-    for (var i = 0; i < rows.length; i++) {
-        /* A companion row is not a sampler: it was searched by its own text (a judging row's
-           rule list), so it hid under a sampler that matched and showed under one that did not.
-           It goes with its owner, below. */
-        if (isSamplerCompanionRow(rows[i])) continue;
-        var nameEl = rows[i].querySelector('.sampler-name-text');
-        var name = (nameEl ? nameEl.textContent : rows[i].cells[0].textContent).toLowerCase();
-        var matches = name.indexOf(filter) >= 0;
-        rows[i].style.display = (matches && !isSamplerRowSuppressed(rows[i])) ? '' : 'none';
+function samplerRowNamed(tbody, name) {
+    for (var i = 0; i < tbody.rows.length; i++) {
+        if (tbody.rows[i].getAttribute('data-sampler') === name) return tbody.rows[i];
     }
-    if (syncSamplerCompanionRows(table.tBodies[0])) setTimeout(resizeDetailCharts, 0);
+    return null;
+}
+
+function samplerRowText(row) {
+    var nameEl = row.querySelector('.sampler-name-text');
+    return (nameEl ? nameEl.textContent : row.cells[0].textContent).toLowerCase();
+}
+
+/* The one rule for which Samplers rows show, used by the search, the ×, "Show all", the Transaction
+ * Details switch and the first render. A row shows unless suppressed (isSamplerRowSuppressed), and,
+ * with a search typed, when it or a row inside it matches: a matching request keeps its transactions
+ * above it, so it is never shown under a stranger. Each switch used to set rows on its own, so the
+ * switch showed every child whatever × and the search said (E02: a hidden row came back while "Show 1
+ * Hidden Row" was still offered). Returns whether a chart panel came back into view. */
+function applySamplerRowVisibility() {
+    var table = document.getElementById('samplerTable');
+    if (!table || !table.tBodies[0]) return false;
+    var tbody = table.tBodies[0];
+    var input = document.getElementById('samplerSearch');
+    var filter = input ? input.value.toLowerCase() : '';
+    var rows = Array.from(tbody.rows).filter(function (r) { return !isSamplerCompanionRow(r); });
+    var kept = null;
+    if (filter) {
+        kept = [];
+        var keepName = {};
+        rows.forEach(function (r) {
+            if (samplerRowText(r).indexOf(filter) < 0) return;
+            kept.push(r);
+            var seen = {};
+            for (var p = transactionChildNames[r.getAttribute('data-sampler')]; p !== undefined && !seen[p];
+                 p = transactionChildNames[p]) {
+                seen[p] = true;
+                keepName[p] = true;
+            }
+        });
+        rows.forEach(function (r) {
+            var name = r.getAttribute('data-sampler');
+            if (name !== null && keepName[name] && kept.indexOf(r) < 0) kept.push(r);
+        });
+    }
+    rows.forEach(function (r) {
+        var shown = !isSamplerRowSuppressed(r) && (kept === null || kept.indexOf(r) >= 0);
+        r.style.display = shown ? '' : 'none';
+    });
+    return syncSamplerCompanionRows(tbody);
+}
+
+function filterSamplerTable() {
+    /* A companion row is not a sampler: it was searched by its own text (a judging row's rule list),
+       so it hid under a sampler that matched and showed under one that did not. It goes with its
+       owner (applySamplerRowVisibility). */
+    if (applySamplerRowVisibility()) setTimeout(resizeDetailCharts, 0);
 }
 
 function initColumnMenu() {
@@ -4083,7 +4231,22 @@ function initTransactionHierarchy(data) {
         }
     }
 
-    /* Add CSS class and hide child rows by default */
+    /* Where else each name ran (a name that also ran on its own, or inside several transactions), and
+       per transaction the names inside it whose rows are elsewhere: one row per name has one place */
+    var alsoInside = {};
+    var elsewhere = {};
+    (data.samplers || []).forEach(function (s) {
+        if (!Array.isArray(s.alsoInside) || !s.alsoInside.length) return;
+        alsoInside[s.name] = s.alsoInside;
+        s.alsoInside.forEach(function (p) { (elsewhere[p] = elsewhere[p] || []).push(s.name); });
+    });
+    var addTitle = function (row, line) {
+        [row.querySelector('.sampler-name-td'), row.querySelector('.sampler-name-text')].forEach(function (el) {
+            if (el) el.title = (el.title ? el.title + '\n' : '') + line;
+        });
+    };
+
+    /* Mark the rows, then put each transaction's rows under it */
     var rows = Array.from(tbody.rows);
     rows.forEach(function (row) {
         var samplerName = row.getAttribute('data-sampler');
@@ -4091,14 +4254,20 @@ function initTransactionHierarchy(data) {
 
         if (childOf[samplerName]) {
             row.classList.add('transaction-child');
-            if (!showTransactionChildren) row.style.display = 'none';
         }
 
         if (hierarchy[samplerName]) {
             row.classList.add('transaction-parent');
         }
+        if (alsoInside[samplerName]) {
+            addTitle(row, 'Also runs inside: ' + alsoInside[samplerName].join(', '));
+        }
+        if (elsewhere[samplerName]) {
+            addTitle(row, 'Also contains: ' + elsewhere[samplerName].join(', ') + ' (listed elsewhere in this table)');
+        }
     });
-
+    arrangeSamplerRows(tbody, null);
+    applySamplerRowVisibility();
 }
 
 function toggleTransactionChildrenVisibility() {
@@ -4111,19 +4280,10 @@ function toggleTransactionChildrenVisibility() {
         btn.classList.toggle('active', showTransactionChildren);
     }
 
-    /* Show/hide child rows in samplers table */
-    var table = document.getElementById('samplerTable');
-    if (table && table.tBodies[0]) {
-        var rows = Array.from(table.tBodies[0].rows);
-        rows.forEach(function (row) {
-            if (row.classList.contains('transaction-child')) {
-                row.style.display = showTransactionChildren ? '' : 'none';
-            }
-        });
-        /* What belongs to a child goes with it: a chart panel or judging row open under a child
-           stayed on screen under nothing once the children were collapsed. */
-        if (syncSamplerCompanionRows(table.tBodies[0])) setTimeout(resizeDetailCharts, 0);
-    }
+    /* Show/hide child rows in samplers table, by the one rule: × and the search still hold. What
+       belongs to a child goes with it: a chart panel or judging row open under a child stayed on
+       screen under nothing once the children were collapsed. */
+    if (applySamplerRowVisibility()) setTimeout(resizeDetailCharts, 0);
 
     /* Show/hide child checkboxes in filter bar */
     var filterLabels = document.querySelectorAll('.transaction-child-filter');
@@ -7246,6 +7406,8 @@ function hideRow(btn) {
     row.classList.remove('sampler-expanded');
     row.classList.add('user-hidden');
     row.style.display = 'none';
+    /* the rows inside a hidden transaction go with it; the count is of the rows the reader hid */
+    applySamplerRowVisibility();
     hiddenRowCount++;
     updateHiddenRowsBtn();
     updateDetailChartToolbarButtons();
@@ -7261,9 +7423,9 @@ function showAllRows() {
            This asked the parent's .tc-icon for data-expanded="true", which nothing ever sets, so a
            child hidden with × stayed hidden while the count — and the button — reset to 0. */
         rows[i].classList.remove('user-hidden');
-        rows[i].style.display = isSamplerRowSuppressed(rows[i]) ? 'none' : '';
     }
-    if (syncSamplerCompanionRows(table.tBodies[0])) setTimeout(resizeDetailCharts, 0);
+    /* and the search still holds, as the one rule says */
+    if (applySamplerRowVisibility()) setTimeout(resizeDetailCharts, 0);
     hiddenRowCount = 0;
     updateHiddenRowsBtn();
 }
