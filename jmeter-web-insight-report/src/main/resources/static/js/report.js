@@ -1410,6 +1410,11 @@ function updateTotalRow() {
     });
 
     tbody.insertBefore(tr, tbody.firstChild);
+    /* The search holds for this row too, whoever rebuilds it: the switch, and every chart refresh
+       after it, rebuilt it shown over a search that hides it (review, 2026-11-05) */
+    var search = document.getElementById('samplerSearch');
+    var filter = search ? search.value.toLowerCase() : '';
+    if (filter && samplerRowText(tr).indexOf(filter) < 0) tr.style.display = 'none';
 }
 
 function getVisibleSamplerNames() {
