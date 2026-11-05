@@ -1,6 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
 import * as fs from 'fs';
-import * as path from 'path';
 import { loadClean, switchTab, getReportPath } from './helpers';
 import { REQUIRED_FIXTURES } from '../global-setup';
 
@@ -16,17 +15,27 @@ import { REQUIRED_FIXTURES } from '../global-setup';
  *    show the CI/CD file's totalSamples, totalErrors and errorRate. R07 holds that file to JMeter's
  *    Aggregate Report (what a listener in the plan received), so between the two a tab that differs
  *    from JMeter fails;
- *  - each sampler: its Samplers row shows the file's figures for it, which R07 holds to the
- *    Aggregate Report over every row of results.jtl;
+ *  - each sampler: its Samplers row, and its Compare tab row where the run has a baseline, show the
+ *    file's figures for it, which R07 holds to the Aggregate Report over every row of results.jtl;
  *  - the Errors tab counts failed requests, its own stated rule (JMeter's HTML report's): each
- *    sampler's errors there are its errors in the Samplers table, its Total is the sum of its rows
- *    and every failed request, and on a run without transactions the whole run's failures. Every
- *    sampler it names has a row in the Samplers table and a chip in the filter bar.
+ *    sampler's failures there, in the table and in the By Sampler chart, are its Errors in the
+ *    Samplers table; a Transaction Controller's own result is never among them; on a run with no
+ *    transaction and no sub-result its Total is the whole run's failures. Every sampler it names has
+ *    a row in the Samplers table and a chip in the filter bar, both shown once "Show transaction
+ *    details" is ticked (the stale-link request once had neither, the owner's second question).
  *
  * One rule is not "equal": adding up the Samplers rows gives more than the whole run whenever a
  * request runs inside a transaction (the request and its transaction are both rows), so no test
  * here adds rows up to reach a whole-run figure.
+ *
+ * A limit, as R07's: a sampler's error count reaches the CI/CD file only as a two-decimal rate, which
+ * pins it exactly below 10,000 samples. Above that a request row's count is still held by the Errors
+ * tab, which counts it independently.
  */
+
+// The server writes its counts in en-US; the Σ Total row formats with the browser's locale, so the
+// test pins the locale it reads numbers in (under de-DE "7,225" is "7.225").
+test.use({ locale: 'en-US' });
 
 interface CiCdSampler { name: string; sampleCount: number; errorRate: number }
 interface CiCd { totalSamples: number; totalErrors: number; errorRate: number; samplers: CiCdSampler[] }
@@ -58,8 +67,10 @@ async function summaryTile(page: Page, label: string): Promise<string> {
   return (await card.locator('.card-value').first().textContent() || '').trim();
 }
 
-/** Every row of the Samplers table, hidden ones included, as name -> its cells by column title. */
-async function samplerRows(page: Page): Promise<{ rows: Map<string, Record<string, string>>; classes: Map<string, string>; total: Record<string, string> | null }> {
+interface SamplerRow { cells: Record<string, string>; transactionController: boolean; child: boolean; shown: boolean }
+
+/** Every row of the Samplers table, hidden ones included, by name, and the Σ Total row. */
+async function samplerRows(page: Page): Promise<{ rows: Map<string, SamplerRow>; total: Record<string, string> | null }> {
   const read = await page.evaluate(() => {
     const table = document.getElementById('samplerTable') as HTMLTableElement;
     const heads = Array.from(table.tHead!.rows[0].cells).map(c => (c.textContent || '').trim());
@@ -75,17 +86,23 @@ async function samplerRows(page: Page): Promise<{ rows: Map<string, Record<strin
       rows: rows.filter(r => r.getAttribute('data-sampler') !== null
           && !r.classList.contains('total-sampler-row')
           && !r.classList.contains('sampler-detail-row') && !r.classList.contains('wir-judging-row'))
-        .map(r => ({ name: r.getAttribute('data-sampler')!, cls: r.className, cells: asRecord(r) })),
+        .map(r => ({
+          name: r.getAttribute('data-sampler')!,
+          cells: asRecord(r),
+          // The mark the template gives a Transaction Controller's row, and only that row: the
+          // transaction-parent class also goes to a request whose sub-results nest under it
+          transactionController: !!r.querySelector('.tc-icon'),
+          child: r.classList.contains('transaction-child'),
+          shown: (r as HTMLElement).offsetParent !== null,
+        })),
     };
   });
-  const rows = new Map<string, Record<string, string>>();
-  const classes = new Map<string, string>();
+  const rows = new Map<string, SamplerRow>();
   for (const r of read.rows) {
     expect(rows.has(r.name), `"${r.name}" has one row in the Samplers table`).toBe(false);
-    rows.set(r.name, r.cells);
-    classes.set(r.name, r.cls);
+    rows.set(r.name, r);
   }
-  return { rows, classes, total: read.total };
+  return { rows, total: read.total };
 }
 
 /** The Σ Total series a Timeline chart draws: [window start, value] points. */
@@ -97,6 +114,56 @@ async function totalLine(page: Page, chartId: string): Promise<Array<[number, nu
     const s = (chart.getOption().series || []).find((x: any) => x.name === 'Σ Total');
     return s ? s.data : null;
   }, chartId);
+}
+
+/** The Timeline's Σ Total lines at the granularity the select shows. */
+async function expectTimelineLines(page: Page, file: CiCd): Promise<void> {
+  const granularity = Number(await page.locator('#granularitySelect').inputValue());
+  const at = `at ${granularity / 1000} s`;
+
+  // A Throughput point is the window's samples over the window's width: a point times the width is a count
+  const throughput = (await totalLine(page, 'throughput-chart'))!;
+  const drawnSamples = throughput.reduce((sum, [, v]) => sum + (v == null ? 0 : v * granularity / 1000), 0);
+  expect(Math.abs(drawnSamples - file.totalSamples),
+    `${at}, the Throughput chart's Σ Total line adds up to ${drawnSamples} samples, the run had ${file.totalSamples}`)
+    .toBeLessThan(0.05);
+
+  if (file.totalErrors === 0) {
+    // The chart says there were none instead of drawing a flat line
+    await expect(page.locator('#error-rate-chart')).toContainText('No errors recorded');
+    return;
+  }
+  const errorRate = await totalLine(page, 'error-rate-chart');
+  expect(errorRate, `${at}, the Error Rate chart draws a Σ Total line`).not.toBeNull();
+  // An Error Rate point is the window's failures over the window's samples. The samples behind it are
+  // not drawn, so they are read from what the chart was drawn from, per second, grouped into the
+  // chart's windows (multiples of the granularity from the epoch, drawn at their start).
+  const behind: Record<string, number> = await page.evaluate((g) => {
+    const d = (window as any).globalChartData;
+    const out: Record<string, number> = {};
+    d.timestamps.forEach((t: number, i: number) => {
+      const start = t - (t % g);
+      out[start] = (out[start] || 0) + (d.sampleCounts[i] || 0);
+    });
+    return out;
+  }, granularity);
+  // Each second's rate reaches the page written to two decimals, 0.005 points of its samples at most,
+  // so a window's drawn failures are within 0.00005 of its samples of a whole count: below 10,000
+  // samples a window names its count exactly, and the counts must add up to the run's failures.
+  let failures = 0;
+  for (const [t, v] of errorRate!) {
+    if (v == null) continue;
+    const samples = behind[t] || 0;
+    const drawn = v * samples / 100;
+    const count = Math.round(drawn);
+    expect(samples, `${at}, the window at ${t} holds too many samples for a two-decimal rate to name its failures`)
+      .toBeLessThan(10000);
+    expect(Math.abs(drawn - count), `${at}, the window at ${t} draws ${drawn} failures of ${samples} samples, no whole count`)
+      .toBeLessThanOrEqual(0.00005 * samples + 1e-6);
+    failures += count;
+  }
+  expect(failures, `${at}, the Error Rate chart's Σ Total line accounts for ${failures} failures, the run had ${file.totalErrors}`)
+    .toBe(file.totalErrors);
 }
 
 for (const id of REQUIRED_FIXTURES) {
@@ -119,46 +186,23 @@ for (const id of REQUIRED_FIXTURES) {
       expect(numberIn(total!['Errors']), 'the Σ Total row\'s Errors').toBe(file.totalErrors);
       expectRate(numberIn(total!['Error %']), file.totalErrors, file.totalSamples, 'the Σ Total row\'s Error %');
 
-      // Timeline, at the granularity the page picked for this run
+      // Timeline: at the granularity the page picked for this run, then per second
       await switchTab(page, 'timeline');
-      const granularitySeconds = Number(await page.locator('#granularitySelect').inputValue()) / 1000;
       await expect.poll(() => totalLine(page, 'throughput-chart'), { message: 'the Throughput chart draws a Σ Total line' })
         .not.toBeNull();
-      // A point is the window's samples over the window's width, so a point times the width is a count
-      const throughput = (await totalLine(page, 'throughput-chart'))!;
-      const drawnSamples = throughput.reduce((sum, [, v]) => sum + (v == null ? 0 : v * granularitySeconds), 0);
-      expect(Math.abs(drawnSamples - file.totalSamples),
-        `the Throughput chart's Σ Total line adds up to ${drawnSamples} samples, the run had ${file.totalSamples}`)
-        .toBeLessThan(0.05);
-
-      const errorRate = await totalLine(page, 'error-rate-chart');
-      if (file.totalErrors === 0) {
-        // The chart says there were none instead of drawing a flat line
-        await expect(page.locator('#error-rate-chart')).toContainText('No errors recorded');
-      } else {
-        expect(errorRate, 'the Error Rate chart draws a Σ Total line').not.toBeNull();
-        // A point is the window's failures over the window's samples. The samples behind it are not
-        // drawn, so they are read from what the chart was drawn from, per second, grouped into the
-        // chart's windows (multiples of the granularity from the epoch, drawn at their start).
-        const behind = await page.evaluate((g) => {
-          const d = (window as any).globalChartData;
-          const out: Record<string, number> = {};
-          d.timestamps.forEach((t: number, i: number) => {
-            const start = t - (t % (g * 1000));
-            out[start] = (out[start] || 0) + (d.sampleCounts[i] || 0);
-          });
-          return out;
-        }, granularitySeconds);
-        const drawnErrors = errorRate!.reduce((sum, [t, v]) => sum + (v == null ? 0 : v * (behind[t] || 0) / 100), 0);
-        // Each second's rate reaches the page written to two decimals: 0.005 points of the second's
-        // samples at most, so 0.00005 of the run's samples over the whole line
-        expect(Math.abs(drawnErrors - file.totalErrors),
-          `the Error Rate chart's Σ Total line accounts for ${drawnErrors} failures, the run had ${file.totalErrors}`)
-          .toBeLessThanOrEqual(0.5 + 0.00005 * file.totalSamples);
+      await expectTimelineLines(page, file);
+      if (await page.locator('#granularitySelect').inputValue() !== '1000') {
+        await page.locator('#granularitySelect').selectOption('1000');
+        await expect.poll(async () => {
+          const line = await totalLine(page, 'throughput-chart');
+          const seconds = await page.evaluate(() => (window as any).globalChartData.timestamps.length);
+          return line ? line.length === seconds : false;
+        }, { message: 'the Timeline redraws per second' }).toBe(true);
+        await expectTimelineLines(page, file);
       }
     });
 
-    test('each sampler\'s row in the Samplers table shows the CI/CD file\'s figures for it', async ({ page }) => {
+    test('each sampler\'s row in the Samplers table, and in the Compare tab, shows the CI/CD file\'s figures for it', async ({ page }) => {
       const file = ciCdFile(id);
       await loadClean(page, id);
       await switchTab(page, 'samplers');
@@ -167,12 +211,37 @@ for (const id of REQUIRED_FIXTURES) {
       expect([...rows.keys()].sort(), 'one row for every sampler the CI/CD file lists, and no other')
         .toEqual(file.samplers.map(s => s.name).sort());
       for (const s of file.samplers) {
-        const row = rows.get(s.name)!;
+        const row = rows.get(s.name)!.cells;
         const samples = numberIn(row['Samples']);
         const errors = numberIn(row['Errors']);
         expect(samples, `"${s.name}": Samples`).toBe(s.sampleCount);
         expectRate(s.errorRate, errors, samples, `"${s.name}": the CI/CD file's errorRate beside the row's ${errors} errors`);
         expectRate(numberIn(row['Error %']), errors, samples, `"${s.name}": Error %`);
+      }
+
+      // The Compare tab's current side of each sampler, on a run with a baseline
+      if (!(await page.locator('.tab-btn[data-tab="compare"]').isVisible())) return;
+      await switchTab(page, 'compare');
+      const compared = await page.evaluate(() => {
+        const table = document.getElementById('comparisonTable') as HTMLTableElement;
+        const heads = Array.from(table.tHead!.rows[0].cells).map(c => (c.textContent || '').trim());
+        // A cell is the current value with the change after it in a <sup>
+        const current = (c: HTMLTableCellElement | undefined) => (c && c.childNodes[0] ? c.childNodes[0].textContent || '' : '').trim();
+        return Array.from(table.tBodies[0].rows).map(r => ({
+          name: r.cells[heads.indexOf('Sampler')].getAttribute('title') || '',
+          samples: current(r.cells[heads.indexOf('Samples')]),
+          errors: current(r.cells[heads.indexOf('Errors')]),
+          rate: current(r.cells[heads.indexOf('Error %')]),
+        }));
+      });
+      const present = compared.filter(c => c.samples !== '—' && c.samples !== '');
+      expect(present.length, 'the Compare tab lists this run\'s samplers').toBeGreaterThan(0);
+      for (const c of present) {
+        const row = rows.get(c.name);
+        expect(row, `"${c.name}" is on the Compare tab, so it has a row in the Samplers table`).toBeDefined();
+        expect(numberIn(c.samples), `"${c.name}": the Compare tab's current Samples`).toBe(numberIn(row!.cells['Samples']));
+        expect(numberIn(c.errors), `"${c.name}": the Compare tab's current Errors`).toBe(numberIn(row!.cells['Errors']));
+        expectRate(numberIn(c.rate), numberIn(row!.cells['Errors']), numberIn(row!.cells['Samples']), `"${c.name}": the Compare tab's current Error %`);
       }
     });
 
@@ -180,33 +249,41 @@ for (const id of REQUIRED_FIXTURES) {
       const file = ciCdFile(id);
       await loadClean(page, id);
       await switchTab(page, 'samplers');
-      const { rows, classes } = await samplerRows(page);
+      const { rows } = await samplerRows(page);
+      const noNesting = [...rows.values()].every(r => !r.transactionController && !r.child);
       await switchTab(page, 'errors');
 
       const errorsTab = await page.evaluate(() => {
         const table = document.getElementById('errorSummaryTable') as HTMLTableElement | null;
         if (!table) return null;
         const heads = Array.from(table.tHead!.rows[0].cells).map(c => (c.textContent || '').trim());
-        const col = (title: string) => heads.indexOf(title);
         const all = Array.from(table.tBodies[0].rows).filter(r => !r.classList.contains('error-detail-row'));
         const total = all.find(r => r.classList.contains('error-summary-total'));
-        const cell = (r: HTMLTableRowElement, title: string) => (r.cells[col(title)]?.textContent || '').trim();
+        const cell = (r: HTMLTableRowElement, title: string) => (r.cells[heads.indexOf(title)]?.textContent || '').trim();
+        const chart = (chartId: string) => {
+          const dom = document.getElementById(chartId);
+          const c = dom && (window as any).echarts.getInstanceByDom(dom);
+          return c ? c.getOption() : null;
+        };
+        const bar = chart('error-by-sampler-chart');
+        const pie = chart('error-by-type-chart');
+        const valueOf = (d: any) => (d && typeof d === 'object' ? d.value : d);
         return {
-          rows: all.filter(r => r !== total).map(r => ({ sampler: cell(r, 'Sampler'), count: cell(r, 'Count') })),
-          total: total ? { label: cell(total, 'Sampler'), count: cell(total, 'Count'), ofErrors: cell(total, '% of Errors') } : null,
+          rows: all.filter(r => r !== total).map(r => ({ sampler: r.getAttribute('data-sampler') || '', count: cell(r, 'Count') })),
+          total: total ? { label: cell(total, 'Sampler'), count: cell(total, 'Count'), ofSamples: cell(total, '% of All Samples') } : null,
+          bySampler: bar ? (bar.xAxis[0].data as string[]).map((name, i) => ({ name, value: valueOf(bar.series[0].data[i]) })) : null,
+          byCode: pie ? (pie.series[0].data as any[]).map(valueOf) : null,
         };
       });
-      const transactionsLeftOut = await page.locator('#tab-errors .wir-population-note').count() > 0;
 
       if (!errorsTab || errorsTab.rows.length === 0) {
         // No table: nothing failed but, at most, transactions' own results
-        for (const [name, cells] of rows) {
-          if (numberIn(cells['Errors']) > 0) {
-            expect(transactionsLeftOut && /transaction-parent/.test(classes.get(name)!),
-              `"${name}" failed, and the Errors tab has no row for it`).toBe(true);
+        for (const [name, r] of rows) {
+          if (numberIn(r.cells['Errors']) > 0) {
+            expect(r.transactionController, `"${name}" failed, and the Errors tab has no row for it`).toBe(true);
           }
         }
-        if (!transactionsLeftOut) expect(file.totalErrors, 'the run failed, and the Errors tab lists nothing').toBe(0);
+        if (noNesting) expect(file.totalErrors, 'the run failed, and the Errors tab lists nothing').toBe(0);
         return;
       }
 
@@ -217,23 +294,63 @@ for (const id of REQUIRED_FIXTURES) {
       expect(errorsTab.total, 'the Error Summary has a Total row').not.toBeNull();
       expect(errorsTab.total!.label, 'by default every row is in the Total').toBe('Total');
       expect(numberIn(errorsTab.total!.count), 'the Total is the sum of the rows').toBe(listed);
-      expect(errorsTab.total!.ofErrors, 'the rows are every failed request').toBe('100.00%');
 
       for (const [sampler, count] of perSampler) {
-        expect(rows.has(sampler), `"${sampler}" is on the Errors tab, so it has a row in the Samplers table`).toBe(true);
-        await expect(page.locator(`#samplerFilterList label[data-sampler-name="${sampler.toLowerCase().replace(/"/g, '\\"')}"]`),
-          `"${sampler}" is on the Errors tab, so it has a chip in the filter bar`).toHaveCount(1);
-        expect(count, `"${sampler}": its errors on the Errors tab are its Errors in the Samplers table`)
-          .toBe(numberIn(rows.get(sampler)!['Errors']));
+        const row = rows.get(sampler);
+        expect(row, `"${sampler}" is on the Errors tab, so it has a row in the Samplers table`).toBeDefined();
+        expect(row!.transactionController,
+          `"${sampler}" is a Transaction Controller: its own result is left out of the Errors tab, as the tab's note says`).toBe(false);
+        expect(count, `"${sampler}": its failures on the Errors tab are its Errors in the Samplers table`)
+          .toBe(numberIn(row!.cells['Errors']));
       }
-      for (const [name, cells] of rows) {
-        if (numberIn(cells['Errors']) === 0 || perSampler.has(name)) continue;
-        // Left out only as the tab's note says: a transaction's own result
-        expect(transactionsLeftOut && /transaction-parent/.test(classes.get(name)!),
-          `"${name}" failed ${cells['Errors']} times, and the Errors tab does not list it`).toBe(true);
+      for (const [name, r] of rows) {
+        if (numberIn(r.cells['Errors']) === 0 || perSampler.has(name)) continue;
+        expect(r.transactionController,
+          `"${name}" failed ${r.cells['Errors']} times, and the Errors tab does not list it`).toBe(true);
       }
-      if (!transactionsLeftOut) {
-        expect(listed, 'with no transaction, every failure of the run is a failed request').toBe(file.totalErrors);
+      if (await page.locator('#tab-errors .wir-population-note').count() === 0) {
+        expect([...rows.values()].some(r => r.transactionController),
+          'a run with a Transaction Controller says that the Errors tab leaves its own result out').toBe(false);
+      }
+
+      // The tab's two charts count the same failures as its table
+      expect(errorsTab.bySampler, 'the Errors tab draws its By Sampler chart').not.toBeNull();
+      for (const bar of errorsTab.bySampler!) {
+        expect(bar.value, `the By Sampler bar of "${bar.name}"`).toBe(perSampler.get(bar.name));
+      }
+      expect(errorsTab.byCode, 'the Errors tab draws its By Response Code chart').not.toBeNull();
+      expect(errorsTab.byCode!.reduce((a: number, b: number) => a + b, 0), 'the By Response Code chart adds up to the Total')
+        .toBe(listed);
+
+      // With no transaction and no sub-result, every failed request is a failure of the whole run
+      if (noNesting) {
+        expect(listed, 'with no nesting, the Errors tab\'s Total is the whole run\'s failures').toBe(file.totalErrors);
+        expectRate(numberIn(errorsTab.total!.ofSamples), file.totalErrors, file.totalSamples,
+          'with no nesting, the Total\'s % of All Samples is the whole run\'s error rate');
+      }
+
+      // Every sampler the tab names can be found: a chip in the filter bar and a row in the Samplers
+      // table, both shown once transaction details are (a request inside a transaction hides with them)
+      const detailsSwitch = page.locator('#transactionChildrenBtn');
+      if (await detailsSwitch.isVisible() && !(await page.locator('#transactionChildrenCheckbox').isChecked())) {
+        await detailsSwitch.click();
+        await expect(page.locator('#transactionChildrenCheckbox')).toBeChecked();
+      }
+      const chips = await page.evaluate((names) => names.map((name) => {
+        const boxes = Array.from(document.querySelectorAll('#samplerFilterList input[type="checkbox"]'))
+          .filter((b) => (b as HTMLInputElement).value === name);
+        const label = boxes[0] && boxes[0].closest('label');
+        return { name, count: boxes.length, shown: !!label && (label as HTMLElement).offsetParent !== null };
+      }), [...perSampler.keys()]);
+      for (const chip of chips) {
+        expect(chip.count, `"${chip.name}" is on the Errors tab, so it has one chip in the filter bar`).toBe(1);
+        expect(chip.shown, `"${chip.name}" is on the Errors tab, so its chip shows with transaction details on`).toBe(true);
+      }
+      await switchTab(page, 'samplers');
+      const shownRows = (await samplerRows(page)).rows;
+      for (const sampler of perSampler.keys()) {
+        expect(shownRows.get(sampler)!.shown,
+          `"${sampler}" is on the Errors tab, so its Samplers row shows with transaction details on`).toBe(true);
       }
     });
   });
