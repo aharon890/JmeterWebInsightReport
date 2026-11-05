@@ -1396,6 +1396,29 @@ function totalRowFigures(data, isChild) {
     return f;
 }
 
+/* A count or a millisecond figure as the Samplers table writes it: a whole number, no separator
+   (FormatUtil.formatMillis rounds a millisecond). */
+function wholeNumberText(v) {
+    return v == null || isNaN(v) ? '0' : String(Math.round(v));
+}
+
+/* Two decimals, as the Samplers table writes Error % and KB/s (FormatUtil's "#0.00"). */
+function twoDecimalsText(v) {
+    return WIR.javaText.decimalFormat(v == null || isNaN(v) ? 0 : v, 2);
+}
+
+/* A whole run's figures (totalRowFigures) as the Samplers Σ Total row writes them, Samples to Sent KB/s,
+   each cell as the rows below it are, never in the reader's language (it took the browser's: a German
+   reader saw 7.225 and 218,56 above rows reading 2766 and 219). The Compare tab's Σ Total row and the
+   Notes tab's What Changed rows write a whole run through this too, so it reads the same wherever it is
+   shown. */
+function sigmaTotalCellTexts(t) {
+    return [wholeNumberText(t.samples), wholeNumberText(t.errors), twoDecimalsText(t.errorPct) + '%',
+        wholeNumberText(t.mean), wholeNumberText(t.median), wholeNumberText(t.p90), wholeNumberText(t.p95),
+        wholeNumberText(t.p99), wholeNumberText(t.min), wholeNumberText(t.max), formatRate(t.throughput),
+        twoDecimalsText(t.receivedKBs), twoDecimalsText(t.sentKBs)];
+}
+
 /**
  * A throughput as the Aggregate Report's Throughput column writes it, FormatUtil.formatRate's twin
  * (JMeter's RateRenderer, pattern "#.0"): one decimal, per second, and per minute or per hour when
@@ -1417,6 +1440,7 @@ function formatApdex(score) {
 }
 
 function updateTotalRow() {
+    updateComparisonTotalRow();
     var table = document.querySelector('#tab-samplers table');
     if (!table || !globalChartData) return;
     var tbody = table.tBodies[0];
@@ -1434,32 +1458,10 @@ function updateTotalRow() {
     var t = totalRowFigures(globalChartData, isTransactionChild);
     var errorPct = t.errorPct;
 
-    /* Each cell written as the rows below it are (FormatUtil, the Aggregate Report's patterns), never
-       in the reader's language: it took the browser's (a German reader saw 7.225 and 218,56 above
-       rows reading 2766 and 219). Counts and milliseconds are whole numbers with no separator. */
-    var whole = function (v) { return v == null || isNaN(v) ? '0' : String(Math.round(v)); };
-    var twoDecimals = function (v) { return WIR.javaText.decimalFormat(v == null || isNaN(v) ? 0 : v, 2); };
-
     var tr = document.createElement('tr');
     tr.className = 'total-sampler-row';
 
-    var cells = [
-        TOTAL_SAMPLER_NAME,
-        whole(t.samples),
-        whole(t.errors),
-        twoDecimals(errorPct) + '%',
-        whole(t.mean),
-        whole(t.median),
-        whole(t.p90),
-        whole(t.p95),
-        whole(t.p99),
-        whole(t.min),
-        whole(t.max),
-        formatRate(t.throughput),
-        twoDecimals(t.receivedKBs),
-        twoDecimals(t.sentKBs),
-        '__apdex__' + t.apdex
-    ];
+    var cells = [TOTAL_SAMPLER_NAME].concat(sigmaTotalCellTexts(t), ['__apdex__' + t.apdex]);
 
     /* Match column count of existing rows (may include extra action columns) */
     var existingRow = tbody.querySelector('tr');
@@ -7018,8 +7020,10 @@ function applyComparisonThresholds() {
     var p99Th = parseFloat(document.getElementById('thP99').value);
     var tpTh = parseFloat(document.getElementById('thThroughput').value);
 
-    /* Re-evaluate regression flags client-side */
-    globalChartData.comparisonDiffs.forEach(function (diff) {
+    /* Re-evaluate regression flags client-side: every row, and the Σ Total row by the same rule */
+    var judged = globalChartData.comparisonDiffs.slice();
+    if (globalChartData.comparisonTotal) judged.push(globalChartData.comparisonTotal);
+    judged.forEach(function (diff) {
         if (diff.isNew) { diff.regression = false; return; }
         /* Java counts a removed sampler as a regression whatever the thresholds say: an endpoint
            that stopped being exercised is the change a gate should catch. It carries no deltas,
@@ -7277,22 +7281,59 @@ function populateComparisonTable(data) {
         tr.innerHTML =
             '<td title="' + escapedName + '">' + escapedName + '</td>' +
             '<td><span class="status-badge ' + statusClass + '" style="font-size:0.65rem;padding:2px 8px;">' + statusText + '</span></td>' +
-            '<td>' + (diff.currSamples || '\u2014') + inlineDelta(diff.deltaSamples, '', 'neutral') + '</td>' +
-            '<td>' + (diff.currErrors || 0) + inlineDelta(diff.deltaErrors, '') + '</td>' +
-            '<td>' + diff.currErrorRate + '%' + inlineDelta(diff.deltaErrorRate, '%') + '</td>' +
-            '<td>' + formatCellMs(diff.currMean) + inlineDelta(diff.deltaMean, ' ms') + '</td>' +
-            '<td>' + formatCellMs(diff.currMedian) + inlineDelta(diff.deltaMedian, ' ms') + '</td>' +
-            '<td>' + formatCellMs(diff.currP90) + inlineDelta(diff.deltaP90, ' ms') + '</td>' +
-            '<td>' + formatCellMs(diff.currP95) + inlineDelta(diff.deltaP95, ' ms') + '</td>' +
-            '<td>' + formatCellMs(diff.currP99) + inlineDelta(diff.deltaP99, ' ms') + '</td>' +
-            '<td>' + formatCellMs(diff.currMin) + inlineDelta(diff.deltaMin, ' ms') + '</td>' +
-            '<td>' + formatCellMs(diff.currMax) + inlineDelta(diff.deltaMax, ' ms') + '</td>' +
-            '<td>' + (diff.currThroughput != null ? diff.currThroughput.toFixed(1) + '/s' : '\u2014') + inlineDelta(diff.deltaThroughput, '/s', true) + '</td>' +
-            '<td>' + (diff.currRecvKBs != null ? diff.currRecvKBs.toFixed(1) : '\u2014') + inlineDelta(diff.deltaRecvKBs, '', true) + '</td>' +
+            comparedCells(diff, [
+                diff.currSamples ? wholeNumberText(diff.currSamples) : '\u2014',
+                wholeNumberText(diff.currErrors || 0),
+                twoDecimalsText(diff.currSamples > 0 ? (diff.currErrors || 0) * 100 / diff.currSamples : 0) + '%',
+                wholeNumberText(diff.currMean), wholeNumberText(diff.currMedian), wholeNumberText(diff.currP90),
+                wholeNumberText(diff.currP95), wholeNumberText(diff.currP99), wholeNumberText(diff.currMin),
+                wholeNumberText(diff.currMax),
+                diff.currThroughput != null ? formatRate(diff.currThroughput) : '\u2014',
+                diff.currRecvKBs != null ? twoDecimalsText(diff.currRecvKBs) : '\u2014'
+            ]) +
             '<td><button class="row-hide-btn" onclick="hideTableRow(this, \'comparisonTable\'); event.stopPropagation();" title="Hide row">&times;</button></td>';
 
         tbody.appendChild(tr);
     });
+    updateComparisonTotalRow();
+}
+
+/* A compared row's figure cells: each of this run's figures (written as the Samplers table writes it,
+   the Aggregate Report's patterns) with the change from the baseline beside it. */
+function comparedCells(diff, texts) {
+    var deltas = [[diff.deltaSamples, '', 'neutral'], [diff.deltaErrors, ''], [diff.deltaErrorRate, '%'],
+        [diff.deltaMean, ' ms'], [diff.deltaMedian, ' ms'], [diff.deltaP90, ' ms'], [diff.deltaP95, ' ms'],
+        [diff.deltaP99, ' ms'], [diff.deltaMin, ' ms'], [diff.deltaMax, ' ms'],
+        [diff.deltaThroughput, '/s', true], [diff.deltaRecvKBs, '', true]];
+    return texts.map(function (text, i) {
+        return '<td>' + escapeHtml(text) + inlineDelta(deltas[i][0], deltas[i][1], deltas[i][2]) + '</td>';
+    }).join('');
+}
+
+/* The Compare table's Σ Total row: this run's whole run against the baseline's, as a JMeter user reads
+   two Aggregate Reports' TOTAL rows side by side (plan v2 item 3). It shows with the Σ Total chip and
+   stays first, as the Samplers tab's does; its figures are that row's own (sigmaTotalCellTexts over the
+   same totalRowFigures), so the two read the same; the change beside each, and its OK or REGRESSION, are
+   the comparison's (chartData.comparisonTotal: the two runs' OverallMetrics, judged as every row is). */
+function updateComparisonTotalRow() {
+    var tbody = document.getElementById('comparisonTableBody');
+    if (!tbody) return;
+    var existing = tbody.querySelector('tr.comparison-total-row');
+    if (existing) existing.remove();
+    var total = globalChartData && globalChartData.comparisonTotal;
+    if (!total || !isTotalVisible()) return;
+    var tr = document.createElement('tr');
+    tr.className = 'comparison-total-row';
+    tr.style.fontWeight = '700';
+    tr.innerHTML = '<td title="' + escapeHtml(TOTAL_SAMPLER_NAME) + '">' + escapeHtml(TOTAL_SAMPLER_NAME) + '</td>' +
+        '<td><span class="status-badge ' + (total.regression ? 'cmp-regression' : 'cmp-ok') +
+        '" style="font-size:0.65rem;padding:2px 8px;">' + (total.regression ? 'REGRESSION' : 'OK') + '</span></td>' +
+        comparedCells(total, sigmaTotalCellTexts(totalRowFigures(globalChartData, isTransactionChild)).slice(0, 12)) +
+        '<td></td>';
+    tbody.insertBefore(tr, tbody.firstChild);
+    applyGenericColumnVisibility('comparisonTable');
+    var filter = (getTableState('comparisonTable').filterText || '').toLowerCase();
+    if (filter && (tr.textContent || '').toLowerCase().indexOf(filter) < 0) tr.style.display = 'none';
 }
 
 function inlineDelta(val, suffix, invertColor) {
@@ -7318,14 +7359,6 @@ function inlineDelta(val, suffix, invertColor) {
     return '<sup class="' + cls + '">' + text + '</sup>';
 }
 
-function formatCellMs(val) {
-    if (val == null || isNaN(val)) return '0';
-    if (val < 1000) return val.toFixed(0);
-    if (val < 60000) return (val / 1000).toFixed(1) + 's';
-    var m = Math.floor(val / 60000);
-    var s = Math.round((val % 60000) / 1000);
-    return m + 'm ' + s + 's';
-}
 
 /* ============================================================
  *  What Changed (vs Baseline) — auto-generated summary
@@ -7343,14 +7376,12 @@ function initWhatChanged(data) {
     var regressions = [];
     var improvements = [];
     var newSamplers = [];
-    var nonNewDiffs = [];
 
     diffs.forEach(function (diff) {
         if (diff.isNew) {
             newSamplers.push(diff);
             return;
         }
-        nonNewDiffs.push(diff);
         if (diff.regression) {
             regressions.push(diff);
         }
@@ -7369,27 +7400,6 @@ function initWhatChanged(data) {
         return (a.p95PctChange || 0) - (b.p95PctChange || 0);
     });
 
-    /* Compute overall average P95 change across non-new samplers */
-    var p95Sum = 0;
-    var p95Count = 0;
-    nonNewDiffs.forEach(function (diff) {
-        if (diff.p95PctChange != null) {
-            p95Sum += diff.p95PctChange;
-            p95Count++;
-        }
-    });
-    var avgP95Change = p95Count > 0 ? p95Sum / p95Count : 0;
-
-    /* Compute overall error rate change */
-    var errSum = 0;
-    var errCount = 0;
-    nonNewDiffs.forEach(function (diff) {
-        if (diff.deltaErrorRate != null) {
-            errSum += diff.deltaErrorRate;
-            errCount++;
-        }
-    });
-    var avgErrorChange = errCount > 0 ? errSum / errCount : 0;
 
     /* Truncate sampler name if too long */
     function truncateName(name, maxLen) {
@@ -7409,16 +7419,28 @@ function initWhatChanged(data) {
     /* Build HTML */
     var html = '';
 
-    /* Overall line */
-    var p95Word = avgP95Change < -2 ? 'improved' : (avgP95Change > 2 ? 'degraded' : 'stable');
-    var p95Desc = p95Word === 'stable'
-        ? 'P95 stable (' + fmtPct(avgP95Change) + ')'
-        : 'P95 ' + p95Word + ' ' + Math.abs(avgP95Change).toFixed(0) + '% on average';
-
-    var errWord = Math.abs(avgErrorChange) < 0.5 ? 'stable' : (avgErrorChange > 0 ? 'increased' : 'decreased');
-    var errDesc = 'Error rate ' + errWord + ' (' + fmtPct(avgErrorChange) + ')';
-
-    html += '<div class="what-changed-line"><strong>Overall:</strong> ' + escapeHtml(p95Desc) + '. ' + escapeHtml(errDesc) + '.</div>';
+    /* Overall: the two runs' Σ Total rows, as a JMeter user reads two Aggregate Reports' TOTAL rows side
+       by side (plan v2 item 4). It was a sentence averaging every sampler's change, each counted once
+       whatever its size ("P95 degraded 8% on average. Error rate decreased (-3.0%)" on CMP, where the
+       whole run went 5.83% -> 2.55%). Each row is written as that run's own Samplers Σ Total row is:
+       this run's from chartData.overall, the baseline's from the same block of its whole run. */
+    var total = data.comparisonTotal;
+    if (total && total.baselineOverall) {
+        var heads = ['', 'Samples', 'Errors', 'Error %', 'Mean (ms)', 'Median (ms)', 'P90 (ms)', 'P95 (ms)',
+            'P99 (ms)', 'Min (ms)', 'Max (ms)', 'Throughput', 'Recv KB/s'];
+        var runRow = function (run, label, figures) {
+            return '<tr data-run="' + run + '"><td>' + escapeHtml(label) + '</td>' +
+                sigmaTotalCellTexts(figures).slice(0, 12).map(function (t) { return '<td>' + escapeHtml(t) + '</td>'; }).join('') +
+                '</tr>';
+        };
+        html += '<div class="what-changed-line"><strong>Overall:</strong> the two runs\' ' + escapeHtml(TOTAL_SAMPLER_NAME) + ' rows</div>';
+        html += '<div class="table-wrapper"><table class="stats-table what-changed-totals"><thead><tr>' +
+            heads.map(function (h) { return '<th>' + escapeHtml(h) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+            runRow('baseline', 'Baseline ' + TOTAL_SAMPLER_NAME,
+                totalRowFigures({ overall: total.baselineOverall, samplers: [] }, function () { return false; })) +
+            runRow('current', 'This run ' + TOTAL_SAMPLER_NAME, totalRowFigures(data, isTransactionChild)) +
+            '</tbody></table></div>';
+    }
 
     /* Regressions */
     if (regressions.length > 0) {
@@ -7708,8 +7730,11 @@ function sortGenericTable(tableId, colId, type) {
     Array.from(tbody.querySelectorAll('tr.error-detail-row')).forEach(function (dr) { dr.remove(); });
 
     var rows = Array.from(tbody.rows);
-    var dataRows = rows.filter(function (r) { return !r.classList.contains('error-summary-total'); });
+    var dataRows = rows.filter(function (r) {
+        return !r.classList.contains('error-summary-total') && !r.classList.contains('comparison-total-row');
+    });
     var totalRow = rows.filter(function (r) { return r.classList.contains('error-summary-total'); });
+    var firstRow = rows.filter(function (r) { return r.classList.contains('comparison-total-row'); });
 
     dataRows.sort(function (a, b) {
         var va = a.cells[effectiveCol] ? a.cells[effectiveCol].textContent.trim() : '';
@@ -7724,8 +7749,9 @@ function sortGenericTable(tableId, colId, type) {
     });
 
     dataRows.forEach(function (row) { tbody.appendChild(row); });
-    /* Keep total row pinned at the bottom */
+    /* Keep total row pinned at the bottom, and the Compare tab's Σ Total row at the top */
     totalRow.forEach(function (tr) { tbody.appendChild(tr); });
+    firstRow.forEach(function (tr) { tbody.insertBefore(tr, tbody.firstChild); });
 }
 
 /**

@@ -1,5 +1,6 @@
 package com.jmeterwebinsightreport.core.comparison;
 
+import com.jmeterwebinsightreport.core.model.OverallMetrics;
 import com.jmeterwebinsightreport.core.model.ReportData;
 import com.jmeterwebinsightreport.core.model.SamplerStatistics;
 
@@ -14,6 +15,7 @@ public class ComparisonResult {
     private final ReportData baseline;
     private final ReportData current;
     private final List<SamplerDiff> samplerDiffs;
+    private final SamplerDiff wholeRunDiff;
     private final ComparisonThresholds thresholds;
 
     public ComparisonResult(ReportData baseline, ReportData current) {
@@ -25,11 +27,44 @@ public class ComparisonResult {
         this.current = current;
         this.thresholds = thresholds != null ? thresholds : new ComparisonThresholds();
         this.samplerDiffs = computeDiffs();
+        // The two runs' whole runs, compared as every row is compared: a JMeter user reads two
+        // Aggregate Reports' TOTAL rows side by side, and those are counted per sample over each run,
+        // never added up from the rows (plan v2 item 3). Each is OverallMetrics, the one definition of
+        // the run as a whole that the run's own tiles, Sigma Total row, CI/CD JSON and asserts read, so
+        // the comparison's figures are the ones each run's own page shows.
+        this.wholeRunDiff = new SamplerDiff(WHOLE_RUN, wholeRunOf(baseline), wholeRunOf(current), this.thresholds);
     }
+
+    /** A run's whole run (OverallMetrics) as the statistics a compared row is made of. */
+    static SamplerStatistics wholeRunOf(ReportData data) {
+        OverallMetrics m = OverallMetrics.of(data);
+        SamplerStatistics s = new SamplerStatistics();
+        s.setSamplerName(WHOLE_RUN);
+        s.setSampleCount(m.getTotalSamples());
+        s.setErrorCount(m.getTotalErrors());
+        s.setErrorRate(m.getErrorRate());
+        s.setMeanResponseTime(m.getMean());
+        s.setMedianResponseTime(m.getMedian());
+        s.setPercentile90(m.getP90());
+        s.setPercentile95(m.getP95());
+        s.setPercentile99(m.getP99());
+        s.setMinResponseTime(m.getMin());
+        s.setMaxResponseTime(m.getMax());
+        s.setThroughput(m.getThroughput());
+        s.setReceivedBytesPerSec(m.getReceivedBytesPerSec());
+        s.setSentBytesPerSec(m.getSentBytesPerSec());
+        return s;
+    }
+
+    /** What the whole-run comparison is called, as the CI/CD JSON calls the whole run. */
+    public static final String WHOLE_RUN = "Whole run";
 
     public ReportData getBaseline() { return baseline; }
     public ReportData getCurrent() { return current; }
     public List<SamplerDiff> getSamplerDiffs() { return samplerDiffs; }
+    /** The baseline's whole run against this run's (each its OverallMetrics), judged by the same
+     *  thresholds as every row. */
+    public SamplerDiff getWholeRunDiff() { return wholeRunDiff; }
     public ComparisonThresholds getThresholds() { return thresholds; }
 
     public boolean hasRegressions() {

@@ -262,6 +262,123 @@ public class ReportDataSerializer {
         return result;
     }
 
+
+    /** A run's whole run as the page reads it (chartData.overall): its tiles and Sigma Total row, and a
+     *  comparison's baseline beside this run's. */
+    private static Map<String, Object> overallMapOf(OverallMetrics m) {
+        Map<String, Object> overall = new LinkedHashMap<>();
+        Map<String, Object> exact = new LinkedHashMap<>();
+        overall.put("median", round2(m.getMedian()));
+        overall.put("p90", round2(m.getP90()));
+        overall.put("p95", round2(m.getP95()));
+        overall.put("p99", round2(m.getP99()));
+        exact(exact, "median", m.getMedian());
+        exact(exact, "p90", m.getP90());
+        exact(exact, "p95", m.getP95());
+        exact(exact, "p99", m.getP99());
+        if (m.hasDistribution()) {
+            double p75 = m.percentile(75);
+            double p999 = m.percentile(99.9);
+            overall.put("p75", round2(p75));
+            overall.put("p999", round2(p999));
+            exact(exact, "p75", p75);
+            exact(exact, "p999", p999);
+        }
+        overall.put("mean", round2(m.getMean()));
+        overall.put("totalSamples", m.getTotalSamples());
+        // The Σ Total row's counts and extremes, the whole run's own (per sample): adding up the
+        // rows on the page left out every sample of a name that also ran inside a transaction
+        overall.put("totalErrors", m.getTotalErrors());
+        overall.put("min", round2(m.getMin()));
+        overall.put("max", round2(m.getMax()));
+        overall.put("errorRate", round2(m.getErrorRate()));
+        overall.put("throughput", fullPrecision(m.getThroughput()));   // see samplers[] (R2-1)
+        // All bytes over the test duration: the Σ Total row's KB/s columns (B1), which used to
+        // add up the rows' own rates.
+        overall.put("receivedBytesPerSec", round2(m.getReceivedBytesPerSec()));
+        overall.put("sentBytesPerSec", round2(m.getSentBytesPerSec()));
+        overall.put("apdex", m.getApdex());
+        overall.put("duration", round2(m.getDurationSeconds()));
+        overall.put("maxThreads", m.getMaxThreads());
+        exact(exact, "mean", m.getMean());
+        exact(exact, "errorRate", m.getErrorRate());
+        exact(exact, "duration", m.getDurationSeconds());
+        exact(exact, "receivedBytesPerSec", m.getReceivedBytesPerSec());
+        exact(exact, "sentBytesPerSec", m.getSentBytesPerSec());
+        if (!exact.isEmpty()) {
+            overall.put("exact", exact);
+        }
+        return overall;
+    }
+
+    /** One compared row's figures, as the Compare table and the Notes tab read them. */
+    private static Map<String, Object> diffOf(ComparisonResult.SamplerDiff diff) {
+        Map<String, Object> d = new LinkedHashMap<>();
+        d.put("name", diff.getSamplerName());
+        d.put("isNew", diff.isNew());
+        d.put("removed", diff.isRemoved());
+        d.put("regression", diff.isRegression());
+
+        SamplerStatistics curr = diff.getCurrent();
+        if (curr == null) {
+            // Removed sampler: present in the baseline, gone from this run. There are no
+            // "current" figures to report — emit the baseline side only, so the compare
+            // table can show the row as gone instead of the whole report failing to
+            // generate on a NullPointerException.
+            putBaseline(d, diff.getBaseline());
+            return d;
+        }
+
+        d.put("currSamples", curr.getSampleCount());
+        d.put("currErrors", curr.getErrorCount());
+        d.put("currErrorRate", round2(curr.getErrorRate()));
+        d.put("currMean", round2(curr.getMeanResponseTime()));
+        d.put("currMedian", round2(curr.getMedianResponseTime()));
+        d.put("currP90", round2(curr.getPercentile90()));
+        d.put("currP95", round2(curr.getPercentile95()));
+        d.put("currP99", round2(curr.getPercentile99()));
+        d.put("currMin", round2(curr.getMinResponseTime()));
+        d.put("currMax", round2(curr.getMaxResponseTime()));
+        d.put("currThroughput", round2(curr.getThroughput()));
+        d.put("currRecvKBs", round2(curr.getReceivedBytesPerSec() / 1024.0));
+
+        if (!diff.isNew()) {
+            SamplerStatistics base = diff.getBaseline();
+            d.put("deltaSamples", curr.getSampleCount() - base.getSampleCount());
+            d.put("deltaErrors", curr.getErrorCount() - base.getErrorCount());
+            d.put("deltaErrorRate", round2(curr.getErrorRate() - base.getErrorRate()));
+            d.put("deltaMean", round2(curr.getMeanResponseTime() - base.getMeanResponseTime()));
+            d.put("deltaMedian", round2(curr.getMedianResponseTime() - base.getMedianResponseTime()));
+            d.put("deltaP90", round2(curr.getPercentile90() - base.getPercentile90()));
+            d.put("deltaP95", round2(curr.getPercentile95() - base.getPercentile95()));
+            d.put("deltaP99", round2(curr.getPercentile99() - base.getPercentile99()));
+            d.put("deltaMin", round2(curr.getMinResponseTime() - base.getMinResponseTime()));
+            d.put("deltaMax", round2(curr.getMaxResponseTime() - base.getMaxResponseTime()));
+            d.put("deltaThroughput", round2(curr.getThroughput() - base.getThroughput()));
+            d.put("deltaRecvKBs", round2((curr.getReceivedBytesPerSec() - base.getReceivedBytesPerSec()) / 1024.0));
+            d.put("meanPctChange", round2(diff.getMeanPctChange()));
+            d.put("p95PctChange", round2(diff.getP95PctChange()));
+        }
+        return d;
+    }
+
+    /** A run's own figures beside a compared row: a removed sampler's, and the baseline's whole run. */
+    private static void putBaseline(Map<String, Object> d, SamplerStatistics base) {
+        if (base == null) return;
+        d.put("baseSamples", base.getSampleCount());
+        d.put("baseErrors", base.getErrorCount());
+        d.put("baseErrorRate", round2(base.getErrorRate()));
+        d.put("baseMean", round2(base.getMeanResponseTime()));
+        d.put("baseMedian", round2(base.getMedianResponseTime()));
+        d.put("baseP90", round2(base.getPercentile90()));
+        d.put("baseP95", round2(base.getPercentile95()));
+        d.put("baseP99", round2(base.getPercentile99()));
+        d.put("baseMin", round2(base.getMinResponseTime()));
+        d.put("baseMax", round2(base.getMaxResponseTime()));
+        d.put("baseThroughput", round2(base.getThroughput()));
+        d.put("baseRecvKBs", round2(base.getReceivedBytesPerSec() / 1024.0));
+    }
+
     private void addComparison(Map<String, Object> chartData, ComparisonResult comparison) {
         if (comparison == null) return;
 
@@ -294,66 +411,20 @@ public class ReportDataSerializer {
         List<ComparisonResult.SamplerDiff> samplerDiffs = comparison.getSamplerDiffs();
         List<Map<String, Object>> diffs = new ArrayList<>(samplerDiffs.size());
         for (ComparisonResult.SamplerDiff diff : samplerDiffs) {
-            Map<String, Object> d = new LinkedHashMap<>();
-            d.put("name", diff.getSamplerName());
-            d.put("isNew", diff.isNew());
-            d.put("removed", diff.isRemoved());
-            d.put("regression", diff.isRegression());
-
-            SamplerStatistics curr = diff.getCurrent();
-            if (curr == null) {
-                // Removed sampler: present in the baseline, gone from this run. There are no
-                // "current" figures to report — emit the baseline side only, so the compare
-                // table can show the row as gone instead of the whole report failing to
-                // generate on a NullPointerException.
-                SamplerStatistics base = diff.getBaseline();
-                if (base != null) {
-                    d.put("baseSamples", base.getSampleCount());
-                    d.put("baseErrors", base.getErrorCount());
-                    d.put("baseErrorRate", round2(base.getErrorRate()));
-                    d.put("baseMean", round2(base.getMeanResponseTime()));
-                    d.put("baseP95", round2(base.getPercentile95()));
-                    d.put("baseP99", round2(base.getPercentile99()));
-                    d.put("baseThroughput", round2(base.getThroughput()));
-                }
-                diffs.add(d);
-                continue;
-            }
-
-            d.put("currSamples", curr.getSampleCount());
-            d.put("currErrors", curr.getErrorCount());
-            d.put("currErrorRate", round2(curr.getErrorRate()));
-            d.put("currMean", round2(curr.getMeanResponseTime()));
-            d.put("currMedian", round2(curr.getMedianResponseTime()));
-            d.put("currP90", round2(curr.getPercentile90()));
-            d.put("currP95", round2(curr.getPercentile95()));
-            d.put("currP99", round2(curr.getPercentile99()));
-            d.put("currMin", round2(curr.getMinResponseTime()));
-            d.put("currMax", round2(curr.getMaxResponseTime()));
-            d.put("currThroughput", round2(curr.getThroughput()));
-            d.put("currRecvKBs", round2(curr.getReceivedBytesPerSec() / 1024.0));
-
-            if (!diff.isNew()) {
-                SamplerStatistics base = diff.getBaseline();
-                d.put("deltaSamples", curr.getSampleCount() - base.getSampleCount());
-                d.put("deltaErrors", curr.getErrorCount() - base.getErrorCount());
-                d.put("deltaErrorRate", round2(curr.getErrorRate() - base.getErrorRate()));
-                d.put("deltaMean", round2(curr.getMeanResponseTime() - base.getMeanResponseTime()));
-                d.put("deltaMedian", round2(curr.getMedianResponseTime() - base.getMedianResponseTime()));
-                d.put("deltaP90", round2(curr.getPercentile90() - base.getPercentile90()));
-                d.put("deltaP95", round2(curr.getPercentile95() - base.getPercentile95()));
-                d.put("deltaP99", round2(curr.getPercentile99() - base.getPercentile99()));
-                d.put("deltaMin", round2(curr.getMinResponseTime() - base.getMinResponseTime()));
-                d.put("deltaMax", round2(curr.getMaxResponseTime() - base.getMaxResponseTime()));
-                d.put("deltaThroughput", round2(curr.getThroughput() - base.getThroughput()));
-                d.put("deltaRecvKBs", round2((curr.getReceivedBytesPerSec() - base.getReceivedBytesPerSec()) / 1024.0));
-                d.put("meanPctChange", round2(diff.getMeanPctChange()));
-                d.put("p95PctChange", round2(diff.getP95PctChange()));
-            }
-            diffs.add(d);
+            diffs.add(diffOf(diff));
         }
         chartData.put("comparisonDiffs", diffs);
         chartData.put("hasComparison", true);
+        // The two whole runs compared, by the same rule as every row (the Compare tab's Sigma Total
+        // row), with the baseline's whole run beside it as its own page carries it, chartData.overall's
+        // shape (the Notes tab's What Changed box): what a JMeter user reads off two Aggregate Reports'
+        // TOTAL rows (plan v2 items 3-4). This run's is chartData.overall itself.
+        ComparisonResult.SamplerDiff wholeRun = comparison.getWholeRunDiff();
+        if (wholeRun != null) {
+            Map<String, Object> total = diffOf(wholeRun);
+            total.put("baselineOverall", overallMapOf(OverallMetrics.of(comparison.getBaseline())));
+            chartData.put("comparisonTotal", total);
+        }
 
         // Serialize thresholds for frontend live adjustment
         ComparisonThresholds th = comparison.getThresholds();
@@ -544,50 +615,7 @@ public class ReportDataSerializer {
         if (reportData.getOverallP95() > 0 || reportData.getOverallP99() > 0
                 || reportData.getOverallMedian() > 0
                 || (reportData.getSamplerStatistics() != null && !reportData.getSamplerStatistics().isEmpty())) {
-            OverallMetrics m = OverallMetrics.of(reportData);
-            Map<String, Object> overall = new LinkedHashMap<>();
-            Map<String, Object> exact = new LinkedHashMap<>();
-            overall.put("median", round2(m.getMedian()));
-            overall.put("p90", round2(m.getP90()));
-            overall.put("p95", round2(m.getP95()));
-            overall.put("p99", round2(m.getP99()));
-            exact(exact, "median", m.getMedian());
-            exact(exact, "p90", m.getP90());
-            exact(exact, "p95", m.getP95());
-            exact(exact, "p99", m.getP99());
-            if (m.hasDistribution()) {
-                double p75 = m.percentile(75);
-                double p999 = m.percentile(99.9);
-                overall.put("p75", round2(p75));
-                overall.put("p999", round2(p999));
-                exact(exact, "p75", p75);
-                exact(exact, "p999", p999);
-            }
-            overall.put("mean", round2(m.getMean()));
-            overall.put("totalSamples", m.getTotalSamples());
-            // The Σ Total row's counts and extremes, the whole run's own (per sample): adding up the
-            // rows on the page left out every sample of a name that also ran inside a transaction
-            overall.put("totalErrors", m.getTotalErrors());
-            overall.put("min", round2(m.getMin()));
-            overall.put("max", round2(m.getMax()));
-            overall.put("errorRate", round2(m.getErrorRate()));
-            overall.put("throughput", fullPrecision(m.getThroughput()));   // see samplers[] (R2-1)
-            // All bytes over the test duration: the Σ Total row's KB/s columns (B1), which used to
-            // add up the rows' own rates.
-            overall.put("receivedBytesPerSec", round2(m.getReceivedBytesPerSec()));
-            overall.put("sentBytesPerSec", round2(m.getSentBytesPerSec()));
-            overall.put("apdex", m.getApdex());
-            overall.put("duration", round2(m.getDurationSeconds()));
-            overall.put("maxThreads", m.getMaxThreads());
-            exact(exact, "mean", m.getMean());
-            exact(exact, "errorRate", m.getErrorRate());
-            exact(exact, "duration", m.getDurationSeconds());
-            exact(exact, "receivedBytesPerSec", m.getReceivedBytesPerSec());
-            exact(exact, "sentBytesPerSec", m.getSentBytesPerSec());
-            if (!exact.isEmpty()) {
-                overall.put("exact", exact);
-            }
-            chartData.put("overall", overall);
+            chartData.put("overall", overallMapOf(OverallMetrics.of(reportData)));
         }
 
         // The T every Apdex score on this page was computed against. An apdex rule asserts this
