@@ -167,8 +167,8 @@ class LiveStatisticsEngineTest {
         // Real transaction relationships come from sample sub-results (recorded by the listener).
         engine.recordTransaction("TC", "TC-0");
         engine.recordTransaction("TC", "TC-1");
-        engine.recordSample("TC-0", 100, true, 500, 100, ts, 5, 10);
-        engine.recordSample("TC-1", 120, true, 600, 120, ts + 100, 5, 10);
+        recordChild("TC-0", 100, true, 500, 100, ts, 5, 10);
+        recordChild("TC-1", 120, true, 600, 120, ts + 100, 5, 10);
         engine.recordSample("TC", 220, true, 1100, 220, ts + 200, 5, 10);
 
         ReportData data = engine.buildReportData("test");
@@ -243,6 +243,13 @@ class LiveStatisticsEngineTest {
         assertEquals(60.0, overall.getMax(), 1e-9);
         assertEquals(60.0, data.getOverallP99(), 1e-9, "a percentile of those two samples");
         assertEquals(2, findSampler(data, "Open").getSampleCount(), "its row counts every run of the name");
+        // It ran on its own, so it is a top-level row: shown, reached by blanket rules, a JUnit testcase.
+        // Whole keeps its badge with no child under it; Open keeps its own request
+        assertNull(findSampler(data, "Open").getParentSamplerName());
+        assertTrue(findSampler(data, "Whole").isTransactionController());
+        assertEquals(List.of(), data.getTransactionHierarchy().get("Whole"));
+        assertEquals(List.of("Get"), data.getTransactionHierarchy().get("Open"));
+        assertEquals("Open", findSampler(data, "Get").getParentSamplerName());
     }
 
     @Test
@@ -393,8 +400,8 @@ class LiveStatisticsEngineTest {
         engine.recordTransaction("Home", "https://cdn/app.css", false);
         engine.recordTransaction("Home", "https://cdn/app.js", false);
         engine.recordSample("Home", 400, true, 5000, 200, ts, 5, 10);
-        engine.recordSample("https://cdn/app.css", 50, true, 1000, 50, ts + 1, 5, 10);
-        engine.recordSample("https://cdn/app.js", 60, true, 2000, 50, ts + 2, 5, 10);
+        recordChild("https://cdn/app.css", 50, true, 1000, 50, ts + 1, 5, 10);
+        recordChild("https://cdn/app.js", 60, true, 2000, 50, ts + 2, 5, 10);
 
         ReportData data = engine.buildReportData("test");
 
@@ -411,7 +418,7 @@ class LiveStatisticsEngineTest {
         long ts = 1700000000000L;
         engine.recordTransaction("Login Flow", "POST /login", true);
         engine.recordSample("Login Flow", 300, true, 100, 10, ts, 5, 10);
-        engine.recordSample("POST /login", 150, true, 50, 5, ts + 1, 5, 10);
+        recordChild("POST /login", 150, true, 50, 5, ts + 1, 5, 10);
 
         ReportData data = engine.buildReportData("test");
 
@@ -424,9 +431,9 @@ class LiveStatisticsEngineTest {
         engine.recordTransaction("Login Flow", "POST /login", true);
         engine.recordTransaction("Home", "https://cdn/app.css", false);
         engine.recordSample("Login Flow", 300, true, 100, 10, ts, 5, 10);
-        engine.recordSample("POST /login", 150, true, 50, 5, ts + 1, 5, 10);
+        recordChild("POST /login", 150, true, 50, 5, ts + 1, 5, 10);
         engine.recordSample("Home", 400, true, 100, 10, ts + 2, 5, 10);
-        engine.recordSample("https://cdn/app.css", 50, true, 50, 5, ts + 3, 5, 10);
+        recordChild("https://cdn/app.css", 50, true, 50, 5, ts + 3, 5, 10);
 
         ReportData data = engine.buildReportData("test");
 
@@ -977,7 +984,7 @@ class LiveStatisticsEngineTest {
         engine.recordSample("Login Flow", 500, true, 1000, 200, ts, 5, 10);
         for (int t = 0; t < threads; t++) {
             for (int i = 0; i < childrenPerThread; i++) {
-                engine.recordSample("child-" + t + "-" + i, 10, true, 100, 10, ts + 1, 5, 10);
+                recordChild("child-" + t + "-" + i, 10, true, 100, 10, ts + 1, 5, 10);
             }
         }
 
@@ -999,9 +1006,9 @@ class LiveStatisticsEngineTest {
 
         long ts = 1700000000000L;
         engine.recordSample("TC", 100, true, 100, 10, ts, 1, 1);
-        engine.recordSample("third", 10, true, 10, 1, ts, 1, 1);
-        engine.recordSample("first", 10, true, 10, 1, ts, 1, 1);
-        engine.recordSample("second", 10, true, 10, 1, ts, 1, 1);
+        recordChild("third", 10, true, 10, 1, ts, 1, 1);
+        recordChild("first", 10, true, 10, 1, ts, 1, 1);
+        recordChild("second", 10, true, 10, 1, ts, 1, 1);
 
         ReportData data = engine.buildReportData("test");
         assertEquals(java.util.Arrays.asList("third", "first", "second"),

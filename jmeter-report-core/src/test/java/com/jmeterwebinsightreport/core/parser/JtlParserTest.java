@@ -648,6 +648,9 @@ class JtlParserTest {
         assertEquals(2, data.getTopLevelSampleCount(), "Whole, and Open when it ran on its own");
         assertEquals(1, data.getTopLevelErrorCount(), "Open's own failure");
         assertEquals(2, findSampler(data, "Open").getSampleCount(), "its row counts every run of the name");
+        assertNull(findSampler(data, "Open").getParentSamplerName(), "it ran on its own: a top-level row");
+        assertTrue(findSampler(data, "Whole").isTransactionController());
+        assertEquals(Map.of("Whole", List.of(), "Open", List.of("Get")), data.getTransactionHierarchy());
     }
 
     @Test

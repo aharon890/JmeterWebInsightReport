@@ -64,6 +64,11 @@ public class LiveStatisticsEngine {
      *  them is right (the parent's elapsed time already contains them) — but labelling a plain
      *  HTTP sampler as a Transaction Controller in the report is not. */
     private final Set<String> transactionControllerParents = ConcurrentHashMap.newKeySet();
+    /** The names a listener in the plan received at least once on their own (a top-level sample). Such
+     *  a name is a top-level row even where it also ran inside a transaction: its row counts every run
+     *  of the name, as JMeter's HTML report row does, and is shown, judged by blanket rules and given
+     *  a JUnit testcase like any other. Hidden as a child, its own failures were nowhere in sight. */
+    private final Set<String> namesSeenTopLevel = ConcurrentHashMap.newKeySet();
 
     private final AtomicLong totalSamples = new AtomicLong();
     private final AtomicLong totalErrors = new AtomicLong();
@@ -165,6 +170,7 @@ public class LiveStatisticsEngine {
         if (topLevel) {
             wholeRun.addSample(responseTime, isSuccess, bytesReceived, bytesSent, timestamp, endTime,
                     connectTime, latency, n, failed);
+            namesSeenTopLevel.add(samplerName);
         }
 
         // Time-series bucketing (1-second granularity). A sample counts in the second it ended, as
@@ -607,13 +613,18 @@ public class LiveStatisticsEngine {
             for (String child : observedChildren) {
                 SamplerStatistics childStat = statsByName.get(child);
                 if (childStat == null || child.equals(parent)) continue;
+                if (namesSeenTopLevel.contains(child)) {
+                    continue;   // it also ran on its own: a top-level row (namesSeenTopLevel)
+                }
                 children.add(child);
                 childStat.setParentSamplerName(parent);
             }
-            if (!children.isEmpty()) {
+            boolean transactionController = transactionControllerParents.contains(parent);
+            if (!children.isEmpty() || transactionController) {
                 // Nest every parent that produced sub-results, but only badge the ones that
-                // really are Transaction Controllers.
-                parentStat.setTransactionController(transactionControllerParents.contains(parent));
+                // really are Transaction Controllers. A Transaction Controller keeps its badge when
+                // every name inside it also ran on its own, and so has no row under it.
+                parentStat.setTransactionController(transactionController);
                 parentStat.setChildSamplerNames(children);
                 hierarchy.put(parent, children);
             }
@@ -703,6 +714,7 @@ public class LiveStatisticsEngine {
         }
         explicitTransactions.clear();
         transactionControllerParents.clear();
+        namesSeenTopLevel.clear();
         totalSamples.set(0);
         totalErrors.set(0);
         transactionRowSamples.set(0);
