@@ -1367,8 +1367,9 @@ run_live_smoke() {
 #     run_test_jmeter and generate-cmp-fixture.sh);
 #   - each sampler: the Aggregate Report over results.jtl, every row.
 # The -g fixtures have no in-test file. Their committed or generated input is the reference only
-# because nothing in it nests, which --require-no-nesting confirms first. E31 is also rebuilt with
-# -g from its own results.jtl, and the two reports must agree on the totals and the runId.
+# because nothing in it nests; --require-no-nesting refuses one with a transaction row or a renamed
+# sub-result row. E31 is also rebuilt with -g from its own results.jtl: the two reports must agree on
+# the totals and the runId, and the rebuild is held to JMeter sampler by sampler as well.
 #
 # The list is FIXTURE_IDS itself, so a fixture added there is checked or refused, never skipped: a
 # fixture with no reference this function knows is a FAIL that names it. Only called while the
@@ -1413,13 +1414,19 @@ run_counts_against_jmeter() {
     # _check <id> <report.json> <results.jtl> <in-test-plan results> [rebuilt report.json]
     _check() {
         local name="$1" report="$2" every="$3" in_test="$4" rebuilt="${5:-}"
-        local args=()
         _referee "$every" "$out/$name-every-row.csv" || { echo "  [$name] FAIL: the referee could not read $every"; return 1; }
         _referee "$in_test" "$out/$name-in-test-plan.csv" || { echo "  [$name] FAIL: the referee could not read $in_test"; return 1; }
-        [[ -n "$rebuilt" ]] && args=(--rebuilt-report "$rebuilt")
-        PYTHONIOENCODING=utf-8 "$PYTHON" "$TEST_PLANS/scripts/verify-data-integrity.py" --fixture "$name" \
-            --report "$report" --every-row "$out/$name-every-row.csv" --in-test-plan "$out/$name-in-test-plan.csv" \
-            "${args[@]}" --output "$out/$name.csv"
+        # No array for the optional argument: under set -u, bash 3.2 (macOS's /bin/bash) calls an
+        # empty one unbound and ends the suite in the middle of R07
+        if [[ -n "$rebuilt" ]]; then
+            PYTHONIOENCODING=utf-8 "$PYTHON" "$TEST_PLANS/scripts/verify-data-integrity.py" --fixture "$name" \
+                --report "$report" --every-row "$out/$name-every-row.csv" --in-test-plan "$out/$name-in-test-plan.csv" \
+                --rebuilt-report "$rebuilt" --output "$out/$name.csv"
+        else
+            PYTHONIOENCODING=utf-8 "$PYTHON" "$TEST_PLANS/scripts/verify-data-integrity.py" --fixture "$name" \
+                --report "$report" --every-row "$out/$name-every-row.csv" --in-test-plan "$out/$name-in-test-plan.csv" \
+                --output "$out/$name.csv"
+        fi
     }
     # _check_g <id> <input file>: a -g fixture, whose input must not nest anything
     _check_g() {
@@ -1450,6 +1457,9 @@ run_counts_against_jmeter() {
                 else
                     _check E31 "$RESULTS_DIR/E31/E31-report.json" "$RESULTS_DIR/E31/results.jtl" \
                         "$RESULTS_DIR/E31/in-test-plan.jtl" "$out/E31-rebuilt/E31-rebuilt.json" || fail=1
+                    # and the rebuild sampler by sampler: -g's transaction nesting is its own logic
+                    _check E31-rebuilt "$out/E31-rebuilt/E31-rebuilt.json" "$RESULTS_DIR/E31/results.jtl" \
+                        "$RESULTS_DIR/E31/in-test-plan.jtl" || fail=1
                 fi ;;
             *)
                 if file_exists "$RESULTS_DIR/$id/in-test-plan.jtl"; then

@@ -23,9 +23,12 @@ Checked, exactly:
 
 Mean, throughput and the percentiles are not compared here (TEST-COVERAGE-GAPS.md 11.3-11.5).
 
---require-no-nesting <jtl> refuses a results file with a transaction row or a renamed sub-result row.
-R07 uses it on the -g fixtures' committed inputs, which have no in-test-plan file: their every row is
-the population only because nothing in them nests.
+--require-no-nesting <jtl> refuses a results file with a transaction row (the "Number of samples in
+transaction" message) or a renamed sub-result row ("<label>-N" beside "<label>"). R07 uses it on the -g
+fixtures' inputs, which have no in-test-plan file: their every row is the population only because
+nothing in them nests. It cannot see a transaction the test end cut off when no other row of that
+transaction carries the message, and it does not look at timing: the goldens' plain.jtl is generated,
+and its rows of one thread overlap. Those inputs are committed or generated, and known not to nest.
 
 Usage:
     python verify-data-integrity.py --fixture E02 --report E02-report.json \
@@ -83,12 +86,17 @@ def errors_behind(rate, samples):
             if java_round2(k * 100.0 / samples) == rate]
 
 
-def compare(fixture, report, every_row, in_test_plan_total, rebuilt):
+def compare(fixture, report, every_row, every_row_total, in_test_plan_total, rebuilt):
     results = []
 
     def add(subject, metric, status, ours, jmeter, message):
         results.append({'fixture': fixture, 'subject': subject, 'metric': metric, 'status': status,
                         'report': ours, 'jmeter': jmeter, 'message': message})
+
+    # A run that recorded nothing would pass every comparison while comparing nothing
+    if every_row_total[0] == 0:
+        add('whole run', 'samples', 'FAIL', report.get('totalSamples'), 0,
+            'the run recorded no samples, so nothing was compared')
 
     samples, errors = in_test_plan_total
     for metric, ours, theirs in (('totalSamples', report.get('totalSamples'), samples),
@@ -193,11 +201,11 @@ def main():
     if not (a.report and a.every_row and a.in_test_plan):
         p.error('--report, --every-row and --in-test-plan are required')
     report = read_json(a.report, 'the report')
-    every_row, _ = read_referee(a.every_row)
+    every_row, every_row_total = read_referee(a.every_row)
     _, in_test_plan_total = read_referee(a.in_test_plan)
     rebuilt = read_json(a.rebuilt_report, 'the rebuilt report') if a.rebuilt_report else None
 
-    results = compare(a.fixture, report, every_row, in_test_plan_total, rebuilt)
+    results = compare(a.fixture, report, every_row, every_row_total, in_test_plan_total, rebuilt)
     ok = print_results(a.fixture, results)
     if a.output:
         write_csv(results, a.output)
