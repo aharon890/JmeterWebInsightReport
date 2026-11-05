@@ -99,7 +99,17 @@ demo data for that run's own window, and `jmeter -g` reading the CSV; every comp
 C43 (config tier) runs the examples bundle's hooks, `examples/server-data/hooks/after-run.sh` and
 `.ps1`, against the stand-in export tool; cross-os.yml runs them on all three OSes.
 
-The suites cover the JMeter scenarios Playwright actually opens (E02, E05-E12, E19, E25-E29)
+R07 holds every fixture's counts to JMeter's Aggregate Report, computed by JMeter's own classes
+(`test-plans/scripts/AggregateReportReferee.java`) from the run's own files: the whole run against the
+file each fixture plan's "In-test-plan results" Simple Data Writer writes with sub-results off (what a
+listener in the plan received; `-Jin_test_plan_results_file`), each sampler against every row of
+`results.jtl`. Every suite above compares the report with itself, and every whole-run surface reads one
+shared count, so they agreed with each other on totals JMeter disagreed with: a transaction that ran on
+its own and inside another one lost its standalone samples from every whole-run figure at once
+(tails-conversation-flows, 2026-11; E31 is that shape). A fixture in `FIXTURE_IDS` that R07 has no
+reference for is a FAIL, never a skip. It needs Python 3.
+
+The suites cover the JMeter scenarios Playwright actually opens (E02, E05-E12, E19, E25-E29, E31)
 plus CMP — the same list as `FIXTURE_IDS` in `common.sh`, which is where to check rather than
 here. E19 is easy to forget: `external-data.spec.ts` opens it to assert the payload was written
 to a sibling `.js` and referenced by `<script src>`, which is the one product promise no

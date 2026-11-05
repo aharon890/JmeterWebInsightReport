@@ -562,21 +562,32 @@ jmeter -g results.jtl -o report-dir/ \
 
 ## 7. Data Integrity Verification
 
-Cross-validates plugin output against JMeter's native statistics:
+R07 in `run-regression.sh` holds every fixture's counts to JMeter's own (`run_counts_against_jmeter`
+in `scripts/lib/common.sh`, which compiles `test-plans/scripts/AggregateReportReferee.java` against
+JMeter's `lib/` and `lib/ext/` and calls `verify-data-integrity.py`). The references are JMeter's
+Aggregate Report, computed by JMeter's own classes from the run's own files:
+
+- **Whole run** (`totalSamples`, `totalErrors`): the file the plan's "In-test-plan results" Simple Data
+  Writer writes with "Save sub-results" off, one row per sample a listener in the test plan received.
+  `run_test_jmeter` and `generate-cmp-fixture.sh` name it with `-Jin_test_plan_results_file`. The `-g`
+  fixtures (E26-E29) have none: their input is the reference, after `--require-no-nesting` confirms it
+  has no transaction or sub-result rows.
+- **Each sampler** (`sampleCount`, and the error count behind its 2-decimal `errorRate`): the
+  Aggregate Report over `results.jtl`, every row.
+- **E31** is also rebuilt with `-g` from its own `results.jtl`; totals and `runId` must equal the run
+  report's.
+
+Every count is compared exactly. Mean, percentiles and throughput are not part of it (see
+`docs/TEST-COVERAGE-GAPS.md` section 11). By hand, for one run:
 
 ```bash
-# Generate native report from JTL
-jmeter -g test-results/E01/results.jtl -o test-results/E01/native-report
-
-# Compare (python3; python or py on Windows)
-python3 test-plans/scripts/verify-data-integrity.py \
-  test-results/E01/E01-report.json \
-  test-results/E01/native-report/statistics.json
+JH=apache-jmeter-5.6.3   # Windows: -cp "classes;$JH\lib\*;$JH\lib\ext\*"
+javac -d classes -cp "$JH/lib/*:$JH/lib/ext/*" test-plans/scripts/AggregateReportReferee.java
+java -cp "classes:$JH/lib/*:$JH/lib/ext/*" AggregateReportReferee "$JH" test-results/E02/results.jtl rows.csv
+java -cp "classes:$JH/lib/*:$JH/lib/ext/*" AggregateReportReferee "$JH" test-results/E02/in-test-plan.jtl in-test.csv
+python3 test-plans/scripts/verify-data-integrity.py --fixture E02 \
+  --report test-results/E02/E02-report.json --every-row rows.csv --in-test-plan in-test.csv
 ```
-
-**Tolerances:** Sample count (exact), mean (±1ms), P95/P99 (±5%), throughput (±2%),
-error rate (±0.1pp). Every metric listed here is actually compared — the script's
-tolerance table and its comparison map are kept in step.
 
 ## 8. Docker Tests
 

@@ -56,8 +56,11 @@ fi
 
 # --- Run 1: the baseline ------------------------------------------------------
 echo "[CMP] Baseline run ..."
+# Each run also fills its in-test-plan file (the plan's Simple Data Writer, sub-results off): what a
+# listener in the test plan received, which R07 holds that run's whole-run counts to.
 "$JMETER" -n -t "$TEST_PLANS/$JMX" \
     -l "$CMP_DIR/baseline.jtl" \
+    -Jin_test_plan_results_file="$CMP_DIR/baseline-in-test-plan.jtl" \
     -Jwebinsight.report.output="$CMP_DIR" \
     -Jwebinsight.report.filename="baseline.html" \
     -Jwebinsight.report.title="Comparison Baseline" \
@@ -75,6 +78,7 @@ fi
 echo "[CMP] Current run (comparing against the baseline) ..."
 "$JMETER" -n -t "$TEST_PLANS/$JMX" \
     -l "$CMP_DIR/results.jtl" \
+    -Jin_test_plan_results_file="$CMP_DIR/in-test-plan.jtl" \
     -Jwebinsight.report.output="$CMP_DIR" \
     -Jwebinsight.report.filename="CMP-report.html" \
     -Jwebinsight.report.title="Comparison Run" \

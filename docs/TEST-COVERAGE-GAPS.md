@@ -247,15 +247,15 @@ rows rather than one with two test names.
 
 | # | Scenario | Status | Existing Test |
 |---|----------|--------|---------------|
-| 11.1 | Sample count matches between our JSON and native statistics.json | [~] | `verify-data-integrity.py`, by hand |
-| 11.2 | Error count matches | [~] | `verify-data-integrity.py`, by hand |
-| 11.3 | Mean response time within ±1ms | [~] | `verify-data-integrity.py`, by hand |
+| 11.1 | Sample counts equal JMeter's Aggregate Report: the whole run against the Aggregate Report in the test plan, each sampler against every row of the file | [x] | R07 (`run_counts_against_jmeter`, `verify-data-integrity.py`) over every fixture, plus E31's `-g` rebuild |
+| 11.2 | Error counts equal, the same two ways | [x] | R07 |
+| 11.3 | Mean response time | [ ] | no tracked check; the 2026-10 Aggregate Report retests measured it equal on 69 runs |
 | 11.4 | P95/P99 equal to JMeter's Aggregate Report | [x] | `ResponseTimeDistributionJMeterParityTest` against JMeter's `StatCalculatorLong`; the 69 campaign runs equal value for value (4.2.6) |
-| 11.5 | Throughput within ±2% | [~] | `verify-data-integrity.py`, by hand |
+| 11.5 | Throughput | [ ] | no tracked check; the 2026-10 Aggregate Report retests measured it equal on 69 runs |
 | 11.6 | Samplers table values match JSON output values | [ ] | — |
 
-No runner calls `verify-data-integrity.py`, so section 11 is manual: run it as
-§ 7 of Instructions.md shows.
+R07 compares counts only, exactly; how is in § 7 of Instructions.md. It used to be a by-hand comparison
+with the HTML report's `statistics.json`, which no runner called.
 
 ## 12. Error Handling / Negative Tests
 

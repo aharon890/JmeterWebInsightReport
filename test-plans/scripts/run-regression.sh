@@ -202,6 +202,23 @@ else
     tail -40 "$RESULTS_DIR/goldens.log" >&2
     record R06 "Golden artifacts (fixed JTL through -g -o)" FAIL "see $RESULTS_DIR/goldens.log"
 fi
+
+# --- 7. Counts against JMeter -------------------------------------------------
+# Every fixture's whole-run and per-sampler counts against JMeter's Aggregate Report, computed by
+# JMeter's own classes from the run's own files (run_counts_against_jmeter in common.sh). The suites
+# above compare the report with itself, and every whole-run surface reads one shared count, so they
+# agreed with each other on a total that JMeter disagreed with. Only over current fixtures: a stale
+# one holds the previous build's numbers.
+if fixtures_current; then
+    if run_counts_against_jmeter > "$RESULTS_DIR/counts-against-jmeter.log" 2>&1; then
+        record R07 "Counts against JMeter's Aggregate Report" PASS
+    else
+        grep -E 'FAIL|ERROR' "$RESULTS_DIR/counts-against-jmeter.log" | head -20 >&2
+        record R07 "Counts against JMeter's Aggregate Report" FAIL "see $RESULTS_DIR/counts-against-jmeter.log"
+    fi
+else
+    record R07 "Counts against JMeter's Aggregate Report" FAIL "fixtures stale — R04 names them"
+fi
 print_summary "REGRESSION SUMMARY"
 echo ""
 echo "  Not covered here — run manually before a release:"
