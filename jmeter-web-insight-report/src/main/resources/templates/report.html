@@ -199,6 +199,13 @@
             <label class="filter-label">Samplers:</label>
             <button class="filter-link-btn" onclick="selectAllSamplers(true)">All</button>
             <button class="filter-link-btn" onclick="selectAllSamplers(false)">None</button>
+            <!-- One switch for every tab: the chips below, the charts, the Errors tab's sampler filter and
+                 the Samplers table all read it. It used to be a button in the Samplers table's toolbar. -->
+            <label class="filter-transaction-details" id="transactionChildrenBtn" style="display:none;"
+                   title="Show the requests and nested transactions inside each Transaction Controller: in this list, on the charts, in the Errors tab's sampler filter and in the Samplers table">
+                <input type="checkbox" id="transactionChildrenCheckbox" onchange="toggleTransactionChildrenVisibility()">
+                <span>Show transaction details</span>
+            </label>
             <div class="filter-sampler-list" id="samplerFilterList">
                 <!-- Populated by JS from chartData.samplers -->
             </div>
@@ -469,7 +476,6 @@
                         </div>
                     </div>
                     <button class="column-toggle-btn" id="resetWidthsBtn" onclick="resetColumnWidths('samplerTable')" style="display:none;" title="Return every column to its automatic width">Reset Widths</button>
-                    <button class="column-toggle-btn" id="transactionChildrenBtn" onclick="toggleTransactionChildrenVisibility()" style="display:none;" title="Show/hide Transaction Controller child samplers">Transaction Details</button>
                     <button class="column-toggle-btn" id="addDetailChartBtn" onclick="addDetailSlotGlobal('throughput')" style="display:none;">+ Add Chart</button>
                     <button class="column-toggle-btn" id="removeDetailChartBtn" onclick="removeLastDetailSlotGlobal()" style="display:none;">&times; Remove Chart</button>
                 </div>

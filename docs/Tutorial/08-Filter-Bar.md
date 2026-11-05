@@ -131,8 +131,10 @@ Presets are stored in localStorage under the key `wir_filterPresets`.
 
 ![Sampler Checkboxes](images/06f-sampler-checkboxes.png)
 
-- One checkbox per sampler, labeled with the sampler name; transaction children are indented
-  and listed only while **Transaction Details** is on (Samplers tab)
+- One checkbox per sampler, labeled with the sampler name; transaction children follow their
+  transaction, indented a step per level, and are listed only while **Show transaction details**
+  (after All / None) is ticked. That checkbox shows only on a run with transactions, and the charts,
+  the Errors tab's sampler filter and the Samplers table follow it on every tab
 - **Default:** All regular samplers checked. Σ Total unchecked. Utility samplers (JSR223*, Debug*, BeanShell*, names starting `__`) and samplers with no samples unchecked.
 - **Uncheck** a sampler → its data disappears from:
   - The charts on the Summary, Timeline and Compare tabs (line removed), along with the

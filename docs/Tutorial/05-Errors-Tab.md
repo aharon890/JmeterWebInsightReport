@@ -116,9 +116,9 @@ A row the search or an X hides is not in the Total, and the Total changes as soo
 does: it reads **100.00%** of errors only when every row is counted, and when some are not, its
 first cell says how many are — `Total (12 of 17 rows)`. The search never hides the Total itself.
 
-**Transaction Details** (Samplers tab) does not collapse anything here: the rows are the requests,
-and no transaction row stands for them. While it is off, the sampler filter shows a request's
-errors in the charts when the transaction it is inside is ticked.
+**Show transaction details** (the filter bar's Samplers row) does not collapse anything here: the
+rows are the requests, and no transaction row stands for them. While it is off, the sampler filter
+shows a request's errors in the charts when the transaction it is inside is ticked.
 
 **Controls:**
 - **Search** — filter rows by text

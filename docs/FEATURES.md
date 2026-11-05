@@ -265,7 +265,7 @@ outside a transaction (embedded resources, redirects) stay rows of their own in 
 every JMeter tool that reads the file. When transactions are nested,
 the Summary tab says that each one counts once, as JMeter's Aggregate Report in the test plan counts it:
 - **Default view:** Only parent transactions and standalone samplers are shown — matches JMeter's native Aggregate Report. Child samplers are hidden from the table, filter bar, and charts to avoid double-counting.
-- **"Transaction Details" toggle:** Button in the Samplers tab toolbar. When activated, child samplers appear indented under their parent with full statistics and mini-charts. The toggle also reveals child sampler checkboxes in the filter bar.
+- **"Show transaction details":** A checkbox in the filter bar's Samplers row, after All / None, on every tab that shows that row. Ticked, child samplers appear under their own transaction, a level deeper each time, with full statistics and mini-charts; a sort orders each transaction's rows among themselves, so they never leave it. It also reveals child sampler checkboxes in the filter bar, in the same order, and the charts draw them. A name that also runs on its own is a top-level row, and says which transactions it also ran inside.
 - **Σ Total always correct:** The total row always sums parents + standalone samplers only, regardless of toggle state. Parents already aggregate their children, so children are never double-counted.
 - **Parent indicators:** Transaction parents display a ▶ triangle icon
 - **Child indentation:** Children are visually indented in both the table and filter bar
@@ -281,8 +281,8 @@ transaction fails because a request inside it did, and its requests are listed a
 (E3). The Summary tab's Error Rate counts samples as JMeter's Aggregate Report does, transactions
 included, so on a run with transactions a line above the charts says which is which. The asserts'
 `errorRate:code=` / `errorRate:class=` keep counting a failed transaction, as the Error Rate does.
-While Transaction Details is off, the sampler filter shows a request's errors when the transaction
-it is inside is ticked.
+While "Show transaction details" is off, the sampler filter shows a request's errors when the
+transaction it is inside is ticked.
 
 The Errors tab provides four views:
 

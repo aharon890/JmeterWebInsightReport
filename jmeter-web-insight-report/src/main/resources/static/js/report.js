@@ -4215,11 +4215,13 @@ function initTransactionHierarchy(data) {
     var tbody = table.tBodies[0];
     if (!tbody) return;
 
-    /* Show the toggle button if hierarchy exists */
+    /* Show the switch, in the filter bar's Samplers row, when there are transactions */
     var toggleBtn = document.getElementById('transactionChildrenBtn');
     if (toggleBtn && Object.keys(hierarchy).length > 0) {
         toggleBtn.style.display = '';
-        if (showTransactionChildren) toggleBtn.classList.add('active');
+        toggleBtn.classList.toggle('active', showTransactionChildren);
+        var toggleBox = document.getElementById('transactionChildrenCheckbox');
+        if (toggleBox) toggleBox.checked = showTransactionChildren;
     }
 
     /* Build a set of child sampler names */
@@ -4274,11 +4276,13 @@ function toggleTransactionChildrenVisibility() {
     showTransactionChildren = !showTransactionChildren;
     localStorage.setItem('wir_showTransactionChildren', showTransactionChildren ? 'true' : 'false');
 
-    /* Update button state */
+    /* Update the switch: the checkbox says it, whoever flipped it */
     var btn = document.getElementById('transactionChildrenBtn');
     if (btn) {
         btn.classList.toggle('active', showTransactionChildren);
     }
+    var box = document.getElementById('transactionChildrenCheckbox');
+    if (box) box.checked = showTransactionChildren;
 
     /* Show/hide child rows in samplers table, by the one rule: × and the search still hold. What
        belongs to a child goes with it: a chart panel or judging row open under a child stayed on

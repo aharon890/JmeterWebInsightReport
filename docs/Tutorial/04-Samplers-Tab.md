@@ -128,7 +128,9 @@ When sampler notes are configured in annotations:
 - Click × → the row and anything open under it disappear from the table
 - A **"Show N Hidden Rows"** button appears above the table
 - Click it → all hidden rows restored; a Transaction Controller child comes back into view
-  while **Transaction Details** is on, and with the other children when it is next turned on
+  while **Show transaction details** is ticked, and with the other children when it is next ticked
+- Hiding a transaction hides the rows inside it too, and they stay hidden until "Show N Hidden
+  Rows", whatever the switch and the search do
 
 ### CSV Export
 
@@ -189,15 +191,19 @@ When the test has Transaction Controllers (parent/child sampler hierarchy):
 - **No double-counting:** Parents aggregate their children
 - A parent that came from a Transaction Controller carries a ▶ icon before its name
 
-### Transaction Details Toggle
+### Show Transaction Details
 
-- A **"Transaction Details"** button appears in the Samplers tab toolbar
+- A **"Show transaction details"** checkbox appears in the filter bar's Samplers row, after All /
+  None, when the run has transactions. It is the one switch for every tab: the charts, the chips and
+  the Errors tab's sampler filter follow it too
 - **Default:** OFF (children hidden); the choice is remembered in localStorage
-- **Toggle ON:**
-  - Child samplers appear, indented
+- **Ticked:**
+  - Child samplers appear under their own transaction, a level deeper each time, in the order the
+    run first saw them; a sort orders each transaction's rows among themselves
   - Children show full statistics and expand to their own charts like any row
-  - Children also appear in the filter bar with checkboxes
-- **Toggle OFF:**
+  - Children also appear in the filter bar with checkboxes, in the same order
+  - A search shows a matching request with its transaction above it
+- **Unticked:**
   - Children hidden again
   - Σ Total values unchanged (never double-counted)
 
