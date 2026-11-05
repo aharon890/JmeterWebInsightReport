@@ -456,6 +456,18 @@ configurations the check exists for and both generators run.
 `ReportData` (`core/model/`) is the contract between the two halves: change it and both
 ingestion paths plus every serializer must follow.
 
+**The whole run is counted per sample, never as a sum of rows.** `ReportData.getWholeRun()` is one row
+fed only the samples a listener in the test plan received, as JMeter's Aggregate Report feeds its TOTAL
+(`StatVisualizer.add`): the engine's `recordSample(..., topLevel)`, true for the listener's event and
+false for its sub-results, and on `-g` the nesting `TransactionRows` gives each row (a transaction the
+test end cut off, written without its "Number of samples" message, nests by its name). Every whole-run
+figure reads it: the tiles, the CI/CD JSON, JUnit, `RunIdentity`, the overall asserts (an overall
+`code=`/`class=` rule counts `ErrorSummary.topLevelOccurrenceCount`), the Σ Total row and the Timeline's
+Σ lines (a per-second whole-run accumulator). The transaction hierarchy is a relation between names,
+and one name can run on its own and inside a transaction: summing the rows that were no child left
+every sample of such a name out (tails-conversation-flows, 2026-11: 0 errors where JMeter counted 17).
+R07 holds every fixture to JMeter's own count.
+
 ### Listener concurrency
 
 `WebInsightReportListener` is one instance shared by all sampler threads, and by RMI
@@ -549,6 +561,16 @@ them, so the table's own walkers (`sortTable`, `filterSamplerTable`, `applyColum
 `hideRow`, `showAllRows`, Transaction Details, the two toggles) read them through `isSamplerCompanionRow` /
 `samplerCompanionRows` / `syncSamplerCompanionRows` and never as rows of their own. They knew only
 the chart panel once, so a sort stranded the judging row and a toggle built a second panel.
+
+The table is a tree. `samplerTreeOrder` puts each transaction's rows under it, in the order the run first
+saw them and a level deeper each time (`--wir-depth`); `arrangeSamplerRows` applies it at load and on
+every sort, which orders siblings only, so a request never leaves its transaction; the chips follow the
+same order and keep their data-index colour. `applySamplerRowVisibility` is the one rule for which rows
+show, and the search, ×, "Show all", the "Show transaction details" switch (a checkbox in the filter
+bar's Samplers row, id `transactionChildrenBtn`) and the first render all go through it: × on a
+transaction hides its rows, a search keeps a match's transactions above it. The hierarchy Java ships
+lists each name under one parent, the first by name that closes no loop, and a name a listener received
+on its own is a top-level row; either says where else it ran (`samplers[].alsoInside`).
 
 **A rule row is addressed by its key, never its id.** Java judges two rules under one id (two
 id-less rules on one sampler and metric both derive `a-p95`), so every handler on a row — Edit,
