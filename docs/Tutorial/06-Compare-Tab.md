@@ -71,6 +71,20 @@ Both charts support: drag-to-reorder, fullscreen, hide/show, zoom, cross-chart s
 | **Throughput** | Current value with delta |
 | **Recv KB/s** | Current value with delta |
 
+Each current value is written as the Samplers table writes it (whole milliseconds, Throughput per
+second, minute or hour, two decimals for Error % and KB/s), so a row reads like the same sampler's
+row in an Aggregate Report.
+
+### Σ Total Row
+
+With **Σ Total** checked in the filter bar, the table's first row is the whole run: this run's
+**Σ Total** against the baseline's, what a JMeter user reads off two Aggregate Reports' TOTAL rows
+side by side (JMeter itself has no comparison view). Its figures are this run's Samplers Σ Total row,
+counted per sample over the whole run, never added up from the rows; the delta beside each is the
+baseline's whole run, counted the same way; its status is judged by the same thresholds as every
+row. It stays first when you sort, and the search hides it as it hides any row. The CSV download
+leaves it out, as the Samplers CSV leaves out its Σ row.
+
 ### Delta Values
 
 Each metric shows a superscript delta — the current value minus the baseline's, in the column's
@@ -165,9 +179,11 @@ The Compare tab includes UI controls to adjust thresholds on-the-fly:
 
 ## What Changed summary
 
-Auto-generated text in the **Notes tab** when baseline comparison exists:
-- Overall line: the average P95 change and error-rate change across samplers (improved, stable or
-  degraded)
+Auto-generated in the **Notes tab** when baseline comparison exists:
+- Overall: the two runs' **Σ Total** rows, the baseline's and this run's, in the Compare table's
+  columns: each written as that run's own Samplers Σ Total row is, as a JMeter user reads two
+  Aggregate Reports' TOTAL rows side by side. Each run's whole run is counted per sample, never
+  added up from the rows.
 - Regressed samplers with their P95 % change (the top three, then "…and N more"); a removed
   sampler is listed as "(removed)"
 - Improved samplers — P95 down by more than 5 % — likewise

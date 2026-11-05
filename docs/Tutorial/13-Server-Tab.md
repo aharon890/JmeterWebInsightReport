@@ -367,12 +367,13 @@ refuse it from the JSON.
 Before anything is collected, and over a refused payload, it reads `nothing collected yet`.
 
 Under it, the **Collection** is one line, such as
-`Collection: metrics PARTIAL · collected 2026-10-03 12:35:40 UTC+03:00`. It opens to the
+`Collection: metrics PARTIAL · collected 2026-10-03 12:35:40`. It opens to the
 detail (see [The Collection line and the findings](#the-collection-line-and-the-findings)).
 
-Every time on this tab is in your browser's time zone and says which, as `UTC±hh:mm`. Each one
-carries its own offset, so a window from winter and a collection from summer can differ by an
-hour in the same zone. The chart ticks are bare times; the window line above them names the offset.
+Every time on this tab is in the time zone of the machine that built the report, whatever your
+browser's, as on every other tab, and no zone is written beside it, as JMeter's HTML report writes
+its times. Each instant is read in that zone's own rules, so a window from winter and a collection
+from summer can differ by an hour in the same zone.
 
 Then the actions:
 
@@ -502,10 +503,10 @@ A measured number, such as Actual, a chart tooltip or a run's peak, has at most 
 every unit, with trailing zeros dropped (`2.95 s`, `2.5 ms`, `900 msgs`), and never reads `0` when
 it is not zero. An Actual that two decimals would
 put on a band it did not reach, or across one, gets the digits that keep it on its side:
-`3.004 s` beside `breached > 3 s`, not `3 s`. Large numbers are grouped the same way in both:
-`60,000,000 B/min` against `fail > 50,000,000 B/min`. Digits are written the same in every
-browser language, `,` grouping and `.` as the decimal point, as the Test Summary cards and the
-band boxes write them, and as on the Asserts tab. The Asserts tab writes by this same rule,
+`3.004 s` beside `breached > 3 s`, not `3 s`. Large numbers have no thousands separator in either,
+as JMeter writes none: `60000000 B/min` against `fail > 50000000 B/min`. Digits are written the same
+in every browser language, `.` as the decimal point, as the Test Summary cards and the band boxes
+write them, and as on the Asserts tab. The Asserts tab writes by this same rule,
 through the same code: bands as declared, and an Actual on its own side of every band the rule
 declares, from its own base of whole `ms` and `s` and two decimals otherwise. The JUnit XML writes
 the same digits: `max 3.004 s breached > 3 s` in the failure message and `actual:    3.004 s` in
@@ -1172,8 +1173,7 @@ The console prints one clause per server component after the client verdict, for
   under a `sustainedFor` of `30s` are `INVALID_RULE`, naming the measured 4 s spacing (`60s` works).
 - **`slope` is per minute.** A least-squares fit over the judged window, in units per minute, so
   `"fail": {"gt": 1048576}` on a bytes series means "growing faster than 1 MiB a minute". Every
-  surface writes it per minute: `fail > 1,048,576 B/min` on the board, `fail > 1048576 B/min` in
-  JUnit.
+  surface writes it per minute: `fail > 1048576 B/min` on the board and in JUnit.
 - **Coverage is of the collected window**, decided at collection time (above).
 - **Prometheus answers a range query of at most 11,000 steps (11,001 points) per series.** Keep the
   run's length divided by `--step` at or under 11,000. A ten-hour soak needs a step of 4 s or more. The collector checks it

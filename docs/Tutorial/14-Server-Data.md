@@ -19,7 +19,8 @@ how-to; [Server](13-Server-Tab.md) is the reference for reading and editing the 
 Two things decide whether it works, and the report tells you both:
 
 1. **The time window.** The CSV must cover the run. The first report prints the run's start and
-   end in UTC, in your time and in epoch milliseconds.
+   end in UTC, in the report's own clock (the time zone of the machine that built it) and in epoch
+   milliseconds.
 2. **The names.** Each CSV row names a `component` and a `metric` exactly as the annotations file
    does. The first report lists them, and offers a CSV template.
 

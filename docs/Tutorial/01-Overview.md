@@ -108,9 +108,12 @@ The report has 3 main areas:
 ![Header](images/02-header.png)
 
 - **Report title** — configurable via GUI or `-Jwebinsight.report.title`
-- **Subtitle** — shows "Generated: YYYY-MM-DD HH:mm:ss UTC±hh:mm" in your browser's time zone
-  (hover it for the time as the generating machine wrote it, which is what the CI/CD JSON's
-  `generatedAt` carries), JMeter version, and test duration
+- **Subtitle** — shows "Generated: YYYY-MM-DD HH:mm:ss", JMeter version, and test duration
+
+**Every reader sees the same report.** Numbers are written as JMeter writes them, with `.` for
+decimals and no thousands separator (`1200`), whatever your browser's language. Times are in the
+time zone of the machine that built the report, whatever yours, and no zone is written beside them:
+JMeter's own HTML report does the same. The CI/CD JSON's `generatedAt` carries the zone's name.
 - **Colorblind toggle** (eye icon) — swaps green/red to blue/orange
 - **Dark mode toggle** (moon/sun icon) — full dark theme
 - **Status badge** — shows overall test status:

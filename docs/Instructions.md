@@ -288,6 +288,7 @@ asserting against a report from an older build:
 ```bash
 ./test-plans/scripts/run-all-tests.sh          # E02, E05-E12 and the rest
 ./test-plans/scripts/generate-cmp-fixture.sh   # CMP — needed by the Compare tab specs
+CMP_ID=CMP31 ./test-plans/scripts/generate-cmp-fixture.sh   # CMP31 — E31's plan compared with itself
 ```
 
 `CMP` is not produced by `run-all-tests.sh`: it needs the same plan run twice so
@@ -414,7 +415,7 @@ jmeter -n -t test-plans/quick-smoke-test.jmx \
 
 | Option | Effect |
 |--------|--------|
-| `--suite fixtures` | Only the scenarios Playwright opens (`FIXTURE_IDS` minus CMP, which `generate-cmp-fixture.sh` owns) |
+| `--suite fixtures` | Only the scenarios Playwright opens (`FIXTURE_IDS` minus CMP and CMP31, which `generate-cmp-fixture.sh` owns) |
 | `--suite smoke` | One 5s scenario — proves the plugin loads in JMeter |
 | `--suite full` | Every scenario (the default) |
 | `--only E26,E27` | Only the ids listed. The other fixtures stay stale, so Playwright refuses to start until they are regenerated or `WIR_SKIP_FIXTURE_CHECK=1` is set. An id the suite never ran fails the run |
@@ -594,6 +595,13 @@ python3 test-plans/scripts/verify-data-integrity.py --fixture E02 \
   --report test-results/E02/E02-report.json --every-row rows.csv --in-test-plan in-test.csv
 ```
 
+R07 also holds every Samplers row's text to JMeter's own Aggregate Report table: the referee draws the
+table's text with JMeter's table model and renderers (the `shown_*` columns of its CSV), and
+`verify-data-integrity.py --report-html <page>` compares the page's rows cell by cell. The Mean is
+rounded where JMeter cuts the decimals off (B8), and the rate's unit is `/s` for JMeter's `/sec`; every
+other cell must read as JMeter writes it. Each row's end is its real end, start + elapsed + idle, as a
+listener in the plan sees it (B7). Both comparison fixtures, CMP and CMP31, are held for both their runs.
+
 R07 checks the JSON; `whole-run-totals.spec.ts` (R05) checks what each tab shows against that JSON,
 reading the page as a reader does and knowing nothing of where a number comes from: the Summary
 tiles, the Samplers Σ Total row and the Timeline's Σ Total lines must show its `totalSamples`,
@@ -720,6 +728,7 @@ mvn test
 # 3. JMeter execution tests (generates reports for Playwright)
 ./test-plans/scripts/run-all-tests.sh
 ./test-plans/scripts/generate-cmp-fixture.sh
+CMP_ID=CMP31 ./test-plans/scripts/generate-cmp-fixture.sh
 
 # 4. Playwright (needs reports from step 3)
 (cd test-plans/playwright && npm test)

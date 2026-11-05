@@ -21,6 +21,17 @@ The report is organized into **8 tabs**:
 
 ---
 
+### Numbers and times: the same for every reader
+As JMeter's own HTML report, the page reads the same in every browser:
+- **Numbers** use `.` for decimals and no thousands separator (`1200`, `60000000 B/min`), whatever the
+  browser's language. The Samplers table writes each column as JMeter's Aggregate Report does
+  (Throughput with one decimal, per second, minute or hour; KB/s with two decimals); Apdex has three
+  decimals, as the HTML report writes it. A JVM in another language never changes a digit either.
+- **Times** are in the time zone of the machine that built the report (the JVM's, as the template's own
+  times), whatever the reader's, with no zone written beside them: chart axes and tooltips, the Time
+  Range, the Errors tab, the Notes markers, the Server tab and "Generated". Chart ticks fall on the same
+  instants for every reader.
+
 ## Interactive Charts (Apache ECharts)
 
 The time-series charts support:
@@ -232,8 +243,11 @@ the filter bar (it is unticked by default):
   rate, throughput, Mean, percentiles and Apdex. It is not the sum of the rows shown: a name that also
   ran inside a transaction counts those runs in its own row too
 - Toggled on/off via the filter bar like any sampler
+- Each cell written as the rows below it are, in every browser
 - Included in the time-series charts when ticked, as a dashed line; on the Compare tab the current
   run's Σ Total line is solid and the baseline's dashed, and both follow the Metric toggle
+- On the Compare tab's table too, as its first row: this run's whole run against the baseline's, the
+  two Aggregate Reports' TOTAL rows a JMeter user reads side by side, judged by the same thresholds
 
 ### Click-to-Expand Detail View
 - **Expand indicator** — chevron (▼) on each row hints at expandable detail; flips ▲ and turns blue when expanded
@@ -798,15 +812,18 @@ Regression detection thresholds are configurable. Default: P95 increase >10% or 
 
 ### Sampler Comparison Table
 - All sampler statistics columns: Samples, Errors, Error %, Mean, Median, P90, P95, P99, Min, Max, Throughput, Recv KB/s
-- Current values with inline superscript deltas (red/green, or blue/orange in colorblind mode)
+- Current values with inline superscript deltas (red/green, or blue/orange in colorblind mode), each
+  written as the Samplers table writes it
+- A Σ Total row first when Σ Total is ticked (see Virtual "Σ Total" Sampler)
 - Sortable columns, drag-to-reorder, column toggle, row hide, search filter
 - Status badges, outlined so they read as a comparison rather than an assert verdict: OK, REGRESSION
   (any enabled threshold crossed), NEW (not in the baseline), and REMOVED (ran in the baseline but
   not in this run; its row shows dashes, and it counts as a regression)
 
 ### "What Changed" Summary
-Auto-generated text summary in the **Notes tab** when baseline comparison exists. Shows:
-- Overall P95 and error rate trend direction
+Auto-generated summary in the **Notes tab** when baseline comparison exists. Shows:
+- Overall: the two runs' Σ Total rows, the baseline's and this run's, each counted per sample over its
+  whole run and written as that run's own Samplers Σ Total row
 - List of regressed samplers (with % change)
 - List of improved samplers (with % change)
 - New samplers not in baseline
