@@ -543,7 +543,9 @@ public class WebInsightReportListener extends ResultCollector {
                     url,
                     null,
                     responseBody,
-                    topLevel
+                    topLevel,
+                    // the failures it stands for: 1, or more for a result JMeter aggregated (B6)
+                    result.getErrorCount()
             );
         }
 

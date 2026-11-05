@@ -241,6 +241,22 @@ public class LiveStatisticsEngine {
                             String failureMessage, long timestamp, String threadName,
                             String requestUrl, String requestHeaders, String responseBody,
                             boolean topLevel) {
+        recordError(samplerName, responseCode, responseMessage, failureMessage, timestamp, threadName,
+                requestUrl, requestHeaders, responseBody, topLevel, 1);
+    }
+
+    /**
+     * @param failures how many failed samples the result stands for: its error count, above 1 for a
+     *        result JMeter aggregated (Statistical mode, sample_count). The groups count them as
+     *        {@link #recordSample} counts the run's errors (B6); one per result made an overall
+     *        errorRate:code= rule read 14% beside an error rate of 43%. The detail records stay one
+     *        per result.
+     */
+    public void recordError(String samplerName, String responseCode, String responseMessage,
+                            String failureMessage, long timestamp, String threadName,
+                            String requestUrl, String requestHeaders, String responseBody,
+                            boolean topLevel, long failures) {
+        long n = Math.max(1, failures);
         boolean transactionRow = isTransactionRow(responseMessage);
         synchronized (errorRecords) {
             // Unbounded aggregation for summaries and error charts — updated for every error. Grouped
@@ -261,11 +277,11 @@ public class LiveStatisticsEngine {
                 agg.setTimestamp(timestamp);
                 errorSummaryFirst.put(key, agg);
             }
-            c[0]++;
+            c[0] += n;
             c[1] = Math.min(c[1], timestamp);
             c[2] = Math.max(c[2], timestamp);
             if (topLevel) {
-                errorSummaryTopLevelCounts.merge(key, 1L, Long::sum);
+                errorSummaryTopLevelCounts.merge(key, n, Long::sum);
             }
 
             // The detail records are the Errors tab's, so a transaction's own failure takes no place

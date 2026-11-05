@@ -339,7 +339,7 @@ class JtlParserTest {
                                             String responseMessage, String failureMessage,
                                             long timestamp, String threadName,
                                             String requestUrl, String requestHeaders,
-                                            String responseBody, boolean topLevel) {
+                                            String responseBody, boolean topLevel, long failures) {
                         throw new IllegalStateException("engine broke");
                     }
                 };
@@ -667,6 +667,25 @@ class JtlParserTest {
 
         assertEquals(2, data.getTopLevelSampleCount());
         assertEquals(1, data.getTopLevelErrorCount());
+    }
+
+    @Test
+    void aRowStandingForSeveralSamplesCountsItsFailuresInItsErrorGroup() throws IOException {
+        // Review finding (2026-11-05): with Statistical mode (or sample_count) one row stands for 5
+        // samples, 3 of them failed. The whole run counted 3 errors, its error group 1, so an overall
+        // errorRate:code=500 rule read 14% beside an error rate of 43%
+        File jtl = writeJtl("statistical.jtl",
+                "timeStamp,elapsed,label,responseCode,responseMessage,threadName,success,SampleCount,ErrorCount\n"
+                + "1700000000000,500,Search,500,Internal Server Error,TG 1-1,false,5,3\n"
+                + "1700000001000,200,Search,200,OK,TG 1-1,true,2,0\n");
+
+        ReportData data = new JtlParser().parse(jtl, "statistical");
+
+        assertEquals(7, data.getTopLevelSampleCount());
+        assertEquals(3, data.getTopLevelErrorCount());
+        assertEquals(1, data.getErrorSummaries().size());
+        assertEquals(3, data.getErrorSummaries().get(0).getOccurrenceCount(), "the row's three failures");
+        assertEquals(3, data.getErrorSummaries().get(0).getTopLevelOccurrenceCount());
     }
 
     @Test

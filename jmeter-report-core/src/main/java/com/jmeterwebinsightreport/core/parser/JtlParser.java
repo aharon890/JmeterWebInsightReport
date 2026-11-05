@@ -348,7 +348,7 @@ public class JtlParser {
             }
             if (!success) {
                 engine.recordError(label, responseCode, message, failureMessage, timestamp, thread, url, null, null,
-                        topLevel);
+                        topLevel, errors >= 0 ? errors : 1);
             }
         }
     }
