@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import * as fs from 'fs';
-import { loadClean, loadDirty, getReportUrl, getReportPath } from './helpers';
+import { inZone, loadClean, loadDirty, getReportUrl, getReportPath } from './helpers';
 
 test.describe('Header — Title & Subtitle', () => {
   test('h1 shows non-empty report title', async ({ page }) => {
@@ -33,27 +33,22 @@ test.describe('Header — Title & Subtitle', () => {
   });
 });
 
-/* SF38 (plans/server-tab-followups.md, Batch 6): "Generated" was Java's text in the GENERATING
-   machine's zone — "2026-10-03 16:10:16 IDT" in New York too, beside a Server tab in the reader's.
-   The template now carries the instant as an ISO attribute and the page writes it in the reader's
-   zone, with the offset. The CI/CD JSON's generatedAt is that Java text still, untouched (R06). */
-for (const [zone, minutesEast, label] of [['UTC', 0, 'UTC+00:00'], ['Asia/Kolkata', 330, 'UTC+05:30']] as const) {
-  test.describe(`Header — Generated in ${zone}`, () => {
+/* "Generated", as every time on the page, is written in the report's clock: the zone of the machine
+   that built the report, whatever the reader's, and with no zone beside it, as JMeter's HTML report
+   writes its times (plan v2, 2026-11-05: "like in jmeter"). It was SF38's reader-zone stamp with its
+   UTC±hh:mm label. The template carries the instant as an ISO attribute; the CI/CD JSON's generatedAt
+   is still Java's text, untouched (R06). */
+for (const zone of ['UTC', 'Asia/Kolkata', 'America/New_York']) {
+  test.describe(`Header — Generated, read in ${zone}`, () => {
     test.use({ timezoneId: zone });
-    test(`[R] SF38: the header's Generated is written in the reader's zone, ${label}`, async ({ page }) => {
+    test('[R] the header\'s Generated is in the report\'s clock, with no zone beside it', async ({ page }) => {
       await loadClean(page, 'E26');
       const span = page.locator('#reportGeneratedAt');
       const iso = await span.getAttribute('data-generated-at');
       expect(iso, 'the template carries the instant').toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/);
-      // The instant in this zone, worked out here rather than by the page's own formatter.
-      const at = new Date(Date.parse(iso!) + minutesEast * 60000);
-      const p = (n: number) => String(n).padStart(2, '0');
-      const local = `${at.getUTCFullYear()}-${p(at.getUTCMonth() + 1)}-${p(at.getUTCDate())} `
-        + `${p(at.getUTCHours())}:${p(at.getUTCMinutes())}:${p(at.getUTCSeconds())}`;
-      await expect(span).toHaveText(`Generated: ${local} ${label}`);
-      // What the generating machine wrote is still there to read, as the JSON's generatedAt has it.
-      const json = JSON.parse(fs.readFileSync(getReportPath('E26').replace(/\.html$/, '.json'), 'utf8'));
-      await expect(span).toHaveAttribute('title', `As the generating machine wrote it: ${json.generatedAt}`);
+      const reportZone = await page.evaluate(() => (window as any).globalChartData.reportTimeZone);
+      expect(reportZone, 'the report names the zone of the machine that built it').toBeTruthy();
+      await expect(span).toHaveText(`Generated: ${inZone(Date.parse(iso!), reportZone)}`);
     });
   });
 }

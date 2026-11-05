@@ -402,6 +402,17 @@ public class ReportDataSerializer {
         if (runWindow != null) {
             chartData.put("runWindow", runWindow);
         }
+        // The report's clock: the time zone of the machine that builds the report, as JMeter's HTML
+        // report writes its times (its graphs and start/end in the generating JVM's zone, whatever the
+        // reader's). The template's own times (#dates, FormatUtil) are already in it; the page writes
+        // every other time in it too. The offset at the run's start is the fallback for a browser that
+        // does not know the zone's name, which is how JMeter draws its graphs.
+        java.time.ZoneId zone = java.time.ZoneId.systemDefault();
+        chartData.put("reportTimeZone", zone.getId());
+        long zoneAt = reportData.getMetadata() != null && reportData.getMetadata().getStartTime() != null
+                ? reportData.getMetadata().getStartTime().toEpochMilli() : System.currentTimeMillis();
+        chartData.put("reportTimeZoneOffsetMinutes",
+                zone.getRules().getOffset(java.time.Instant.ofEpochMilli(zoneAt)).getTotalSeconds() / 60);
 
         // Time-series arrays (parallel arrays for efficient JS consumption)
         List<TimeSeriesBucket> timeSeries = reportData.getTimeSeries();

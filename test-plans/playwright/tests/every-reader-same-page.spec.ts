@@ -44,7 +44,9 @@ async function chartsUnder(page: import('@playwright/test').Page, selector: stri
         if (!m.axis) return;
         let labels: string[] = [];
         try { labels = m.axis.getViewLabels().map((l: any) => l.formattedLabel); } catch (e) { labels = ['(no labels)']; }
-        out.push(`${el.id || 'chart'} ${kind}[${i}]: ${labels.join(' | ')}`);
+        // A chart's id without the creation time a sampler's detail charts carry
+        // ("detail-slot-0-<name>-<Date.now()>"), which no reader sees
+        out.push(`${(el.id || 'chart').replace(/-\d{12,}$/, '')} ${kind}[${i}]: ${labels.join(' | ')}`);
       }));
     }));
     return out;
@@ -76,7 +78,7 @@ async function chartsUnder(page: import('@playwright/test').Page, selector: stri
       const tips = Array.from(el.querySelectorAll('div')).filter((d: any) =>
         !d.querySelector('canvas, svg') && d.innerText && d.innerText.trim() && /z-index:\s*9999999/.test(d.getAttribute('style') || ''));
       (window as any).echarts.getInstanceByDom(el).dispatchAction({ type: 'hideTip' });
-      return `${el.id || 'chart'} tooltip: ${tips.length ? (tips[tips.length - 1] as HTMLElement).innerText.replace(/\s+/g, ' ') : '(none)'}`;
+      return `${(el.id || 'chart').replace(/-\d{12,}$/, '')} tooltip: ${tips.length ? (tips[tips.length - 1] as HTMLElement).innerText.replace(/\s+/g, ' ') : '(none)'}`;
     }, i));
   }
   return charts;

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { loadClean, loadDirty, switchTab } from './helpers';
+import { inZone, loadClean, loadDirty, switchTab } from './helpers';
 
 /**
  * Everything a spec needs to know about one row's chart, read off the ECharts instance itself —
@@ -530,11 +530,12 @@ test.describe('Server tab — the board', () => {
       });
       expect(error).toBe("1 of 8 series failed - first: e26-metrics.csv line 1328: time \"2023-11-14 22:13:20\" has no time zone - add one (2026-10-02T14:02:15+03:00, or a Z for UTC), write epoch milliseconds, or give the file's zone with --time-zone");
       // F16 (orchestrator call, 2026-10-02): the collected-at time is shown as the window lines
-      // are, in the reader's zone, and the collector's own UTC nanosecond stamp stays reachable in
-      // the title. The literal local text is pinned per zone in "the judged window in <zone>" below.
-      // SF38: once, on the line a closed panel shows, with its zone; the footer keeps the id alone.
+      // are, in the report's clock, and the collector's own UTC nanosecond stamp stays reachable in
+      // the title. The literal text is pinned for three readers in "the judged window, read in <zone>"
+      // below. Once, on the line a closed panel shows, with no zone beside it (plan v2: as JMeter
+      // writes its times); the footer keeps the id alone.
       const stamp = page.locator('.wir-collection-line .wir-collected-at');
-      await expect(stamp).toHaveText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC[+-]\d{2}:\d{2}$/);
+      await expect(stamp).toHaveText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
       await expect(stamp).toHaveAttribute('title', '2026-10-22T06:06:19.389630Z');
       await expect(page.locator('.wir-collection .wir-collection-id')).toHaveText('Collection 60a852d6637b30c5');
 
@@ -734,7 +735,7 @@ test.describe('Server tab — the board', () => {
       const expected = await page.evaluate(() => {
         const W = window as any;
         const w = W.chartData.serverMetrics.window;
-        const f = (t: number) => W.formatTimeZoned(new Date(t));
+        const f = (t: number) => W.formatTimeRangeFull(new Date(t));
         return {
           whole: 'Window judged: ' + f(w.start) + ' → ' + f(w.end),
           trimmed: 'Window judged: ' + f(w.start + 30000) + ' → ' + f(w.end) + ' · ramp-up excluded',
@@ -762,45 +763,47 @@ test.describe('Server tab — the board', () => {
     });
 });
 
-/* The window line, as literal text (review:F). The test above builds its expectation with
-   formatTimeZoned, the function the board uses — so it pins how the line is put together and
-   cannot catch a wrong or locale-dependent timestamp. E26's payload is committed, so its window
-   is a constant: 1700000000026 .. 1700000048490 ms, and its collection 2026-10-22T06:06:19Z. Shown
-   in the reader's zone, each stamp with its own offset (SF38), pinned here. Jerusalem is the case a
-   single label for the tab would get wrong: the window is from November 2023 (+02:00) and the
-   collection from October 2026 (+03:00, summer time). */
-for (const [zone, start, end, collected] of [
-  ['UTC', '2023-11-14 22:13:20 UTC+00:00', '2023-11-14 22:14:08 UTC+00:00', '2026-10-22 06:06:19 UTC+00:00'],
-  ['Asia/Kolkata', '2023-11-15 03:43:20 UTC+05:30', '2023-11-15 03:44:08 UTC+05:30', '2026-10-22 11:36:19 UTC+05:30'],
-  ['Asia/Jerusalem', '2023-11-15 00:13:20 UTC+02:00', '2023-11-15 00:14:08 UTC+02:00', '2026-10-22 09:06:19 UTC+03:00'],
-]) {
-  test.describe(`Server tab — the judged window in ${zone}`, () => {
-    test.use({ timezoneId: zone });
-    test(`[R] SF38: E26's window reads ${start} → ${end}`, async ({ page }) => {
+/* The window line, the collection time and the charts' hover times, as literal text (review:F), in the
+   report's clock: the zone of the machine that built the report, whatever the reader's, with no zone
+   beside a time, as JMeter's HTML report writes its times (plan v2, 2026-11-05). They were SF38's
+   reader-zone stamps with their own UTC±hh:mm labels. E26's payload is committed, so its window is a
+   constant, 1700000000026 .. 1700000048490 ms, and its collection 2026-10-22T06:06:19Z; each is written
+   by inZone in the zone the report names (Node's own Intl, not the page's formatter), each instant on its
+   own: in Jerusalem the window is from November 2023 (+02:00) and the collection from October 2026
+   (+03:00, summer time). Read by three readers in other zones, all must see the same text. */
+const WINDOW_START = 1700000000026;
+const WINDOW_END = 1700000048490;
+const COLLECTED = Date.parse('2026-10-22T06:06:19Z');
+const reportZoneOf = (page: import('@playwright/test').Page) =>
+  page.evaluate(() => (window as any).globalChartData.reportTimeZone as string);
+for (const reader of ['UTC', 'Asia/Kolkata', 'America/New_York']) {
+  test.describe(`Server tab — the judged window, read in ${reader}`, () => {
+    test.use({ timezoneId: reader });
+    test('[R] E26\'s window line is in the report\'s clock', async ({ page }) => {
       await loadClean(page, 'E26');
       await switchTab(page, 'server');
+      const zone = await reportZoneOf(page);
       await expect(page.locator('#serverBoard .wir-window-note'))
-        .toHaveText(`Window judged: ${start} → ${end}`);
+        .toHaveText(`Window judged: ${inZone(WINDOW_START, zone)} → ${inZone(WINDOW_END, zone)}`);
     });
 
-    // F16: the collection time is in the same zone and format as the window line above it — not
-    // 2026-10-03T09:35:40.994100500Z, raw UTC with nine fractional digits. SF38: with its own
-    // offset, and printed once — it was the summary's "collected …" and the footer's "Collected …"
-    // both, the same time twice.
-    test(`[R] F16/SF38: E26's collection reads collected ${collected}, once`, async ({ page }) => {
+    // F16: the collection time is in the same clock and format as the window line above it, not
+    // 2026-10-03T09:35:40.994100500Z, raw UTC with nine fractional digits, and printed once: it was the
+    // summary's "collected …" and the footer's "Collected …" both, the same time twice.
+    test('[R] F16: E26\'s collection time is in the report\'s clock, once', async ({ page }) => {
       await loadClean(page, 'E26');
       await switchTab(page, 'server');
+      const collected = inZone(COLLECTED, await reportZoneOf(page));
       await expect(page.locator('.wir-collection-line'))
         .toHaveText(`Collection: metrics PARTIAL · collected ${collected}`);
       const panel = (await page.locator('.wir-collection').textContent()) || '';
-      const clock = collected.slice(0, 19);
-      expect(panel.split(clock).length - 1, `"${clock}" in the Collection panel`).toBe(1);
+      expect(panel.split(collected).length - 1, `"${collected}" in the Collection panel`).toBe(1);
     });
 
-    // SF38: the chart's hover says which zone its time is in, as the window line does.
-    test(`[R] SF38: a server chart's tooltip time carries ${collected.slice(-9)}`, async ({ page }) => {
+    test('[R] a server chart\'s tooltip time is in the report\'s clock', async ({ page }) => {
       await loadClean(page, 'E26');
       await switchTab(page, 'server');
+      const zone = await reportZoneOf(page);
       await page.evaluate(() => { const W = (window as any).WIR.serverKpis; W.toggle(W._keyOf('lag-spike')); });
       await expect.poll(() => page.evaluate(() => {
         const W = (window as any).WIR.serverKpis;
@@ -810,15 +813,16 @@ for (const [zone, start, end, collected] of [
         const w = (window as any).chartData.serverMetrics.window;
         return String(inst.getOption().tooltip[0].formatter([{ axisValue: w.start, value: [w.start, 1], seriesName: 'a' }]))
           .split('<br>')[0];
-      })).toBe(start);
+      })).toBe(inZone(WINDOW_START, zone));
     });
 
-    // ...and so does the picker's chart, whose tooltip is the row charts' (SF38, SF35): it was
-    // ECharts' default, with no zone, and reverting it left every spec green. E27, the fixture
-    // with a catalogue component, collected over the same November 2023 window as E26.
-    test(`[R] SF38: the metric picker's chart tooltip time carries ${start.slice(-9)}`, async ({ page }) => {
+    // ...and so is the picker's chart, whose tooltip is the row charts' (SF35): it was ECharts' default
+    // once, and reverting it left every spec green. E27, the fixture with a catalogue component,
+    // collected over the same November 2023 window as E26.
+    test('[R] the metric picker\'s chart tooltip time is in the report\'s clock', async ({ page }) => {
       await loadClean(page, 'E27');
       await switchTab(page, 'server');
+      const zone = await reportZoneOf(page);
       await page.click('.wir-component-card[data-component="orders-db"] .wir-component-add');
       await page.evaluate(() => (window as any).WIR.serverKpis.pickFocus('connections.used.pct'));
       await expect.poll(() => page.evaluate(() => {
@@ -829,7 +833,7 @@ for (const [zone, start, end, collected] of [
         if (typeof f !== 'function') return `formatter ${typeof f}`;
         const w = (window as any).chartData.serverMetrics.window;
         return String(f([{ axisValue: w.start, value: [w.start, 1], seriesName: 'a' }])).split('<br>')[0];
-      })).toBe(start);
+      })).toBe(inZone(WINDOW_START, zone));
     });
   });
 }

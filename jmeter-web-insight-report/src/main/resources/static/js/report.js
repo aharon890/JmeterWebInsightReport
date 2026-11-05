@@ -639,13 +639,34 @@ function withPlainTooltips(option) {
     return option;
 }
 
+/* ECharts places a time axis's ticks in the browser's zone and writes its own date text (a crosshair's
+   label, a default tooltip's header) through TimeScale.getLabel in it. Every chart here is set to UTC,
+   so the ticks fall on the same instants for every reader, and that label, once, writes the report's
+   clock; every time axis has its own label formatter, which writes the report's clock too. */
+var reportClockLabelInstalled = false;
+function installReportClockLabel(chart) {
+    if (reportClockLabelInstalled) return;
+    try {
+        var axisModel = chart.getModel().getComponent('xAxis', 0);
+        var scale = axisModel && axisModel.axis && axisModel.axis.type === 'time' ? axisModel.axis.scale : null;
+        if (!scale) return;
+        Object.getPrototypeOf(scale).getLabel = function (tick) {
+            return formatTimeRangeFull(new Date(tick.value));
+        };
+        reportClockLabelInstalled = true;
+    } catch (e) { /* this chart has no time axis to learn the scale from */ }
+}
+
 function createChart(el) {
     installPlainChartNumbers();
     var chart = echarts.init(el, getChartTheme());
     var setOption = chart.setOption;
     chart.setOption = function (option) {
         withPlainTooltips(option);
-        return setOption.apply(chart, arguments);
+        if (option && typeof option === 'object' && option.useUTC === undefined) option.useUTC = true;
+        var result = setOption.apply(chart, arguments);
+        installReportClockLabel(chart);
+        return result;
     };
     if (isDarkTheme()) chart.setOption({ backgroundColor: 'transparent' });
     chart.group = chartGroup;
@@ -2058,8 +2079,7 @@ function formatTimeLabel(ts) {
         s = s % 60;
         return m + ':' + (s < 10 ? '0' : '') + s;
     }
-    var h = d.getHours(), min = d.getMinutes(), sec = d.getSeconds();
-    return (h < 10 ? '0' : '') + h + ':' + (min < 10 ? '0' : '') + min + ':' + (sec < 10 ? '0' : '') + sec;
+    return formatTime(d);
 }
 
 /* ============================================================
@@ -3240,47 +3260,81 @@ function chartTooltipFormatter(params) {
  *  Utility functions
  * ============================================================ */
 
+/* The report's clock. Every time on the page is written in the time zone of the machine that built the
+   report, whatever the reader's, as JMeter's HTML report writes its graphs and start and end times
+   (plan v2, the owner, 2026-11-05: "like in jmeter"); and no zone is written beside a time, as JMeter
+   writes none. Java names that zone (chartData.reportTimeZone: the JVM's, the one the template's own
+   times, the Errors "By time" list and the Notes markers, are written in). A browser that does not know
+   the name gets the zone's offset at the run's start (reportTimeZoneOffsetMinutes), which is how JMeter
+   draws its graphs; a report that names no zone, built before this, keeps the reader's. One instant is
+   read once a second: formatToParts runs for every tick and tooltip. */
+var reportClock = null;
+function reportClockParts(ms) {
+    var second = Math.floor(ms / 1000);
+    if (!reportClock || (!reportClock.settled && globalChartData)) reportClock = makeReportClock();
+    if (second !== reportClock.second) {
+        reportClock.second = second;
+        reportClock.parts = reportClock.read(second * 1000);
+    }
+    return reportClock.parts;
+}
+function makeReportClock() {
+    var zone = globalChartData && globalChartData.reportTimeZone;
+    var offset = globalChartData && typeof globalChartData.reportTimeZoneOffsetMinutes === 'number'
+        ? globalChartData.reportTimeZoneOffsetMinutes : null;
+    var options = { hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit' };
+    var format = null;
+    try {
+        if (zone) format = new Intl.DateTimeFormat('en-US', Object.assign({ timeZone: zone }, options));
+    } catch (e) { format = null; }
+    var read;
+    if (format) {
+        read = function (t) {
+            var p = {};
+            format.formatToParts(new Date(t)).forEach(function (x) { p[x.type] = x.value; });
+            return { year: p.year, month: p.month, day: p.day, hour: p.hour === '24' ? '00' : p.hour,
+                minute: p.minute, second: p.second };
+        };
+    } else {
+        read = function (t) {
+            var d = new Date(offset != null ? t + offset * 60000 : t);
+            var utc = offset != null;
+            return {
+                year: String(utc ? d.getUTCFullYear() : d.getFullYear()),
+                month: pad((utc ? d.getUTCMonth() : d.getMonth()) + 1),
+                day: pad(utc ? d.getUTCDate() : d.getDate()),
+                hour: pad(utc ? d.getUTCHours() : d.getHours()),
+                minute: pad(utc ? d.getUTCMinutes() : d.getMinutes()),
+                second: pad(utc ? d.getUTCSeconds() : d.getSeconds())
+            };
+        };
+    }
+    return { settled: !!globalChartData, second: NaN, parts: null, read: read };
+}
+
 function formatTime(date) {
-    return pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' + pad(date.getSeconds());
+    var p = reportClockParts(date.getTime());
+    return p.hour + ':' + p.minute + ':' + p.second;
 }
 
 function formatTimeRangeFull(date) {
-    return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate()) +
-        ' ' + pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' + pad(date.getSeconds());
+    var p = reportClockParts(date.getTime());
+    return p.year + '-' + p.month + '-' + p.day + ' ' + p.hour + ':' + p.minute + ':' + p.second;
 }
 
-/* "UTC±hh:mm" for one instant, from THAT date's own offset (SF38): in Jerusalem a window from
-   November 2023 is +02:00 and a collection from October 2026 +03:00, so one label for a whole tab
-   would be wrong for one of them. Numeric, not Intl's short name, which follows the reader's locale
-   ("GMT+3" in one, "IDT" in another). */
-function zoneLabel(date) {
-    var offset = -date.getTimezoneOffset();
-    var sign = offset < 0 ? '-' : '+';
-    offset = Math.abs(offset);
-    return 'UTC' + sign + pad(Math.floor(offset / 60)) + ':' + pad(offset % 60);
-}
-
-/* A stamp that says which zone it is in: the Server tab's times and the header's Generated. Its own
-   function rather than a change to formatTimeRangeFull, which also fills the client's Time Range
-   inputs — and those are parsed back. */
-function formatTimeZoned(date) {
-    return formatTimeRangeFull(date) + ' ' + zoneLabel(date);
-}
-
-/* The header's "Generated" in the READER's zone (SF38). Java wrote it in the generating JVM's
-   ("2026-10-03 16:10:16 IDT", read the same in New York), and that string is also the CI/CD
-   JSON's generatedAt, so it is left alone: the template carries the instant as an ISO attribute
-   and the page writes it, keeping the machine's own text in the title. A report with no attribute
+/* The header's "Generated" in the report's clock, as every other time on the page. Java wrote it in
+   the generating JVM's zone with that zone's short name ("2026-10-03 16:10:16 IDT"), which is also
+   the CI/CD JSON's generatedAt and stays there; the template carries the instant as an ISO attribute,
+   and the page writes it without a zone name, as JMeter writes its times. A report with no attribute
    keeps what Java wrote. */
-function localizeGeneratedAt() {
+function writeGeneratedAt() {
     var el = document.getElementById('reportGeneratedAt');
     var iso = el ? el.getAttribute('data-generated-at') : null;
     if (!iso) return;
     var ms = Date.parse(String(iso).replace(/(\.\d{3})\d+/, '$1'));
     if (isNaN(ms)) return;
-    var written = (el.textContent || '').replace(/^Generated:\s*/, '');
-    el.textContent = 'Generated: ' + formatTimeZoned(new Date(ms));
-    if (written) el.title = 'As the generating machine wrote it: ' + written;
+    el.textContent = 'Generated: ' + formatTimeRangeFull(new Date(ms));
 }
 
 function getTestStart() {
@@ -3297,9 +3351,10 @@ function getTestDurationMs() {
 function testSpansMidnight() {
     if (!globalChartData || !globalChartData.timestamps || globalChartData.timestamps.length < 2) return false;
     var ts = globalChartData.timestamps;
-    var startDay = new Date(ts[0]).getDate();
-    var endDay = new Date(ts[ts.length - 1]).getDate();
-    return startDay !== endDay;
+    var first = reportClockParts(ts[0]);
+    var firstDay = first.year + first.month + first.day;
+    var last = reportClockParts(ts[ts.length - 1]);
+    return firstDay !== last.year + last.month + last.day;
 }
 
 function getEffectiveVisibleRange() {
@@ -3331,15 +3386,15 @@ function formatElapsed(ms, rangeMs) {
 }
 
 function formatClock(value, rangeMs) {
-    var d = new Date(value);
+    var p = reportClockParts(value);
     var range = rangeMs === undefined ? getEffectiveVisibleRange() : rangeMs;
     var showDate = testSpansMidnight();
-    var prefix = showDate ? pad(d.getMonth() + 1) + '/' + pad(d.getDate()) + ' ' : '';
+    var prefix = showDate ? p.month + '/' + p.day + ' ' : '';
 
     if (range < 120000) {
-        return prefix + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+        return prefix + p.hour + ':' + p.minute + ':' + p.second;
     } else {
-        return prefix + pad(d.getHours()) + ':' + pad(d.getMinutes());
+        return prefix + p.hour + ':' + p.minute;
     }
 }
 
@@ -4954,7 +5009,8 @@ function formatErrorClock(ts) {
     if (ts == null) return '';
     var d = new Date(ts);
     if (isNaN(d.getTime())) return '';
-    var ms = d.getMilliseconds();
+    var t = d.getTime();
+    var ms = ((t % 1000) + 1000) % 1000;
     return formatTime(d) + '.' + (ms < 10 ? '00' : ms < 100 ? '0' : '') + ms;
 }
 
@@ -7887,7 +7943,7 @@ function exportComparisonCsv() {
  * ============================================================ */
 
 document.addEventListener('DOMContentLoaded', function () {
-    localizeGeneratedAt();
+    writeGeneratedAt();
     loadSettings();
     restoreFilterRowState();
     initTabs();
@@ -7957,7 +8013,8 @@ WIR.chartStyle = {
     layoutHandles: layoutHandles,
     labelTextWidth: labelTextWidth,
     layoutChartLabels: layoutChartLabels,
-    zoneLabel: zoneLabel
+    formatTimeRangeFull: formatTimeRangeFull,
+    formatTime: formatTime
 };
 
 /* ============================================================
@@ -18408,7 +18465,7 @@ WIR.serverKpis = (function () {
             html += '<li><strong>Export this window</strong> from your monitoring tool: '
                 + esc(from + ' → ' + to)
                 + ' <span class="wir-dim">(' + esc(collectedAtText(from) + ' → ' + collectedAtText(to))
-                + ' your time; epoch ms ' + esc(String(w.start) + ' → ' + String(w.end)) + ')</span>.'
+                + '; epoch ms ' + esc(String(w.start) + ' → ' + String(w.end)) + ')</span>.'
                 + ' A minute either side is fine: rows outside the run are counted and ignored.</li>';
         }
         if (series.length) {
@@ -18524,7 +18581,7 @@ WIR.serverKpis = (function () {
         var w = judgedWindow();
         /* Each end with its own zone (SF38): the reader's, as F16 chose, said rather than implied. */
         var windowText = w
-            ? formatTimeZoned(new Date(w.start)) + ' → ' + formatTimeZoned(new Date(w.end))
+            ? formatTimeRangeFull(new Date(w.start)) + ' → ' + formatTimeRangeFull(new Date(w.end))
                 + (w.trimmed ? ' · ramp-up excluded' : '')
             : (state.metrics ? 'unknown' : 'nothing collected yet');
         html += '<p class="wir-window-note">Window judged: <strong>' + esc(windowText)
@@ -20172,7 +20229,7 @@ WIR.serverKpis = (function () {
        (SF38). A stamp that will not parse is shown as written rather than as "Invalid Date". */
     function collectedAtText(iso) {
         var ms = Date.parse(String(iso).replace(/(\.\d{3})\d+/, '$1'));
-        return isNaN(ms) ? String(iso) : formatTimeZoned(new Date(ms));
+        return isNaN(ms) ? String(iso) : formatTimeRangeFull(new Date(ms));
     }
 
     function formatDurationMs(ms) {
@@ -20738,7 +20795,7 @@ WIR.serverKpis = (function () {
             var at = list[0].axisValue !== undefined ? list[0].axisValue
                 : (list[0].value && list[0].value[0]);
             /* With its zone, as every time on this tab carries one (SF38). */
-            var html = esc(formatTimeZoned(new Date(at)));
+            var html = esc(formatTimeRangeFull(new Date(at)));
             list.forEach(function (p) {
                 var v = p.value && p.value.length > 1 ? p.value[1] : null;
                 /* Each name cut at a fixed width, as Grafana's tooltip rows are: petstore's SQL-text
