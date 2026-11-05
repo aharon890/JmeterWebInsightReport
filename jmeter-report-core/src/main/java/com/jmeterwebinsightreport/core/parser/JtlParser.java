@@ -128,7 +128,11 @@ public class JtlParser {
             int colIdle = headers.getOrDefault("IdleTime", -1);
             // The first failed assertion's message: a 2xx failure's type of error (E1)
             int colFailure = failureMessageTypesErrors ? headers.getOrDefault("failureMessage", -1) : -1;
-            TransactionRows transactions = new TransactionRows();
+            // Every name a transaction row carries anywhere in the file, before any row is read: a
+            // transaction the test end or a "Stop Thread" cut off is written without the message, and
+            // it can come before the first one that completed (TransactionRows)
+            TransactionRows transactions = new TransactionRows(
+                    transactionNames(jtlFile, colLabel, colMessage, headers.size()));
 
             int expectedColumns = headers.size();
             List<String> physicalLines;
@@ -401,6 +405,39 @@ public class JtlParser {
      *
      * @return the record with embedded newlines preserved, or null at end of file
      */
+    /**
+     * The labels of every row in the file whose message marks a Transaction Controller's own result.
+     * A second read of the file, which splits only the records that carry the marker.
+     */
+    private static java.util.Set<String> transactionNames(File jtlFile, int colLabel, int colMessage,
+                                                         int expectedColumns) throws IOException {
+        java.util.Set<String> names = new java.util.HashSet<>();
+        if (colMessage < 0) {
+            return names;
+        }
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(new FileInputStream(jtlFile), StandardCharsets.UTF_8))) {
+            readRecordLines(reader);   // the header
+            List<String> lines;
+            while ((lines = readRecordLines(reader)) != null) {
+                String record = String.join("\n", lines);
+                if (!record.contains(TransactionRows.MARKER)) {
+                    continue;
+                }
+                String[] fields;
+                try {
+                    fields = parseCsvLine(record);
+                } catch (RuntimeException e) {
+                    continue;
+                }
+                if (fields.length >= expectedColumns && TransactionRows.childrenIn(fields[colMessage]) > 0) {
+                    names.add(fields[colLabel]);
+                }
+            }
+        }
+        return names;
+    }
+
     private static String readRecord(BufferedReader reader) throws IOException {
         List<String> lines = readRecordLines(reader);
         return lines == null ? null : String.join("\n", lines);

@@ -55,7 +55,10 @@ import java.util.Set;
  * row whose name was a parent-sample transaction earlier in the file nests the rows of its thread
  * that start inside its span. Its own count of children is unknown, so the span alone ends it, and
  * the row itself stays a request, as the listener counts it: the message is what says "transaction"
- * on both paths. A name that never completed once in the file cannot be told from a request.
+ * on both paths. The names are the whole file's ({@link #TransactionRows(Set)}): a "Stop Thread" on a
+ * sampler error cuts a transaction off before any of its name has completed, and its row is then the
+ * file's first of that name. A name that never completed anywhere in the file cannot be told from a
+ * request.
  *
  * <p>One instance per file, fed every row in file order. Not thread-safe; the parser is single
  * threaded per file.
@@ -70,8 +73,18 @@ final class TransactionRows {
     private final Map<String, Deque<Open>> open = new HashMap<>();
     /** Per thread: the last request read inside a transaction and its sub-results so far, outermost first. */
     private final Map<String, Deque<String>> requests = new HashMap<>();
-    /** The names a parent-sample transaction row carried so far: an unmarked row of one was cut off. */
+    /** The names a transaction row carries anywhere in the file: an unmarked row of one was cut off. */
     private final Set<String> parentSampleTransactions = new HashSet<>();
+
+    /** Reading a file with no knowledge of its transaction names beyond the rows already read. */
+    TransactionRows() {
+        this(java.util.Collections.emptySet());
+    }
+
+    /** @param transactionNames every label a transaction row carries anywhere in the file */
+    TransactionRows(Set<String> transactionNames) {
+        parentSampleTransactions.addAll(transactionNames);
+    }
     /** A cut-off transaction's children: as many as start inside its span. */
     private static final int UNTIL_ITS_SPAN_ENDS = -1;
 

@@ -670,6 +670,25 @@ class JtlParserTest {
     }
 
     @Test
+    void aTransactionCutOffBeforeItsNameEverCompletedKeepsItsRequestsInsideIt() throws IOException {
+        // The review's real run (2026-11-05): "Stop Thread" on a sampler error ended a parent-on
+        // "Checkout" in its first iteration, before any Checkout had completed, so its unmarked row is
+        // the file's first. A listener in the plan counted 7 samples, 1 failed; -g read the cut-off rule
+        // "marked earlier in the file" and counted Pay at the top level: 8 and 2
+        File jtl = writeJtl("stopped-first.jtl", HEADER + "\n"
+                + "1700000000000,598,Checkout,500,,Stopper 1-1,,false,,0,0,1,2,,0,0,0\n"
+                + "1700000000000,598,Pay,500,Error,Stopper 1-1,text,false,,0,0,1,2,http://x/pay,0,0,0\n"
+                + "1700000001000,300,Checkout,200," + tx(1, 0) + ",Shopper 2-1,,true,,0,0,1,1,,0,0,0\n"
+                + "1700000001000,300,Pay,200,OK,Shopper 2-1,text,true,,0,0,1,1,http://x/pay,0,0,0\n");
+
+        ReportData data = new JtlParser().parse(jtl, "stopped-first");
+
+        assertEquals(2, data.getTopLevelSampleCount(), "the two Checkouts");
+        assertEquals(1, data.getTopLevelErrorCount(), "the stopped one");
+        assertEquals("Checkout", findSampler(data, "Pay").getParentSamplerName());
+    }
+
+    @Test
     void aTransactionCutOffAtTheTestEndKeepsItsRequestsInsideIt() throws IOException {
         // JMeter writes a transaction the test end cut off without the "Number of samples" message, its
         // requests still after it (E02: 20 rows, 40 requests). A listener in the plan received the
