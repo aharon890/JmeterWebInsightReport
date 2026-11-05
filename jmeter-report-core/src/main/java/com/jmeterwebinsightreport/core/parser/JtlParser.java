@@ -235,7 +235,11 @@ public class JtlParser {
             sample.end = sample.timestamp;
             sample.timestamp -= sample.elapsed + Math.max(0, sample.idle);
         } else {
-            sample.end = sample.timestamp + Math.max(0, sample.elapsed);
+            // A start-stamped row ends where its SampleResult ends it, start + elapsed + idle: a transaction
+            // with "include timers" off ends after its pauses (B7), as the run report and the Aggregate
+            // Report in the plan measure it. Ending it at start + elapsed measured E31's rebuilt "Whole
+            // session" over 694 ms where both measure 698 (R07's table check, 2026-11-06).
+            sample.end = sample.timestamp + Math.max(0, sample.elapsed) + Math.max(0, sample.idle);
         }
         long realStart = sample.timestamp;
         TransactionRows.Nesting parent = transactions.parentOf(sample.thread, sample.label, sample.message,
