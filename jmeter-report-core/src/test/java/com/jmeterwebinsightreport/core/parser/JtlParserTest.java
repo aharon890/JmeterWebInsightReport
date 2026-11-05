@@ -327,10 +327,11 @@ class JtlParserTest {
                     public void recordSample(String samplerName, long responseTime, boolean isSuccess,
                                              long bytesReceived, long bytesSent, long timestamp,
                                              long endTime, long connectTime, long latency,
-                                             long samples, long errors) {
+                                             long samples, long errors, boolean topLevel) {
                         recorded.incrementAndGet();
                         super.recordSample(samplerName, responseTime, isSuccess, bytesReceived,
-                                bytesSent, timestamp, endTime, connectTime, latency, samples, errors);
+                                bytesSent, timestamp, endTime, connectTime, latency, samples, errors,
+                                topLevel);
                     }
 
                     @Override
@@ -623,5 +624,65 @@ class JtlParserTest {
         assertEquals("Pay", data.requestErrorSummaries().get(0).getSamplerName());
         assertTrue(data.getErrorSummaries().stream().anyMatch(s -> s.isTransactionRow()
                 && s.getSamplerName().equals("Checkout")), "the asserts still see the failed transaction");
+    }
+
+    private static String tx(int n, int failing) {
+        return "\"Number of samples in transaction : " + n + ", number of failing samples : " + failing + "\"";
+    }
+
+    @Test
+    void aNameRunOnItsOwnAndInsideAnotherTransactionCountsItsOwnRunsInTheWholeRun() throws IOException {
+        // tails-conversation-flows, 2026-11: "Open the conversation" ran inside "Whole session" in some
+        // sessions and on its own in the rest, and failed only on its own. The whole run was counted per
+        // name, so every "Open" left the totals once one was nested: 0 errors shown, 17 real. A listener
+        // in the plan receives Whole, and Open when it runs alone: 2 samples here, 1 failed.
+        File jtl = writeJtl("mixed.jtl", HEADER + "\n"
+                + "1700000000000,30,Whole,200," + tx(1, 0) + ",TG 1-1,,true,,300,30,1,1,,0,0,0\n"
+                + "1700000000000,30,Open,200," + tx(1, 0) + ",TG 1-1,,true,,300,30,1,1,,0,0,0\n"
+                + "1700000000000,30,Get,200,OK,TG 1-1,text,true,,300,30,1,1,http://x/get,20,0,5\n"
+                + "1700000001000,40,Open,404," + tx(1, 1) + ",TG 1-1,,false,,300,30,1,1,,0,0,0\n"
+                + "1700000001000,40,Get,404,Not Found,TG 1-1,text,false,,300,30,1,1,http://x/get,30,0,5\n");
+
+        ReportData data = new JtlParser().parse(jtl, "mixed");
+
+        assertEquals(2, data.getTopLevelSampleCount(), "Whole, and Open when it ran on its own");
+        assertEquals(1, data.getTopLevelErrorCount(), "Open's own failure");
+        assertEquals(2, findSampler(data, "Open").getSampleCount(), "its row counts every run of the name");
+    }
+
+    @Test
+    void aTransactionAndItsOwnRequestOfTheSameNameCountOnceInTheWholeRun() throws IOException {
+        // S1: the request inside "Login" is also called "Login". A listener in the plan receives the two
+        // transactions; the requests are inside them
+        File jtl = writeJtl("same-name.jtl", HEADER + "\n"
+                + "1700000000000,30,Login,200," + tx(1, 0) + ",TG 1-1,,true,,300,30,1,1,,0,0,0\n"
+                + "1700000000000,30,Login,200,OK,TG 1-1,text,true,,300,30,1,1,http://x/login,20,0,5\n"
+                + "1700000001000,40,Login,500," + tx(1, 1) + ",TG 1-1,,false,,300,30,1,1,,0,0,0\n"
+                + "1700000001000,40,Login,500,Error,TG 1-1,text,false,,300,30,1,1,http://x/login,30,0,5\n");
+
+        ReportData data = new JtlParser().parse(jtl, "same-name");
+
+        assertEquals(2, data.getTopLevelSampleCount());
+        assertEquals(1, data.getTopLevelErrorCount());
+    }
+
+    @Test
+    void aTransactionCutOffAtTheTestEndKeepsItsRequestsInsideIt() throws IOException {
+        // JMeter writes a transaction the test end cut off without the "Number of samples" message, its
+        // requests still after it (E02: 20 rows, 40 requests). A listener in the plan received the
+        // transaction with its requests inside: Search twice, here
+        File jtl = writeJtl("cut-off.jtl", HEADER + "\n"
+                + "1700000000000,300,Search,200," + tx(1, 0) + ",TG 1-1,,true,,300,30,1,1,,0,0,0\n"
+                + "1700000000000,300,A,200,OK,TG 1-1,text,true,,300,30,1,1,http://x/a,20,0,5\n"
+                + "1700000001000,300,Search,200,,TG 1-1,,true,,300,30,1,1,,0,0,0\n"
+                + "1700000001000,150,A,200,OK,TG 1-1,text,true,,300,30,1,1,http://x/a,20,0,5\n"
+                + "1700000001150,150,B,200,OK,TG 1-1,text,true,,300,30,1,1,http://x/b,20,0,5\n");
+
+        ReportData data = new JtlParser().parse(jtl, "cut-off");
+
+        assertEquals(2, data.getTopLevelSampleCount(), "the two transactions");
+        assertEquals("Search", findSampler(data, "B").getParentSamplerName());
+        assertEquals(4, data.getRequestSampleCount(),
+                "the cut-off row has no marker, so it stays a request, as the run report counts it");
     }
 }

@@ -1591,5 +1591,190 @@
       "document": { "loadValidity": { "target": "  ", "fail": { "tolerance": 0.1 } } },
       "expect": { "assertions": [] }
     }
-  ]
+  ],
+  "_mixedNameRunComment": [
+    "A second run, for the whole run of a plan where one name runs both on its own and inside",
+    "another transaction (tails-conversation-flows, 2026-11): \"Open the conversation\" and \"Send and reply\"",
+    "ran inside \"Whole session\" in 4 sessions and on their own in 16, and \"Open\" failed only on its own.",
+    "Their rows are child rows (parent Whole session), so the whole run cannot be worked out from the",
+    "rows: `wholeRun` is the run's own row, counted per sample as JMeter's Aggregate Report counts its",
+    "TOTAL, and every harness reads it, as the payload's `overall` block and OverallMetrics do."
+  ],
+  "mixedNameRun": {
+    "samplers": [
+      {
+        "name": "Heartbeat",
+        "sampleCount": 20,
+        "errorCount": 0,
+        "errorRate": 0,
+        "mean": 3,
+        "median": 3,
+        "p90": 8,
+        "p95": 11,
+        "p99": 13,
+        "min": 1,
+        "max": 23,
+        "stdDev": 3,
+        "throughput": 2,
+        "apdex": 1,
+        "meanLatency": 2,
+        "meanConnectTime": 1,
+        "receivedBytesPerSec": 1024,
+        "sentBytesPerSec": 256
+      },
+      {
+        "name": "Whole session",
+        "sampleCount": 4,
+        "errorCount": 0,
+        "errorRate": 0,
+        "mean": 40,
+        "median": 40,
+        "p90": 45,
+        "p95": 48,
+        "p99": 50,
+        "min": 35,
+        "max": 60,
+        "stdDev": 3,
+        "throughput": 0.4,
+        "apdex": 1,
+        "meanLatency": 39,
+        "meanConnectTime": 1,
+        "receivedBytesPerSec": 1024,
+        "sentBytesPerSec": 256,
+        "transactionController": true
+      },
+      {
+        "name": "Open the conversation",
+        "sampleCount": 20,
+        "errorCount": 5,
+        "errorRate": 25,
+        "mean": 15,
+        "median": 15,
+        "p90": 20,
+        "p95": 23,
+        "p99": 25,
+        "min": 10,
+        "max": 35,
+        "stdDev": 3,
+        "throughput": 2,
+        "apdex": 0.75,
+        "meanLatency": 14,
+        "meanConnectTime": 1,
+        "receivedBytesPerSec": 1024,
+        "sentBytesPerSec": 256,
+        "parent": "Whole session",
+        "transactionController": true
+      },
+      {
+        "name": "Send and reply",
+        "sampleCount": 20,
+        "errorCount": 0,
+        "errorRate": 0,
+        "mean": 15,
+        "median": 15,
+        "p90": 20,
+        "p95": 23,
+        "p99": 25,
+        "min": 10,
+        "max": 35,
+        "stdDev": 3,
+        "throughput": 2,
+        "apdex": 1,
+        "meanLatency": 14,
+        "meanConnectTime": 1,
+        "receivedBytesPerSec": 1024,
+        "sentBytesPerSec": 256,
+        "parent": "Whole session",
+        "transactionController": true
+      },
+      {
+        "name": "GET conversation (stale link)",
+        "sampleCount": 5,
+        "errorCount": 5,
+        "errorRate": 100,
+        "mean": 4,
+        "median": 4,
+        "p90": 9,
+        "p95": 12,
+        "p99": 14,
+        "min": 1,
+        "max": 24,
+        "stdDev": 3,
+        "throughput": 0.5,
+        "apdex": 0,
+        "meanLatency": 3,
+        "meanConnectTime": 1,
+        "receivedBytesPerSec": 1024,
+        "sentBytesPerSec": 256,
+        "parent": "Open the conversation"
+      }
+    ],
+    "errorSummaries": [],
+    "hiddenSamplers": [],
+    "metadata": {
+      "durationMillis": 10000,
+      "totalThreads": 1
+    },
+    "wholeRun": {
+      "name": "Whole run",
+      "sampleCount": 56,
+      "errorCount": 5,
+      "errorRate": 8.93,
+      "mean": 11,
+      "median": 11,
+      "p90": 16,
+      "p95": 19,
+      "p99": 21,
+      "min": 6,
+      "max": 31,
+      "stdDev": 3,
+      "throughput": 5.6,
+      "apdex": 0.91,
+      "meanLatency": 10,
+      "meanConnectTime": 1,
+      "receivedBytesPerSec": 1024,
+      "sentBytesPerSec": 256
+    },
+    "cases": [
+      {
+        "name": "a name run on its own and inside a transaction counts its own runs in the whole run",
+        "_comment": [
+          "Heartbeat 20 + Whole session 4 + Open the conversation on its own 16 + Send and reply on its own 16:",
+          "the whole run is 56 samples, 5 failed (8.93%). Adding up the rows that are no child gives",
+          "Heartbeat and Whole session only, 24 samples and 0 failed, so a band at 5 tells the two apart."
+        ],
+        "rule": {
+          "id": "mixed-run-error-rate",
+          "target": {
+            "scope": "overall"
+          },
+          "metric": "errorRate",
+          "fail": {
+            "gt": 5
+          }
+        },
+        "expect": {
+          "status": "FAIL",
+          "matched": 1
+        }
+      },
+      {
+        "name": "and its samples are the whole run's",
+        "rule": {
+          "id": "mixed-run-total-samples",
+          "target": {
+            "scope": "overall"
+          },
+          "metric": "totalSamples",
+          "fail": {
+            "lt": 50
+          }
+        },
+        "expect": {
+          "status": "PASS",
+          "matched": 1
+        }
+      }
+    ]
+  }
 }

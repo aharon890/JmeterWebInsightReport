@@ -51,6 +51,20 @@ class AssertionParityTest {
     static ReportData reportData(JsonNode root) {
         List<SamplerStatistics> stats = new ArrayList<>();
         for (JsonNode s : root.get("samplers")) {
+            stats.add(stat(s));
+        }
+
+        ReportData data = new ReportData();
+        data.setSamplerStatistics(stats);
+        // The run's own row when the vectors give one (mixedNameRun): the whole run counted per sample,
+        // which no sum of rows can give when a name ran both on its own and inside a transaction
+        if (root.hasNonNull("wholeRun")) {
+            data.setWholeRun(stat(root.get("wholeRun")));
+        }
+        return withTheRest(data, root);
+    }
+
+    private static SamplerStatistics stat(JsonNode s) {
             SamplerStatistics stat = new SamplerStatistics();
             stat.setSamplerName(s.get("name").asText());
             stat.setSampleCount(s.get("sampleCount").asLong());
@@ -79,11 +93,10 @@ class AssertionParityTest {
             if (s.path("transactionController").asBoolean(false)) {
                 stat.setTransactionController(true);
             }
-            stats.add(stat);
-        }
+            return stat;
+    }
 
-        ReportData data = new ReportData();
-        data.setSamplerStatistics(stats);
+    private static ReportData withTheRest(ReportData data, JsonNode root) {
 
         // The error summaries a class= or code= rule counts. Aggregated from an unbounded
         // counter map in the real engine, and carried into the payload whole — so both sides
@@ -221,11 +234,22 @@ class AssertionParityTest {
     @TestFactory
     Stream<DynamicTest> everyVectorProducesTheDeclaredStatus() throws IOException {
         JsonNode root = vectors();
-        ReportData data = reportData(root);
+        return caseTests(root.get("cases"), reportData(root));
+    }
+
+    /** The second run's cases: a name both on its own and inside a transaction (mixedNameRun). */
+    @TestFactory
+    Stream<DynamicTest> everyMixedNameRunVectorProducesTheDeclaredStatus() throws IOException {
+        JsonNode run = vectors().get("mixedNameRun");
+        assertTrue(run.get("cases").size() >= 2, "the mixed-name run's cases are gone");
+        return caseTests(run.get("cases"), reportData(run));
+    }
+
+    private static Stream<DynamicTest> caseTests(JsonNode cases, ReportData data) {
         AssertionEvaluator evaluator = new AssertionEvaluator();
 
         List<DynamicTest> tests = new ArrayList<>();
-        for (JsonNode c : root.get("cases")) {
+        for (JsonNode c : cases) {
             final JsonNode testCase = c;
             tests.add(DynamicTest.dynamicTest(testCase.get("name").asText(), () -> {
                 AssertionRule rule = rule(testCase.get("rule"));

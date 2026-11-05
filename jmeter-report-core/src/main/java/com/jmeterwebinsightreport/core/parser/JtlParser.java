@@ -233,7 +233,9 @@ public class JtlParser {
         TransactionRows.Nesting parent = transactions.parentOf(sample.thread, sample.label, sample.message,
                 realStart, sample.elapsed, sample.idle);
         try {
-            sample.feed(engine);
+            // A row is the whole run's when a listener in the plan received it itself: nested in
+            // nothing, as JMeter's Aggregate Report in the plan counts it
+            sample.feed(engine, parent == null);
             if (parent != null) {
                 // Nested as the listener nests a parent sample's sub-results: the transaction counts
                 // once in the totals, its requests are its breakdown (B5); a request's own redirects and
@@ -328,10 +330,10 @@ public class JtlParser {
          * {@code CSVSaveService} builds a {@code StatisticalSampleResult}, whose
          * {@code setErrorCount} keeps the count. Without them a row is one sample, failed or not.
          */
-        void feed(LiveStatisticsEngine engine) {
+        void feed(LiveStatisticsEngine engine, boolean topLevel) {
             engine.recordSample(label, elapsed, success, bytes, sentBytes, timestamp,
                     timestamp + Math.max(0, elapsed), connectTime, latency, samples,
-                    errors >= 0 ? errors : (success ? 0 : 1));
+                    errors >= 0 ? errors : (success ? 0 : 1), topLevel);
             if (threads > 0) {
                 engine.updateActiveThreads(threads, LiveStatisticsEngine.endOf(timestamp, elapsed));
             }

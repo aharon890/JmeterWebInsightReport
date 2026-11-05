@@ -22,6 +22,14 @@ class LiveStatisticsEngineTest {
         engine = new LiveStatisticsEngine();
     }
 
+    /** A sub-result, as the listener records one: it reached the listener inside its parent's sample,
+     *  so it is no sample of the whole run's (a transaction's request, a nested transaction). */
+    private void recordChild(String name, long responseTime, boolean ok, long bytes, long sent, long ts,
+                             long connect, long latency) {
+        engine.recordSample(name, responseTime, ok, bytes, sent, ts, ts + responseTime, connect, latency,
+                1, ok ? 0 : 1, false);
+    }
+
     @Test
     void recordSample_incrementsSampleCount() {
         long ts = 1700000000000L;
@@ -182,8 +190,8 @@ class LiveStatisticsEngineTest {
         engine.recordTransaction("Checkout", "Cart", true);
         engine.recordTransaction("Checkout", "Pay", true);
         engine.recordSample("Checkout", 300, false, 900, 90, ts, 10, 280);
-        engine.recordSample("Cart", 100, true, 400, 40, ts, 5, 90);
-        engine.recordSample("Pay", 200, false, 500, 50, ts + 100, 5, 190);
+        recordChild("Cart", 100, true, 400, 40, ts, 5, 90);
+        recordChild("Pay", 200, false, 500, 50, ts + 100, 5, 190);
         engine.recordSample("Home", 10, true, 100, 10, ts + 200, -1, -1);
 
         TimeSeriesBucket b = engine.getTimeSeries().get(0);
@@ -198,6 +206,49 @@ class LiveStatisticsEngineTest {
         assertEquals(4, b.getPerSamplerData().size(), "every sampler keeps its own series");
         assertEquals(engine.buildReportData("t").getTopLevelSampleCount(), b.getSampleCount(),
                 "the seconds add up to the Total Samples tile");
+    }
+
+    @Test
+    void aNameRunOnItsOwnAndInsideATransactionKeepsItsOwnRunsInTheWholeRun() {
+        // tails-conversation-flows, 2026-11: "Open the conversation" ran inside "Whole session" in some
+        // sessions and on its own in the rest, failing only on its own; the whole run left every "Open"
+        // out once one was nested (0 errors where JMeter counted 17). A listener in the plan receives
+        // Whole (with Open inside), and Open when it runs alone
+        long ts = 1700000000000L;
+        engine.recordSample("Whole", 40, true, 300, 30, ts, ts + 40, 0, 0, 1, 0, true);
+        engine.recordTransaction("Whole", "Open", true);
+        recordChild("Open", 30, true, 300, 30, ts, 0, 0);
+        engine.recordTransaction("Open", "Get", true);
+        recordChild("Get", 30, true, 300, 30, ts, 5, 20);
+        engine.recordSample("Open", 60, false, 300, 30, ts + 1000, ts + 1060, 0, 0, 1, 1, true);
+        engine.recordTransaction("Open", "Get", true);
+        recordChild("Get", 60, false, 300, 30, ts + 1000, 5, 50);
+
+        ReportData data = engine.buildReportData("t");
+        assertEquals(2, data.getTopLevelSampleCount(), "Whole, and Open on its own");
+        assertEquals(1, data.getTopLevelErrorCount(), "Open's own failure");
+        OverallMetrics overall = OverallMetrics.of(data);
+        assertEquals(50.0, overall.getErrorRate(), 1e-9);
+        assertEquals(50.0, overall.getMean(), 1e-9, "the mean of the two samples the listener received");
+        assertEquals(40.0, overall.getMin(), 1e-9);
+        assertEquals(60.0, overall.getMax(), 1e-9);
+        assertEquals(60.0, data.getOverallP99(), 1e-9, "a percentile of those two samples");
+        assertEquals(2, findSampler(data, "Open").getSampleCount(), "its row counts every run of the name");
+    }
+
+    @Test
+    void aTransactionHoldingARequestOfItsOwnNameCountsOnceInTheWholeRun() {
+        // S1: the run counted 60 samples where a listener in the plan received 40
+        long ts = 1700000000000L;
+        for (int i = 0; i < 2; i++) {
+            boolean ok = i == 0;
+            engine.recordSample("Login", 30, ok, 300, 30, ts + i * 1000, ts + i * 1000 + 30, 0, 0, 1, ok ? 0 : 1, true);
+            engine.recordTransaction("Login", "Login", true);
+            recordChild("Login", 30, ok, 300, 30, ts + i * 1000, 5, 20);
+        }
+        ReportData data = engine.buildReportData("t");
+        assertEquals(2, data.getTopLevelSampleCount());
+        assertEquals(1, data.getTopLevelErrorCount());
     }
 
     @Test
@@ -225,8 +276,8 @@ class LiveStatisticsEngineTest {
         engine.recordSample("Checkout", 300, false, 900, 90, ts, 0, 0);
         engine.recordTransactionRow(1);
         engine.recordError("Checkout", "500", tx, ts, "TG 1-1");
-        engine.recordSample("Cart", 100, true, 400, 40, ts, 5, 90);
-        engine.recordSample("Pay", 200, false, 500, 50, ts + 100, 5, 190);
+        recordChild("Cart", 100, true, 400, 40, ts, 5, 90);
+        recordChild("Pay", 200, false, 500, 50, ts + 100, 5, 190);
         engine.recordError("Pay", "500", "Internal Server Error", ts + 100, "TG 1-1");
         engine.recordSample("Home", 10, false, 100, 10, ts + 200, 1, 9);
         engine.recordError("Home", "503", "Service Unavailable", ts + 200, "TG 1-2");
@@ -966,8 +1017,8 @@ class LiveStatisticsEngineTest {
         for (int i = 0; i < 100; i++) {
             boolean ok = i >= 10; // 10 failures
             engine.recordSample("Login Flow", 300, ok, 100, 10, ts + i, 1, 1);
-            engine.recordSample("POST /login", 150, true, 50, 5, ts + i, 1, 1);
-            engine.recordSample("GET /profile", 150, true, 50, 5, ts + i, 1, 1);
+            recordChild("POST /login", 150, true, 50, 5, ts + i, 1, 1);
+            recordChild("GET /profile", 150, true, 50, 5, ts + i, 1, 1);
             if (!ok) {
                 engine.recordError("Login Flow", "500", "Server Error", ts + i, "Thread-1");
             }
@@ -1002,7 +1053,7 @@ class LiveStatisticsEngineTest {
             engine.recordSample("Login Flow", 300, false, 100, 10, ts + i, 1, 1);
             engine.recordError("Login Flow", "500", "Server Error", ts + i, "T1");
             for (int c = 0; c < 3; c++) {
-                engine.recordSample("POST /login", 50, false, 50, 5, ts + i, 1, 1);
+                recordChild("POST /login", 50, false, 50, 5, ts + i, 1, 1);
                 engine.recordError("POST /login", "500", "Server Error", ts + i, "T1");
             }
         }

@@ -1241,22 +1241,31 @@ function refreshAllCharts() {
  * ran for the whole run (P17 read 41.69/s where JMeter's TOTAL is 11.31/s), and a mean of the
  * rows' 2-decimal means is not the run's mean. So everything that is a figure of the whole run
  * comes from chartData.overall — the numbers the Summary tiles show, from one resolver
- * (OverallMetrics) — and only counts, min and max are taken from the rows, where summing or
- * taking the extreme is exact. Transaction children are left out, as the overall block leaves
- * them out: their time is already inside their parent. */
+ * (OverallMetrics) — counts, min and max included: the whole run is counted per sample, every
+ * sample a listener in the plan received. Adding up the rows that are no transaction's child was
+ * right only while no name ran both on its own and inside a transaction: such a name's row is a
+ * child, so its standalone samples went missing (tails-conversation-flows, 2026-11). The rows are
+ * the fallback for a payload without those fields. */
 function totalRowFigures(data, isChild) {
     var f = { samples: 0, errors: 0, min: Infinity, max: 0 };
-    (data.samplers || []).forEach(function (s) {
-        if (isChild(s.name)) return;
-        var count = s.sampleCount || s.count || 0;
-        f.samples += count;
-        f.errors += s.errorCount || Math.round((s.errorRate || 0) * count / 100) || 0;
-        if ((s.min != null) && s.min < f.min) f.min = s.min;
-        if ((s.max || 0) > f.max) f.max = s.max;
-    });
-    if (f.min === Infinity) f.min = 0;
-    f.errorPct = f.samples > 0 ? (f.errors / f.samples * 100) : 0;
     var o = data.overall || {};
+    if (o.totalSamples != null && o.totalErrors != null && o.min != null && o.max != null) {
+        f.samples = o.totalSamples;
+        f.errors = o.totalErrors;
+        f.min = o.min;
+        f.max = o.max;
+    } else {
+        (data.samplers || []).forEach(function (s) {
+            if (isChild(s.name)) return;
+            var count = s.sampleCount || s.count || 0;
+            f.samples += count;
+            f.errors += s.errorCount || Math.round((s.errorRate || 0) * count / 100) || 0;
+            if ((s.min != null) && s.min < f.min) f.min = s.min;
+            if ((s.max || 0) > f.max) f.max = s.max;
+        });
+        if (f.min === Infinity) f.min = 0;
+    }
+    f.errorPct = f.samples > 0 ? (f.errors / f.samples * 100) : 0;
     f.mean = o.mean;
     f.median = o.median;
     f.p90 = o.p90;
@@ -2353,7 +2362,9 @@ function initPercentileBarChart(data) {
                 totalStats[field] = totalCount > 0 ? weightedSum / totalCount : 0;
             }
         });
-        totalStats.max = allSamplers.reduce(function (m, x) { return Math.max(m, x.max || 0); }, 0);
+        /* The whole run's slowest sample (per sample, as the Σ Total row), else the rows' */
+        totalStats.max = overall && overall.max != null ? overall.max
+            : allSamplers.reduce(function (m, x) { return Math.max(m, x.max || 0); }, 0);
         names.push(TOTAL_SAMPLER_NAME);
         visibleSamplers.push(totalStats);
     }

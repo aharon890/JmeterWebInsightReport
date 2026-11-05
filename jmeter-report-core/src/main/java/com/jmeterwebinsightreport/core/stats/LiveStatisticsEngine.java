@@ -81,6 +81,22 @@ public class LiveStatisticsEngine {
     private long rampUpDurationMillis;
     private double apdexThreshold = 500;
 
+    /** The whole run's row's name. It is no sampler's: the row is the run's, never in the table. */
+    public static final String WHOLE_RUN = "Whole run";
+    /**
+     * Every sample a listener in the test plan received, and only those, as JMeter's Aggregate Report
+     * feeds its TOTAL row ({@code StatVisualizer.add}): a transaction's requests are inside it. The
+     * whole-run figures read it ({@link ReportData#getWholeRun()}).
+     *
+     * <p>Per sample, because per name is wrong: the same name can run on its own and inside a
+     * transaction in one run, and the transaction hierarchy is a relation between names. Leaving the
+     * child names out of the totals left every one of their samples out, the standalone ones too
+     * (tails-conversation-flows, 2026-11: 0 errors where JMeter counted 17), and a transaction holding
+     * a request of its own name was counted twice. Created again when the Apdex T is set, which is
+     * always before the first sample.
+     */
+    private volatile SamplerAggregator wholeRun = new SamplerAggregator(WHOLE_RUN, apdexThreshold);
+
     /**
      * Record a single sample result (backward-compatible overload).
      */
@@ -123,6 +139,18 @@ public class LiveStatisticsEngine {
     public void recordSample(String samplerName, long responseTime, boolean isSuccess,
                              long bytesReceived, long bytesSent, long timestamp, long endTime,
                              long connectTime, long latency, long samples, long errors) {
+        recordSample(samplerName, responseTime, isSuccess, bytesReceived, bytesSent, timestamp, endTime,
+                connectTime, latency, samples, errors, true);
+    }
+
+    /**
+     * @param topLevel whether a listener in the test plan received this sample itself: false for a
+     *        sub-result (a parent-sample transaction's request, a nested transaction, a redirect hop),
+     *        which reached it inside its parent. Only top-level samples are the whole run's.
+     */
+    public void recordSample(String samplerName, long responseTime, boolean isSuccess,
+                             long bytesReceived, long bytesSent, long timestamp, long endTime,
+                             long connectTime, long latency, long samples, long errors, boolean topLevel) {
         long n = Math.max(1, samples);
         long failed = Math.min(n, Math.max(0, errors));
         // Per-sampler aggregation
@@ -131,6 +159,10 @@ public class LiveStatisticsEngine {
         aggregators.computeIfAbsent(samplerName, k -> new SamplerAggregator(k, apdexThreshold))
                 .addSample(responseTime, isSuccess, bytesReceived, bytesSent, timestamp, endTime,
                         connectTime, latency, n, failed);
+        if (topLevel) {
+            wholeRun.addSample(responseTime, isSuccess, bytesReceived, bytesSent, timestamp, endTime,
+                    connectTime, latency, n, failed);
+        }
 
         // Time-series bucketing (1-second granularity). A sample counts in the second it ended, as
         // JMeter's charts key it (TimeStampKeysSelector, end time but for Hits per Second), and its
@@ -330,6 +362,7 @@ public class LiveStatisticsEngine {
 
     public void setApdexThreshold(double apdexThreshold) {
         this.apdexThreshold = apdexThreshold;
+        this.wholeRun = new SamplerAggregator(WHOLE_RUN, apdexThreshold);
     }
 
     public double getApdexThreshold() {
@@ -432,8 +465,9 @@ public class LiveStatisticsEngine {
         // travel with the data rather than stay behind in the engine.
         data.setApdexThreshold(apdexThreshold);
 
-        // Sampler statistics
+        // Sampler statistics, and the whole run's own row
         data.setSamplerStatistics(getStatisticsSnapshot());
+        data.setWholeRun(wholeRun.toStatistics(apdexThreshold));
 
         // Time series
         data.setTimeSeries(getTimeSeries());
@@ -454,17 +488,16 @@ public class LiveStatisticsEngine {
         // Error summaries — aggregate from error records
         data.setErrorSummaries(buildErrorSummaries());
 
-        // Overall percentiles across the merged distribution of top-level samplers (true global
-        // percentile, not an average of per-sampler percentiles). Done after hierarchy detection so
-        // transaction children are excluded (their times are already inside their parent).
+        // Overall percentiles of the whole run's own distribution: every top-level sample, the true
+        // global percentile, not an average of per-sampler percentiles
         computeOverallPercentiles(data);
 
         return data;
     }
 
     /**
-     * Merge the response times of all top-level samplers, set the true overall
-     * percentiles, and keep every distribution reachable from the report data.
+     * Set the true overall percentiles from the whole run's distribution, and keep every
+     * distribution reachable from the report data.
      *
      * <p>The four percentiles below are the ones the report renders. The distributions they came
      * from used to be dropped here, which meant p99.9 — or any quantile a rule names — could
@@ -472,9 +505,10 @@ public class LiveStatisticsEngine {
      * see {@link com.jmeterwebinsightreport.core.model.PercentileSource} for why that is
      * preferable to deciding the percentile set before the statistics are built.
      *
-     * <p>The merged distribution excludes transaction children for the same reason the percentiles
-     * always did: their time is already inside their parent, so including them weights those
-     * samples twice.
+     * <p>The whole run's distribution holds the samples a listener in the plan received: a
+     * transaction's requests are inside it, so including them would weight those samples twice. It
+     * is fed per sample ({@link #wholeRun}), so a name that also ran inside a transaction keeps its
+     * own runs; merging the top-level names' distributions lost them.
      */
     private void computeOverallPercentiles(ReportData data) {
         ResponseTimeDistribution overall = new ResponseTimeDistribution();
@@ -489,10 +523,8 @@ public class LiveStatisticsEngine {
             // Every sampler gets a source, children included: naming a sampler in a rule is an
             // explicit request to judge it, and that has always reached transaction children.
             sources.put(stat.getSamplerName(), agg.percentileSource());
-            if (stat.getParentSamplerName() == null) {
-                agg.mergePercentilesInto(overall);
-            }
         }
+        wholeRun.mergePercentilesInto(overall);
 
         if (overall.getCount() > 0) {
             data.setOverallMedian(overall.getPercentile(50));
@@ -646,6 +678,7 @@ public class LiveStatisticsEngine {
      */
     public void reset() {
         aggregators.clear();
+        wholeRun = new SamplerAggregator(WHOLE_RUN, apdexThreshold);
         timeBuckets.clear();
         synchronized (errorRecords) {
             errorRecords.clear();

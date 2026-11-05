@@ -549,6 +549,11 @@ public class ReportDataSerializer {
             }
             overall.put("mean", round2(m.getMean()));
             overall.put("totalSamples", m.getTotalSamples());
+            // The Σ Total row's counts and extremes, the whole run's own (per sample): adding up the
+            // rows on the page left out every sample of a name that also ran inside a transaction
+            overall.put("totalErrors", m.getTotalErrors());
+            overall.put("min", round2(m.getMin()));
+            overall.put("max", round2(m.getMax()));
             overall.put("errorRate", round2(m.getErrorRate()));
             overall.put("throughput", fullPrecision(m.getThroughput()));   // see samplers[] (R2-1)
             // All bytes over the test duration: the Σ Total row's KB/s columns (B1), which used to

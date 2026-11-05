@@ -29,6 +29,10 @@ public class ReportData {
     /** The Apdex T the scores in {@link #samplerStatistics} were computed against. Carried with
      *  the data because an apdex assertion asserts this configuration as much as the score. */
     private double apdexThreshold = 500;
+    /** The whole run as one row: every sample a listener in the test plan received, and only those,
+     *  as JMeter's Aggregate Report feeds its TOTAL row. Null on data assembled without it; the
+     *  whole-run figures then fall back to adding up the top-level rows. */
+    private SamplerStatistics wholeRun;
 
     /**
      * Live distributions, keyed by sampler name, plus the merged top-level one.
@@ -69,22 +73,32 @@ public class ReportData {
         this.overallPercentileSource = overall;
     }
 
+    /** The whole run's own row, or null. See {@link #wholeRun}. */
+    public SamplerStatistics getWholeRun() { return wholeRun; }
+    public void setWholeRun(SamplerStatistics wholeRun) { this.wholeRun = wholeRun; }
+
     public double getApdexThreshold() { return apdexThreshold; }
     public void setApdexThreshold(double apdexThreshold) { this.apdexThreshold = apdexThreshold; }
 
     /**
-     * Total samples across top-level samplers only — transaction children excluded, because
-     * their time is already counted inside their parent.
+     * The whole run's samples: every sample a listener in the test plan received, a transaction's
+     * requests inside it ({@link #getWholeRun()}), as JMeter's Aggregate Report counts its TOTAL row.
      *
      * <p>This is the population the header tiles use, so anything expressed as a percentage
      * "of all samples" must use it too. Dividing by {@code metadata.totalSamples} instead
      * (which counts transaction parents <em>and</em> their children) puts two different
      * error rates on the same report.
      *
-     * <p>Falls back to the metadata total when no per-sampler statistics are present, which
-     * is the same number in that case.
+     * <p>It is counted per sample, never per name. One name can run on its own and inside a
+     * transaction in the same run, and the top-level rows are names: adding them up left every
+     * sample of such a name out (tails-conversation-flows, 2026-11: 0 errors where JMeter counted
+     * 17), and counted a transaction and its own request of the same name twice. Data assembled
+     * without the whole-run row falls back to that sum, and with no rows to the metadata total.
      */
     public long getTopLevelSampleCount() {
+        if (wholeRun != null) {
+            return wholeRun.getSampleCount();
+        }
         if (samplerStatistics == null || samplerStatistics.isEmpty()) {
             return metadata != null ? metadata.getTotalSamples() : 0;
         }
@@ -96,6 +110,9 @@ public class ReportData {
 
     /** Errors across top-level samplers only. See {@link #getTopLevelSampleCount()}. */
     public long getTopLevelErrorCount() {
+        if (wholeRun != null) {
+            return wholeRun.getErrorCount();
+        }
         if (samplerStatistics == null || samplerStatistics.isEmpty()) {
             return metadata != null ? metadata.getTotalErrors() : 0;
         }
