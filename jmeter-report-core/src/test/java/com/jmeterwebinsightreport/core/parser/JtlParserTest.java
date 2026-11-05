@@ -508,6 +508,26 @@ class JtlParserTest {
     }
 
     @Test
+    void anEndStampedTransactionStartsWhereTheListenerStartsIt() throws IOException {
+        // Review finding (2026-11-05): an end-stamped transaction with "include timers" off is stamped at
+        // its real end, after its pauses (IdleTime 1,000 here). The listener starts it at getStartTime(),
+        // stamp - elapsed - idle; -g started it at stamp - elapsed, 1 s late, so a rebuild that began with
+        // one had another start, duration and runId than the run report (E31 end-stamped: 1 ms)
+        File jtl = writeJtl("end-stamped-transaction.jtl", HEADER + "\n"
+                + "1700000002000,100,TX,200," + tx(1, 0) + ",T 1-1,,true,,100,10,1,1,,0,1000,0\n"
+                + "1700000002000,100,A,200,OK,T 1-1,text,true,,100,10,1,1,http://x/a,90,0,5\n");
+
+        JtlParser parser = new JtlParser();
+        parser.setTimestampIsStart(false);
+        ReportData data = parser.parse(jtl, "end-stamped-transaction");
+
+        assertEquals(1700000000900L, data.getMetadata().getStartTime().toEpochMilli(),
+                "stamp - elapsed - idle, as the listener's getStartTime()");
+        assertEquals(1100, data.getMetadata().getDurationMillis(), "to its real end, the stamp");
+        assertEquals("TX", findSampler(data, "A").getParentSamplerName(), "still nested (4.2.24)");
+    }
+
+    @Test
     void startStampedRowsAreReadAsTheyAlwaysWere() throws IOException {
         File jtl = writeJtl("start-stamped.jtl", HEADER + "\n"
                 + "1700000001000,1000,A,200,OK,T 1-1,text,true,,100,10,1,1,http://x/a,900,0,5\n"

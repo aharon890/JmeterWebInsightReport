@@ -227,13 +227,17 @@ public class JtlParser {
             return false;
         }
         if (!timestampIsStart) {
-            // The row was stamped at its end; the engine places and windows samples by start.
-            sample.timestamp -= sample.elapsed;
+            // The row was stamped at its end; the engine places and windows samples by start. An
+            // end-stamped transaction row's stamp is its real end, after its pauses (IdleTime), so its
+            // start is stamp - elapsed - idle, where the listener starts it (getStartTime()): starting
+            // it at stamp - elapsed gave a rebuild that began with one another start, duration and
+            // runId than the run report (review, 2026-11-05). Its end stays the stamp.
+            sample.end = sample.timestamp;
+            sample.timestamp -= sample.elapsed + Math.max(0, sample.idle);
+        } else {
+            sample.end = sample.timestamp + Math.max(0, sample.elapsed);
         }
-        // An end-stamped transaction row's stamp is its real end, after its pauses (IdleTime), so the
-        // start JMeter reads from it (stamp - elapsed) falls after its first request's start; its
-        // nesting is judged from its real start
-        long realStart = timestampIsStart ? sample.timestamp : sample.timestamp - sample.idle;
+        long realStart = sample.timestamp;
         TransactionRows.Nesting parent = transactions.parentOf(sample.thread, sample.label, sample.message,
                 realStart, sample.elapsed, sample.idle);
         try {
@@ -325,6 +329,8 @@ public class JtlParser {
         String url;
         String failureMessage;
         long idle;
+        /** When it ended: start + elapsed, or an end-stamped row's stamp (its real end). */
+        long end;
         long samples = 1;
         long errors = -1;
 
@@ -336,7 +342,7 @@ public class JtlParser {
          */
         void feed(LiveStatisticsEngine engine, boolean topLevel) {
             engine.recordSample(label, elapsed, success, bytes, sentBytes, timestamp,
-                    timestamp + Math.max(0, elapsed), connectTime, latency, samples,
+                    end, connectTime, latency, samples,
                     errors >= 0 ? errors : (success ? 0 : 1), topLevel);
             if (threads > 0) {
                 engine.updateActiveThreads(threads, LiveStatisticsEngine.endOf(timestamp, elapsed));
