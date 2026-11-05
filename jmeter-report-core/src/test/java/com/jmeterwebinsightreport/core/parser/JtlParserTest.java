@@ -508,6 +508,26 @@ class JtlParserTest {
     }
 
     @Test
+    void aStartStampedTransactionEndsWhereTheListenerEndsIt() throws IOException {
+        // R07's table check (plan v2, 2026-11-06): a start-stamped transaction with "include timers" off
+        // ends at start + elapsed + idle, where the listener's SampleResult ends it (B7), but -g ended it at
+        // start + elapsed, its pauses left out: E31's rebuilt "Whole session" was measured over 694 ms where
+        // the run report and JMeter's Aggregate Report in the plan measure 698, and read 5.8/s against 5.7.
+        File jtl = writeJtl("start-stamped-transaction.jtl", HEADER + "\n"
+                + "1700000000000,100,TX,200," + tx(1, 0) + ",T 1-1,,true,,100,10,1,1,,0,1000,0\n"
+                + "1700000000000,100,A,200,OK,T 1-1,text,true,,100,10,1,1,http://x/a,90,0,5\n"
+                + "1700000005000,100,TX,200," + tx(1, 0) + ",T 1-1,,true,,100,10,1,1,,0,1000,0\n"
+                + "1700000005000,100,A,200,OK,T 1-1,text,true,,100,10,1,1,http://x/a,90,0,5\n");
+
+        ReportData data = new JtlParser().parse(jtl, "start-stamped-transaction");
+
+        assertEquals(1700000000000L, data.getMetadata().getStartTime().toEpochMilli());
+        assertEquals(6100, data.getMetadata().getDurationMillis(), "to the last transaction's real end, after its pause");
+        assertEquals(2 / 6.1, findSampler(data, "TX").getThroughput(), 1e-9, "2 over first start .. last real end");
+        assertEquals("TX", findSampler(data, "A").getParentSamplerName(), "still nested");
+    }
+
+    @Test
     void anEndStampedTransactionStartsWhereTheListenerStartsIt() throws IOException {
         // Review finding (2026-11-05): an end-stamped transaction with "include timers" off is stamped at
         // its real end, after its pauses (IdleTime 1,000 here). The listener starts it at getStartTime(),

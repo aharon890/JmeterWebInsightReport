@@ -257,7 +257,7 @@ test.describe('SF16: a verdict number is in the unit it is compared in', () => {
     });
     const cells = (await rowCells(page, 'cpu-per-rps'))!;
     expect(cells[2]).toMatch(/ %\/min ÷ load:throughput$/);
-    expect(cells[3]).toBe('fail > 10,000 %/min ÷ load:throughput');
+    expect(cells[3]).toBe('fail > 10000 %/min ÷ load:throughput');
     await openRow(page, 'cpu-per-rps');
     const inst = (await instanceChart(page, 'cpu-per-rps'))!;
     expect(inst.name).toBe('%/min ÷ load:throughput');
@@ -306,24 +306,24 @@ test.describe('SF16: a verdict number is in the unit it is compared in', () => {
     // Generate's review first, while nothing asserts the metric: the seed's bands in B/min.
     await page.click('.wir-server-actions .wir-btn:has-text("Generate from this run")');
     const seed = page.locator('#serverDialog .wir-seed-review tbody tr', { hasText: 'Database size growth' });
-    await expect(seed.locator('td').nth(3)).toHaveText('warn > 75,000,000 B/min');
+    await expect(seed.locator('td').nth(3)).toHaveText('warn > 75000000 B/min');
     await expect(seed.locator('.wir-band-unit')).toHaveText('B/min');
     await page.evaluate(() => (window as any).WIR.serverKpis.closeDialog());
 
     await page.click('.wir-component-card[data-component="orders-db"] .wir-component-add');
     await page.click('.wir-pick-name:has-text("Database size growth (bytes/min)")');
-    await expect(page.locator('.wir-pick-detail')).toContainText('fail > 90,000,000 B/min · warn > 75,000,000 B/min');
+    await expect(page.locator('.wir-pick-detail')).toContainText('fail > 90000000 B/min · warn > 75000000 B/min');
     await page.check('[data-wir-dlg="pick:database.size.growth"]');
     await page.click('#serverPickNext');
     const row = page.locator('.wir-thresholds tr[data-metric="database.size.growth"]');
-    await expect(row.locator('td.num')).toHaveText('slope 60,000,000 B/min');
+    await expect(row.locator('td.num')).toHaveText('slope 60000000 B/min');
     await expect(row.locator('.wir-band-unit')).toHaveText(['B/min', 'B/min']);
     await page.click('#serverAddAssertsBtn');
 
     // The live mirror's slope is 59,999,999.99999998: it read "60000000 B" beside "50,000,000 B".
     const cells = (await rowCells(page, 'orders-db-database-size-growth'))!;
-    expect(cells[2]).toBe('60,000,000 B/min');
-    expect(cells[3]).toBe('warn > 75,000,000 B/min · fail > 90,000,000 B/min');
+    expect(cells[2]).toBe('60000000 B/min');
+    expect(cells[3]).toBe('warn > 75000000 B/min · fail > 90000000 B/min');
   });
 });
 
@@ -370,7 +370,7 @@ test.describe('SF17: large numbers fit their axes', () => {
     const card = page.locator('.summary-card', { has: page.locator('.card-label', { hasText: /^Throughput$/ }) });
     await expect(card.locator('.card-value')).toHaveText('24.76/s');
     await expect(page.locator('#gateStrip .wir-breach', { hasText: 'load:unreachable' }))
-      .toContainText('throughput 24.76 /s vs < 100,000 /s');
+      .toContainText('throughput 24.76 /s vs < 100000 /s');
   });
 });
 
@@ -439,12 +439,12 @@ test.describe('SF17: every reader gets one spelling of a number', () => {
     expect(await page.evaluate(() => (1234.5).toLocaleString())).toBe('1.234,5');
     // The Thymeleaf card is FormatUtil's, US-fixed; the client card beside it now agrees.
     await expect(page.locator('#gateStrip .wir-breach', { hasText: 'load:unreachable' }))
-      .toContainText('throughput 24.76 /s vs < 100,000 /s');
+      .toContainText('throughput 24.76 /s vs < 100000 /s');
     await switchTab(page, 'server');
     // The board read "fail > 10.000 %" — ten thousand in German — beside an editor box holding
     // "10000", and "2,24" one row from Java's sentences in ".".
     const cells = (await rowCells(page, 'cpu-per-rps'))!;
     expect(cells[2]).toMatch(/^\d+\.\d+ % ÷ load:throughput$/);
-    expect(cells[3]).toBe('fail > 10,000 % ÷ load:throughput');
+    expect(cells[3]).toBe('fail > 10000 % ÷ load:throughput');
   });
 });

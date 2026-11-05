@@ -10,13 +10,59 @@ class FormatUtilTest {
 
     @Test
     void numberFormatIsLocaleIndependent() {
-        // B13: rendered numbers must use '.' decimal / ',' grouping regardless of JVM default
-        // locale, because the report's JavaScript parses them assuming that format.
+        // B13: rendered numbers must use '.' decimals regardless of JVM default locale, because the
+        // report's JavaScript parses them assuming that format. And no thousands separator, as JMeter
+        // writes none (its Aggregate Report and HTML report: 1200, not 1,200).
         Locale original = Locale.getDefault();
         try {
             Locale.setDefault(Locale.GERMANY); // default would otherwise produce "1.234,56"
-            assertEquals("1,234.56", FormatUtil.formatNumber(1234.56));
+            assertEquals("1234.56", FormatUtil.formatNumber(1234.56));
+            assertEquals("1200", FormatUtil.formatNumber(1200));
             assertEquals("95.50%", FormatUtil.formatPercentage(95.5));
+            assertEquals("24.8/s", FormatUtil.formatRate(24.76065));
+            assertEquals("0.60", FormatUtil.formatTwoDecimals(0.6));
+            assertEquals("0.948", FormatUtil.formatApdex(0.948));
+        } finally {
+            Locale.setDefault(original);
+        }
+    }
+
+    @Test
+    void rateIsWrittenAsTheAggregateReportsThroughputColumn() {
+        // JMeter's RateRenderer("#.0"): one decimal, per second, per minute below one a second,
+        // per hour below one a minute; "/s" where JMeter writes "/sec"
+        assertEquals("24.8/s", FormatUtil.formatRate(24.76065));
+        assertEquals("8.3/s", FormatUtil.formatRate(8.28));
+        assertEquals("1.0/s", FormatUtil.formatRate(1.0));
+        assertEquals("20.7/min", FormatUtil.formatRate(0.345));
+        assertEquals("43.0/hour", FormatUtil.formatRate(43.0 / 3600));
+        assertEquals("1234.5/s", FormatUtil.formatRate(1234.5));
+        // DecimalFormat's half-even on an exact tie, as JMeter's table rounds it
+        assertEquals("8.2/s", FormatUtil.formatRate(8.25));
+        // "#.0" writes no leading zero, as JMeter does below one an hour
+        assertEquals(".5/hour", FormatUtil.formatRate(0.5 / 3600));
+        assertEquals("#N/A", FormatUtil.formatRate(Double.NaN));
+    }
+
+    @Test
+    void kilobytesAndApdexKeepTheirDecimals() {
+        // The Aggregate Report's KB/sec ("#0.00") and the HTML report's Apdex (toFixed(3))
+        assertEquals("0.60", FormatUtil.formatTwoDecimals(0.6));
+        assertEquals("19.82", FormatUtil.formatTwoDecimals(19.8243));
+        assertEquals("1234.00", FormatUtil.formatTwoDecimals(1234));
+        assertEquals("1.000", FormatUtil.formatApdex(1.0));
+        assertEquals("0.948", FormatUtil.formatApdex(0.948));
+        assertEquals("0.500", FormatUtil.formatApdex(0.5));
+    }
+
+    @Test
+    void durationIsWrittenInLatinDigitsWhateverTheJvmLocale() {
+        Locale original = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("ar-EG")); // String.format wrote "٤٨.٤s" here
+            assertEquals("48.4s", FormatUtil.formatDuration(48_400));
+            assertEquals("2m 30s", FormatUtil.formatDuration(150_000));
+            assertEquals("1h 2m 3s", FormatUtil.formatDuration(3_723_000));
         } finally {
             Locale.setDefault(original);
         }

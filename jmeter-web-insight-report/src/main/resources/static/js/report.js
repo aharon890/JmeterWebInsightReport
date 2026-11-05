@@ -609,8 +609,65 @@ function showNoData(el, msg, small) {
  * #100c2a, a purple-navy rectangle inside the report's slate card, and every colour drawn on it was
  * chosen against a background the page does not have. A setOption after this one merges, so the
  * background holds; one that replaces the whole option (notMerge) passes it again. */
+/* ECharts writes a value axis's labels and its axis-pointer label through IntervalScale.getLabel,
+   which groups thousands ("4,000"), and a default tooltip's numbers through addCommas. JMeter writes
+   no thousands separator anywhere, so neither does a chart here: the scale's label loses its commas
+   (its own rounding kept), once, and a chart's tooltip gets a value formatter when it has none. */
+var plainChartNumbersInstalled = false;
+function installPlainChartNumbers() {
+    if (plainChartNumbersInstalled) return;
+    plainChartNumbersInstalled = true;
+    try {
+        var scale = echarts.helper.createScale([0, 1], { type: 'value' });
+        var proto = Object.getPrototypeOf(scale);
+        var getLabel = proto.getLabel;
+        proto.getLabel = function () {
+            var label = getLabel.apply(this, arguments);
+            return typeof label === 'string' ? label.replace(/,/g, '') : label;
+        };
+    } catch (e) { /* an ECharts without helper.createScale draws its own labels */ }
+}
+function plainTooltipValue(v) {
+    if (typeof v === 'number') return isFinite(v) ? String(v) : '-';
+    return v == null ? '-' : String(v);
+}
+function withPlainTooltips(option) {
+    var tips = option && option.tooltip;
+    (Array.isArray(tips) ? tips : (tips ? [tips] : [])).forEach(function (t) {
+        if (t && !t.formatter && !t.valueFormatter) t.valueFormatter = plainTooltipValue;
+    });
+    return option;
+}
+
+/* ECharts places a time axis's ticks in the browser's zone and writes its own date text (a crosshair's
+   label, a default tooltip's header) through TimeScale.getLabel in it. Every chart here is set to UTC,
+   so the ticks fall on the same instants for every reader, and that label, once, writes the report's
+   clock; every time axis has its own label formatter, which writes the report's clock too. */
+var reportClockLabelInstalled = false;
+function installReportClockLabel(chart) {
+    if (reportClockLabelInstalled) return;
+    try {
+        var axisModel = chart.getModel().getComponent('xAxis', 0);
+        var scale = axisModel && axisModel.axis && axisModel.axis.type === 'time' ? axisModel.axis.scale : null;
+        if (!scale) return;
+        Object.getPrototypeOf(scale).getLabel = function (tick) {
+            return formatTimeRangeFull(new Date(tick.value));
+        };
+        reportClockLabelInstalled = true;
+    } catch (e) { /* this chart has no time axis to learn the scale from */ }
+}
+
 function createChart(el) {
+    installPlainChartNumbers();
     var chart = echarts.init(el, getChartTheme());
+    var setOption = chart.setOption;
+    chart.setOption = function (option) {
+        withPlainTooltips(option);
+        if (option && typeof option === 'object' && option.useUTC === undefined) option.useUTC = true;
+        var result = setOption.apply(chart, arguments);
+        installReportClockLabel(chart);
+        return result;
+    };
     if (isDarkTheme()) chart.setOption({ backgroundColor: 'transparent' });
     chart.group = chartGroup;
     chartInstances.push(chart);
@@ -1339,7 +1396,51 @@ function totalRowFigures(data, isChild) {
     return f;
 }
 
+/* A count or a millisecond figure as the Samplers table writes it: a whole number, no separator
+   (FormatUtil.formatMillis rounds a millisecond). */
+function wholeNumberText(v) {
+    return v == null || isNaN(v) ? '0' : String(Math.round(v));
+}
+
+/* Two decimals, as the Samplers table writes Error % and KB/s (FormatUtil's "#0.00"). */
+function twoDecimalsText(v) {
+    return WIR.javaText.decimalFormat(v == null || isNaN(v) ? 0 : v, 2);
+}
+
+/* A whole run's figures (totalRowFigures) as the Samplers Σ Total row writes them, Samples to Sent KB/s,
+   each cell as the rows below it are, never in the reader's language (it took the browser's: a German
+   reader saw 7.225 and 218,56 above rows reading 2766 and 219). The Compare tab's Σ Total row and the
+   Notes tab's What Changed rows write a whole run through this too, so it reads the same wherever it is
+   shown. */
+function sigmaTotalCellTexts(t) {
+    return [wholeNumberText(t.samples), wholeNumberText(t.errors), twoDecimalsText(t.errorPct) + '%',
+        wholeNumberText(t.mean), wholeNumberText(t.median), wholeNumberText(t.p90), wholeNumberText(t.p95),
+        wholeNumberText(t.p99), wholeNumberText(t.min), wholeNumberText(t.max), formatRate(t.throughput),
+        twoDecimalsText(t.receivedKBs), twoDecimalsText(t.sentKBs)];
+}
+
+/**
+ * A throughput as the Aggregate Report's Throughput column writes it, FormatUtil.formatRate's twin
+ * (JMeter's RateRenderer, pattern "#.0"): one decimal, per second, and per minute or per hour when
+ * fewer than one a second or a minute (34.2/s, 20.7/min, 43.0/hour). The unit is "/s" where JMeter
+ * writes "/sec".
+ */
+function formatRate(perSecond) {
+    if (perSecond == null || !isFinite(perSecond)) return '#N/A';
+    var rate = perSecond;
+    var unit = 's';
+    if (rate < 1) { rate *= 60; unit = 'min'; }
+    if (rate < 1) { rate *= 60; unit = 'hour'; }
+    return WIR.javaText.decimalFormat(rate, 1, false) + '/' + unit;
+}
+
+/** An Apdex score as JMeter's HTML report writes it, FormatUtil.formatApdex's twin: 0.948. */
+function formatApdex(score) {
+    return WIR.javaText.decimalFormat(score, 3);
+}
+
 function updateTotalRow() {
+    updateComparisonTotalRow();
     var table = document.querySelector('#tab-samplers table');
     if (!table || !globalChartData) return;
     var tbody = table.tBodies[0];
@@ -1357,28 +1458,10 @@ function updateTotalRow() {
     var t = totalRowFigures(globalChartData, isTransactionChild);
     var errorPct = t.errorPct;
 
-    var fmt = function (v) { return v == null || isNaN(v) ? '0' : Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 }); };
-
     var tr = document.createElement('tr');
     tr.className = 'total-sampler-row';
 
-    var cells = [
-        TOTAL_SAMPLER_NAME,
-        fmt(t.samples),
-        fmt(t.errors),
-        errorPct.toFixed(2) + '%',
-        fmt(t.mean),
-        fmt(t.median),
-        fmt(t.p90),
-        fmt(t.p95),
-        fmt(t.p99),
-        fmt(t.min),
-        fmt(t.max),
-        fmt(t.throughput) + '/s',
-        fmt(t.receivedKBs),
-        fmt(t.sentKBs),
-        '__apdex__' + t.apdex
-    ];
+    var cells = [TOTAL_SAMPLER_NAME].concat(sigmaTotalCellTexts(t), ['__apdex__' + t.apdex]);
 
     /* Match column count of existing rows (may include extra action columns) */
     var existingRow = tbody.querySelector('tr');
@@ -1400,7 +1483,7 @@ function updateTotalRow() {
             var apdexVal = parseFloat(val.replace('__apdex__', ''));
             var badge = document.createElement('span');
             badge.className = 'apdex-badge ' + getApdexClass(apdexVal);
-            badge.textContent = isNaN(apdexVal) ? '0' : apdexVal.toFixed(2);
+            badge.textContent = isNaN(apdexVal) ? '0' : formatApdex(apdexVal);
             td.appendChild(badge);
         } else {
             td.textContent = val;
@@ -1998,8 +2081,7 @@ function formatTimeLabel(ts) {
         s = s % 60;
         return m + ':' + (s < 10 ? '0' : '') + s;
     }
-    var h = d.getHours(), min = d.getMinutes(), sec = d.getSeconds();
-    return (h < 10 ? '0' : '') + h + ':' + (min < 10 ? '0' : '') + min + ':' + (sec < 10 ? '0' : '') + sec;
+    return formatTime(d);
 }
 
 /* ============================================================
@@ -2923,11 +3005,11 @@ function buildErrorSummaryTotalRow() {
             td.textContent = shown.length === rows.length
                 ? 'Total' : 'Total (' + shown.length + ' of ' + rows.length + ' rows)';
             td.title = 'The sum of the rows shown: % of Errors is their share of all '
-                + errors.toLocaleString('en-US') + ' errors, % of All Samples their share of all '
-                + samples.toLocaleString('en-US') + ' samples. Rows the search or a × hides '
+                + errors + ' errors, % of All Samples their share of all '
+                + samples + ' samples. Rows the search or a × hides '
                 + 'are not in it.';
         }
-        else if (c === countCol) td.textContent = count.toLocaleString('en-US');
+        else if (c === countCol) td.textContent = String(count);
         else if (c === col['% of Errors']) td.textContent = share(errors);
         else if (c === col['% of All Samples']) td.textContent = share(samples);
         tr.appendChild(td);
@@ -3180,47 +3262,81 @@ function chartTooltipFormatter(params) {
  *  Utility functions
  * ============================================================ */
 
+/* The report's clock. Every time on the page is written in the time zone of the machine that built the
+   report, whatever the reader's, as JMeter's HTML report writes its graphs and start and end times
+   (plan v2, the owner, 2026-11-05: "like in jmeter"); and no zone is written beside a time, as JMeter
+   writes none. Java names that zone (chartData.reportTimeZone: the JVM's, the one the template's own
+   times, the Errors "By time" list and the Notes markers, are written in). A browser that does not know
+   the name gets the zone's offset at the run's start (reportTimeZoneOffsetMinutes), which is how JMeter
+   draws its graphs; a report that names no zone, built before this, keeps the reader's. One instant is
+   read once a second: formatToParts runs for every tick and tooltip. */
+var reportClock = null;
+function reportClockParts(ms) {
+    var second = Math.floor(ms / 1000);
+    if (!reportClock || (!reportClock.settled && globalChartData)) reportClock = makeReportClock();
+    if (second !== reportClock.second) {
+        reportClock.second = second;
+        reportClock.parts = reportClock.read(second * 1000);
+    }
+    return reportClock.parts;
+}
+function makeReportClock() {
+    var zone = globalChartData && globalChartData.reportTimeZone;
+    var offset = globalChartData && typeof globalChartData.reportTimeZoneOffsetMinutes === 'number'
+        ? globalChartData.reportTimeZoneOffsetMinutes : null;
+    var options = { hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit' };
+    var format = null;
+    try {
+        if (zone) format = new Intl.DateTimeFormat('en-US', Object.assign({ timeZone: zone }, options));
+    } catch (e) { format = null; }
+    var read;
+    if (format) {
+        read = function (t) {
+            var p = {};
+            format.formatToParts(new Date(t)).forEach(function (x) { p[x.type] = x.value; });
+            return { year: p.year, month: p.month, day: p.day, hour: p.hour === '24' ? '00' : p.hour,
+                minute: p.minute, second: p.second };
+        };
+    } else {
+        read = function (t) {
+            var d = new Date(offset != null ? t + offset * 60000 : t);
+            var utc = offset != null;
+            return {
+                year: String(utc ? d.getUTCFullYear() : d.getFullYear()),
+                month: pad((utc ? d.getUTCMonth() : d.getMonth()) + 1),
+                day: pad(utc ? d.getUTCDate() : d.getDate()),
+                hour: pad(utc ? d.getUTCHours() : d.getHours()),
+                minute: pad(utc ? d.getUTCMinutes() : d.getMinutes()),
+                second: pad(utc ? d.getUTCSeconds() : d.getSeconds())
+            };
+        };
+    }
+    return { settled: !!globalChartData, second: NaN, parts: null, read: read };
+}
+
 function formatTime(date) {
-    return pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' + pad(date.getSeconds());
+    var p = reportClockParts(date.getTime());
+    return p.hour + ':' + p.minute + ':' + p.second;
 }
 
 function formatTimeRangeFull(date) {
-    return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate()) +
-        ' ' + pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' + pad(date.getSeconds());
+    var p = reportClockParts(date.getTime());
+    return p.year + '-' + p.month + '-' + p.day + ' ' + p.hour + ':' + p.minute + ':' + p.second;
 }
 
-/* "UTC±hh:mm" for one instant, from THAT date's own offset (SF38): in Jerusalem a window from
-   November 2023 is +02:00 and a collection from October 2026 +03:00, so one label for a whole tab
-   would be wrong for one of them. Numeric, not Intl's short name, which follows the reader's locale
-   ("GMT+3" in one, "IDT" in another). */
-function zoneLabel(date) {
-    var offset = -date.getTimezoneOffset();
-    var sign = offset < 0 ? '-' : '+';
-    offset = Math.abs(offset);
-    return 'UTC' + sign + pad(Math.floor(offset / 60)) + ':' + pad(offset % 60);
-}
-
-/* A stamp that says which zone it is in: the Server tab's times and the header's Generated. Its own
-   function rather than a change to formatTimeRangeFull, which also fills the client's Time Range
-   inputs — and those are parsed back. */
-function formatTimeZoned(date) {
-    return formatTimeRangeFull(date) + ' ' + zoneLabel(date);
-}
-
-/* The header's "Generated" in the READER's zone (SF38). Java wrote it in the generating JVM's
-   ("2026-10-03 16:10:16 IDT", read the same in New York), and that string is also the CI/CD
-   JSON's generatedAt, so it is left alone: the template carries the instant as an ISO attribute
-   and the page writes it, keeping the machine's own text in the title. A report with no attribute
+/* The header's "Generated" in the report's clock, as every other time on the page. Java wrote it in
+   the generating JVM's zone with that zone's short name ("2026-10-03 16:10:16 IDT"), which is also
+   the CI/CD JSON's generatedAt and stays there; the template carries the instant as an ISO attribute,
+   and the page writes it without a zone name, as JMeter writes its times. A report with no attribute
    keeps what Java wrote. */
-function localizeGeneratedAt() {
+function writeGeneratedAt() {
     var el = document.getElementById('reportGeneratedAt');
     var iso = el ? el.getAttribute('data-generated-at') : null;
     if (!iso) return;
     var ms = Date.parse(String(iso).replace(/(\.\d{3})\d+/, '$1'));
     if (isNaN(ms)) return;
-    var written = (el.textContent || '').replace(/^Generated:\s*/, '');
-    el.textContent = 'Generated: ' + formatTimeZoned(new Date(ms));
-    if (written) el.title = 'As the generating machine wrote it: ' + written;
+    el.textContent = 'Generated: ' + formatTimeRangeFull(new Date(ms));
 }
 
 function getTestStart() {
@@ -3237,9 +3353,10 @@ function getTestDurationMs() {
 function testSpansMidnight() {
     if (!globalChartData || !globalChartData.timestamps || globalChartData.timestamps.length < 2) return false;
     var ts = globalChartData.timestamps;
-    var startDay = new Date(ts[0]).getDate();
-    var endDay = new Date(ts[ts.length - 1]).getDate();
-    return startDay !== endDay;
+    var first = reportClockParts(ts[0]);
+    var firstDay = first.year + first.month + first.day;
+    var last = reportClockParts(ts[ts.length - 1]);
+    return firstDay !== last.year + last.month + last.day;
 }
 
 function getEffectiveVisibleRange() {
@@ -3271,15 +3388,15 @@ function formatElapsed(ms, rangeMs) {
 }
 
 function formatClock(value, rangeMs) {
-    var d = new Date(value);
+    var p = reportClockParts(value);
     var range = rangeMs === undefined ? getEffectiveVisibleRange() : rangeMs;
     var showDate = testSpansMidnight();
-    var prefix = showDate ? pad(d.getMonth() + 1) + '/' + pad(d.getDate()) + ' ' : '';
+    var prefix = showDate ? p.month + '/' + p.day + ' ' : '';
 
     if (range < 120000) {
-        return prefix + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+        return prefix + p.hour + ':' + p.minute + ':' + p.second;
     } else {
-        return prefix + pad(d.getHours()) + ':' + pad(d.getMinutes());
+        return prefix + p.hour + ':' + p.minute;
     }
 }
 
@@ -4894,7 +5011,8 @@ function formatErrorClock(ts) {
     if (ts == null) return '';
     var d = new Date(ts);
     if (isNaN(d.getTime())) return '';
-    var ms = d.getMilliseconds();
+    var t = d.getTime();
+    var ms = ((t % 1000) + 1000) % 1000;
     return formatTime(d) + '.' + (ms < 10 ? '00' : ms < 100 ? '0' : '') + ms;
 }
 
@@ -6902,8 +7020,10 @@ function applyComparisonThresholds() {
     var p99Th = parseFloat(document.getElementById('thP99').value);
     var tpTh = parseFloat(document.getElementById('thThroughput').value);
 
-    /* Re-evaluate regression flags client-side */
-    globalChartData.comparisonDiffs.forEach(function (diff) {
+    /* Re-evaluate regression flags client-side: every row, and the Σ Total row by the same rule */
+    var judged = globalChartData.comparisonDiffs.slice();
+    if (globalChartData.comparisonTotal) judged.push(globalChartData.comparisonTotal);
+    judged.forEach(function (diff) {
         if (diff.isNew) { diff.regression = false; return; }
         /* Java counts a removed sampler as a regression whatever the thresholds say: an endpoint
            that stopped being exercised is the change a gate should catch. It carries no deltas,
@@ -7161,22 +7281,59 @@ function populateComparisonTable(data) {
         tr.innerHTML =
             '<td title="' + escapedName + '">' + escapedName + '</td>' +
             '<td><span class="status-badge ' + statusClass + '" style="font-size:0.65rem;padding:2px 8px;">' + statusText + '</span></td>' +
-            '<td>' + (diff.currSamples || '\u2014') + inlineDelta(diff.deltaSamples, '', 'neutral') + '</td>' +
-            '<td>' + (diff.currErrors || 0) + inlineDelta(diff.deltaErrors, '') + '</td>' +
-            '<td>' + diff.currErrorRate + '%' + inlineDelta(diff.deltaErrorRate, '%') + '</td>' +
-            '<td>' + formatCellMs(diff.currMean) + inlineDelta(diff.deltaMean, ' ms') + '</td>' +
-            '<td>' + formatCellMs(diff.currMedian) + inlineDelta(diff.deltaMedian, ' ms') + '</td>' +
-            '<td>' + formatCellMs(diff.currP90) + inlineDelta(diff.deltaP90, ' ms') + '</td>' +
-            '<td>' + formatCellMs(diff.currP95) + inlineDelta(diff.deltaP95, ' ms') + '</td>' +
-            '<td>' + formatCellMs(diff.currP99) + inlineDelta(diff.deltaP99, ' ms') + '</td>' +
-            '<td>' + formatCellMs(diff.currMin) + inlineDelta(diff.deltaMin, ' ms') + '</td>' +
-            '<td>' + formatCellMs(diff.currMax) + inlineDelta(diff.deltaMax, ' ms') + '</td>' +
-            '<td>' + (diff.currThroughput != null ? diff.currThroughput.toFixed(1) + '/s' : '\u2014') + inlineDelta(diff.deltaThroughput, '/s', true) + '</td>' +
-            '<td>' + (diff.currRecvKBs != null ? diff.currRecvKBs.toFixed(1) : '\u2014') + inlineDelta(diff.deltaRecvKBs, '', true) + '</td>' +
+            comparedCells(diff, [
+                diff.currSamples ? wholeNumberText(diff.currSamples) : '\u2014',
+                wholeNumberText(diff.currErrors || 0),
+                twoDecimalsText(diff.currSamples > 0 ? (diff.currErrors || 0) * 100 / diff.currSamples : 0) + '%',
+                wholeNumberText(diff.currMean), wholeNumberText(diff.currMedian), wholeNumberText(diff.currP90),
+                wholeNumberText(diff.currP95), wholeNumberText(diff.currP99), wholeNumberText(diff.currMin),
+                wholeNumberText(diff.currMax),
+                diff.currThroughput != null ? formatRate(diff.currThroughput) : '\u2014',
+                diff.currRecvKBs != null ? twoDecimalsText(diff.currRecvKBs) : '\u2014'
+            ]) +
             '<td><button class="row-hide-btn" onclick="hideTableRow(this, \'comparisonTable\'); event.stopPropagation();" title="Hide row">&times;</button></td>';
 
         tbody.appendChild(tr);
     });
+    updateComparisonTotalRow();
+}
+
+/* A compared row's figure cells: each of this run's figures (written as the Samplers table writes it,
+   the Aggregate Report's patterns) with the change from the baseline beside it. */
+function comparedCells(diff, texts) {
+    var deltas = [[diff.deltaSamples, '', 'neutral'], [diff.deltaErrors, ''], [diff.deltaErrorRate, '%'],
+        [diff.deltaMean, ' ms'], [diff.deltaMedian, ' ms'], [diff.deltaP90, ' ms'], [diff.deltaP95, ' ms'],
+        [diff.deltaP99, ' ms'], [diff.deltaMin, ' ms'], [diff.deltaMax, ' ms'],
+        [diff.deltaThroughput, '/s', true], [diff.deltaRecvKBs, '', true]];
+    return texts.map(function (text, i) {
+        return '<td>' + escapeHtml(text) + inlineDelta(deltas[i][0], deltas[i][1], deltas[i][2]) + '</td>';
+    }).join('');
+}
+
+/* The Compare table's Σ Total row: this run's whole run against the baseline's, as a JMeter user reads
+   two Aggregate Reports' TOTAL rows side by side (plan v2 item 3). It shows with the Σ Total chip and
+   stays first, as the Samplers tab's does; its figures are that row's own (sigmaTotalCellTexts over the
+   same totalRowFigures), so the two read the same; the change beside each, and its OK or REGRESSION, are
+   the comparison's (chartData.comparisonTotal: the two runs' OverallMetrics, judged as every row is). */
+function updateComparisonTotalRow() {
+    var tbody = document.getElementById('comparisonTableBody');
+    if (!tbody) return;
+    var existing = tbody.querySelector('tr.comparison-total-row');
+    if (existing) existing.remove();
+    var total = globalChartData && globalChartData.comparisonTotal;
+    if (!total || !isTotalVisible()) return;
+    var tr = document.createElement('tr');
+    tr.className = 'comparison-total-row';
+    tr.style.fontWeight = '700';
+    tr.innerHTML = '<td title="' + escapeHtml(TOTAL_SAMPLER_NAME) + '">' + escapeHtml(TOTAL_SAMPLER_NAME) + '</td>' +
+        '<td><span class="status-badge ' + (total.regression ? 'cmp-regression' : 'cmp-ok') +
+        '" style="font-size:0.65rem;padding:2px 8px;">' + (total.regression ? 'REGRESSION' : 'OK') + '</span></td>' +
+        comparedCells(total, sigmaTotalCellTexts(totalRowFigures(globalChartData, isTransactionChild)).slice(0, 12)) +
+        '<td></td>';
+    tbody.insertBefore(tr, tbody.firstChild);
+    applyGenericColumnVisibility('comparisonTable');
+    var filter = (getTableState('comparisonTable').filterText || '').toLowerCase();
+    if (filter && (tr.textContent || '').toLowerCase().indexOf(filter) < 0) tr.style.display = 'none';
 }
 
 function inlineDelta(val, suffix, invertColor) {
@@ -7202,14 +7359,6 @@ function inlineDelta(val, suffix, invertColor) {
     return '<sup class="' + cls + '">' + text + '</sup>';
 }
 
-function formatCellMs(val) {
-    if (val == null || isNaN(val)) return '0';
-    if (val < 1000) return val.toFixed(0);
-    if (val < 60000) return (val / 1000).toFixed(1) + 's';
-    var m = Math.floor(val / 60000);
-    var s = Math.round((val % 60000) / 1000);
-    return m + 'm ' + s + 's';
-}
 
 /* ============================================================
  *  What Changed (vs Baseline) — auto-generated summary
@@ -7227,14 +7376,12 @@ function initWhatChanged(data) {
     var regressions = [];
     var improvements = [];
     var newSamplers = [];
-    var nonNewDiffs = [];
 
     diffs.forEach(function (diff) {
         if (diff.isNew) {
             newSamplers.push(diff);
             return;
         }
-        nonNewDiffs.push(diff);
         if (diff.regression) {
             regressions.push(diff);
         }
@@ -7253,27 +7400,6 @@ function initWhatChanged(data) {
         return (a.p95PctChange || 0) - (b.p95PctChange || 0);
     });
 
-    /* Compute overall average P95 change across non-new samplers */
-    var p95Sum = 0;
-    var p95Count = 0;
-    nonNewDiffs.forEach(function (diff) {
-        if (diff.p95PctChange != null) {
-            p95Sum += diff.p95PctChange;
-            p95Count++;
-        }
-    });
-    var avgP95Change = p95Count > 0 ? p95Sum / p95Count : 0;
-
-    /* Compute overall error rate change */
-    var errSum = 0;
-    var errCount = 0;
-    nonNewDiffs.forEach(function (diff) {
-        if (diff.deltaErrorRate != null) {
-            errSum += diff.deltaErrorRate;
-            errCount++;
-        }
-    });
-    var avgErrorChange = errCount > 0 ? errSum / errCount : 0;
 
     /* Truncate sampler name if too long */
     function truncateName(name, maxLen) {
@@ -7293,16 +7419,28 @@ function initWhatChanged(data) {
     /* Build HTML */
     var html = '';
 
-    /* Overall line */
-    var p95Word = avgP95Change < -2 ? 'improved' : (avgP95Change > 2 ? 'degraded' : 'stable');
-    var p95Desc = p95Word === 'stable'
-        ? 'P95 stable (' + fmtPct(avgP95Change) + ')'
-        : 'P95 ' + p95Word + ' ' + Math.abs(avgP95Change).toFixed(0) + '% on average';
-
-    var errWord = Math.abs(avgErrorChange) < 0.5 ? 'stable' : (avgErrorChange > 0 ? 'increased' : 'decreased');
-    var errDesc = 'Error rate ' + errWord + ' (' + fmtPct(avgErrorChange) + ')';
-
-    html += '<div class="what-changed-line"><strong>Overall:</strong> ' + escapeHtml(p95Desc) + '. ' + escapeHtml(errDesc) + '.</div>';
+    /* Overall: the two runs' Σ Total rows, as a JMeter user reads two Aggregate Reports' TOTAL rows side
+       by side (plan v2 item 4). It was a sentence averaging every sampler's change, each counted once
+       whatever its size ("P95 degraded 8% on average. Error rate decreased (-3.0%)" on CMP, where the
+       whole run went 5.83% -> 2.55%). Each row is written as that run's own Samplers Σ Total row is:
+       this run's from chartData.overall, the baseline's from the same block of its whole run. */
+    var total = data.comparisonTotal;
+    if (total && total.baselineOverall) {
+        var heads = ['', 'Samples', 'Errors', 'Error %', 'Mean (ms)', 'Median (ms)', 'P90 (ms)', 'P95 (ms)',
+            'P99 (ms)', 'Min (ms)', 'Max (ms)', 'Throughput', 'Recv KB/s'];
+        var runRow = function (run, label, figures) {
+            return '<tr data-run="' + run + '"><td>' + escapeHtml(label) + '</td>' +
+                sigmaTotalCellTexts(figures).slice(0, 12).map(function (t) { return '<td>' + escapeHtml(t) + '</td>'; }).join('') +
+                '</tr>';
+        };
+        html += '<div class="what-changed-line"><strong>Overall:</strong> the two runs\' ' + escapeHtml(TOTAL_SAMPLER_NAME) + ' rows</div>';
+        html += '<div class="table-wrapper"><table class="stats-table what-changed-totals"><thead><tr>' +
+            heads.map(function (h) { return '<th>' + escapeHtml(h) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+            runRow('baseline', 'Baseline ' + TOTAL_SAMPLER_NAME,
+                totalRowFigures({ overall: total.baselineOverall, samplers: [] }, function () { return false; })) +
+            runRow('current', 'This run ' + TOTAL_SAMPLER_NAME, totalRowFigures(data, isTransactionChild)) +
+            '</tbody></table></div>';
+    }
 
     /* Regressions */
     if (regressions.length > 0) {
@@ -7592,8 +7730,11 @@ function sortGenericTable(tableId, colId, type) {
     Array.from(tbody.querySelectorAll('tr.error-detail-row')).forEach(function (dr) { dr.remove(); });
 
     var rows = Array.from(tbody.rows);
-    var dataRows = rows.filter(function (r) { return !r.classList.contains('error-summary-total'); });
+    var dataRows = rows.filter(function (r) {
+        return !r.classList.contains('error-summary-total') && !r.classList.contains('comparison-total-row');
+    });
     var totalRow = rows.filter(function (r) { return r.classList.contains('error-summary-total'); });
+    var firstRow = rows.filter(function (r) { return r.classList.contains('comparison-total-row'); });
 
     dataRows.sort(function (a, b) {
         var va = a.cells[effectiveCol] ? a.cells[effectiveCol].textContent.trim() : '';
@@ -7608,8 +7749,9 @@ function sortGenericTable(tableId, colId, type) {
     });
 
     dataRows.forEach(function (row) { tbody.appendChild(row); });
-    /* Keep total row pinned at the bottom */
+    /* Keep total row pinned at the bottom, and the Compare tab's Σ Total row at the top */
     totalRow.forEach(function (tr) { tbody.appendChild(tr); });
+    firstRow.forEach(function (tr) { tbody.insertBefore(tr, tbody.firstChild); });
 }
 
 /**
@@ -7827,7 +7969,7 @@ function exportComparisonCsv() {
  * ============================================================ */
 
 document.addEventListener('DOMContentLoaded', function () {
-    localizeGeneratedAt();
+    writeGeneratedAt();
     loadSettings();
     restoreFilterRowState();
     initTabs();
@@ -7897,7 +8039,8 @@ WIR.chartStyle = {
     layoutHandles: layoutHandles,
     labelTextWidth: labelTextWidth,
     layoutChartLabels: layoutChartLabels,
-    zoneLabel: zoneLabel
+    formatTimeRangeFull: formatTimeRangeFull,
+    formatTime: formatTime
 };
 
 /* ============================================================
@@ -8295,9 +8438,39 @@ WIR.javaText = (function () {
         return r;
     }
 
+    /**
+     * java.text.DecimalFormat's text for a pattern of exactly `decimals` decimals ("#0.00", "#0.000",
+     * "#.0"), as FormatUtil writes the Samplers rows: the double's exact value rounded half-even, as
+     * DecimalFormat rounds it, every decimal written, and no grouping. toFixed differs on an exact tie
+     * (8.25 at one decimal: toFixed writes 8.3, DecimalFormat 8.2). `leadingZero` false is the "#.0"
+     * pattern JMeter's RateRenderer uses, which writes 0.5 as ".5". Checked against DecimalFormat over
+     * 2,309 values (tmp/number-format-and-what-changed/dev/DfCheck.java): equal but for one whose
+     * shortest digits stop on the tie digit while its exact value lies just past it (0.0005 at three
+     * decimals: DecimalFormat 0.000, this 0.001), which no cell here meets, an Apdex being stored at
+     * three decimals already.
+     */
+    function decimalFormat(value, decimals, leadingZero) {
+        if (!isFinite(value)) return value !== value ? 'NaN' : (value > 0 ? '\u221E' : '-\u221E');
+        var negative = value < 0 || (value === 0 && 1 / value < 0);
+        var exact = Math.abs(value).toFixed(100);       // the double's exact decimal expansion
+        var point = exact.indexOf('.');
+        var whole = exact.slice(0, point);
+        var fraction = exact.slice(point + 1);
+        var kept = BigInt(whole + fraction.slice(0, decimals));
+        var next = fraction.charAt(decimals);
+        var rest = fraction.slice(decimals + 1);
+        if (next > '5' || (next === '5' && (/[1-9]/.test(rest) || kept % 2n === 1n))) kept += 1n;
+        var digits = kept.toString();
+        while (digits.length < decimals + 1) digits = '0' + digits;
+        var intPart = decimals ? digits.slice(0, digits.length - decimals) : digits;
+        var text = intPart + (decimals ? '.' + digits.slice(digits.length - decimals) : '');
+        if (leadingZero === false && intPart === '0') text = text.slice(1);
+        return (negative && /[1-9]/.test(text) ? '-' : '') + text;
+    }
+
     return { double: javaDouble, long: javaLong, trim: trim, durationsTrim: durationsTrim,
         numberText: numberText, text: text, describe: describe, jacksonCopy: jacksonCopy,
-        stringTrim: stringTrim, parseDouble: parseDouble };
+        stringTrim: stringTrim, parseDouble: parseDouble, decimalFormat: decimalFormat };
 }());
 
 /* ============================================================
@@ -8400,7 +8573,7 @@ WIR.digits = (function () {
     function enDigits(n) {
         if (n === 0) return '0';
         if (Math.abs(n) < 1e-20) return WIR.javaText.double(n);
-        return n.toLocaleString('en-US', { maximumFractionDigits: 20 });
+        return n.toLocaleString('en-US', { maximumFractionDigits: 20, useGrouping: false });
     }
 
     /**
@@ -18318,7 +18491,7 @@ WIR.serverKpis = (function () {
             html += '<li><strong>Export this window</strong> from your monitoring tool: '
                 + esc(from + ' → ' + to)
                 + ' <span class="wir-dim">(' + esc(collectedAtText(from) + ' → ' + collectedAtText(to))
-                + ' your time; epoch ms ' + esc(String(w.start) + ' → ' + String(w.end)) + ')</span>.'
+                + '; epoch ms ' + esc(String(w.start) + ' → ' + String(w.end)) + ')</span>.'
                 + ' A minute either side is fine: rows outside the run are counted and ignored.</li>';
         }
         if (series.length) {
@@ -18434,7 +18607,7 @@ WIR.serverKpis = (function () {
         var w = judgedWindow();
         /* Each end with its own zone (SF38): the reader's, as F16 chose, said rather than implied. */
         var windowText = w
-            ? formatTimeZoned(new Date(w.start)) + ' → ' + formatTimeZoned(new Date(w.end))
+            ? formatTimeRangeFull(new Date(w.start)) + ' → ' + formatTimeRangeFull(new Date(w.end))
                 + (w.trimmed ? ' · ramp-up excluded' : '')
             : (state.metrics ? 'unknown' : 'nothing collected yet');
         html += '<p class="wir-window-note">Window judged: <strong>' + esc(windowText)
@@ -20082,7 +20255,7 @@ WIR.serverKpis = (function () {
        (SF38). A stamp that will not parse is shown as written rather than as "Invalid Date". */
     function collectedAtText(iso) {
         var ms = Date.parse(String(iso).replace(/(\.\d{3})\d+/, '$1'));
-        return isNaN(ms) ? String(iso) : formatTimeZoned(new Date(ms));
+        return isNaN(ms) ? String(iso) : formatTimeRangeFull(new Date(ms));
     }
 
     function formatDurationMs(ms) {
@@ -20648,7 +20821,7 @@ WIR.serverKpis = (function () {
             var at = list[0].axisValue !== undefined ? list[0].axisValue
                 : (list[0].value && list[0].value[0]);
             /* With its zone, as every time on this tab carries one (SF38). */
-            var html = esc(formatTimeZoned(new Date(at)));
+            var html = esc(formatTimeRangeFull(new Date(at)));
             list.forEach(function (p) {
                 var v = p.value && p.value.length > 1 ? p.value[1] : null;
                 /* Each name cut at a fixed width, as Grafana's tooltip rows are: petstore's SQL-text

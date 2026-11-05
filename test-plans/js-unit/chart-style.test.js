@@ -31,9 +31,9 @@ const CS = WIR.chartStyle;
 const SK = WIR.serverKpis;
 
 if (!CS || !CS.bandColorFor || !CS.withAlpha || !CS.paletteFor || !CS.palettes || !CS.darkPalettes
-        || !CS.layoutHandles || !CS.zoneLabel || !SK || !SK._instanceLabelAligns) {
+        || !CS.layoutHandles || !CS.formatTimeRangeFull || !SK || !SK._instanceLabelAligns) {
     throw new Error('report.js exposed no WIR.chartStyle.{bandColorFor, withAlpha, paletteFor, palettes,'
-        + ' darkPalettes, layoutHandles, zoneLabel} or WIR.serverKpis._instanceLabelAligns — the harness is stale');
+        + ' darkPalettes, layoutHandles, formatTimeRangeFull} or WIR.serverKpis._instanceLabelAligns — the harness is stale');
 }
 
 const tests = [];
@@ -326,16 +326,30 @@ test('SF42: the Server tab spells a granularity rung as the client filter bar do
     assert.strictEqual(SK._granularityLabel(15000), '15s');
 });
 
-// ---------------------------------------------------------------- SF38: zones
+// ---------------------------------------------------------------- the report's clock
 
-test('SF38: a stamp\'s zone is UTC±hh:mm from that instant\'s own offset', () => {
-    const at = (minutesEast) => ({ getTimezoneOffset: () => -minutesEast });
-    assert.strictEqual(CS.zoneLabel(at(0)), 'UTC+00:00');
-    assert.strictEqual(CS.zoneLabel(at(330)), 'UTC+05:30');
-    assert.strictEqual(CS.zoneLabel(at(180)), 'UTC+03:00');
-    assert.strictEqual(CS.zoneLabel(at(-240)), 'UTC-04:00');
-    assert.strictEqual(CS.zoneLabel(at(-570)), 'UTC-09:30');
-    assert.strictEqual(CS.zoneLabel(at(345)), 'UTC+05:45');
+/*
+ * Every time on the page is in the zone of the machine that built the report, as JMeter's HTML report
+ * writes its times, whatever the reader's: chartData.reportTimeZone names it, and no zone is written
+ * beside a time (plan v2, 2026-11-05). It replaced SF38's reader-zone stamps with their UTC±hh:mm labels.
+ * Each case is a zone this process is not in, so a clock that read the process's zone fails it.
+ */
+test('the report\'s clock writes a time in the zone the report names, never the reader\'s', () => {
+    const at = (zone, offset) => loadReportJs({ reportTimeZone: zone, reportTimeZoneOffsetMinutes: offset }).chartStyle;
+    // 2023-11-14 22:13:20 UTC
+    const t = new Date(1700000000000);
+    assert.strictEqual(at('Asia/Jerusalem', 120).formatTimeRangeFull(t), '2023-11-15 00:13:20');
+    assert.strictEqual(at('America/New_York', -300).formatTimeRangeFull(t), '2023-11-14 17:13:20');
+    assert.strictEqual(at('Asia/Kolkata', 330).formatTimeRangeFull(t), '2023-11-15 03:43:20');
+    assert.strictEqual(at('UTC', 0).formatTime(t), '22:13:20');
+    // The zone's own rules on every instant: Jerusalem is +03:00 in August, +02:00 in November
+    assert.strictEqual(at('Asia/Jerusalem', 120).formatTimeRangeFull(new Date(Date.UTC(2023, 7, 1, 9, 0, 0))),
+        '2023-08-01 12:00:00');
+});
+
+test('a zone the browser cannot name falls back to its offset at the run\'s start, as JMeter draws its graphs', () => {
+    const CSX = loadReportJs({ reportTimeZone: 'Not/AZone', reportTimeZoneOffsetMinutes: 345 }).chartStyle;
+    assert.strictEqual(CSX.formatTimeRangeFull(new Date(1700000000000)), '2023-11-15 03:58:20');
 });
 
 // ---------------------------------------------------------------------------

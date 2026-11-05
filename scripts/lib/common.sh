@@ -868,7 +868,7 @@ _several_plugin_jars_sentence() {
 # much JMeter work an automated cycle has to do — every other scenario in
 # run-all-tests.sh validates only "a report was produced" and is manual-tier.
 # Keep in step with REQUIRED_FIXTURES in test-plans/playwright/global-setup.ts.
-FIXTURE_IDS="E02 E05 E06 E07 E08 E09 E10 E11 E12 E19 E25 E26 E27 E28 E29 E31 CMP"
+FIXTURE_IDS="E02 E05 E06 E07 E08 E09 E10 E11 E12 E19 E25 E26 E27 E28 E29 E31 CMP CMP31"
 
 # Every tracked .sh and git hook must be committed 100755.
 #
@@ -1406,14 +1406,18 @@ run_counts_against_jmeter() {
     fi
     cp="$(_count_check_classpath "$out/classes")"
 
-    # _referee <results file> <csv out>
+    # _referee <results file> <csv out>. Under the locale JMeter's launcher gives an English machine: the
+    # Aggregate Report table's decimal columns follow the JVM's locale, and the page is held to that text
     _referee() {
-        java -cp "$cp" AggregateReportReferee "$(_count_check_path "$JMETER_HOME")" \
+        java -Djava.awt.headless=true -Duser.language=en -Duser.country=US -cp "$cp" AggregateReportReferee \
+            "$(_count_check_path "$JMETER_HOME")" \
             "$(_count_check_path "$1")" "$(_count_check_path "$2")" >> "$out/referee.log" 2>&1
     }
     # _check <id> <report.json> <results.jtl> <in-test-plan results> [rebuilt report.json]
     _check() {
-        local name="$1" report="$2" every="$3" in_test="$4" rebuilt="${5:-}"
+        local name="$1" report="$2" every="$3" in_test="$4" rebuilt="${5:-}" page
+        # The report's page beside its JSON: its Samplers rows against the Aggregate Report's table text
+        page="${report%.json}.html"
         _referee "$every" "$out/$name-every-row.csv" || { echo "  [$name] FAIL: the referee could not read $every"; return 1; }
         _referee "$in_test" "$out/$name-in-test-plan.csv" || { echo "  [$name] FAIL: the referee could not read $in_test"; return 1; }
         # No array for the optional argument: under set -u, bash 3.2 (macOS's /bin/bash) calls an
@@ -1421,11 +1425,11 @@ run_counts_against_jmeter() {
         if [[ -n "$rebuilt" ]]; then
             PYTHONIOENCODING=utf-8 "$PYTHON" "$TEST_PLANS/scripts/verify-data-integrity.py" --fixture "$name" \
                 --report "$report" --every-row "$out/$name-every-row.csv" --in-test-plan "$out/$name-in-test-plan.csv" \
-                --rebuilt-report "$rebuilt" --output "$out/$name.csv"
+                --rebuilt-report "$rebuilt" --report-html "$page" --output "$out/$name.csv"
         else
             PYTHONIOENCODING=utf-8 "$PYTHON" "$TEST_PLANS/scripts/verify-data-integrity.py" --fixture "$name" \
                 --report "$report" --every-row "$out/$name-every-row.csv" --in-test-plan "$out/$name-in-test-plan.csv" \
-                --output "$out/$name.csv"
+                --report-html "$page" --output "$out/$name.csv"
         fi
     }
     # _check_g <id> <input file>: a -g fixture, whose input must not nest anything
@@ -1439,11 +1443,12 @@ run_counts_against_jmeter() {
         case "$id" in
             E26|E27|E28) _check_g "$id" "$TEST_PLANS/goldens/plain.jtl" || fail=1 ;;
             E29)         _check_g "$id" "$RESULTS_DIR/E29-inputs/soak.jtl" || fail=1 ;;
-            CMP)
-                _check CMP "$RESULTS_DIR/CMP/CMP-report.json" "$RESULTS_DIR/CMP/results.jtl" \
-                    "$RESULTS_DIR/CMP/in-test-plan.jtl" || fail=1
-                _check CMP-baseline "$RESULTS_DIR/CMP/baseline.json" "$RESULTS_DIR/CMP/baseline.jtl" \
-                    "$RESULTS_DIR/CMP/baseline-in-test-plan.jtl" || fail=1 ;;
+            CMP|CMP31)
+                # A comparison fixture: both of its runs, each held to its own files
+                _check "$id" "$RESULTS_DIR/$id/$id-report.json" "$RESULTS_DIR/$id/results.jtl" \
+                    "$RESULTS_DIR/$id/in-test-plan.jtl" || fail=1
+                _check "$id-baseline" "$RESULTS_DIR/$id/baseline.json" "$RESULTS_DIR/$id/baseline.jtl" \
+                    "$RESULTS_DIR/$id/baseline-in-test-plan.jtl" || fail=1 ;;
             E31)
                 # The run report's title, which runId hashes: without it -g names the run otherwise
                 local title

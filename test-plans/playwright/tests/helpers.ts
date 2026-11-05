@@ -47,6 +47,20 @@ export async function loadDirty(page: Page, testId: string): Promise<void> {
 }
 
 /**
+ * An instant as the report's clock writes it: yyyy-MM-dd HH:mm:ss in the zone the report names
+ * (chartData.reportTimeZone, the machine that built it), worked out here by Node's own Intl rather
+ * than by the page's formatter, so a spec holds on a machine in any zone.
+ */
+export function inZone(ms: number, zone: string): string {
+  const p: Record<string, string> = {};
+  new Intl.DateTimeFormat('en-US', {
+    timeZone: zone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(new Date(ms)).forEach((x) => { p[x.type] = x.value; });
+  return `${p.year}-${p.month}-${p.day} ${p.hour === '24' ? '00' : p.hour}:${p.minute}:${p.second}`;
+}
+
+/**
  * Switch to a tab by clicking its button.
  */
 export async function switchTab(page: Page, tabName: string): Promise<void> {

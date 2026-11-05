@@ -78,12 +78,12 @@ test('float noise is never shown to separate an actual from its band (C1, L8)', 
 });
 
 test('unextended, an actual is formatValue\'s text — its spelling included', () => {
-    // KB/s is grouped, as FormatUtil groups the Samplers table's rates (L15); nothing here is near
+    // KB/s has no thousands separator, as FormatUtil writes the Samplers table's rates (L15, then JMeter's rule); nothing here is near
     // the band.
-    assert.strictEqual(A._formatActual(1234.567, 'KB/s', [2000]), '1,234.57 KB/s');
+    assert.strictEqual(A._formatActual(1234.567, 'KB/s', [2000]), '1234.57 KB/s');
     assert.strictEqual(A._formatActual(1234.567, 'KB/s', [2000]), A._formatValue(1234.567, 'KB/s'));
     assert.strictEqual(A._formatActual(0.0015, '/s', []), '0.0015 /s');
-    assert.strictEqual(A._formatActual(1250, 'ms'), '1,250 ms');
+    assert.strictEqual(A._formatActual(1250, 'ms'), '1250 ms');
     // An absent band is null in ruleBands' pair, and is no band.
     assert.strictEqual(A._formatActual(373.8625, 'ms', [null, 374]), '373.9 ms');
     assert.strictEqual(A._formatActual(373.8625, 'ms', [undefined, null]), '374 ms');
@@ -105,7 +105,7 @@ test('a band is written with every digit it has, never rounded', () => {
     // Below the rounding grain too — the 0.0015 /s floor that once read "< 0 /s".
     assert.strictEqual(A._describeBand({ op: 'lt', value: 0.0015 }, '/s'), '< 0.0015 /s');
     // Grouped as the actual beside it is, and a whole band stays whole.
-    assert.strictEqual(A._describeBand({ op: 'gt', value: 1000 }, 'ms'), '> 1,000 ms');
+    assert.strictEqual(A._describeBand({ op: 'gt', value: 1000 }, 'ms'), '> 1000 ms');
     assert.strictEqual(A._describeBand({ op: 'lte', value: 0.98 }, ''), '≤ 0.98');
     assert.strictEqual(A._describeBand(null, 'ms'), null);
 });
@@ -116,18 +116,19 @@ test('SF17: a German reader gets the same digits — en-US, as the cards beside 
     assert.strictEqual((1234.5).toLocaleString('de-DE'), '1.234,5',
         'this node has no German ICU data, so the locale case below would prove nothing');
     const DA = loadReportJs(undefined, { locale: 'de-DE' }).asserts;
-    assert.strictEqual(DA._formatActual(1234.5678, 'ms', [1234.57]), '1,234.568 ms');
-    assert.strictEqual(DA._describeBand({ op: 'gt', value: 1234.57 }, 'ms'), '> 1,234.57 ms');
-    assert.strictEqual(DA._formatValue(1234.5678, 'ms'), '1,235 ms');
+    assert.strictEqual(DA._formatActual(1234.5678, 'ms', [1234.57]), '1234.568 ms');
+    assert.strictEqual(DA._describeBand({ op: 'gt', value: 1234.57 }, 'ms'), '> 1234.57 ms');
+    assert.strictEqual(DA._formatValue(1234.5678, 'ms'), '1235 ms');
 });
 
 // ---------------------------------------------------------------- formatValue's text, unmoved
 
 /*
  * formatValue's number comes from WIR.digits.measured, and its spelling from WIR.digits.enDigits in
- * every unit: grouped en-US, as FormatUtil's "#,##0.##" writes the cards and tables beside it. % and
- * a fractional value outside ms, s and /s were written ungrouped — "1234.57 KB/s", "1234.5", "1000 %"
- * (L15). Significant digits where the base would have written a non-zero value as zero. Every case
+ * every unit: '.' for decimals and no thousands separator, as JMeter writes numbers and as FormatUtil
+ * writes the cards and tables beside it (it grouped, "#,##0.##", until 4.3.1; L15 had made every unit
+ * group alike, and the rule is now alike the other way). Significant digits where the base would have
+ * written a non-zero value as zero. Every case
  * in value-formatting.spec.ts and asserts-pure.test.js, plus one per spelling.
  */
 const VALUE_TEXT = [
@@ -138,10 +139,10 @@ const VALUE_TEXT = [
     [0.4, 'ms', '0.4 ms'],
     [0.000012, '/s', '0.000012 /s'],
     [5.6, '/s', '5.6 /s'],
-    [1250, 'ms', '1,250 ms'],
+    [1250, 'ms', '1250 ms'],
     [12.5, '%', '12.5 %'],
     [0.98, '', '0.98'],
-    [2000, '/s', '2,000 /s'],
+    [2000, '/s', '2000 /s'],
     [24.7606, '/s', '24.76 /s'],
     [0, '/s', '0 /s'],
     [0, 'ms', '0 ms'],
@@ -157,19 +158,19 @@ const VALUE_TEXT = [
     [-0.4, 'ms', '-0.4 ms'],
     [2.0833333333333335, '%', '2.08 %'],
     // L15: grouped as FormatUtil groups, in every unit.
-    [1000, '%', '1,000 %'],
+    [1000, '%', '1000 %'],
     [-0.004, '%', '-0.004 %'],
     [0.004999750012499375, '%', '0.005 %'],
     [24.760647078243647, '/s', '24.76 /s'],
-    [10000, '', '10,000'],
-    [1234.5, '', '1,234.5'],
-    [1234.999, '', '1,235'],
-    [1234.567, 'KB/s', '1,234.57 KB/s'],
+    [10000, '', '10000'],
+    [1234.5, '', '1234.5'],
+    [1234.999, '', '1235'],
+    [1234.567, 'KB/s', '1234.57 KB/s'],
     [12.345, 'KB/s', '12.35 KB/s'],
-    [-1234.5, '', '-1,234.5'],
-    [799450271802898, '', '799,450,271,802,898'],
-    [799450271802898, 'ms', '799,450,271,802,898 ms'],
-    [90071992547409.9, '%', '90,071,992,547,409.9 %'],
+    [-1234.5, '', '-1234.5'],
+    [799450271802898, '', '799450271802898'],
+    [799450271802898, 'ms', '799450271802898 ms'],
+    [90071992547409.9, '%', '90071992547409.9 %'],
     // Below the grain, significant digits — written out, never in E notation.
     [1e-7, '/s', '0.0000001 /s']
 ];
@@ -186,10 +187,10 @@ test('formatValue writes every unit grouped en-US, the measured number unmoved',
 test('C1: past 2^53 / 100 a two-decimal value is written as it is, never one unit off', () => {
     // Math.round(v * 100) / 100 loses the last digit once v * 100 passes 2^53 — the Server tab's
     // C1, which the client's own rounding had too: 799450271802898 read "799450271802897.9 %".
-    assert.strictEqual(A._formatValue(799450271802898, '%'), '799,450,271,802,898 %');
-    assert.strictEqual(A._formatValue(799450271802898, '/s'), '799,450,271,802,898 /s');
-    assert.strictEqual(A._formatValue(90071992547410.03, ''), '90,071,992,547,410.03');
-    assert.strictEqual(A._formatActual(799450271802898, '%', [799450271802898]), '799,450,271,802,898 %');
+    assert.strictEqual(A._formatValue(799450271802898, '%'), '799450271802898 %');
+    assert.strictEqual(A._formatValue(799450271802898, '/s'), '799450271802898 /s');
+    assert.strictEqual(A._formatValue(90071992547410.03, ''), '90071992547410.03');
+    assert.strictEqual(A._formatActual(799450271802898, '%', [799450271802898]), '799450271802898 %');
 });
 
 // ---------------------------------------------------------------- the wizard's seeds (Q20)

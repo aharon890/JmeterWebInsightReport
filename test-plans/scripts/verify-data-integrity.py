@@ -21,7 +21,15 @@ Checked, exactly:
   - with --rebuilt-report (the `jmeter -g` report of the same results.jtl): totalSamples, totalErrors and
     runId equal the run report's.
 
-Mean, throughput and the percentiles are not compared here (TEST-COVERAGE-GAPS.md 11.3-11.5).
+With --report-html (the report's page): each Samplers row as the page writes it against the text the
+Aggregate Report's own table shows in that row, cell by cell (the referee's shown_* columns, drawn by
+JMeter's own model and renderers): Samples, Median, 90/95/99%, Min, Max, Error %, Throughput and
+Received/Sent KB/s read as JMeter writes them. Two stated exceptions: Mean is the exact mean rounded to
+whole ms, where the table cuts the decimals off (B8, the owner's decision, 2026-10), and Throughput's unit
+is written "/s" where JMeter writes "/sec" ("/min" and "/hour" alike).
+
+The mean's value, throughput's value and the percentiles are not compared as numbers here
+(TEST-COVERAGE-GAPS.md 11.3-11.5); their text is, through --report-html.
 
 --require-no-nesting <jtl> refuses a results file with a transaction row (the "Number of samples in
 transaction" message) or a renamed sub-result row ("<label>-N" beside "<label>"). R07 uses it on the -g
@@ -44,6 +52,7 @@ import json
 import math
 import re
 import sys
+from html.parser import HTMLParser
 
 TRANSACTION_MARKER = 'Number of samples in transaction : '
 
@@ -70,6 +79,130 @@ def read_referee(path):
         print(f'ERROR: {path} does not end with a TOTAL row', file=sys.stderr)
         sys.exit(2)
     return dict(entries[:-1]), entries[-1][1]
+
+
+def read_referee_table(path):
+    """label -> the referee's row: the exact mean and the Aggregate Report table's text (shown_*)."""
+    try:
+        with open(path, encoding='utf-8', newline='') as f:
+            rows = list(csv.DictReader(f))
+    except (OSError, ValueError) as e:
+        print(f'ERROR: could not read the referee output {path}: {e}', file=sys.stderr)
+        sys.exit(2)
+    if not rows or 'shown_samples' not in rows[0]:
+        print(f'ERROR: {path} carries no shown_* columns (an old referee?)', file=sys.stderr)
+        sys.exit(2)
+    return {r['label']: r for r in rows[:-1]}
+
+
+class SamplerTable(HTMLParser):
+    """The Samplers table's rows as the page's HTML writes them: name -> {column title: cell text}."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.depth = 0          # tables open inside the Samplers table, itself included
+        self.titles = []
+        self.rows = {}
+        self.section = None     # 'thead' or 'tbody'
+        self.row = None         # the open row's name
+        self.cells = None
+        self.text = None        # the open cell's text
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        if tag == 'table':
+            if self.depth or a.get('id') == 'samplerTable':
+                self.depth += 1
+            return
+        if self.depth != 1:
+            return
+        if tag in ('thead', 'tbody'):
+            self.section = tag
+        elif tag == 'tr' and self.section == 'tbody' and a.get('data-sampler') is not None:
+            self.row, self.cells = a['data-sampler'], []
+        elif tag in ('th', 'td'):
+            self.text = []
+
+    def handle_endtag(self, tag):
+        if tag == 'table' and self.depth:
+            self.depth -= 1
+            return
+        if self.depth != 1:
+            return
+        if tag in ('th', 'td') and self.text is not None:
+            cell = ' '.join(''.join(self.text).split())
+            if tag == 'th' and self.section == 'thead':
+                self.titles.append(cell)
+            elif tag == 'td' and self.row is not None:
+                self.cells.append(cell)
+            self.text = None
+        elif tag == 'tr' and self.row is not None:
+            self.rows[self.row] = dict(zip(self.titles, self.cells))
+            self.row = None
+
+    def handle_data(self, data):
+        if self.depth == 1 and self.text is not None:
+            self.text.append(data)
+
+
+def read_sampler_table(path):
+    try:
+        with open(path, encoding='utf-8') as f:
+            parser = SamplerTable()
+            parser.feed(f.read())
+    except OSError as e:
+        print(f'ERROR: could not read the report page {path}: {e}', file=sys.stderr)
+        sys.exit(2)
+    if not parser.titles:
+        print(f'ERROR: {path} has no Samplers table', file=sys.stderr)
+        sys.exit(2)
+    return parser.titles, parser.rows
+
+
+# The page's column -> the referee's column. Mean and Throughput carry their stated exceptions.
+TABLE_COLUMNS = [('Samples', 'shown_samples'), ('Mean (ms)', 'mean'), ('Median (ms)', 'shown_median'),
+                 ('P90 (ms)', 'shown_p90'), ('P95 (ms)', 'shown_p95'), ('P99 (ms)', 'shown_p99'),
+                 ('Min (ms)', 'shown_min'), ('Max (ms)', 'shown_max'), ('Error %', 'shown_error_pct'),
+                 ('Throughput', 'shown_throughput'), ('Recv KB/s', 'shown_received_kb'),
+                 ('Sent KB/s', 'shown_sent_kb')]
+
+
+def as_jmeter_writes(column, referee_row):
+    """The text the page must show for this column, from the referee's row."""
+    if column == 'Mean (ms)':
+        # B8: the exact mean rounded half up to whole ms (FormatUtil.formatMillis); the table truncates
+        return str(math.floor(float(referee_row['mean']) + 0.5))
+    if column == 'Throughput':
+        return re.sub(r'/sec$', '/s', referee_row['shown_throughput'])
+    return referee_row[dict(TABLE_COLUMNS)[column]]
+
+
+def compare_table(fixture, titles, page_rows, table):
+    results = []
+
+    def add(subject, metric, status, ours, jmeter, message):
+        results.append({'fixture': fixture, 'subject': subject, 'metric': metric, 'status': status,
+                        'report': ours, 'jmeter': jmeter, 'message': message})
+
+    missing = [c for c, _ in TABLE_COLUMNS if c not in titles]
+    if missing:
+        add('Samplers table', 'columns', 'FAIL', titles, missing, 'the page has no column ' + ', '.join(missing))
+        return results
+    for name, referee_row in table.items():
+        page = page_rows.get(name)
+        if page is None:
+            add(name, 'Samplers row', 'FAIL', None, referee_row['shown_samples'], 'in the Aggregate Report, no row on the page')
+            continue
+        for column, key in TABLE_COLUMNS:
+            want, shown = as_jmeter_writes(column, referee_row), page.get(column)
+            if shown == want:
+                add(name, 'shown ' + column, 'PASS', shown, want, 'written as the Aggregate Report writes it')
+            elif column == 'Mean (ms)':
+                add(name, 'shown ' + column, 'FAIL', shown, want,
+                    f"the mean {referee_row['mean']} rounded (B8); the Aggregate Report's table shows {referee_row['shown_average']}")
+            else:
+                add(name, 'shown ' + column, 'FAIL', shown, want, f"the Aggregate Report's table shows {referee_row[key]}")
+    return results
 
 
 def java_round2(v):
@@ -186,6 +319,7 @@ def main():
     p.add_argument('--every-row', help="the referee's CSV over results.jtl")
     p.add_argument('--in-test-plan', help="the referee's CSV over the in-test-plan file")
     p.add_argument('--rebuilt-report', help='the -g report of the same results.jtl')
+    p.add_argument('--report-html', help="the report's page: its Samplers rows against the Aggregate Report's table")
     p.add_argument('--require-no-nesting', metavar='JTL', help='refuse a file with transaction or sub-result rows')
     p.add_argument('--output', '-o', help='write every check to this CSV')
     a = p.parse_args()
@@ -206,6 +340,9 @@ def main():
     rebuilt = read_json(a.rebuilt_report, 'the rebuilt report') if a.rebuilt_report else None
 
     results = compare(a.fixture, report, every_row, every_row_total, in_test_plan_total, rebuilt)
+    if a.report_html:
+        titles, page_rows = read_sampler_table(a.report_html)
+        results += compare_table(a.fixture, titles, page_rows, read_referee_table(a.every_row))
     ok = print_results(a.fixture, results)
     if a.output:
         write_csv(results, a.output)

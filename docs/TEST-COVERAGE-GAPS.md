@@ -255,6 +255,9 @@ rows rather than one with two test names.
 | 11.6 | Samplers table values match JSON output values | [x] | `whole-run-totals.spec.ts` (Samples, Errors and Error % of every row, every fixture) |
 | 11.7 | Every tab shows the whole run's counts: the Summary tiles, the Σ Total row and the Timeline's Σ Total lines equal the JSON's totals | [x] | `whole-run-totals.spec.ts`, read off each tab, over every fixture; with R07 holding the JSON to JMeter, a tab that differs from JMeter fails one of the two |
 | 11.8 | The Errors tab counts each sampler's failures as the Samplers table does, and names no sampler the table and the filter bar leave out | [x] | `whole-run-totals.spec.ts` |
+| 11.9 | Each Samplers row reads as JMeter's own Aggregate Report table writes that row (Mean rounded, B8; "/s" for "/sec") | [x] | R07 (`--report-html`, the referee's `shown_*` columns) over every fixture |
+| 11.10 | Every reader sees the same page: no number follows the browser's language, no time the reader's zone | [x] | `every-reader-same-page.spec.ts` (en-US in Jerusalem against de-DE in New York, every fixture, every tab, chart, copy and download) |
+| 11.11 | A comparison reads each run's whole run: the Compare Σ Total row and the Notes What Changed rows equal each run's own Σ Total row | [x] | `whole-run-totals.spec.ts` on CMP and CMP31 |
 
 R07 compares counts only, exactly, but for an error count it cannot tell from a 2-decimal rate (a row
 of more than about 10,000 samples: UNDECIDED, not a failure); how is in § 7 of Instructions.md. It used to be a by-hand comparison

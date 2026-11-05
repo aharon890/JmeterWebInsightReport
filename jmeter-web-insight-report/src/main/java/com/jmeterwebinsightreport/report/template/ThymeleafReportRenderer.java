@@ -11,6 +11,7 @@ import com.jmeterwebinsightreport.core.util.FormatUtil;
 import java.util.Comparator;
 import java.util.Map;
 import java.util.List;
+import java.util.Locale;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -145,7 +146,9 @@ public class ThymeleafReportRenderer {
                                      String externalDataFilename,
                                      GateEvaluation preEvaluated) {
         boolean externalDataMode = externalDataFilename != null;
-        Context context = new Context();
+        // Fixed, as every number on the page is: the template's #dates and #numbers wrote the JVM
+        // locale's digits (an Arabic JVM put Arabic-Indic digits in the Errors times)
+        Context context = new Context(Locale.US);
         context.setVariable("report", reportData);
         context.setVariable("metadata", reportData.getMetadata());
         context.setVariable("samplerStats", reportData.getSamplerStatistics());
@@ -273,6 +276,21 @@ public class ThymeleafReportRenderer {
 
         public String bytes(long value) {
             return FormatUtil.formatBytes(value);
+        }
+
+        /** A throughput as the Aggregate Report writes it: 8.3/s, 20.7/min, 43.0/hour. */
+        public String rate(double perSecond) {
+            return FormatUtil.formatRate(perSecond);
+        }
+
+        /** Two decimals, as the Aggregate Report's KB/sec columns: 0.60. */
+        public String twoDecimals(double value) {
+            return FormatUtil.formatTwoDecimals(value);
+        }
+
+        /** An Apdex score as JMeter's HTML report writes it: 0.948. */
+        public String apdex(double score) {
+            return FormatUtil.formatApdex(score);
         }
     }
 }

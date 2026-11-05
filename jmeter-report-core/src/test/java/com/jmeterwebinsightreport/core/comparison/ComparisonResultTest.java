@@ -31,6 +31,52 @@ class ComparisonResultTest {
         return data;
     }
 
+    /**
+     * A run of E31's shape: "Open" (a transaction) runs on its own twice and once inside "Session", and
+     * fails {@code failures} times on its own. The whole run is the samples a listener in the plan
+     * receives: 2 "Open" + 1 "Session" (its "Open" inside it is a sub-result).
+     */
+    private ReportData runWithATransactionAloneAndNested(int failures, long openTime) {
+        com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine engine =
+                new com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine();
+        long ts = 1700000000000L;
+        for (int i = 0; i < 2; i++) {
+            boolean ok = i >= failures;
+            engine.recordSample("Open", openTime, ok, 100, 10, ts + i * 1000, ts + i * 1000 + openTime, 1, 1,
+                    1, ok ? 0 : 1, true);
+        }
+        engine.recordSample("Session", 300, true, 200, 20, ts + 3000, ts + 3300, 1, 1, 1, 0, true);
+        engine.recordSample("Open", 100, true, 100, 10, ts + 3000, ts + 3100, 1, 1, 1, 0, false);
+        return engine.buildReportData("t");
+    }
+
+    @Test
+    void compare_theWholeRunIsComparedAsEachRunCountsIt_neverAsTheRowsAddUp() {
+        // Plan v2 item 3: the Compare tab's Sigma Total row is the two Aggregate Reports' TOTAL rows
+        ReportData baseline = runWithATransactionAloneAndNested(0, 100);
+        ReportData current = runWithATransactionAloneAndNested(1, 150);
+
+        ComparisonResult.SamplerDiff whole = new ComparisonResult(baseline, current).getWholeRunDiff();
+
+        assertNotNull(whole);
+        assertEquals(ComparisonResult.WHOLE_RUN, whole.getSamplerName());
+        // 3 samples a run, not the 4 its rows add up to (Open 3 + Session 1)
+        assertEquals(3, whole.getCurrent().getSampleCount());
+        assertEquals(3, whole.getBaseline().getSampleCount());
+        assertEquals(1, whole.getCurrent().getErrorCount());
+        assertEquals(0, whole.getBaseline().getErrorCount());
+        // The figures each run's own page shows: OverallMetrics, the one definition of the whole run
+        com.jmeterwebinsightreport.core.model.OverallMetrics m =
+                com.jmeterwebinsightreport.core.model.OverallMetrics.of(current);
+        assertEquals(m.getErrorRate(), whole.getCurrent().getErrorRate(), 1e-9);
+        assertEquals(m.getP95(), whole.getCurrent().getPercentile95(), 1e-9);
+        assertEquals(m.getThroughput(), whole.getCurrent().getThroughput(), 1e-9);
+        // Judged as every row: the error rate rose 33.33 points, past the default 2
+        assertEquals(m.getErrorRate() - com.jmeterwebinsightreport.core.model.OverallMetrics.of(baseline).getErrorRate(),
+                whole.getDeltaErrorRate(), 1e-9);
+        assertTrue(whole.isRegression());
+    }
+
     @Test
     void compare_detectsP95Regression() {
         // baseline P95=100, current P95=120 → 20% increase > 10% threshold → regression

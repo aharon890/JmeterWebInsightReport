@@ -268,11 +268,20 @@ for (const id of REQUIRED_FIXTURES) {
         const bar = chart('error-by-sampler-chart');
         const pie = chart('error-by-type-chart');
         const valueOf = (d: any) => (d && typeof d === 'object' ? d.value : d);
+        // The Error Details list, one row per recorded failure with its message (capped, and said so)
+        const details = document.getElementById('errorDetailsTable') as HTMLTableElement | null;
+        const detailHeads = details ? Array.from(details.tHead!.rows[0].cells).map(c => (c.textContent || '').trim()) : [];
+        const records = details ? Array.from(details.tBodies[0].rows).filter(r => r.classList.contains('error-row-main')).map(r => ({
+          sampler: (r.cells[detailHeads.indexOf('Sampler')]?.textContent || '').trim(),
+          message: (r.cells[detailHeads.indexOf('Message')]?.textContent || '').trim(),
+        })) : [];
         return {
           rows: all.filter(r => r !== total).map(r => ({ sampler: r.getAttribute('data-sampler') || '', count: cell(r, 'Count') })),
           total: total ? { label: cell(total, 'Sampler'), count: cell(total, 'Count'), ofSamples: cell(total, '% of All Samples') } : null,
           bySampler: bar ? (bar.xAxis[0].data as string[]).map((name, i) => ({ name, value: valueOf(bar.series[0].data[i]) })) : null,
           byCode: pie ? (pie.series[0].data as any[]).map(valueOf) : null,
+          records,
+          recordsComplete: !(window as any).globalChartData.errorRecordsTruncated,
         };
       });
 
@@ -298,10 +307,25 @@ for (const id of REQUIRED_FIXTURES) {
       for (const [sampler, count] of perSampler) {
         const row = rows.get(sampler);
         expect(row, `"${sampler}" is on the Errors tab, so it has a row in the Samplers table`).toBeDefined();
-        expect(row!.transactionController,
-          `"${sampler}" is a Transaction Controller: its own result is left out of the Errors tab, as the tab's note says`).toBe(false);
-        expect(count, `"${sampler}": its failures on the Errors tab are its Errors in the Samplers table`)
-          .toBe(numberIn(row!.cells['Errors']));
+        if (!row!.transactionController) {
+          expect(count, `"${sampler}": its failures on the Errors tab are its Errors in the Samplers table`)
+            .toBe(numberIn(row!.cells['Errors']));
+          continue;
+        }
+        // A Transaction Controller's own result is left out (E3), as JMeter's HTML report leaves out a
+        // result carrying the "Number of samples in transaction" message. A transaction the test end or a
+        // "Stop Thread" cut off is written without that message, and JMeter's HTML report and this tab
+        // count it as a failed request: so a transaction's row here is only ever those results.
+        const own = errorsTab.records.filter(r => r.sampler === sampler);
+        for (const r of own) {
+          expect(r.message, `"${sampler}" on the Errors tab: a transaction's own completed result, left out (E3)`)
+            .not.toContain('Number of samples in transaction');
+        }
+        if (errorsTab.recordsComplete) {
+          expect(own.length, `"${sampler}": its failures on the Errors tab are the ones its Error Details list`).toBe(count);
+        }
+        expect(count, `"${sampler}": the Errors tab counts no more of its failures than the Samplers table`)
+          .toBeLessThanOrEqual(numberIn(row!.cells['Errors']));
       }
       for (const [name, r] of rows) {
         if (numberIn(r.cells['Errors']) === 0 || perSampler.has(name)) continue;
@@ -352,6 +376,123 @@ for (const id of REQUIRED_FIXTURES) {
         expect(shownRows.get(sampler)!.shown,
           `"${sampler}" is on the Errors tab, so its Samplers row shows with transaction details on`).toBe(true);
       }
+    });
+  });
+}
+
+/** Load a page that is not a fixture's main report (a comparison fixture's baseline.html), clean. */
+async function loadFileClean(page: Page, file: string): Promise<void> {
+  const url = 'file://' + file;
+  await page.goto(url, { waitUntil: 'networkidle' });
+  await page.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('wir_')).forEach(k => localStorage.removeItem(k)));
+  await page.goto(url, { waitUntil: 'networkidle' });
+}
+
+/** A page's Samplers Σ Total row, as a reader turns it on. */
+async function sigmaTotalRow(page: Page): Promise<Record<string, string>> {
+  await switchTab(page, 'samplers');
+  await page.locator('#samplerFilterList label[data-sampler-name="σ total"]').click();
+  await expect(page.locator('#samplerTable tr.total-sampler-row')).toHaveCount(1);
+  return (await samplerRows(page)).total!;
+}
+
+/* The Compare columns that are a figure of a run, by the Samplers table's titles. */
+const COMPARED = ['Samples', 'Errors', 'Error %', 'Mean (ms)', 'Median (ms)', 'P90 (ms)', 'P95 (ms)', 'P99 (ms)',
+  'Min (ms)', 'Max (ms)', 'Throughput', 'Recv KB/s'];
+
+/*
+ * A comparison reads each run's whole run, as a JMeter user reads two Aggregate Reports' TOTAL rows side
+ * by side (plan v2 items 3-4, 2026-11-05). JMeter has no comparison view; its users put the two TOTAL
+ * rows next to each other. So the Compare tab has a Σ Total row, and the Notes tab's "What Changed" box
+ * shows the two runs' Σ Total rows. Each run's whole run is read off that run's own page, its Samplers
+ * Σ Total row, which R07 and the tests above hold to JMeter: this run's from this page, the baseline's
+ * from the baseline report the same fixture wrote (baseline.html). CMP31 is E31's plan compared with
+ * itself: a transaction run alone and inside another, so adding the rows up is not the whole run.
+ */
+for (const id of ['CMP', 'CMP31']) {
+  test.describe(`${id}: the comparison reads each run's whole run`, () => {
+    test('the Compare tab\'s Σ Total row is this run\'s whole run, its change the baseline\'s', async ({ page, browser }) => {
+      const basePage = await browser.newPage();
+      await loadFileClean(basePage, getReportPath(id).replace(/[^\\/]+$/, 'baseline.html'));
+      const baseline = await sigmaTotalRow(basePage);
+      await basePage.close();
+
+      await loadClean(page, id);
+      const current = await sigmaTotalRow(page);
+      await switchTab(page, 'compare');
+      const row = await page.evaluate(() => {
+        const table = document.getElementById('comparisonTable') as HTMLTableElement;
+        const heads = Array.from(table.tHead!.rows[0].cells).map(c => (c.textContent || '').trim());
+        const first = table.tBodies[0].rows[0];
+        const out: Record<string, { now: string; change: string }> = {};
+        if (!first) return { total: false, name: '', cells: out, status: '' };
+        Array.from(first.cells).forEach((c, i) => {
+          const sup = c.querySelector('sup');
+          out[heads[i]] = {
+            now: (c.childNodes[0] ? c.childNodes[0].textContent || '' : '').trim(),
+            change: sup ? (sup.textContent || '').trim() : '',
+          };
+        });
+        return { total: first.classList.contains('comparison-total-row'), name: out['Sampler'] ? out['Sampler'].now : '',
+          cells: out, status: (first.querySelector('.status-badge')?.textContent || '').trim() };
+      });
+      expect(row.total, 'with Σ Total on, the Compare table\'s first row is the whole run').toBe(true);
+      expect(row.name).toBe('Σ Total');
+      for (const column of COMPARED) {
+        expect(row.cells[column]?.now, `the Compare Σ Total row's ${column} is this run's Samplers Σ Total`).toBe(current[column]);
+      }
+      // The change beside a count is the two runs' counts apart, exactly
+      for (const column of ['Samples', 'Errors']) {
+        const apart = numberIn(current[column]) - numberIn(baseline[column]);
+        const shown = row.cells[column].change === '' ? 0 : numberIn(row.cells[column].change);
+        expect(shown, `the change beside ${column}: ${current[column]} against the baseline's ${baseline[column]}`).toBe(apart);
+      }
+      // Beside a whole-ms figure, within the rounding of the two rows' own whole ms
+      const p95Apart = numberIn(current['P95 (ms)']) - numberIn(baseline['P95 (ms)']);
+      const p95Shown = row.cells['P95 (ms)'].change === '' ? 0 : numberIn(row.cells['P95 (ms)'].change);
+      expect(Math.abs(p95Shown - p95Apart), `the change beside P95: ${current['P95 (ms)']} against ${baseline['P95 (ms)']}`)
+        .toBeLessThanOrEqual(1);
+      // Judged by the thresholds every row is judged by
+      const th = await page.evaluate(() => ({
+        p95: Number((document.getElementById('thP95') as HTMLInputElement).value),
+        errorRate: Number((document.getElementById('thErrorRate') as HTMLInputElement).value),
+      }));
+      const p95Up = (numberIn(current['P95 (ms)']) - numberIn(baseline['P95 (ms)'])) * 100 / numberIn(baseline['P95 (ms)']);
+      const errorsUp = numberIn(current['Error %']) - numberIn(baseline['Error %']);
+      const regression = (th.p95 >= 0 && p95Up > th.p95 + 0.5) || (th.errorRate >= 0 && errorsUp > th.errorRate + 0.01);
+      const clear = (th.p95 < 0 || p95Up < th.p95 - 0.5) && (th.errorRate < 0 || errorsUp < th.errorRate - 0.01);
+      if (regression) expect(row.status, `P95 ${p95Up.toFixed(1)}%, error rate ${errorsUp.toFixed(2)} points`).toBe('REGRESSION');
+      if (clear) expect(row.status, `P95 ${p95Up.toFixed(1)}%, error rate ${errorsUp.toFixed(2)} points`).toBe('OK');
+    });
+
+    test('the Notes tab\'s What Changed box shows the two runs\' Σ Total rows', async ({ page, browser }) => {
+      const basePage = await browser.newPage();
+      await loadFileClean(basePage, getReportPath(id).replace(/[^\\/]+$/, 'baseline.html'));
+      const baseline = await sigmaTotalRow(basePage);
+      await basePage.close();
+
+      await loadClean(page, id);
+      const current = await sigmaTotalRow(page);
+      await switchTab(page, 'notes');
+      const box = await page.evaluate(() => {
+        const table = document.querySelector('#whatChangedContent table.what-changed-totals') as HTMLTableElement | null;
+        if (!table) return null;
+        const heads = Array.from(table.tHead!.rows[0].cells).map(c => (c.textContent || '').trim());
+        const read = (run: string) => {
+          const r = table.querySelector(`tbody tr[data-run="${run}"]`) as HTMLTableRowElement | null;
+          const o: Record<string, string> = {};
+          if (r) Array.from(r.cells).forEach((c, i) => { o[heads[i]] = (c.textContent || '').trim(); });
+          return o;
+        };
+        return { baseline: read('baseline'), current: read('current'),
+          lines: Array.from(document.querySelectorAll('#whatChangedContent .what-changed-line')).map(l => (l.textContent || '').trim()) };
+      });
+      expect(box, 'the What Changed box shows the runs\' Σ Total rows').not.toBeNull();
+      for (const column of COMPARED) {
+        expect(box!.baseline[column], `the baseline's ${column}`).toBe(baseline[column]);
+        expect(box!.current[column], `this run's ${column}`).toBe(current[column]);
+      }
+      expect(box!.lines.some(l => /on average/.test(l)), 'no line averages the samplers').toBe(false);
     });
   });
 }

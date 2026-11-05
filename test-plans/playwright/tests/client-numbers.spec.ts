@@ -148,14 +148,14 @@ test.describe('Client numbers beside a band [E26]', () => {
     expect(await cells(page, 'checkout-mean-on-band')).toEqual(['fail > 373.86 ms', '374 ms']);
     expect(await cells(page, 'run-mean-whole-ms')).toEqual(['fail > 235 ms', '234.9 ms']);
     expect(await cells(page, 'search-mean-gte-on-band')).toEqual(['fail ≥ 211.41 ms', '211 ms']);
-    expect(await cells(page, 'products-mean-warns')).toEqual(['warn > 119.46 ms · fail > 1,000 ms', '119.5 ms']);
+    expect(await cells(page, 'products-mean-warns')).toEqual(['warn > 119.46 ms · fail > 1000 ms', '119.5 ms']);
 
     // The Budget cell's title writes the Actual cell's number, against the same bands.
     const budgetTitle = (id: string) =>
       page.locator(`#assertsTable tr[data-rule-id="${id}"] td.wir-budget`).getAttribute('title');
     expect(await budgetTitle('checkout-mean-on-band')).toContain('Worst measured 374 ms against fail > 373.86 ms');
     expect(await budgetTitle('run-mean-whole-ms')).toContain('Worst measured 234.9 ms against fail > 235 ms');
-    expect(await budgetTitle('products-mean-warns')).toContain('Worst measured 119.5 ms against fail > 1,000 ms');
+    expect(await budgetTitle('products-mean-warns')).toContain('Worst measured 119.5 ms against fail > 1000 ms');
 
     // A rule's match rows, expanded: each sampler's actual, against the rule's bands.
     await page.locator('#assertsTable tr[data-rule-id="products-mean-warns"] .wir-matches-btn').click();

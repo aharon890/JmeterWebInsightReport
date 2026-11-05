@@ -925,10 +925,10 @@ class LiveStatisticsEngineTest {
 
     @Test
     void apdex_wholeRunIsComputedFromTheCountsAndRoundedOnce() {
-        // "slow": 3 frustrated, scores 0.00. "mixed": 2 satisfied + 1 frustrated, 0.6667, shown
-        // as 0.67. The mean of the shown scores is (0 * 3 + 0.67 * 3) / 6 = 0.335, which a second
-        // rounding made 0.34; the run's own counts give 2 / 6 = 0.333, 0.33 (B4, pilot-C 0.90 vs
-        // 0.906).
+        // "slow": 3 frustrated, scores 0.000. "mixed": 2 satisfied + 1 frustrated, 0.6667, shown
+        // as 0.667. The mean of the shown scores is (0 * 3 + 0.667 * 3) / 6 = 0.3335, which a second
+        // rounding makes 0.334; the run's own counts give 2 / 6 = 0.3333, 0.333 (B4, pilot-C 0.90 vs
+        // 0.906). Three decimals, as JMeter's HTML report writes an Apdex.
         long ts = 1700000000000L;
         for (int i = 0; i < 3; i++) {
             engine.recordSample("slow", 5000, true, 10, 10, ts + i, 1, 1);
@@ -939,10 +939,10 @@ class LiveStatisticsEngineTest {
 
         ReportData data = engine.buildReportData("t");
         assertEquals(0.0, findSampler(data, "slow").getApdexScore(), 1e-9);
-        assertEquals(0.67, findSampler(data, "mixed").getApdexScore(), 1e-9);
+        assertEquals(0.667, findSampler(data, "mixed").getApdexScore(), 1e-9);
         assertEquals(2.0, findSampler(data, "mixed").getApdexSatisfied(), 1e-9);
         assertEquals(0.0, findSampler(data, "mixed").getApdexTolerating(), 1e-9);
-        assertEquals(0.33, OverallMetrics.of(data).getApdex(), 1e-9);
+        assertEquals(0.333, OverallMetrics.of(data).getApdex(), 1e-9);
     }
 
     @Test

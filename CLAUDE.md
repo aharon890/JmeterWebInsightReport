@@ -108,13 +108,25 @@ shared count, so they agreed with each other on totals JMeter disagreed with: a 
 its own and inside another one lost its standalone samples from every whole-run figure at once
 (tails-conversation-flows, 2026-11; E31 is that shape). A fixture in `FIXTURE_IDS` that R07 has no
 reference for is a FAIL, never a skip. It needs Python 3 and a JDK (`javac` compiles the referee).
+R07 also holds each Samplers row's text, as the page's HTML writes it, to the text JMeter's own Aggregate
+Report table shows in that row: the referee draws it with JMeter's table model and renderers
+(`StatGraphVisualizer.createObjectTableModel`/`getRenderers`, by reflection) under jmeter.bat's English
+locale, and `verify-data-integrity.py --report-html` compares cell by cell. Two stated exceptions: the
+Mean is rounded (B8) and the rate's unit is `/s` for `/sec`. The referee puts each row's IdleTime back
+on its end, as the listener's SampleResult ends it, so a transaction's windows run to its real end (B7).
 `whole-run-totals.spec.ts` closes the other half: it reads each tab as displayed (Summary tiles, Σ
 Total row, Timeline Σ lines, every Samplers row, the Errors tab) and holds it to that JSON, over every
 fixture in `REQUIRED_FIXTURES` (exported from `global-setup.ts` for it), so a tab that one day stops
-reading the shared count fails even though every unit test of the count still passes.
+reading the shared count fails even though every unit test of the count still passes. On the two
+comparison fixtures it holds the Compare tab's Σ Total row and the Notes tab's What Changed rows to each
+run's own Samplers Σ Total row (the baseline's read off the `baseline.html` the fixture wrote).
+`every-reader-same-page.spec.ts` opens every fixture as an English reader in Jerusalem and a German
+reader in New York and fails on any difference in what they are shown: every tab, chart axis and
+tooltip, copy and download. JMeter's HTML report reads the same in every browser, and so must this one.
 
 The suites cover the JMeter scenarios Playwright actually opens (E02, E05-E12, E19, E25-E29, E31)
-plus CMP — the same list as `FIXTURE_IDS` in `common.sh`, which is where to check rather than
+plus CMP and CMP31 (E31's plan compared with itself, `CMP_ID=CMP31 generate-cmp-fixture.sh`) — the same
+list as `FIXTURE_IDS` in `common.sh`, which is where to check rather than
 here. E19 is easy to forget: `external-data.spec.ts` opens it to assert the payload was written
 to a sibling `.js` and referenced by `<script src>`, which is the one product promise no
 inline-payload fixture can exercise.
@@ -211,8 +223,10 @@ node node_modules/@playwright/test/cli.js test
 node node_modules/@playwright/test/cli.js test tests/samplers-tab.spec.ts
 node node_modules/@playwright/test/cli.js test -g "a dragged width survives"
 
-# CMP comparison fixture — NOT produced by run-all-tests.sh, needed by compare-tab.spec.ts
+# CMP comparison fixtures — NOT produced by run-all-tests.sh, needed by compare-tab.spec.ts and
+# whole-run-totals.spec.ts
 ./test-plans/scripts/generate-cmp-fixture.sh
+CMP_ID=CMP31 ./test-plans/scripts/generate-cmp-fixture.sh
 ```
 
 `npx playwright test` does **not** work under Git Bash — npx fails to resolve the
@@ -473,6 +487,24 @@ figure reads it: the tiles, the CI/CD JSON, JUnit, `RunIdentity`, the overall as
 and one name can run on its own and inside a transaction: summing the rows that were no child left
 every sample of such a name out (tails-conversation-flows, 2026-11: 0 errors where JMeter counted 17).
 R07 holds every fixture to JMeter's own count.
+
+### Numbers and times: the same page for every reader
+
+JMeter's HTML report reads the same in every browser (measured on 5.6.3, 2026-11-05), and so does this
+one; the owner's rule is "like in jmeter". **Numbers:** `.` for decimals and no thousands separator
+anywhere (`FormatUtil.formatNumber` "#0.##", `WIR.digits.enDigits` `useGrouping: false`, the Errors
+Total, and ECharts' own value-axis labels and default tooltips, stripped of commas once in
+`createChart`). The Samplers table's columns are the Aggregate Report's patterns (`formatRate`: "#.0"
+per second, minute or hour; KB/s "#0.00"); Apdex is rounded and written to three decimals, the HTML
+report's `toFixed(3)`. The Σ Total rows (Samplers, Compare, What Changed) are written by one function,
+`sigmaTotalCellTexts`, through `WIR.javaText.decimalFormat` (DecimalFormat's half-even on the exact
+value). The template's `Context` is `Locale.US` and `formatDuration` `Locale.ROOT`, so a JVM in
+Arabic writes no Arabic-Indic digit. **Times:** every time is in the zone of the machine that built the
+report (`chartData.reportTimeZone`, `ZoneId.systemDefault()`, the zone `#dates` already writes in),
+read through one clock (`reportClockParts`, Intl in that zone; the offset at the run's start where the
+browser cannot name it), and no zone is written beside a time. ECharts runs in UTC and its own date text
+goes through the clock. A spec that pins a time computes it with `helpers.ts` `inZone` from the zone
+the report names, never from the machine's.
 
 ### Listener concurrency
 
@@ -782,7 +814,7 @@ digit of its exact value, and any other band, an integral one from 2^63 included
 `Double.toString`'s shortest digits written out — 1e23 is `100000000000000000000000`, not the
 nearest double's exact `99999999999999991611392` (L12: `Predicate.trim` and `WIR.javaText.trim`,
 held by `digits-vectors.json`'s `bandWriteCases`; a duration and a percentile key keep
-`Durations.trim`'s notation, and the tables' grouped `formatBand` matches it within 20 decimals below
+`Durations.trim`'s notation, and the tables' `formatBand` matches it within 20 decimals below
 2^53 and from 2^63, and between them only where a double's shortest digits are its exact ones —
 2^53+2 alike, 2^62 not). `WIR.digits` (between `WIR.javaText` and `WIR.document`) is the
 page's one copy — `beside`, `measured`, `enDigits`, `formatBand` — and both tabs write through

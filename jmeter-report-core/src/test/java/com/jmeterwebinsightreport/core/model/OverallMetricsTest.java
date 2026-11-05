@@ -88,8 +88,8 @@ class OverallMetricsTest {
     @Test
     void apdexIsSampleWeightedAndRoundedLikeThePerSamplerScores() {
         // (0.9*300 + 0.5*100) / 400 = 0.8 exactly; the rounding matters because every
-        // per-sampler score on the page is already 2 dp, and an unrounded overall beside them
-        // reads as a defect.
+        // per-sampler score on the page is already 3 dp (JMeter's HTML report writes an Apdex with
+        // three decimals), and an unrounded overall beside them reads as a defect.
         OverallMetrics m = OverallMetrics.of(data(10_000, 4,
                 stat("a", 300, 0, 100, 200, 5, 0.9),
                 stat("b", 100, 0, 100, 200, 5, 0.5)));
@@ -99,7 +99,8 @@ class OverallMetricsTest {
         OverallMetrics rounded = OverallMetrics.of(data(10_000, 4,
                 stat("a", 1, 0, 100, 200, 5, 0.333),
                 stat("b", 2, 0, 100, 200, 5, 0.777)));
-        assertEquals(0.63, rounded.getApdex(), 0.0001);
+        // (0.333 + 0.777 * 2) / 3 = 0.629
+        assertEquals(0.629, rounded.getApdex(), 1e-9);
     }
 
     @Test
@@ -157,17 +158,17 @@ class OverallMetricsTest {
 
     @Test
     void apdexIsComputedFromTheCountsWhenTheStatisticsCarryThem() {
-        // a: 0 satisfied of 3, score 0.00. b: 1 satisfied and 2 tolerating of 3, (1 + 1) / 3 =
-        // 0.667, shown as 0.67. From the scores the run is 0.335, rounded again to 0.34; from
-        // the counts it is (1 + 2 / 2) / 6 = 0.333, rounded once to 0.33 (B4).
+        // a: 0 satisfied of 3, score 0.000. b: 1 satisfied and 2 tolerating of 3, (1 + 1) / 3 =
+        // 0.6667, shown as 0.667. From the scores the run is 0.3335, rounded again to 0.334; from
+        // the counts it is (1 + 2 / 2) / 6 = 0.3333, rounded once to 0.333 (B4).
         SamplerStatistics a = stat("a", 3, 0, 100, 200, 5, 0.0);
         a.setApdexSatisfied(0);
         a.setApdexTolerating(0);
-        SamplerStatistics b = stat("b", 3, 0, 100, 200, 5, 0.67);
+        SamplerStatistics b = stat("b", 3, 0, 100, 200, 5, 0.667);
         b.setApdexSatisfied(1);
         b.setApdexTolerating(2);
 
-        assertEquals(0.33, OverallMetrics.of(data(10_000, 4, a, b)).getApdex(), 1e-9);
+        assertEquals(0.333, OverallMetrics.of(data(10_000, 4, a, b)).getApdex(), 1e-9);
     }
 
     @Test
@@ -175,9 +176,10 @@ class OverallMetricsTest {
         SamplerStatistics a = stat("a", 3, 0, 100, 200, 5, 0.0);
         a.setApdexSatisfied(0);
         a.setApdexTolerating(0);
-        SamplerStatistics b = stat("b", 3, 0, 100, 200, 5, 0.67);   // assembled: no counts
+        SamplerStatistics b = stat("b", 3, 0, 100, 200, 5, 0.667);   // assembled: no counts
 
-        assertEquals(0.34, OverallMetrics.of(data(10_000, 4, a, b)).getApdex(), 1e-9);
+        // (0 * 3 + 0.667 * 3) / 6 = 0.3335, rounded to 0.334
+        assertEquals(0.334, OverallMetrics.of(data(10_000, 4, a, b)).getApdex(), 1e-9);
     }
 
     @Test

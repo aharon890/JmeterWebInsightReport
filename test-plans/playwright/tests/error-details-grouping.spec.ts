@@ -188,9 +188,16 @@ test.describe('Error Details — view toggle [E02]', () => {
     for (const { first, last } of rows) {
       expect(first).toMatch(/^\d{2}:\d{2}:\d{2}\.\d{3}$/);
       expect(last).toMatch(/^\d{2}:\d{2}:\d{2}\.\d{3}$/);
-      // Zero-padded HH:mm:ss.SSS compares correctly as a string
-      expect(first <= last).toBe(true);
     }
+    // The instants, not their clock text: a run across midnight reads 23:59:58 first and 00:00:05 last,
+    // which compares the wrong way as text (E02 ran 23:58:53 to 00:01:04 on 2026-11-05 and failed here).
+    const instants = await page.evaluate(() => {
+      const w = window as any;
+      return w.errorGroupsFrom(w.globalChartData.errorRecords, w.requestErrorSummaries(w.globalChartData))
+        .map((g: any) => ({ first: g.first, last: g.last }));
+    });
+    expect(instants.length, 'one group per row').toBe(rows.length);
+    for (const { first, last } of instants) expect(first <= last).toBe(true);
   });
 
   test('CSV export works from both views', async ({ page }) => {

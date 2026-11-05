@@ -11,8 +11,8 @@ Detailed per-sampler statistics table with sorting, filtering, column control, a
 | Column | Description | Format |
 |--------|-------------|--------|
 | **Sampler** | Request label name | Text (truncated with ellipsis, hover for full name) |
-| **Samples** | Total request count | Integer with comma separator |
-| **Errors** | Failed request count | Integer with comma separator |
+| **Samples** | Total request count | Whole number, no thousands separator (1200), as JMeter writes it |
+| **Errors** | Failed request count | Whole number, no thousands separator |
 | **Error %** | Error rate | Percentage (e.g., "4.05%") |
 | **Mean (ms)** | Average response time | Whole milliseconds, rounded to the nearest: JMeter's Aggregate Report cuts the decimals off (4.86 ms reads 4 there, 5 here), its HTML report shows two (4.86) — the same mean |
 | **Median (ms)** | P50 response time | Whole milliseconds |
@@ -21,9 +21,9 @@ Detailed per-sampler statistics table with sorting, filtering, column control, a
 | **P99 (ms)** | 99th percentile | Whole milliseconds |
 | **Min (ms)** | Minimum response time | Whole milliseconds |
 | **Max (ms)** | Maximum response time | Whole milliseconds |
-| **Throughput** | Requests per second | Up to 2 decimals (e.g., "15.23/s") |
-| **Recv KB/s** | Received kilobytes per second | Up to 2 decimals |
-| **Apdex** | Application Performance Index | 0 to 1 with up to two decimals (e.g., "0.9", "0.85"), coloured as on the [Apdex card](02-Summary-Tab.md#apdex-card) |
+| **Throughput** | Requests per second | As JMeter's Aggregate Report writes it: one decimal, per second, and per minute or per hour when fewer than one a second or a minute (e.g., "15.2/s", "20.7/min") |
+| **Recv KB/s** | Received kilobytes per second | Two decimals (e.g., "0.60") |
+| **Apdex** | Application Performance Index | 0 to 1 with three decimals, as JMeter's HTML report writes it (e.g., "0.948", "1.000"), coloured as on the [Apdex card](02-Summary-Tab.md#apdex-card) |
 
 ![Table Header](images/10b-table-header.png)
 
@@ -62,7 +62,7 @@ run could not produce the value. A glyph as well as a colour, because the report
 and high-contrast palettes precisely because hue is not a channel this audience can rely on.
 
 - **Hover** names the rule, the measured value and the limit — `p95 FAIL · checkout-p95 ·
-  2,340 ms vs > 2,000 ms · click to edit`.
+  2340 ms vs > 2000 ms · click to edit`.
 - **Click** switches to the Asserts tab and opens the editor on the rule that decided the cell.
   Where several rules judge one cell, the worst decides and the tooltip says how many there are.
 - Read down a column and you see coverage: which samplers are gated on p95 and which are not.

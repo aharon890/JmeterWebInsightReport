@@ -171,8 +171,9 @@ public final class OverallMetrics {
                 samples > 0 ? weightedResponseTime / samples : 0,
                 median, p90, p95, p99,
                 throughput, receivedBytesPerSec, sentBytesPerSec,
-                // Rounded to 2 dp like the per-sampler scores beside it, once.
-                Math.round(apdex * 100.0) / 100.0,
+                // Rounded to 3 dp like the per-sampler scores beside it, once: JMeter's HTML report
+                // writes an Apdex with three decimals (toFixed(3))
+                Math.round(apdex * 1000.0) / 1000.0,
                 durationSeconds,
                 meta != null ? meta.getTotalThreads() : 0,
                 data.overallPercentileSource(),
