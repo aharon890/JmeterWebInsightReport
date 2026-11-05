@@ -1406,14 +1406,18 @@ run_counts_against_jmeter() {
     fi
     cp="$(_count_check_classpath "$out/classes")"
 
-    # _referee <results file> <csv out>
+    # _referee <results file> <csv out>. Under the locale JMeter's launcher gives an English machine: the
+    # Aggregate Report table's decimal columns follow the JVM's locale, and the page is held to that text
     _referee() {
-        java -cp "$cp" AggregateReportReferee "$(_count_check_path "$JMETER_HOME")" \
+        java -Djava.awt.headless=true -Duser.language=en -Duser.country=US -cp "$cp" AggregateReportReferee \
+            "$(_count_check_path "$JMETER_HOME")" \
             "$(_count_check_path "$1")" "$(_count_check_path "$2")" >> "$out/referee.log" 2>&1
     }
     # _check <id> <report.json> <results.jtl> <in-test-plan results> [rebuilt report.json]
     _check() {
-        local name="$1" report="$2" every="$3" in_test="$4" rebuilt="${5:-}"
+        local name="$1" report="$2" every="$3" in_test="$4" rebuilt="${5:-}" page
+        # The report's page beside its JSON: its Samplers rows against the Aggregate Report's table text
+        page="${report%.json}.html"
         _referee "$every" "$out/$name-every-row.csv" || { echo "  [$name] FAIL: the referee could not read $every"; return 1; }
         _referee "$in_test" "$out/$name-in-test-plan.csv" || { echo "  [$name] FAIL: the referee could not read $in_test"; return 1; }
         # No array for the optional argument: under set -u, bash 3.2 (macOS's /bin/bash) calls an
@@ -1421,11 +1425,11 @@ run_counts_against_jmeter() {
         if [[ -n "$rebuilt" ]]; then
             PYTHONIOENCODING=utf-8 "$PYTHON" "$TEST_PLANS/scripts/verify-data-integrity.py" --fixture "$name" \
                 --report "$report" --every-row "$out/$name-every-row.csv" --in-test-plan "$out/$name-in-test-plan.csv" \
-                --rebuilt-report "$rebuilt" --output "$out/$name.csv"
+                --rebuilt-report "$rebuilt" --report-html "$page" --output "$out/$name.csv"
         else
             PYTHONIOENCODING=utf-8 "$PYTHON" "$TEST_PLANS/scripts/verify-data-integrity.py" --fixture "$name" \
                 --report "$report" --every-row "$out/$name-every-row.csv" --in-test-plan "$out/$name-in-test-plan.csv" \
-                --output "$out/$name.csv"
+                --report-html "$page" --output "$out/$name.csv"
         fi
     }
     # _check_g <id> <input file>: a -g fixture, whose input must not nest anything

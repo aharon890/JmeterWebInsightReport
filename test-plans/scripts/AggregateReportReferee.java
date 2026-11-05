@@ -1,10 +1,16 @@
 import java.io.PrintWriter;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+
+import javax.swing.JLabel;
+import javax.swing.table.TableCellRenderer;
 
 import org.apache.jmeter.reporters.ResultCollector;
 import org.apache.jmeter.samplers.SampleResult;
@@ -12,6 +18,8 @@ import org.apache.jmeter.save.CSVSaveService;
 import org.apache.jmeter.util.JMeterUtils;
 import org.apache.jmeter.visualizers.SamplingStatCalculator;
 import org.apache.jmeter.visualizers.Visualizer;
+import org.apache.jorphan.gui.NumberRenderer;
+import org.apache.jorphan.gui.ObjectTableModel;
 
 /**
  * JMeter's Aggregate Report, computed by JMeter's own classes from a results file: R07's reference.
@@ -35,12 +43,22 @@ import org.apache.jmeter.visualizers.Visualizer;
  * transaction cut off at the test end without that message, so it counted that transaction's requests
  * too (E02: 7,264 where a listener in the plan receives 7,224). The plan's own writer has no such gap.
  *
+ * <p>Beside the counts, each row carries the text the Aggregate Report's table shows in every cell
+ * ({@code shown_*}), drawn by JMeter's own table model and cell renderers
+ * ({@code StatGraphVisualizer.createObjectTableModel} and {@code getRenderers}), and the exact mean, which
+ * the table cuts to a whole number. R07 holds the report's Samplers rows to that text. Run it under the
+ * locale JMeter's launcher gives an English machine ({@code -Duser.language=en -Duser.country=US}): the
+ * table's decimal columns follow the JVM's locale, as they do in JMeter.
+ *
  * <p>usage: {@code java AggregateReportReferee <jmeterHome> <results.jtl> <out.csv>}. Prints one summary
  * line: rows read, transaction rows, labels, TOTAL samples and errors.
  */
 public class AggregateReportReferee {
 
     private static final String TRANSACTION_MARKER = "Number of samples in transaction : ";
+    private static final String[] SHOWN = {"shown_samples", "shown_average", "shown_median", "shown_p90",
+            "shown_p95", "shown_p99", "shown_min", "shown_max", "shown_error_pct", "shown_throughput",
+            "shown_received_kb", "shown_sent_kb"};
 
     public static void main(String[] args) throws Exception {
         if (args.length != 3) {
@@ -73,12 +91,13 @@ public class AggregateReportReferee {
         };
         CSVSaveService.processSamples(jtl, aggregateReport, new ResultCollector());
 
+        Table table = new Table();
         try (PrintWriter w = new PrintWriter(Files.newBufferedWriter(Paths.get(out), StandardCharsets.UTF_8))) {
-            w.println("label,samples,errors");
+            w.println("label,samples,errors,mean," + String.join(",", SHOWN));
             for (SamplingStatCalculator c : rows.values()) {
-                writeRow(w, c.getLabel(), c);
+                writeRow(w, c.getLabel(), c, table);
             }
-            writeRow(w, "TOTAL", total);
+            writeRow(w, "TOTAL", total, table);
         }
         System.out.println(String.format(Locale.US,
                 "%s: %d rows read, %d transaction rows, %d labels, TOTAL samples %d, errors %d",
@@ -86,8 +105,58 @@ public class AggregateReportReferee {
                 total.getErrorCount()));
     }
 
-    private static void writeRow(PrintWriter w, String label, SamplingStatCalculator c) {
-        w.println(csv(label) + "," + c.getCount() + "," + c.getErrorCount());
+    private static void writeRow(PrintWriter w, String label, SamplingStatCalculator c, Table table) throws Exception {
+        StringBuilder line = new StringBuilder(csv(label) + "," + c.getCount() + "," + c.getErrorCount() + ","
+                + Double.toString(c.getMean()));
+        for (String cell : table.shown(c)) {
+            line.append(',').append(csv(cell));
+        }
+        w.println(line);
+    }
+
+    /**
+     * The Aggregate Report's own table, one row at a time: its model reads the calculator through the
+     * columns' functors, and each cell is the text its renderer draws (a column without one is drawn by
+     * Swing's default renderer for a number, which writes {@code toString()}). Both are package-private in
+     * JMeter, so they are reached by reflection, not copied: a pattern JMeter changes moves the reference.
+     */
+    private static final class Table {
+        private final ObjectTableModel model;
+        private final TableCellRenderer[] renderers;
+
+        Table() throws Exception {
+            Class<?> visualizer = Class.forName("org.apache.jmeter.visualizers.StatGraphVisualizer");
+            Method create = visualizer.getDeclaredMethod("createObjectTableModel");
+            create.setAccessible(true);
+            Method draw = visualizer.getDeclaredMethod("getRenderers");
+            draw.setAccessible(true);
+            model = (ObjectTableModel) create.invoke(null);
+            renderers = (TableCellRenderer[]) draw.invoke(null);
+        }
+
+        /** The text of every cell after the Label one. */
+        List<String> shown(SamplingStatCalculator c) {
+            model.clearData();
+            model.addRow(c);
+            List<String> cells = new ArrayList<>();
+            for (int col = 1; col < model.getColumnCount(); col++) {
+                Object value = model.getValueAt(0, col);
+                TableCellRenderer r = renderers[col];
+                if (r == null) {
+                    cells.add(value == null ? "" : value.toString());
+                } else {
+                    // What the table calls on the renderer for this cell (DefaultTableCellRenderer skips it
+                    // when handed no table, so it is called directly)
+                    ((NumberRenderer) r).setValue(value);
+                    cells.add(((JLabel) r).getText());
+                }
+            }
+            if (cells.size() != SHOWN.length) {
+                throw new IllegalStateException("the Aggregate Report has " + cells.size() + " value columns, expected "
+                        + SHOWN.length);
+            }
+            return cells;
+        }
     }
 
     private static String csv(String s) {
