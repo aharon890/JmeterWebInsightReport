@@ -567,7 +567,8 @@ class ReportDataSerializerTest {
         long ts = 1700000000000L;
         engine.recordTransaction("Checkout", "Pay", true);
         engine.recordSample("Checkout", 300, true, 900, 90, ts, 10, 280);
-        engine.recordSample("Pay", 300, true, 900, 90, ts, 10, 280);
+        // Pay reached the listener inside Checkout: a sub-result, no sample of the whole run
+        engine.recordSample("Pay", 300, true, 900, 90, ts, ts + 300, 10, 280, 1, 0, false);
         engine.recordSample("Home", 100, true, 100, 10, ts + 10, -1, -1);
         engine.recordSample("Home", 500, true, 100, 10, ts + 20, -1, -1);
 

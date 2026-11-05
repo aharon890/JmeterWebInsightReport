@@ -175,9 +175,9 @@ public class LiveStatisticsEngine {
         long endKey = endOf(timestamp, responseTime) / 1000 * 1000;
         timeBuckets.computeIfAbsent(endKey, k -> new TimeBucketAggregator(k))
                 .addSample(responseTime, samplerName, bytesReceived, bytesSent,
-                        connectTime, latency, n, failed);
+                        connectTime, latency, n, failed, topLevel);
         long startKey = timestamp / 1000 * 1000;
-        timeBuckets.computeIfAbsent(startKey, k -> new TimeBucketAggregator(k)).addHits(samplerName, n);
+        timeBuckets.computeIfAbsent(startKey, k -> new TimeBucketAggregator(k)).addHits(samplerName, n, topLevel);
 
         // Global counters
         totalSamples.addAndGet(n);
@@ -399,19 +399,13 @@ public class LiveStatisticsEngine {
     }
 
     /**
-     * Get time-series data sorted by timestamp.
+     * Get time-series data sorted by timestamp. Each second's totals are its samples of the whole run,
+     * pooled by sample as they arrived ({@link TimeBucketAggregator}).
      */
     public List<TimeSeriesBucket> getTimeSeries() {
-        // The samplers detectTransactionHierarchy nests: every child of a recorded relationship
-        Set<String> nested = new HashSet<>();
-        for (Set<String> children : explicitTransactions.values()) {
-            synchronized (children) {
-                nested.addAll(children);
-            }
-        }
         return timeBuckets.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
-                .map(e -> e.getValue().toBucket(nested))
+                .map(e -> e.getValue().toBucket())
                 .collect(Collectors.toList());
     }
 

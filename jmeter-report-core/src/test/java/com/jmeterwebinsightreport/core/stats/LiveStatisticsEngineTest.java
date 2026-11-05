@@ -246,6 +246,26 @@ class LiveStatisticsEngineTest {
     }
 
     @Test
+    void theSecondsTotalsCountANameThatAlsoRunsNestedInTheSecondsItRanOnItsOwn() {
+        // The Σ Total lines pooled the seconds' names that were no child, so a second in which "Open"
+        // ran on its own and failed drew no sample and 0% errors (tails: the Σ error line was 0 in all
+        // 305 seconds)
+        long ts = 1700000000000L;
+        engine.recordSample("Whole", 40, true, 300, 30, ts, ts + 40, 0, 0, 1, 0, true);
+        engine.recordTransaction("Whole", "Open", true);
+        recordChild("Open", 30, true, 300, 30, ts, 0, 0);
+        engine.recordSample("Open", 60, false, 300, 30, ts + 1000, ts + 1060, 0, 0, 1, 1, true);
+
+        TimeSeriesBucket second = bucketAt(engine.getTimeSeries(), ts + 1000);
+        assertEquals(1, second.getSampleCount(), "Open on its own");
+        assertEquals(100.0, second.getErrorRate(), 1e-9);
+        assertEquals(1, bucketAt(engine.getTimeSeries(), ts).getSampleCount(), "Whole; Open is inside it");
+        long seconds = engine.getTimeSeries().stream().mapToLong(TimeSeriesBucket::getSampleCount).sum();
+        assertEquals(engine.buildReportData("t").getTopLevelSampleCount(), seconds,
+                "the seconds add up to the Total Samples tile");
+    }
+
+    @Test
     void aTransactionHoldingARequestOfItsOwnNameCountsOnceInTheWholeRun() {
         // S1: the run counted 60 samples where a listener in the plan received 40
         long ts = 1700000000000L;
