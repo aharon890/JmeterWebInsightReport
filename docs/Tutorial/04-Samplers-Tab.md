@@ -32,8 +32,9 @@ Detailed per-sampler statistics table with sorting, filtering, column control, a
 A virtual aggregate row that always appears at the top of the table:
 - **Default state:** Hidden (Σ Total checkbox is unchecked in the filter bar)
 - **Enable:** Check the "Σ Total" checkbox in the sampler filter bar
-- **Values:** Summed counts, throughput and Recv KB/s; overall error rate; the true whole-run
-  median and percentiles; sample-weighted mean and Apdex; transaction children left out
+- **Values:** The whole run, counted per sample as JMeter's Aggregate Report counts its TOTAL:
+  every sample a listener in the test plan received, a transaction's requests inside it. Not the sum
+  of the rows shown: a name that also ran inside a transaction counts those runs in its own row too
 - **Chart behavior:** When enabled, appears as a dashed line in time-series charts
 
 ### Assert badges on the row
@@ -128,7 +129,9 @@ When sampler notes are configured in annotations:
 - Click × → the row and anything open under it disappear from the table
 - A **"Show N Hidden Rows"** button appears above the table
 - Click it → all hidden rows restored; a Transaction Controller child comes back into view
-  while **Transaction Details** is on, and with the other children when it is next turned on
+  while **Show transaction details** is ticked, and with the other children when it is next ticked
+- Hiding a transaction hides the rows inside it too, and they stay hidden until "Show N Hidden
+  Rows", whatever the switch and the search do
 
 ### CSV Export
 
@@ -183,21 +186,26 @@ When the test has Transaction Controllers (parent/child sampler hierarchy):
 
 ### Default Behavior
 
-- Only **parent transactions** and **standalone samplers** are shown
+- Only **transactions** and **samplers a listener in the test plan received on their own** are shown;
+  a name that runs both on its own and inside a transaction is shown, its row counting every run of it
 - Child samplers are hidden from the table, filter bar, charts and the Errors tab's tables
-- This matches JMeter's native Aggregate Report behavior
+- This matches an Aggregate Report in the test plan
 - **No double-counting:** Parents aggregate their children
 - A parent that came from a Transaction Controller carries a ▶ icon before its name
 
-### Transaction Details Toggle
+### Show Transaction Details
 
-- A **"Transaction Details"** button appears in the Samplers tab toolbar
+- A **"Show transaction details"** checkbox appears in the filter bar's Samplers row, after All /
+  None, when the run has transactions. It is the one switch for every tab: the charts, the chips and
+  the Errors tab's sampler filter follow it too
 - **Default:** OFF (children hidden); the choice is remembered in localStorage
-- **Toggle ON:**
-  - Child samplers appear, indented
+- **Ticked:**
+  - Child samplers appear under their own transaction, a level deeper each time, in the order the
+    run first saw them; a sort orders each transaction's rows among themselves
   - Children show full statistics and expand to their own charts like any row
-  - Children also appear in the filter bar with checkboxes
-- **Toggle OFF:**
+  - Children also appear in the filter bar with checkboxes, in the same order
+  - A search shows a matching request with its transaction above it
+- **Unticked:**
   - Children hidden again
   - Σ Total values unchanged (never double-counted)
 

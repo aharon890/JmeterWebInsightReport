@@ -480,6 +480,11 @@ public class ReportDataSerializer {
                 exact(exact, "max", stat.getMaxResponseTime());
                 exact(exact, "errorRate", stat.getErrorRate());
                 s.put("errorCount", stat.getErrorCount());
+                // Where else the name ran (a name that also ran on its own, or inside several
+                // transactions): the row says so, since one row per name has one place in the table
+                if (stat.getAlsoRunsInside() != null && !stat.getAlsoRunsInside().isEmpty()) {
+                    s.put("alsoInside", stat.getAlsoRunsInside());
+                }
                 // Full precision, unlike its neighbours: throughput is the number requiresLoad and
                 // divideBy judge, and the browser re-judges server KPIs from this payload. Java
                 // judges stat.getThroughput() as is, so a round2'd 12.496 req/s sat ON a `lt 12.5`
@@ -549,6 +554,11 @@ public class ReportDataSerializer {
             }
             overall.put("mean", round2(m.getMean()));
             overall.put("totalSamples", m.getTotalSamples());
+            // The Σ Total row's counts and extremes, the whole run's own (per sample): adding up the
+            // rows on the page left out every sample of a name that also ran inside a transaction
+            overall.put("totalErrors", m.getTotalErrors());
+            overall.put("min", round2(m.getMin()));
+            overall.put("max", round2(m.getMax()));
             overall.put("errorRate", round2(m.getErrorRate()));
             overall.put("throughput", fullPrecision(m.getThroughput()));   // see samplers[] (R2-1)
             // All bytes over the test duration: the Σ Total row's KB/s columns (B1), which used to
@@ -630,6 +640,11 @@ public class ReportDataSerializer {
                 full.put("errorType", es.getErrorType());
                 full.put("failureMessage", es.getFailureMessage());
                 full.put("occurrenceCount", es.getOccurrenceCount());
+                // Of them, the whole run's (top-level): what the page's overall code= and class=
+                // rules count, as MetricRef does
+                if (es.getTopLevelOccurrenceCount() >= 0) {
+                    full.put("topLevelOccurrenceCount", es.getTopLevelOccurrenceCount());
+                }
                 // The group's whole span, for the grouped view's first and last seen (E2): the
                 // records it used to read them from are only the first 500 errors.
                 full.put("firstTimestamp", es.getFirstTimestamp());

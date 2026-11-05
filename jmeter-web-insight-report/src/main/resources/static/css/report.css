@@ -212,6 +212,30 @@ body {
     color: var(--color-text);
 }
 
+/* "Show transaction details", after All / None: one switch for every tab that shows this row */
+.filter-transaction-details {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 8px 0 4px;
+    padding: 2px 10px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    font-size: 0.75rem;
+    color: var(--color-text);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.filter-transaction-details.active {
+    border-color: var(--color-primary);
+}
+
+.filter-transaction-details input {
+    margin: 0;
+    cursor: pointer;
+}
+
 .filter-sampler-list label {
     display: flex;
     align-items: center;
@@ -1593,12 +1617,15 @@ body.dark-mode.cb-mode sup.delta-bad { color: #fb923c; }
 }
 
 /* Transaction Controller Hierarchy */
-.transaction-parent td:first-child {
+/* On the name cell, wherever the Sampler column was dragged (review, 2026-11-05) */
+.transaction-parent td.sampler-name-td {
     font-weight: 600;
 }
 
-.transaction-child td:first-child {
-    padding-left: 32px !important;
+/* A step per level: a request inside a transaction, a request inside a nested one (--wir-depth,
+   set by arrangeSamplerRows). Level 1 is the 32px it always was. */
+.transaction-child td.sampler-name-td {
+    padding-left: calc(12px + 20px * var(--wir-depth, 1)) !important;
 }
 
 .tc-icon {

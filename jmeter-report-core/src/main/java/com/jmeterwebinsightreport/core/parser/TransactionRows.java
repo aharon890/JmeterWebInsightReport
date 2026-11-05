@@ -3,7 +3,9 @@ package com.jmeterwebinsightreport.core.parser;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Finds, in a results file, the rows a Transaction Controller wrote as its parent sample's
@@ -40,10 +42,25 @@ import java.util.Map;
  * nested under their request, as the listener nests them, and take no place among the N; counting
  * them used up the transaction's places and left its last requests at the top level. JMeter does
  * not rename them in functional mode or with {@code subresults.disable_renaming=true}, and then they
- * cannot be told from the next request.
+ * cannot be told from the next request: such a row takes a place among the N and leaves the
+ * transaction's last request at the top level, which since the whole run is counted per sample
+ * (4.2.29) counts it in the whole run and makes it a top-level row, where the run report nests it.
  *
  * <p>Sub-results outside a transaction (S47, "Home Page-0") are left as rows: no JMeter tool that
  * reads a file nests them, and nothing here anchors them.
+ *
+ * <p>A transaction the test end cut off is written without the message: when a thread stops inside
+ * one, {@code JMeterThread} ends it once more ({@code doEndTransactionSampler}) without
+ * {@code setTransactionDone}, so its row has no "Number of samples" and its requests still follow it.
+ * A listener in the plan received that transaction with its requests inside, as it receives any
+ * other (E02: 20 such rows with 40 requests; a listener counts 7,224, every row 7,264). So an unmarked
+ * row whose name was a parent-sample transaction earlier in the file nests the rows of its thread
+ * that start inside its span. Its own count of children is unknown, so the span alone ends it, and
+ * the row itself stays a request, as the listener counts it: the message is what says "transaction"
+ * on both paths. The names are the whole file's ({@link #TransactionRows(Set)}): a "Stop Thread" on a
+ * sampler error cuts a transaction off before any of its name has completed, and its row is then the
+ * file's first of that name. A name that never completed anywhere in the file cannot be told from a
+ * request.
  *
  * <p>One instance per file, fed every row in file order. Not thread-safe; the parser is single
  * threaded per file.
@@ -58,6 +75,20 @@ final class TransactionRows {
     private final Map<String, Deque<Open>> open = new HashMap<>();
     /** Per thread: the last request read inside a transaction and its sub-results so far, outermost first. */
     private final Map<String, Deque<String>> requests = new HashMap<>();
+    /** The names a transaction row carries anywhere in the file: an unmarked row of one was cut off. */
+    private final Set<String> parentSampleTransactions = new HashSet<>();
+
+    /** Reading a file with no knowledge of its transaction names beyond the rows already read. */
+    TransactionRows() {
+        this(java.util.Collections.emptySet());
+    }
+
+    /** @param transactionNames every label a transaction row carries anywhere in the file */
+    TransactionRows(Set<String> transactionNames) {
+        parentSampleTransactions.addAll(transactionNames);
+    }
+    /** A cut-off transaction's children: as many as start inside its span. */
+    private static final int UNTIL_ITS_SPAN_ENDS = -1;
 
     /** Whose row a row is: a transaction's ({@code transaction}), or a request's sub-result. */
     static final class Nesting {
@@ -99,22 +130,40 @@ final class TransactionRows {
 
         Pending last = pending.remove(thread);
         if (last != null && start >= last.start && start < last.realEnd) {
-            open.computeIfAbsent(thread, k -> new ArrayDeque<>()).addLast(new Open(last.label, last.children));
+            open.computeIfAbsent(thread, k -> new ArrayDeque<>())
+                    .addLast(new Open(last.label, last.children, last.realEnd));
+            if (last.children != UNTIL_ITS_SPAN_ENDS) {
+                parentSampleTransactions.add(last.label);
+            }
         }
 
         String parent = null;
         Deque<Open> stack = open.get(thread);
+        while (stack != null && !stack.isEmpty() && stack.peekLast().left == UNTIL_ITS_SPAN_ENDS
+                && start >= stack.peekLast().realEnd) {
+            stack.removeLast();
+        }
         if (stack != null && !stack.isEmpty()) {
             Open innermost = stack.peekLast();
             parent = innermost.label;
-            if (--innermost.left == 0) {
+            if (innermost.left != UNTIL_ITS_SPAN_ENDS && --innermost.left == 0) {
                 stack.removeLast();
             }
         }
 
         int children = childrenIn(message);
+        long realEnd = start + Math.max(0, elapsed) + Math.max(0, idle);
         if (children > 0) {
-            pending.put(thread, new Pending(label, start, start + Math.max(0, elapsed) + Math.max(0, idle), children));
+            pending.put(thread, new Pending(label, start, realEnd, children));
+        } else if (parentSampleTransactions.contains(label)) {
+            // Cut off at the test end, or a request named like a transaction: only a transaction's
+            // children start inside its span, so the next row of the thread tells them apart
+            pending.put(thread, new Pending(label, start, realEnd, UNTIL_ITS_SPAN_ENDS));
+            if (parent != null) {
+                Deque<String> request = new ArrayDeque<>();
+                request.addLast(label);
+                requests.put(thread, request);
+            }
         } else if (parent != null) {
             Deque<String> request = new ArrayDeque<>();
             request.addLast(label);
@@ -169,11 +218,14 @@ final class TransactionRows {
 
     private static final class Open {
         final String label;
+        /** Children still to come, or {@link #UNTIL_ITS_SPAN_ENDS}. */
         int left;
+        final long realEnd;
 
-        Open(String label, int left) {
+        Open(String label, int left, long realEnd) {
             this.label = label;
             this.left = left;
+            this.realEnd = realEnd;
         }
     }
 }

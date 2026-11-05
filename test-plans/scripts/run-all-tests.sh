@@ -339,6 +339,10 @@ run_test E24 "Minimal Data"           regression    single-sampler-test.jmx     
 # that is correct. The opt-out is the fixture saying "the broken rule is the point", not a
 # workaround: C33 is where the flag's real behaviour is proven, in both directions.
 run_test E25 "Assertion Rules"         configuration asserts-scenario-test.jmx         "-Jthreads=5 -Jduration=30 -Jrampup=3 -Jwebinsight.report.failonerror=false" asserts.json
+# A parent-on transaction run both on its own and inside another one, as tails-conversation-flows
+# runs it, plus transactions a timed thread group leaves open at the end. R07 holds its counts to
+# JMeter's own; the Samplers-table specs read its transaction hierarchy.
+run_test E31 "Nested Transactions"     functional    transaction-alone-and-nested-test.jmx ""
 
 echo ""
 echo "  Waiting for in-flight scenarios (WIR_JOBS=$WIR_JOBS) ..."

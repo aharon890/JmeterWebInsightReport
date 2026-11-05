@@ -22,6 +22,14 @@ class LiveStatisticsEngineTest {
         engine = new LiveStatisticsEngine();
     }
 
+    /** A sub-result, as the listener records one: it reached the listener inside its parent's sample,
+     *  so it is no sample of the whole run's (a transaction's request, a nested transaction). */
+    private void recordChild(String name, long responseTime, boolean ok, long bytes, long sent, long ts,
+                             long connect, long latency) {
+        engine.recordSample(name, responseTime, ok, bytes, sent, ts, ts + responseTime, connect, latency,
+                1, ok ? 0 : 1, false);
+    }
+
     @Test
     void recordSample_incrementsSampleCount() {
         long ts = 1700000000000L;
@@ -159,8 +167,8 @@ class LiveStatisticsEngineTest {
         // Real transaction relationships come from sample sub-results (recorded by the listener).
         engine.recordTransaction("TC", "TC-0");
         engine.recordTransaction("TC", "TC-1");
-        engine.recordSample("TC-0", 100, true, 500, 100, ts, 5, 10);
-        engine.recordSample("TC-1", 120, true, 600, 120, ts + 100, 5, 10);
+        recordChild("TC-0", 100, true, 500, 100, ts, 5, 10);
+        recordChild("TC-1", 120, true, 600, 120, ts + 100, 5, 10);
         engine.recordSample("TC", 220, true, 1100, 220, ts + 200, 5, 10);
 
         ReportData data = engine.buildReportData("test");
@@ -182,8 +190,8 @@ class LiveStatisticsEngineTest {
         engine.recordTransaction("Checkout", "Cart", true);
         engine.recordTransaction("Checkout", "Pay", true);
         engine.recordSample("Checkout", 300, false, 900, 90, ts, 10, 280);
-        engine.recordSample("Cart", 100, true, 400, 40, ts, 5, 90);
-        engine.recordSample("Pay", 200, false, 500, 50, ts + 100, 5, 190);
+        recordChild("Cart", 100, true, 400, 40, ts, 5, 90);
+        recordChild("Pay", 200, false, 500, 50, ts + 100, 5, 190);
         engine.recordSample("Home", 10, true, 100, 10, ts + 200, -1, -1);
 
         TimeSeriesBucket b = engine.getTimeSeries().get(0);
@@ -198,6 +206,151 @@ class LiveStatisticsEngineTest {
         assertEquals(4, b.getPerSamplerData().size(), "every sampler keeps its own series");
         assertEquals(engine.buildReportData("t").getTopLevelSampleCount(), b.getSampleCount(),
                 "the seconds add up to the Total Samples tile");
+    }
+
+    @Test
+    void aNameRunOnItsOwnAndInsideATransactionKeepsItsOwnRunsInTheWholeRun() {
+        // tails-conversation-flows, 2026-11: "Open the conversation" ran inside "Whole session" in some
+        // sessions and on its own in the rest, failing only on its own; the whole run left every "Open"
+        // out once one was nested (0 errors where JMeter counted 17). A listener in the plan receives
+        // Whole (with Open inside), and Open when it runs alone
+        long ts = 1700000000000L;
+        engine.recordSample("Whole", 40, true, 300, 30, ts, ts + 40, 0, 0, 1, 0, true);
+        engine.recordTransaction("Whole", "Open", true);
+        recordChild("Open", 30, true, 300, 30, ts, 0, 0);
+        engine.recordTransaction("Open", "Get", true);
+        recordChild("Get", 30, true, 300, 30, ts, 5, 20);
+        engine.recordSample("Open", 60, false, 300, 30, ts + 1000, ts + 1060, 0, 0, 1, 1, true);
+        engine.recordError("Open", "404", "Number of samples in transaction : 1, number of failing samples : 1",
+                null, ts + 1000, "TG 1-1", null, null, null, true);
+        engine.recordTransaction("Open", "Get", true);
+        recordChild("Get", 60, false, 300, 30, ts + 1000, 5, 50);
+        engine.recordError("Get", "404", "Not Found", null, ts + 1000, "TG 1-1", null, null, null, false);
+
+        ReportData data = engine.buildReportData("t");
+        // An overall code=404 rule counts the whole run's failure once: Open's own, not the request
+        // inside it (and not zero, which the names with no parent gave)
+        long topLevel404s = data.getErrorSummaries().stream()
+                .filter(s -> "404".equals(s.getResponseCode()))
+                .mapToLong(ErrorSummary::getTopLevelOccurrenceCount).sum();
+        assertEquals(1, topLevel404s);
+        assertEquals(2, data.getTopLevelSampleCount(), "Whole, and Open on its own");
+        assertEquals(1, data.getTopLevelErrorCount(), "Open's own failure");
+        OverallMetrics overall = OverallMetrics.of(data);
+        assertEquals(50.0, overall.getErrorRate(), 1e-9);
+        assertEquals(50.0, overall.getMean(), 1e-9, "the mean of the two samples the listener received");
+        assertEquals(40.0, overall.getMin(), 1e-9);
+        assertEquals(60.0, overall.getMax(), 1e-9);
+        assertEquals(60.0, data.getOverallP99(), 1e-9, "a percentile of those two samples");
+        assertEquals(2, findSampler(data, "Open").getSampleCount(), "its row counts every run of the name");
+        // It ran on its own, so it is a top-level row: shown, reached by blanket rules, a JUnit testcase.
+        // Whole keeps its badge with no child under it; Open keeps its own request
+        assertNull(findSampler(data, "Open").getParentSamplerName());
+        assertTrue(findSampler(data, "Whole").isTransactionController());
+        assertEquals(List.of(), data.getTransactionHierarchy().get("Whole"));
+        assertEquals(List.of("Get"), data.getTransactionHierarchy().get("Open"));
+        assertEquals("Open", findSampler(data, "Get").getParentSamplerName());
+    }
+
+    @Test
+    void anApdexThresholdSetAfterTheFirstSampleKeepsTheWholeRun() {
+        // Review finding (2026-11-05): the whole run was created again when T was set, so a T set after
+        // sampling dropped every sample from every whole-run figure while the rows kept theirs
+        engine.recordSample("A", 100, true, 10, 1, 1700000000000L, -1, -1);
+        engine.setApdexThreshold(100);
+        assertEquals(1, engine.buildReportData("t").getTopLevelSampleCount());
+    }
+
+    @Test
+    void aNameInsideTwoTransactionsIsPlacedUnderTheFirstByNameAndNamesTheOther() {
+        // One row per name, so one parent: it was whichever the hash map visited last, and the page
+        // listed the row under both. Now the first by name, every run, and the row names the other
+        long ts = 1700000000000L;
+        engine.recordSample("Whole B", 40, true, 300, 30, ts, ts + 40, 0, 0, 1, 0, true);
+        engine.recordTransaction("Whole B", "Open", true);
+        recordChild("Open", 30, true, 300, 30, ts, 0, 0);
+        engine.recordSample("Whole A", 40, true, 300, 30, ts + 100, ts + 140, 0, 0, 1, 0, true);
+        engine.recordTransaction("Whole A", "Open", true);
+        recordChild("Open", 30, true, 300, 30, ts + 100, 0, 0);
+
+        ReportData data = engine.buildReportData("t");
+        assertEquals("Whole A", findSampler(data, "Open").getParentSamplerName());
+        assertEquals(List.of("Open"), data.getTransactionHierarchy().get("Whole A"));
+        assertEquals(List.of(), data.getTransactionHierarchy().get("Whole B"), "listed under one parent only");
+        assertTrue(findSampler(data, "Whole B").isTransactionController());
+        assertEquals(List.of("Whole B"), findSampler(data, "Open").getAlsoRunsInside());
+    }
+
+    @Test
+    void aNameThatAlsoRunsOnItsOwnNamesTheTransactionsItRanInside() {
+        long ts = 1700000000000L;
+        engine.recordSample("Whole", 40, true, 300, 30, ts, ts + 40, 0, 0, 1, 0, true);
+        engine.recordTransaction("Whole", "Open", true);
+        recordChild("Open", 30, true, 300, 30, ts, 0, 0);
+        engine.recordSample("Open", 30, true, 300, 30, ts + 1000, ts + 1030, 0, 0, 1, 0, true);
+
+        ReportData data = engine.buildReportData("t");
+        assertNull(findSampler(data, "Open").getParentSamplerName());
+        assertEquals(List.of("Whole"), findSampler(data, "Open").getAlsoRunsInside());
+        assertEquals(List.of(), findSampler(data, "Whole").getAlsoRunsInside());
+    }
+
+    @Test
+    void aParentThatWouldCloseALoopIsNotTaken() {
+        // X holds A holds B in one session, Y holds B holds A in another: by name A would go under B and
+        // B under A, and no row of either would be reachable from the top
+        long ts = 1700000000000L;
+        engine.recordSample("X", 40, true, 300, 30, ts, ts + 40, 0, 0, 1, 0, true);
+        engine.recordTransaction("X", "A", true);
+        recordChild("A", 30, true, 300, 30, ts, 0, 0);
+        engine.recordTransaction("A", "B", true);
+        recordChild("B", 20, true, 300, 30, ts, 0, 0);
+        engine.recordSample("Y", 40, true, 300, 30, ts + 100, ts + 140, 0, 0, 1, 0, true);
+        engine.recordTransaction("Y", "B", true);
+        recordChild("B", 30, true, 300, 30, ts + 100, 0, 0);
+        engine.recordTransaction("B", "A", true);
+        recordChild("A", 20, true, 300, 30, ts + 100, 0, 0);
+
+        ReportData data = engine.buildReportData("t");
+        assertEquals("B", findSampler(data, "A").getParentSamplerName(), "A's first parent by name");
+        assertEquals("Y", findSampler(data, "B").getParentSamplerName(), "A would close a loop, so Y");
+        assertEquals(List.of("X"), findSampler(data, "A").getAlsoRunsInside());
+        assertEquals(List.of("A"), findSampler(data, "B").getAlsoRunsInside());
+    }
+
+    @Test
+    void theSecondsTotalsCountANameThatAlsoRunsNestedInTheSecondsItRanOnItsOwn() {
+        // The Σ Total lines pooled the seconds' names that were no child, so a second in which "Open"
+        // ran on its own and failed drew no sample and 0% errors (tails: the Σ error line was 0 in all
+        // 305 seconds)
+        long ts = 1700000000000L;
+        engine.recordSample("Whole", 40, true, 300, 30, ts, ts + 40, 0, 0, 1, 0, true);
+        engine.recordTransaction("Whole", "Open", true);
+        recordChild("Open", 30, true, 300, 30, ts, 0, 0);
+        engine.recordSample("Open", 60, false, 300, 30, ts + 1000, ts + 1060, 0, 0, 1, 1, true);
+
+        TimeSeriesBucket second = bucketAt(engine.getTimeSeries(), ts + 1000);
+        assertEquals(1, second.getSampleCount(), "Open on its own");
+        assertEquals(100.0, second.getErrorRate(), 1e-9);
+        assertEquals(1, bucketAt(engine.getTimeSeries(), ts).getSampleCount(), "Whole; Open is inside it");
+        long seconds = engine.getTimeSeries().stream().mapToLong(TimeSeriesBucket::getSampleCount).sum();
+        assertEquals(engine.buildReportData("t").getTopLevelSampleCount(), seconds,
+                "the seconds add up to the Total Samples tile");
+    }
+
+    @Test
+    void aTransactionHoldingARequestOfItsOwnNameCountsOnceInTheWholeRun() {
+        // S1: the run counted 60 samples where a listener in the plan received 40
+        long ts = 1700000000000L;
+        for (int i = 0; i < 2; i++) {
+            boolean ok = i == 0;
+            engine.recordSample("Login", 30, ok, 300, 30, ts + i * 1000, ts + i * 1000 + 30, 0, 0, 1, ok ? 0 : 1, true);
+            engine.recordTransaction("Login", "Login", true);
+            recordChild("Login", 30, ok, 300, 30, ts + i * 1000, 5, 20);
+        }
+        ReportData data = engine.buildReportData("t");
+        assertEquals(2, data.getTopLevelSampleCount());
+        assertEquals(1, data.getTopLevelErrorCount());
     }
 
     @Test
@@ -225,8 +378,8 @@ class LiveStatisticsEngineTest {
         engine.recordSample("Checkout", 300, false, 900, 90, ts, 0, 0);
         engine.recordTransactionRow(1);
         engine.recordError("Checkout", "500", tx, ts, "TG 1-1");
-        engine.recordSample("Cart", 100, true, 400, 40, ts, 5, 90);
-        engine.recordSample("Pay", 200, false, 500, 50, ts + 100, 5, 190);
+        recordChild("Cart", 100, true, 400, 40, ts, 5, 90);
+        recordChild("Pay", 200, false, 500, 50, ts + 100, 5, 190);
         engine.recordError("Pay", "500", "Internal Server Error", ts + 100, "TG 1-1");
         engine.recordSample("Home", 10, false, 100, 10, ts + 200, 1, 9);
         engine.recordError("Home", "503", "Service Unavailable", ts + 200, "TG 1-2");
@@ -313,8 +466,8 @@ class LiveStatisticsEngineTest {
         engine.recordTransaction("Home", "https://cdn/app.css", false);
         engine.recordTransaction("Home", "https://cdn/app.js", false);
         engine.recordSample("Home", 400, true, 5000, 200, ts, 5, 10);
-        engine.recordSample("https://cdn/app.css", 50, true, 1000, 50, ts + 1, 5, 10);
-        engine.recordSample("https://cdn/app.js", 60, true, 2000, 50, ts + 2, 5, 10);
+        recordChild("https://cdn/app.css", 50, true, 1000, 50, ts + 1, 5, 10);
+        recordChild("https://cdn/app.js", 60, true, 2000, 50, ts + 2, 5, 10);
 
         ReportData data = engine.buildReportData("test");
 
@@ -331,7 +484,7 @@ class LiveStatisticsEngineTest {
         long ts = 1700000000000L;
         engine.recordTransaction("Login Flow", "POST /login", true);
         engine.recordSample("Login Flow", 300, true, 100, 10, ts, 5, 10);
-        engine.recordSample("POST /login", 150, true, 50, 5, ts + 1, 5, 10);
+        recordChild("POST /login", 150, true, 50, 5, ts + 1, 5, 10);
 
         ReportData data = engine.buildReportData("test");
 
@@ -344,9 +497,9 @@ class LiveStatisticsEngineTest {
         engine.recordTransaction("Login Flow", "POST /login", true);
         engine.recordTransaction("Home", "https://cdn/app.css", false);
         engine.recordSample("Login Flow", 300, true, 100, 10, ts, 5, 10);
-        engine.recordSample("POST /login", 150, true, 50, 5, ts + 1, 5, 10);
+        recordChild("POST /login", 150, true, 50, 5, ts + 1, 5, 10);
         engine.recordSample("Home", 400, true, 100, 10, ts + 2, 5, 10);
-        engine.recordSample("https://cdn/app.css", 50, true, 50, 5, ts + 3, 5, 10);
+        recordChild("https://cdn/app.css", 50, true, 50, 5, ts + 3, 5, 10);
 
         ReportData data = engine.buildReportData("test");
 
@@ -897,7 +1050,7 @@ class LiveStatisticsEngineTest {
         engine.recordSample("Login Flow", 500, true, 1000, 200, ts, 5, 10);
         for (int t = 0; t < threads; t++) {
             for (int i = 0; i < childrenPerThread; i++) {
-                engine.recordSample("child-" + t + "-" + i, 10, true, 100, 10, ts + 1, 5, 10);
+                recordChild("child-" + t + "-" + i, 10, true, 100, 10, ts + 1, 5, 10);
             }
         }
 
@@ -919,9 +1072,9 @@ class LiveStatisticsEngineTest {
 
         long ts = 1700000000000L;
         engine.recordSample("TC", 100, true, 100, 10, ts, 1, 1);
-        engine.recordSample("third", 10, true, 10, 1, ts, 1, 1);
-        engine.recordSample("first", 10, true, 10, 1, ts, 1, 1);
-        engine.recordSample("second", 10, true, 10, 1, ts, 1, 1);
+        recordChild("third", 10, true, 10, 1, ts, 1, 1);
+        recordChild("first", 10, true, 10, 1, ts, 1, 1);
+        recordChild("second", 10, true, 10, 1, ts, 1, 1);
 
         ReportData data = engine.buildReportData("test");
         assertEquals(java.util.Arrays.asList("third", "first", "second"),
@@ -966,8 +1119,8 @@ class LiveStatisticsEngineTest {
         for (int i = 0; i < 100; i++) {
             boolean ok = i >= 10; // 10 failures
             engine.recordSample("Login Flow", 300, ok, 100, 10, ts + i, 1, 1);
-            engine.recordSample("POST /login", 150, true, 50, 5, ts + i, 1, 1);
-            engine.recordSample("GET /profile", 150, true, 50, 5, ts + i, 1, 1);
+            recordChild("POST /login", 150, true, 50, 5, ts + i, 1, 1);
+            recordChild("GET /profile", 150, true, 50, 5, ts + i, 1, 1);
             if (!ok) {
                 engine.recordError("Login Flow", "500", "Server Error", ts + i, "Thread-1");
             }
@@ -1002,7 +1155,7 @@ class LiveStatisticsEngineTest {
             engine.recordSample("Login Flow", 300, false, 100, 10, ts + i, 1, 1);
             engine.recordError("Login Flow", "500", "Server Error", ts + i, "T1");
             for (int c = 0; c < 3; c++) {
-                engine.recordSample("POST /login", 50, false, 50, 5, ts + i, 1, 1);
+                recordChild("POST /login", 50, false, 50, 5, ts + i, 1, 1);
                 engine.recordError("POST /login", "500", "Server Error", ts + i, "T1");
             }
         }

@@ -1,0 +1,349 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+  <hashTree>
+    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="Nested Transactions — one transaction run alone and inside another">
+      <stringProp name="TestPlan.comments">E31. The shape tails-conversation-flows found (2026-11): &quot;Open the conversation&quot; and &quot;Send and reply&quot; (parent sample on) are a Test Fragment run through Module Controllers, on their own in most sessions and inside &quot;Whole session&quot; (parent sample on) in sessions 1, 6, 11 and 16. The stale-link child fails in sessions 3, 9, 12, 15 and 18, never a nested one. A second, timed thread group leaves &quot;Search the thread&quot; transactions open when the test ends, which JMeter writes without the &quot;Number of samples&quot; message. R07 holds the run report, and its -g rebuild, to the In-test-plan results file. The fixed group alone sends a listener in the plan 56 samples, 5 of them failed.</stringProp>
+      <boolProp name="TestPlan.functional_mode">false</boolProp>
+      <boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
+      <elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments">
+        <collectionProp name="Arguments.arguments"/>
+      </elementProp>
+    </TestPlan>
+    <hashTree>
+      <TestFragmentController guiclass="TestFragmentControllerGui" testclass="TestFragmentController" testname="Shared transactions" enabled="false"/>
+      <hashTree>
+        <TransactionController guiclass="TransactionControllerGui" testclass="TransactionController" testname="Open the conversation" enabled="true">
+          <boolProp name="TransactionController.includeTimers">false</boolProp>
+          <boolProp name="TransactionController.parent">true</boolProp>
+        </TransactionController>
+        <hashTree>
+          <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="GET conversation" enabled="true">
+            <stringProp name="scriptLanguage">groovy</stringProp>
+            <stringProp name="parameters"></stringProp>
+            <stringProp name="filename"></stringProp>
+            <stringProp name="cacheKey">true</stringProp>
+            <stringProp name="script">Thread.sleep(6)
+          boolean fail = false
+          SampleResult.setSuccessful(!fail)
+          SampleResult.setResponseCode(fail ? &apos;404&apos; : &apos;200&apos;)
+          SampleResult.setResponseMessage(fail ? &apos;Not Found&apos; : &apos;OK&apos;)
+          SampleResult.setResponseData(fail ? &apos;{&quot;error&quot;:&quot;no such conversation&quot;}&apos; : &apos;{&quot;ok&quot;:true}&apos;, &apos;UTF-8&apos;)
+          SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)</stringProp>
+          </JSR223Sampler>
+          <hashTree/>
+          <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="GET messages (latest 40)" enabled="true">
+            <stringProp name="scriptLanguage">groovy</stringProp>
+            <stringProp name="parameters"></stringProp>
+            <stringProp name="filename"></stringProp>
+            <stringProp name="cacheKey">true</stringProp>
+            <stringProp name="script">Thread.sleep(5)
+          boolean fail = false
+          SampleResult.setSuccessful(!fail)
+          SampleResult.setResponseCode(fail ? &apos;404&apos; : &apos;200&apos;)
+          SampleResult.setResponseMessage(fail ? &apos;Not Found&apos; : &apos;OK&apos;)
+          SampleResult.setResponseData(fail ? &apos;{&quot;error&quot;:&quot;no such conversation&quot;}&apos; : &apos;{&quot;ok&quot;:true}&apos;, &apos;UTF-8&apos;)
+          SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)</stringProp>
+          </JSR223Sampler>
+          <hashTree/>
+          <IfController guiclass="IfControllerPanel" testclass="IfController" testname="If this is a failing-child session" enabled="true">
+            <stringProp name="IfController.condition">${__groovy(vars.get(&apos;failing_child_session&apos;) == &apos;true&apos;)}</stringProp>
+            <boolProp name="IfController.evaluateAll">false</boolProp>
+            <boolProp name="IfController.useExpression">true</boolProp>
+          </IfController>
+          <hashTree>
+            <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="GET conversation (stale link, fails on purpose)" enabled="true">
+              <stringProp name="scriptLanguage">groovy</stringProp>
+              <stringProp name="parameters"></stringProp>
+              <stringProp name="filename"></stringProp>
+              <stringProp name="cacheKey">true</stringProp>
+              <stringProp name="script">Thread.sleep(4)
+            boolean fail = true
+            SampleResult.setSuccessful(!fail)
+            SampleResult.setResponseCode(fail ? &apos;404&apos; : &apos;200&apos;)
+            SampleResult.setResponseMessage(fail ? &apos;Not Found&apos; : &apos;OK&apos;)
+            SampleResult.setResponseData(fail ? &apos;{&quot;error&quot;:&quot;no such conversation&quot;}&apos; : &apos;{&quot;ok&quot;:true}&apos;, &apos;UTF-8&apos;)
+            SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)</stringProp>
+            </JSR223Sampler>
+            <hashTree/>
+          </hashTree>
+        </hashTree>
+        <TransactionController guiclass="TransactionControllerGui" testclass="TransactionController" testname="Send and reply" enabled="true">
+          <boolProp name="TransactionController.includeTimers">false</boolProp>
+          <boolProp name="TransactionController.parent">true</boolProp>
+        </TransactionController>
+        <hashTree>
+          <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="POST message" enabled="true">
+            <stringProp name="scriptLanguage">groovy</stringProp>
+            <stringProp name="parameters"></stringProp>
+            <stringProp name="filename"></stringProp>
+            <stringProp name="cacheKey">true</stringProp>
+            <stringProp name="script">Thread.sleep(8)
+          boolean fail = false
+          SampleResult.setSuccessful(!fail)
+          SampleResult.setResponseCode(fail ? &apos;404&apos; : &apos;200&apos;)
+          SampleResult.setResponseMessage(fail ? &apos;Not Found&apos; : &apos;OK&apos;)
+          SampleResult.setResponseData(fail ? &apos;{&quot;error&quot;:&quot;no such conversation&quot;}&apos; : &apos;{&quot;ok&quot;:true}&apos;, &apos;UTF-8&apos;)
+          SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)</stringProp>
+          </JSR223Sampler>
+          <hashTree/>
+          <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="POST reply" enabled="true">
+            <stringProp name="scriptLanguage">groovy</stringProp>
+            <stringProp name="parameters"></stringProp>
+            <stringProp name="filename"></stringProp>
+            <stringProp name="cacheKey">true</stringProp>
+            <stringProp name="script">Thread.sleep(7)
+          boolean fail = false
+          SampleResult.setSuccessful(!fail)
+          SampleResult.setResponseCode(fail ? &apos;404&apos; : &apos;200&apos;)
+          SampleResult.setResponseMessage(fail ? &apos;Not Found&apos; : &apos;OK&apos;)
+          SampleResult.setResponseData(fail ? &apos;{&quot;error&quot;:&quot;no such conversation&quot;}&apos; : &apos;{&quot;ok&quot;:true}&apos;, &apos;UTF-8&apos;)
+          SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)</stringProp>
+          </JSR223Sampler>
+          <hashTree/>
+        </hashTree>
+      </hashTree>
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Members, fixed sessions" enabled="true">
+        <stringProp name="ThreadGroup.num_threads">1</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">0</stringProp>
+        <boolProp name="ThreadGroup.scheduler">false</boolProp>
+        <stringProp name="ThreadGroup.duration"></stringProp>
+        <stringProp name="ThreadGroup.delay"></stringProp>
+        <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
+        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller" enabled="true">
+          <stringProp name="LoopController.loops">20</stringProp>
+          <boolProp name="LoopController.continue_forever">false</boolProp>
+        </elementProp>
+      </ThreadGroup>
+      <hashTree>
+        <TestAction guiclass="TestActionGui" testclass="TestAction" testname="Start a session" enabled="true">
+          <intProp name="ActionProcessor.action">1</intProp>
+          <intProp name="ActionProcessor.target">0</intProp>
+          <stringProp name="ActionProcessor.duration">0</stringProp>
+        </TestAction>
+        <hashTree>
+          <JSR223PreProcessor guiclass="TestBeanGUI" testclass="JSR223PreProcessor" testname="Count the session (nested? failing child?)" enabled="true">
+            <stringProp name="scriptLanguage">groovy</stringProp>
+            <stringProp name="parameters"></stringProp>
+            <stringProp name="filename"></stringProp>
+            <stringProp name="cacheKey">true</stringProp>
+            <stringProp name="script">// Sessions 1, 6, 11, 16 run inside &quot;Whole session&quot;; sessions 3, 9, 12, 15, 18 (never a nested one) open a stale link.
+        int session = ((vars.get(&apos;session&apos;) ?: &apos;0&apos;) as int) + 1
+        vars.put(&apos;session&apos;, String.valueOf(session))
+        boolean nested = session % 5 == 1
+        vars.put(&apos;nested_session&apos;, String.valueOf(nested))
+        vars.put(&apos;failing_child_session&apos;, String.valueOf(!nested &amp;&amp; session % 3 == 0))</stringProp>
+          </JSR223PreProcessor>
+          <hashTree/>
+        </hashTree>
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="Heartbeat" enabled="true">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename"></stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="script">Thread.sleep(3)
+        boolean fail = false
+        SampleResult.setSuccessful(!fail)
+        SampleResult.setResponseCode(fail ? &apos;404&apos; : &apos;200&apos;)
+        SampleResult.setResponseMessage(fail ? &apos;Not Found&apos; : &apos;OK&apos;)
+        SampleResult.setResponseData(fail ? &apos;{&quot;error&quot;:&quot;no such conversation&quot;}&apos; : &apos;{&quot;ok&quot;:true}&apos;, &apos;UTF-8&apos;)
+        SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)</stringProp>
+        </JSR223Sampler>
+        <hashTree/>
+        <IfController guiclass="IfControllerPanel" testclass="IfController" testname="If this session is nested" enabled="true">
+          <stringProp name="IfController.condition">${__groovy(vars.get(&apos;nested_session&apos;) == &apos;true&apos;)}</stringProp>
+          <boolProp name="IfController.evaluateAll">false</boolProp>
+          <boolProp name="IfController.useExpression">true</boolProp>
+        </IfController>
+        <hashTree>
+          <TransactionController guiclass="TransactionControllerGui" testclass="TransactionController" testname="Whole session" enabled="true">
+            <boolProp name="TransactionController.includeTimers">false</boolProp>
+            <boolProp name="TransactionController.parent">true</boolProp>
+          </TransactionController>
+          <hashTree>
+            <ModuleController guiclass="ModuleControllerGui" testclass="ModuleController" testname="Run: Open the conversation" enabled="true">
+              <collectionProp name="ModuleController.node_path">
+                <stringProp name="764597751">Test Plan</stringProp>
+                <stringProp name="246651820">Nested Transactions — one transaction run alone and inside another</stringProp>
+                <stringProp name="2145485072">Shared transactions</stringProp>
+                <stringProp name="-1168117048">Open the conversation</stringProp>
+              </collectionProp>
+            </ModuleController>
+            <hashTree/>
+            <ModuleController guiclass="ModuleControllerGui" testclass="ModuleController" testname="Run: Send and reply" enabled="true">
+              <collectionProp name="ModuleController.node_path">
+                <stringProp name="764597751">Test Plan</stringProp>
+                <stringProp name="246651820">Nested Transactions — one transaction run alone and inside another</stringProp>
+                <stringProp name="2145485072">Shared transactions</stringProp>
+                <stringProp name="220371177">Send and reply</stringProp>
+              </collectionProp>
+            </ModuleController>
+            <hashTree/>
+          </hashTree>
+        </hashTree>
+        <IfController guiclass="IfControllerPanel" testclass="IfController" testname="If this session is not nested" enabled="true">
+          <stringProp name="IfController.condition">${__groovy(vars.get(&apos;nested_session&apos;) != &apos;true&apos;)}</stringProp>
+          <boolProp name="IfController.evaluateAll">false</boolProp>
+          <boolProp name="IfController.useExpression">true</boolProp>
+        </IfController>
+        <hashTree>
+          <ModuleController guiclass="ModuleControllerGui" testclass="ModuleController" testname="Run: Open the conversation" enabled="true">
+            <collectionProp name="ModuleController.node_path">
+              <stringProp name="764597751">Test Plan</stringProp>
+              <stringProp name="246651820">Nested Transactions — one transaction run alone and inside another</stringProp>
+              <stringProp name="2145485072">Shared transactions</stringProp>
+              <stringProp name="-1168117048">Open the conversation</stringProp>
+            </collectionProp>
+          </ModuleController>
+          <hashTree/>
+          <ModuleController guiclass="ModuleControllerGui" testclass="ModuleController" testname="Run: Send and reply" enabled="true">
+            <collectionProp name="ModuleController.node_path">
+              <stringProp name="764597751">Test Plan</stringProp>
+              <stringProp name="246651820">Nested Transactions — one transaction run alone and inside another</stringProp>
+              <stringProp name="2145485072">Shared transactions</stringProp>
+              <stringProp name="220371177">Send and reply</stringProp>
+            </collectionProp>
+          </ModuleController>
+          <hashTree/>
+        </hashTree>
+      </hashTree>
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Readers, timed (transactions cut off at the end)" enabled="true">
+        <stringProp name="ThreadGroup.num_threads">2</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">0</stringProp>
+        <boolProp name="ThreadGroup.scheduler">true</boolProp>
+        <stringProp name="ThreadGroup.duration">${__P(cutoff_duration,5)}</stringProp>
+        <stringProp name="ThreadGroup.delay"></stringProp>
+        <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
+        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller" enabled="true">
+          <stringProp name="LoopController.loops">-1</stringProp>
+          <boolProp name="LoopController.continue_forever">false</boolProp>
+        </elementProp>
+      </ThreadGroup>
+      <hashTree>
+        <TransactionController guiclass="TransactionControllerGui" testclass="TransactionController" testname="Search the thread" enabled="true">
+          <boolProp name="TransactionController.includeTimers">false</boolProp>
+          <boolProp name="TransactionController.parent">true</boolProp>
+        </TransactionController>
+        <hashTree>
+          <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="GET messages (search)" enabled="true">
+            <stringProp name="scriptLanguage">groovy</stringProp>
+            <stringProp name="parameters"></stringProp>
+            <stringProp name="filename"></stringProp>
+            <stringProp name="cacheKey">true</stringProp>
+            <stringProp name="script">Thread.sleep(150)
+          boolean fail = false
+          SampleResult.setSuccessful(!fail)
+          SampleResult.setResponseCode(fail ? &apos;404&apos; : &apos;200&apos;)
+          SampleResult.setResponseMessage(fail ? &apos;Not Found&apos; : &apos;OK&apos;)
+          SampleResult.setResponseData(fail ? &apos;{&quot;error&quot;:&quot;no such conversation&quot;}&apos; : &apos;{&quot;ok&quot;:true}&apos;, &apos;UTF-8&apos;)
+          SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)</stringProp>
+          </JSR223Sampler>
+          <hashTree/>
+          <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="GET people (search)" enabled="true">
+            <stringProp name="scriptLanguage">groovy</stringProp>
+            <stringProp name="parameters"></stringProp>
+            <stringProp name="filename"></stringProp>
+            <stringProp name="cacheKey">true</stringProp>
+            <stringProp name="script">Thread.sleep(150)
+          boolean fail = false
+          SampleResult.setSuccessful(!fail)
+          SampleResult.setResponseCode(fail ? &apos;404&apos; : &apos;200&apos;)
+          SampleResult.setResponseMessage(fail ? &apos;Not Found&apos; : &apos;OK&apos;)
+          SampleResult.setResponseData(fail ? &apos;{&quot;error&quot;:&quot;no such conversation&quot;}&apos; : &apos;{&quot;ok&quot;:true}&apos;, &apos;UTF-8&apos;)
+          SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)</stringProp>
+          </JSR223Sampler>
+          <hashTree/>
+          <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="GET search facets" enabled="true">
+            <stringProp name="scriptLanguage">groovy</stringProp>
+            <stringProp name="parameters"></stringProp>
+            <stringProp name="filename"></stringProp>
+            <stringProp name="cacheKey">true</stringProp>
+            <stringProp name="script">Thread.sleep(150)
+          boolean fail = false
+          SampleResult.setSuccessful(!fail)
+          SampleResult.setResponseCode(fail ? &apos;404&apos; : &apos;200&apos;)
+          SampleResult.setResponseMessage(fail ? &apos;Not Found&apos; : &apos;OK&apos;)
+          SampleResult.setResponseData(fail ? &apos;{&quot;error&quot;:&quot;no such conversation&quot;}&apos; : &apos;{&quot;ok&quot;:true}&apos;, &apos;UTF-8&apos;)
+          SampleResult.setDataType(org.apache.jmeter.samplers.SampleResult.TEXT)</stringProp>
+          </JSR223Sampler>
+          <hashTree/>
+        </hashTree>
+      </hashTree>
+      <ResultCollector guiclass="SimpleDataWriter" testclass="ResultCollector" testname="In-test-plan results (no sub-results)" enabled="true">
+        <stringProp name="TestPlan.comments">What a listener in the test plan receives, one row per sample: R07 compares the report's whole-run counts with this file. Writes only when the in_test_plan_results_file property names a file (the test runners set it).</stringProp>
+        <boolProp name="ResultCollector.error_logging">false</boolProp>
+        <objProp>
+          <name>saveConfig</name>
+          <value class="SampleSaveConfiguration">
+            <time>true</time>
+            <latency>true</latency>
+            <timestamp>true</timestamp>
+            <success>true</success>
+            <label>true</label>
+            <code>true</code>
+            <message>true</message>
+            <threadName>true</threadName>
+            <dataType>true</dataType>
+            <encoding>false</encoding>
+            <assertions>true</assertions>
+            <subresults>false</subresults>
+            <responseData>false</responseData>
+            <samplerData>false</samplerData>
+            <xml>false</xml>
+            <fieldNames>true</fieldNames>
+            <responseHeaders>false</responseHeaders>
+            <requestHeaders>false</requestHeaders>
+            <responseDataOnError>false</responseDataOnError>
+            <saveAssertionResultsFailureMessage>true</saveAssertionResultsFailureMessage>
+            <assertionsResultsToSave>0</assertionsResultsToSave>
+            <bytes>true</bytes>
+            <sentBytes>true</sentBytes>
+            <url>true</url>
+            <threadCounts>true</threadCounts>
+            <idleTime>true</idleTime>
+            <connectTime>true</connectTime>
+          </value>
+        </objProp>
+        <stringProp name="filename">${__P(in_test_plan_results_file,)}</stringProp>
+      </ResultCollector>
+      <hashTree/>
+      <com.jmeterwebinsightreport.report.listener.WebInsightReportListener guiclass="com.jmeterwebinsightreport.report.listener.WebInsightReportListenerGui" testclass="com.jmeterwebinsightreport.report.listener.WebInsightReportListener" testname="Web Insight Report">
+        <boolProp name="ResultCollector.error_logging">false</boolProp>
+        <objProp>
+          <name>saveConfig</name>
+          <value class="SampleSaveConfiguration">
+            <time>true</time>
+            <latency>true</latency>
+            <timestamp>true</timestamp>
+            <success>true</success>
+            <label>true</label>
+            <code>true</code>
+            <message>true</message>
+            <threadName>true</threadName>
+            <dataType>true</dataType>
+            <encoding>false</encoding>
+            <assertions>true</assertions>
+            <subresults>true</subresults>
+            <responseData>false</responseData>
+            <samplerData>false</samplerData>
+            <xml>false</xml>
+            <fieldNames>true</fieldNames>
+            <responseHeaders>false</responseHeaders>
+            <requestHeaders>false</requestHeaders>
+            <responseDataOnError>false</responseDataOnError>
+            <saveAssertionResultsFailureMessage>true</saveAssertionResultsFailureMessage>
+            <assertionsResultsToSave>0</assertionsResultsToSave>
+            <bytes>true</bytes>
+            <sentBytes>true</sentBytes>
+            <url>true</url>
+            <threadCounts>true</threadCounts>
+            <idleTime>true</idleTime>
+            <connectTime>true</connectTime>
+          </value>
+        </objProp>
+      </com.jmeterwebinsightreport.report.listener.WebInsightReportListener>
+      <hashTree/>
+    </hashTree>
+  </hashTree>
+</jmeterTestPlan>

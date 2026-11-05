@@ -52,9 +52,10 @@ function payloadFrom(v) {
         sentBytesPerSec: s.sentBytesPerSec
     }, s.parent ? { parent: s.parent } : {}));
 
-    // Top-level only, exactly as OverallMetrics defines the population: a transaction child's
-    // time is already inside its parent.
-    const topLevel = v.samplers.filter((s) => !s.parent);
+    // The whole run, as OverallMetrics defines the population: the run's own row when the vectors
+    // give one (counted per sample; mixedNameRun), else the top-level rows, a transaction child's
+    // time being already inside its parent.
+    const topLevel = v.wholeRun ? [v.wholeRun] : v.samplers.filter((s) => !s.parent);
     const totalSamples = topLevel.reduce((n, s) => n + s.sampleCount, 0);
     const totalErrors = topLevel.reduce((n, s) => n + s.errorCount, 0);
     const durationSeconds = v.metadata.durationMillis / 1000;
@@ -74,7 +75,10 @@ function payloadFrom(v) {
             apdex: totalSamples
                 ? Math.round((topLevel.reduce((n, s) => n + s.apdex * s.sampleCount, 0)
                     / totalSamples) * 100) / 100 : 0,
-            median: 0, p90: 0, p95: 0, p99: 0
+            median: v.wholeRun ? v.wholeRun.median : 0,
+            p90: v.wholeRun ? v.wholeRun.p90 : 0,
+            p95: v.wholeRun ? v.wholeRun.p95 : 0,
+            p99: v.wholeRun ? v.wholeRun.p99 : 0
         },
         assertPercentiles: v.extraPercentiles || {}
     };
@@ -84,9 +88,16 @@ const payload = payloadFrom(VECTORS);
 let failed = 0;
 let ran = 0;
 
-for (const c of VECTORS.cases) {
+/* The vectors' run, and the second one where a name runs both on its own and inside a transaction:
+   AssertionParityTest runs both, each over its own run. */
+const runs = [
+    { cases: VECTORS.cases, payload: payload, prefix: '' },
+    { cases: VECTORS.mixedNameRun.cases, payload: payloadFrom(VECTORS.mixedNameRun), prefix: 'mixed-name run: ' },
+];
+for (const run of runs) for (const c of run.cases) {
+    const payload = run.payload;   // eslint-disable-line no-shadow
     ran++;
-    const label = c.rule.id || c.name;
+    const label = run.prefix + (c.rule.id || c.name);
     try {
         // THE POINT OF THIS FILE: the production parser, not a test helper.
         const rule = A._ruleFromJson(c.rule, 0);

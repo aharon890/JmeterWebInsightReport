@@ -79,17 +79,27 @@ test.describe('Sampler table — text sort', () => {
     await page.evaluate((id: number) => (window as any).sortTable(id, 'num'), samplesColId);
     await page.waitForTimeout(200);
 
-    const values = await page.evaluate((id: number) => {
+    // Siblings by value (4.2.34): the top-level rows among themselves, and each transaction's rows
+    // among themselves, a transaction's requests staying under it (E02's TC — Browse Session)
+    const groups: Record<string, number[]> = await page.evaluate((id: number) => {
       const table = document.getElementById('samplerTable') as HTMLTableElement;
       const header = (window as any).findHeaderByColId(table, id);
       const col = header.cellIndex;
-      return Array.from(table.tBodies[0].rows)
+      const parentOf = (window as any).transactionChildNames;
+      const out: Record<string, number[]> = {};
+      Array.from(table.tBodies[0].rows)
         .filter((r) => !r.classList.contains('sampler-detail-row') && !r.classList.contains('total-sampler-row'))
-        .map((r) => (window as any).parseNumericCell(r.cells[col].textContent.trim()));
+        .forEach((r) => {
+          const parent = parentOf[r.getAttribute('data-sampler') || ''] || '(top level)';
+          (out[parent] = out[parent] || []).push((window as any).parseNumericCell(r.cells[col].textContent.trim()));
+        });
+      return out;
     }, samplesColId);
 
-    const sorted = [...values].sort((a, b) => a - b);
-    expect(values).toEqual(sorted);
+    expect(Object.keys(groups)).toContain('(top level)');
+    for (const [parent, values] of Object.entries(groups)) {
+      expect(values, `the rows under ${parent}`).toEqual([...values].sort((a, b) => a - b));
+    }
   });
 });
 

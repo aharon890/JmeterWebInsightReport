@@ -128,7 +128,11 @@ public class JtlParser {
             int colIdle = headers.getOrDefault("IdleTime", -1);
             // The first failed assertion's message: a 2xx failure's type of error (E1)
             int colFailure = failureMessageTypesErrors ? headers.getOrDefault("failureMessage", -1) : -1;
-            TransactionRows transactions = new TransactionRows();
+            // Every name a transaction row carries anywhere in the file, before any row is read: a
+            // transaction the test end or a "Stop Thread" cut off is written without the message, and
+            // it can come before the first one that completed (TransactionRows)
+            TransactionRows transactions = new TransactionRows(
+                    transactionNames(jtlFile, colLabel, colMessage, headers.size()));
 
             int expectedColumns = headers.size();
             List<String> physicalLines;
@@ -223,17 +227,23 @@ public class JtlParser {
             return false;
         }
         if (!timestampIsStart) {
-            // The row was stamped at its end; the engine places and windows samples by start.
-            sample.timestamp -= sample.elapsed;
+            // The row was stamped at its end; the engine places and windows samples by start. An
+            // end-stamped transaction row's stamp is its real end, after its pauses (IdleTime), so its
+            // start is stamp - elapsed - idle, where the listener starts it (getStartTime()): starting
+            // it at stamp - elapsed gave a rebuild that began with one another start, duration and
+            // runId than the run report (review, 2026-11-05). Its end stays the stamp.
+            sample.end = sample.timestamp;
+            sample.timestamp -= sample.elapsed + Math.max(0, sample.idle);
+        } else {
+            sample.end = sample.timestamp + Math.max(0, sample.elapsed);
         }
-        // An end-stamped transaction row's stamp is its real end, after its pauses (IdleTime), so the
-        // start JMeter reads from it (stamp - elapsed) falls after its first request's start; its
-        // nesting is judged from its real start
-        long realStart = timestampIsStart ? sample.timestamp : sample.timestamp - sample.idle;
+        long realStart = sample.timestamp;
         TransactionRows.Nesting parent = transactions.parentOf(sample.thread, sample.label, sample.message,
                 realStart, sample.elapsed, sample.idle);
         try {
-            sample.feed(engine);
+            // A row is the whole run's when a listener in the plan received it itself: nested in
+            // nothing, as JMeter's Aggregate Report in the plan counts it
+            sample.feed(engine, parent == null);
             if (parent != null) {
                 // Nested as the listener nests a parent sample's sub-results: the transaction counts
                 // once in the totals, its requests are its breakdown (B5); a request's own redirects and
@@ -319,6 +329,8 @@ public class JtlParser {
         String url;
         String failureMessage;
         long idle;
+        /** When it ended: start + elapsed, or an end-stamped row's stamp (its real end). */
+        long end;
         long samples = 1;
         long errors = -1;
 
@@ -328,10 +340,10 @@ public class JtlParser {
          * {@code CSVSaveService} builds a {@code StatisticalSampleResult}, whose
          * {@code setErrorCount} keeps the count. Without them a row is one sample, failed or not.
          */
-        void feed(LiveStatisticsEngine engine) {
+        void feed(LiveStatisticsEngine engine, boolean topLevel) {
             engine.recordSample(label, elapsed, success, bytes, sentBytes, timestamp,
-                    timestamp + Math.max(0, elapsed), connectTime, latency, samples,
-                    errors >= 0 ? errors : (success ? 0 : 1));
+                    end, connectTime, latency, samples,
+                    errors >= 0 ? errors : (success ? 0 : 1), topLevel);
             if (threads > 0) {
                 engine.updateActiveThreads(threads, LiveStatisticsEngine.endOf(timestamp, elapsed));
             }
@@ -341,7 +353,8 @@ public class JtlParser {
                 engine.recordResponseCode(responseCode, LiveStatisticsEngine.endOf(timestamp, elapsed));
             }
             if (!success) {
-                engine.recordError(label, responseCode, message, failureMessage, timestamp, thread, url, null, null);
+                engine.recordError(label, responseCode, message, failureMessage, timestamp, thread, url, null, null,
+                        topLevel, errors >= 0 ? errors : 1);
             }
         }
     }
@@ -398,6 +411,39 @@ public class JtlParser {
      *
      * @return the record with embedded newlines preserved, or null at end of file
      */
+    /**
+     * The labels of every row in the file whose message marks a Transaction Controller's own result.
+     * A second read of the file, which splits only the records that carry the marker.
+     */
+    private static java.util.Set<String> transactionNames(File jtlFile, int colLabel, int colMessage,
+                                                         int expectedColumns) throws IOException {
+        java.util.Set<String> names = new java.util.HashSet<>();
+        if (colMessage < 0) {
+            return names;
+        }
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(new FileInputStream(jtlFile), StandardCharsets.UTF_8))) {
+            readRecordLines(reader);   // the header
+            List<String> lines;
+            while ((lines = readRecordLines(reader)) != null) {
+                String record = String.join("\n", lines);
+                if (!record.contains(TransactionRows.MARKER)) {
+                    continue;
+                }
+                String[] fields;
+                try {
+                    fields = parseCsvLine(record);
+                } catch (RuntimeException e) {
+                    continue;
+                }
+                if (fields.length >= expectedColumns && TransactionRows.childrenIn(fields[colMessage]) > 0) {
+                    names.add(fields[colLabel]);
+                }
+            }
+        }
+        return names;
+    }
+
     private static String readRecord(BufferedReader reader) throws IOException {
         List<String> lines = readRecordLines(reader);
         return lines == null ? null : String.join("\n", lines);

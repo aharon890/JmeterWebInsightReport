@@ -99,7 +99,21 @@ demo data for that run's own window, and `jmeter -g` reading the CSV; every comp
 C43 (config tier) runs the examples bundle's hooks, `examples/server-data/hooks/after-run.sh` and
 `.ps1`, against the stand-in export tool; cross-os.yml runs them on all three OSes.
 
-The suites cover the JMeter scenarios Playwright actually opens (E02, E05-E12, E19, E25-E29)
+R07 holds every fixture's counts to JMeter's Aggregate Report, computed by JMeter's own classes
+(`test-plans/scripts/AggregateReportReferee.java`) from the run's own files: the whole run against the
+file each fixture plan's "In-test-plan results" Simple Data Writer writes with sub-results off (what a
+listener in the plan received; `-Jin_test_plan_results_file`), each sampler against every row of
+`results.jtl`. Every suite above compares the report with itself, and every whole-run surface reads one
+shared count, so they agreed with each other on totals JMeter disagreed with: a transaction that ran on
+its own and inside another one lost its standalone samples from every whole-run figure at once
+(tails-conversation-flows, 2026-11; E31 is that shape). A fixture in `FIXTURE_IDS` that R07 has no
+reference for is a FAIL, never a skip. It needs Python 3 and a JDK (`javac` compiles the referee).
+`whole-run-totals.spec.ts` closes the other half: it reads each tab as displayed (Summary tiles, Σ
+Total row, Timeline Σ lines, every Samplers row, the Errors tab) and holds it to that JSON, over every
+fixture in `REQUIRED_FIXTURES` (exported from `global-setup.ts` for it), so a tab that one day stops
+reading the shared count fails even though every unit test of the count still passes.
+
+The suites cover the JMeter scenarios Playwright actually opens (E02, E05-E12, E19, E25-E29, E31)
 plus CMP — the same list as `FIXTURE_IDS` in `common.sh`, which is where to check rather than
 here. E19 is easy to forget: `external-data.spec.ts` opens it to assert the payload was written
 to a sibling `.js` and referenced by `<script src>`, which is the one product promise no
@@ -136,7 +150,7 @@ referenced — so they are manual-tier.
 Run them before a release:
 
 ```bash
-./test-plans/scripts/run-all-tests.sh      # E01-E13, E15, E19, E20, E22, E24-E29
+./test-plans/scripts/run-all-tests.sh      # E01-E13, E15, E19, E20, E22, E24-E29, E31
 ./test-plans/scripts/run-config-tests.sh   # C01-C43 plus C17b, C19 records once
 ./test-plans/scripts/run-error-tests.sh    # N01-N09
 ./test-plans/scripts/run-docker-tests.sh   # E16, E17
@@ -446,6 +460,20 @@ configurations the check exists for and both generators run.
 `ReportData` (`core/model/`) is the contract between the two halves: change it and both
 ingestion paths plus every serializer must follow.
 
+**The whole run is counted per sample, never as a sum of rows.** `ReportData.getWholeRun()` is one row
+fed only the samples a listener in the test plan received, as JMeter's Aggregate Report feeds its TOTAL
+(`StatVisualizer.add`): the engine's `recordSample(..., topLevel)`, true for the listener's event and
+false for its sub-results, and on `-g` the nesting `TransactionRows` gives each row (a transaction the
+test end or a "Stop Thread" cut off, written without its "Number of samples" message, nests by its
+name, read from the whole file first; a name that never completed anywhere in the file cannot be told
+from a request). Every whole-run
+figure reads it: the tiles, the CI/CD JSON, JUnit, `RunIdentity`, the overall asserts (an overall
+`code=`/`class=` rule counts `ErrorSummary.topLevelOccurrenceCount`), the Σ Total row and the Timeline's
+Σ lines (a per-second whole-run accumulator). The transaction hierarchy is a relation between names,
+and one name can run on its own and inside a transaction: summing the rows that were no child left
+every sample of such a name out (tails-conversation-flows, 2026-11: 0 errors where JMeter counted 17).
+R07 holds every fixture to JMeter's own count.
+
 ### Listener concurrency
 
 `WebInsightReportListener` is one instance shared by all sampler threads, and by RMI
@@ -539,6 +567,16 @@ them, so the table's own walkers (`sortTable`, `filterSamplerTable`, `applyColum
 `hideRow`, `showAllRows`, Transaction Details, the two toggles) read them through `isSamplerCompanionRow` /
 `samplerCompanionRows` / `syncSamplerCompanionRows` and never as rows of their own. They knew only
 the chart panel once, so a sort stranded the judging row and a toggle built a second panel.
+
+The table is a tree. `samplerTreeOrder` puts each transaction's rows under it, in the order the run first
+saw them and a level deeper each time (`--wir-depth`); `arrangeSamplerRows` applies it at load and on
+every sort, which orders siblings only, so a request never leaves its transaction; the chips follow the
+same order and keep their data-index colour. `applySamplerRowVisibility` is the one rule for which rows
+show, and the search, ×, "Show all", the "Show transaction details" switch (a checkbox in the filter
+bar's Samplers row, id `transactionChildrenBtn`) and the first render all go through it: × on a
+transaction hides its rows, a search keeps a match's transactions above it. The hierarchy Java ships
+lists each name under one parent, the first by name that closes no loop, and a name a listener received
+on its own is a top-level row; either says where else it ran (`samplers[].alsoInside`).
 
 **A rule row is addressed by its key, never its id.** Java judges two rules under one id (two
 id-less rules on one sampler and metric both derive `a-p95`), so every handler on a row — Edit,

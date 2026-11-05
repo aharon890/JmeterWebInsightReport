@@ -466,15 +466,18 @@ public class WebInsightReportListener extends ResultCollector {
         // and null again inside processSampleResult if the run is torn down concurrently.
         LiveStatisticsEngine engine = statsEngine;
         if (engine != null) {
-            processSampleResult(engine, result);
+            processSampleResult(engine, result, true);
         }
     }
 
     /**
      * Process a single SampleResult and recursively process any sub-results.
      * Transaction Controllers with parent=true wrap child samples as sub-results.
+     *
+     * @param topLevel true for the result the event carried, false for its sub-results: the whole
+     *        run counts the samples a listener in the plan received, a transaction's requests inside it
      */
-    private void processSampleResult(LiveStatisticsEngine statsEngine, SampleResult result) {
+    private void processSampleResult(LiveStatisticsEngine statsEngine, SampleResult result, boolean topLevel) {
         // The sample's start, whatever sampleresult.timestamp.start says: getTimeStamp() is its
         // END when that property is false, and every sample was then placed and windowed by its
         // end (S46: duration 3 m 10 s against JMeter's 3 m 4 s, B3). JMeter's Aggregate Report
@@ -498,7 +501,8 @@ public class WebInsightReportListener extends ResultCollector {
                 // 1 and 0/1 for every sample but one JMeter aggregated (Statistical mode), which
                 // stands for that many, that many failed (B6)
                 result.getSampleCount(),
-                result.getErrorCount()
+                result.getErrorCount(),
+                topLevel
         );
 
         // Track active threads — total across all thread groups, not just this sampler's group.
@@ -538,7 +542,10 @@ public class WebInsightReportListener extends ResultCollector {
                     result.getThreadName(),
                     url,
                     null,
-                    responseBody
+                    responseBody,
+                    topLevel,
+                    // the failures it stands for: 1, or more for a result JMeter aggregated (B6)
+                    result.getErrorCount()
             );
         }
 
@@ -557,7 +564,7 @@ public class WebInsightReportListener extends ResultCollector {
             boolean fromTransactionController = TransactionController.isFromTransactionController(result);
             for (SampleResult sub : subResults) {
                 statsEngine.recordTransaction(parentLabel, sub.getSampleLabel(), fromTransactionController);
-                processSampleResult(statsEngine, sub);
+                processSampleResult(statsEngine, sub, false);
             }
         }
     }

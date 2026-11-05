@@ -227,8 +227,10 @@ Full table with columns: Sampler, Samples, Errors, Error %, Mean, Median, P90, P
 ### Virtual "Σ Total" Sampler
 A synthetic aggregate row at the top of the statistics table, shown when **Σ Total** is ticked in
 the filter bar (it is unticked by default):
-- Covers every top-level sampler, whatever the filter bar shows: summed counts and throughput, the
-  overall error rate, the whole run's merged percentiles, and sample-weighted Mean and Apdex
+- The whole run, whatever the filter bar shows: every sample a listener in the test plan received,
+  counted per sample as JMeter's Aggregate Report counts its TOTAL row: its samples and errors, error
+  rate, throughput, Mean, percentiles and Apdex. It is not the sum of the rows shown: a name that also
+  ran inside a transaction counts those runs in its own row too
 - Toggled on/off via the filter bar like any sampler
 - Included in the time-series charts when ticked, as a dashed line; on the Compare tab the current
   run's Σ Total line is solid and the baseline's dashed, and both follow the Metric toggle
@@ -264,9 +266,9 @@ request as the listener nests them, and are not counted among the transaction's 
 outside a transaction (embedded resources, redirects) stay rows of their own in a `-g` report, as in
 every JMeter tool that reads the file. When transactions are nested,
 the Summary tab says that each one counts once, as JMeter's Aggregate Report in the test plan counts it:
-- **Default view:** Only parent transactions and standalone samplers are shown — matches JMeter's native Aggregate Report. Child samplers are hidden from the table, filter bar, and charts to avoid double-counting.
-- **"Transaction Details" toggle:** Button in the Samplers tab toolbar. When activated, child samplers appear indented under their parent with full statistics and mini-charts. The toggle also reveals child sampler checkboxes in the filter bar.
-- **Σ Total always correct:** The total row always sums parents + standalone samplers only, regardless of toggle state. Parents already aggregate their children, so children are never double-counted.
+- **Default view:** Only transactions and samplers a listener in the test plan received on their own are shown, as an Aggregate Report in the test plan shows them. Child samplers are hidden from the table, filter bar, and charts to avoid double-counting. A name that runs both on its own and inside a transaction is shown, and its row counts every run of it.
+- **"Show transaction details":** A checkbox in the filter bar's Samplers row, after All / None, on every tab that shows that row. Ticked, child samplers appear under their own transaction, a level deeper each time, with full statistics and mini-charts; a sort orders each transaction's rows among themselves, so they never leave it. It also reveals child sampler checkboxes in the filter bar, in the same order, and the charts draw them. A name that also runs on its own is a top-level row, and says which transactions it also ran inside.
+- **Σ Total always correct:** The total row is the whole run counted per sample, regardless of toggle state: every sample a listener in the test plan received, a transaction's requests inside it. It does not add up the rows, so a name that also runs inside a transaction is counted once per run of it, and children are never double-counted.
 - **Parent indicators:** Transaction parents display a ▶ triangle icon
 - **Child indentation:** Children are visually indented in both the table and filter bar
 - **Hierarchy detection:** Only real parent/child pairs from the sample tree are grouped, so REST-style names that share a prefix are never nested by accident. A sampler's own sub-samples (embedded resources, redirects) are nested so their time is not counted twice, but only a Transaction Controller is shown as a transaction
@@ -281,8 +283,8 @@ transaction fails because a request inside it did, and its requests are listed a
 (E3). The Summary tab's Error Rate counts samples as JMeter's Aggregate Report does, transactions
 included, so on a run with transactions a line above the charts says which is which. The asserts'
 `errorRate:code=` / `errorRate:class=` keep counting a failed transaction, as the Error Rate does.
-While Transaction Details is off, the sampler filter shows a request's errors when the transaction
-it is inside is ticked.
+While "Show transaction details" is off, the sampler filter shows a request's errors when the
+transaction it is inside is ticked.
 
 The Errors tab provides four views:
 
@@ -549,7 +551,7 @@ change it.
 The industry-standard Apdex (Application Performance Index) is computed per sampler and overall:
 
 **Apdex = (Satisfied + Tolerating/2) / Total**, per sampler, to two decimals; the overall score
-is the top-level samplers' scores weighted by sample count
+is the same formula over the whole run's samples, every sample a listener in the test plan received
 - Satisfied: a successful sample with response time <= T
 - Tolerating: a successful sample with response time > T and <= 4T
 - Frustrated: response time > 4T, or a failed sample whatever its time

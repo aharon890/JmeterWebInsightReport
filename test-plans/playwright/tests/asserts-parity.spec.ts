@@ -28,6 +28,10 @@ interface Vectors {
   extraPercentiles?: Record<string, Record<string, number>>;
   cases: any[];
   gateCases: any[];
+  /** The run's own row: the whole run counted per sample (mixedNameRun). */
+  wholeRun?: any;
+  /** A second run, where a name runs both on its own and inside a transaction. */
+  mixedNameRun?: Vectors;
 }
 
 const vectors: Vectors = JSON.parse(fs.readFileSync(VECTORS, 'utf-8'));
@@ -64,9 +68,10 @@ function payloadFrom(v: Vectors) {
     ...(s.parent ? { parent: s.parent } : {}),
   }));
 
-  // Top-level only, exactly as OverallMetrics defines the population: a transaction child's
-  // time is already inside its parent.
-  const topLevel = v.samplers.filter(s => !s.parent);
+  // The whole run, as OverallMetrics defines the population: the run's own row when the vectors
+  // give one (counted per sample; mixedNameRun), else the top-level rows, a transaction child's
+  // time being already inside its parent.
+  const topLevel = v.wholeRun ? [v.wholeRun] : v.samplers.filter(s => !s.parent);
   const totalSamples = topLevel.reduce((n, s) => n + s.sampleCount, 0);
   const totalErrors = topLevel.reduce((n, s) => n + s.errorCount, 0);
   const durationSeconds = v.metadata.durationMillis / 1000;
@@ -88,7 +93,10 @@ function payloadFrom(v: Vectors) {
       apdex: totalSamples
         ? Math.round((topLevel.reduce((n, s) => n + s.apdex * s.sampleCount, 0) / totalSamples)
             * 100) / 100 : 0,
-      median: 0, p90: 0, p95: 0, p99: 0,
+      median: v.wholeRun ? v.wholeRun.median : 0,
+      p90: v.wholeRun ? v.wholeRun.p90 : 0,
+      p95: v.wholeRun ? v.wholeRun.p95 : 0,
+      p99: v.wholeRun ? v.wholeRun.p99 : 0,
     },
     // The off-grid quantiles, keyed exactly as GatePayloadBuilder writes them. A sampler
     // absent from the block has no distribution, which must read as INVALID rather than zero.
@@ -125,8 +133,14 @@ function ruleFrom(r: any) {
 
 test.describe('Client evaluator parity with the Java engine', () => {
 
-  for (const c of vectors.cases) {
-    test(`case — ${c.name}`, async ({ page }) => {
+  /* The vectors' run, and the second one where a name runs both on its own and inside a
+     transaction: AssertionParityTest runs both, each over its own run. */
+  const runs = [
+    { cases: vectors.cases, run: vectors, prefix: '' },
+    { cases: vectors.mixedNameRun!.cases, run: vectors.mixedNameRun!, prefix: 'mixed-name run: ' },
+  ];
+  for (const { cases, run, prefix } of runs) for (const c of cases) {
+    test(`case — ${prefix}${c.name}`, async ({ page }) => {
       await loadClean(page, 'E25');
 
       // The Budget column's attainment is taken over the evaluated rule in the same page call:
@@ -135,7 +149,7 @@ test.describe('Client evaluator parity with the Java engine', () => {
         const A = (window as any).WIR.asserts;
         const evaluated = A.evaluate([rule], data);
         return { actual: evaluated, attainment: A._attainment(evaluated.rules[0], data) };
-      }, { rule: ruleFrom(c.rule), data: payloadFrom(vectors) });
+      }, { rule: ruleFrom(c.rule), data: payloadFrom(run) });
 
       const result = actual.rules[0];
       expect(result.status, `status for ${c.rule.id}`).toBe(c.expect.status);

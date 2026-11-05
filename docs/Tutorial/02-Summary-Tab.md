@@ -43,8 +43,9 @@ On the interim report it says NOT COLLECTED, and over a refused payload REFUSED.
 | **Error Rate** | Percentage of failed requests | Card background turns red when errors > 0 |
 | **Duration** | Test execution time | Human-readable: "150ms" under a second, "32.6s" under a minute, then "2m 11s", "1h 5m 30s" |
 
-Total Samples and Error Rate count top-level samplers only: a Transaction Controller's children
-are left out, because their parent already counts them.
+Total Samples and Error Rate count the whole run per sample, as JMeter's Aggregate Report in the
+test plan counts its TOTAL: a Transaction Controller's children are inside it, so they are left out,
+and a name that also runs inside a transaction counts its runs on its own.
 | **Max Threads** | Peak concurrent threads | Maximum active thread count during test |
 
 ### Row 2 — Statistical Metrics (visible when data available)

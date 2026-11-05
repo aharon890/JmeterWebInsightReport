@@ -50,6 +50,9 @@ public class LiveStatisticsEngine {
      *  monitor. */
     private final Map<String, long[]> errorSummaryCounts = new LinkedHashMap<>();
     private final Map<String, ErrorRecord> errorSummaryFirst = new LinkedHashMap<>();
+    /** Per group, the failures that were samples of the whole run (top-level): what an overall
+     *  code= or class= rule counts. Guarded by the {@code errorRecords} monitor. */
+    private final Map<String, Long> errorSummaryTopLevelCounts = new HashMap<>();
     /** Real transaction-controller hierarchy, captured from actual sample sub-results
      *  (parent label -> ordered child labels). Used instead of guessing from name prefixes,
      *  which false-positives on REST-style names like "GET /api/users" vs "GET /api/users/{id}".
@@ -61,6 +64,11 @@ public class LiveStatisticsEngine {
      *  them is right (the parent's elapsed time already contains them) — but labelling a plain
      *  HTTP sampler as a Transaction Controller in the report is not. */
     private final Set<String> transactionControllerParents = ConcurrentHashMap.newKeySet();
+    /** The names a listener in the plan received at least once on their own (a top-level sample). Such
+     *  a name is a top-level row even where it also ran inside a transaction: its row counts every run
+     *  of the name, as JMeter's HTML report row does, and is shown, judged by blanket rules and given
+     *  a JUnit testcase like any other. Hidden as a child, its own failures were nowhere in sight. */
+    private final Set<String> namesSeenTopLevel = ConcurrentHashMap.newKeySet();
 
     private final AtomicLong totalSamples = new AtomicLong();
     private final AtomicLong totalErrors = new AtomicLong();
@@ -80,6 +88,22 @@ public class LiveStatisticsEngine {
 
     private long rampUpDurationMillis;
     private double apdexThreshold = 500;
+
+    /** The whole run's row's name. It is no sampler's: the row is the run's, never in the table. */
+    public static final String WHOLE_RUN = "Whole run";
+    /**
+     * Every sample a listener in the test plan received, and only those, as JMeter's Aggregate Report
+     * feeds its TOTAL row ({@code StatVisualizer.add}): a transaction's requests are inside it. The
+     * whole-run figures read it ({@link ReportData#getWholeRun()}).
+     *
+     * <p>Per sample, because per name is wrong: the same name can run on its own and inside a
+     * transaction in one run, and the transaction hierarchy is a relation between names. Leaving the
+     * child names out of the totals left every one of their samples out, the standalone ones too
+     * (tails-conversation-flows, 2026-11: 0 errors where JMeter counted 17), and a transaction holding
+     * a request of its own name was counted twice. Created again when the Apdex T is set, which is
+     * always before the first sample.
+     */
+    private volatile SamplerAggregator wholeRun = new SamplerAggregator(WHOLE_RUN, apdexThreshold);
 
     /**
      * Record a single sample result (backward-compatible overload).
@@ -123,6 +147,18 @@ public class LiveStatisticsEngine {
     public void recordSample(String samplerName, long responseTime, boolean isSuccess,
                              long bytesReceived, long bytesSent, long timestamp, long endTime,
                              long connectTime, long latency, long samples, long errors) {
+        recordSample(samplerName, responseTime, isSuccess, bytesReceived, bytesSent, timestamp, endTime,
+                connectTime, latency, samples, errors, true);
+    }
+
+    /**
+     * @param topLevel whether a listener in the test plan received this sample itself: false for a
+     *        sub-result (a parent-sample transaction's request, a nested transaction, a redirect hop),
+     *        which reached it inside its parent. Only top-level samples are the whole run's.
+     */
+    public void recordSample(String samplerName, long responseTime, boolean isSuccess,
+                             long bytesReceived, long bytesSent, long timestamp, long endTime,
+                             long connectTime, long latency, long samples, long errors, boolean topLevel) {
         long n = Math.max(1, samples);
         long failed = Math.min(n, Math.max(0, errors));
         // Per-sampler aggregation
@@ -131,6 +167,11 @@ public class LiveStatisticsEngine {
         aggregators.computeIfAbsent(samplerName, k -> new SamplerAggregator(k, apdexThreshold))
                 .addSample(responseTime, isSuccess, bytesReceived, bytesSent, timestamp, endTime,
                         connectTime, latency, n, failed);
+        if (topLevel) {
+            wholeRun.addSample(responseTime, isSuccess, bytesReceived, bytesSent, timestamp, endTime,
+                    connectTime, latency, n, failed);
+            namesSeenTopLevel.add(samplerName);
+        }
 
         // Time-series bucketing (1-second granularity). A sample counts in the second it ended, as
         // JMeter's charts key it (TimeStampKeysSelector, end time but for Hits per Second), and its
@@ -140,9 +181,9 @@ public class LiveStatisticsEngine {
         long endKey = endOf(timestamp, responseTime) / 1000 * 1000;
         timeBuckets.computeIfAbsent(endKey, k -> new TimeBucketAggregator(k))
                 .addSample(responseTime, samplerName, bytesReceived, bytesSent,
-                        connectTime, latency, n, failed);
+                        connectTime, latency, n, failed, topLevel);
         long startKey = timestamp / 1000 * 1000;
-        timeBuckets.computeIfAbsent(startKey, k -> new TimeBucketAggregator(k)).addHits(samplerName, n);
+        timeBuckets.computeIfAbsent(startKey, k -> new TimeBucketAggregator(k)).addHits(samplerName, n, topLevel);
 
         // Global counters
         totalSamples.addAndGet(n);
@@ -188,6 +229,34 @@ public class LiveStatisticsEngine {
     public void recordError(String samplerName, String responseCode, String responseMessage,
                             String failureMessage, long timestamp, String threadName,
                             String requestUrl, String requestHeaders, String responseBody) {
+        recordError(samplerName, responseCode, responseMessage, failureMessage, timestamp, threadName,
+                requestUrl, requestHeaders, responseBody, true);
+    }
+
+    /**
+     * @param topLevel whether the failed sample was the whole run's: received by a listener in the plan
+     *        itself, not inside a parent sample ({@link #recordSample}'s flag of the same name)
+     */
+    public void recordError(String samplerName, String responseCode, String responseMessage,
+                            String failureMessage, long timestamp, String threadName,
+                            String requestUrl, String requestHeaders, String responseBody,
+                            boolean topLevel) {
+        recordError(samplerName, responseCode, responseMessage, failureMessage, timestamp, threadName,
+                requestUrl, requestHeaders, responseBody, topLevel, 1);
+    }
+
+    /**
+     * @param failures how many failed samples the result stands for: its error count, above 1 for a
+     *        result JMeter aggregated (Statistical mode, sample_count). The groups count them as
+     *        {@link #recordSample} counts the run's errors (B6); one per result made an overall
+     *        errorRate:code= rule read 14% beside an error rate of 43%. The detail records stay one
+     *        per result.
+     */
+    public void recordError(String samplerName, String responseCode, String responseMessage,
+                            String failureMessage, long timestamp, String threadName,
+                            String requestUrl, String requestHeaders, String responseBody,
+                            boolean topLevel, long failures) {
+        long n = Math.max(1, failures);
         boolean transactionRow = isTransactionRow(responseMessage);
         synchronized (errorRecords) {
             // Unbounded aggregation for summaries and error charts — updated for every error. Grouped
@@ -208,9 +277,12 @@ public class LiveStatisticsEngine {
                 agg.setTimestamp(timestamp);
                 errorSummaryFirst.put(key, agg);
             }
-            c[0]++;
+            c[0] += n;
             c[1] = Math.min(c[1], timestamp);
             c[2] = Math.max(c[2], timestamp);
+            if (topLevel) {
+                errorSummaryTopLevelCounts.merge(key, n, Long::sum);
+            }
 
             // The detail records are the Errors tab's, so a transaction's own failure takes no place
             // among them: its requests' failures are listed.
@@ -330,6 +402,12 @@ public class LiveStatisticsEngine {
 
     public void setApdexThreshold(double apdexThreshold) {
         this.apdexThreshold = apdexThreshold;
+        // Every caller sets T before the first sample. One that did not would drop the samples already
+        // in the whole run from every whole-run figure while the rows kept theirs; the rows keep the T
+        // they were made with, and so does the whole run once it has a sample.
+        if (totalSamples.get() == 0) {
+            this.wholeRun = new SamplerAggregator(WHOLE_RUN, apdexThreshold);
+        }
     }
 
     public double getApdexThreshold() {
@@ -348,19 +426,13 @@ public class LiveStatisticsEngine {
     }
 
     /**
-     * Get time-series data sorted by timestamp.
+     * Get time-series data sorted by timestamp. Each second's totals are its samples of the whole run,
+     * pooled by sample as they arrived ({@link TimeBucketAggregator}).
      */
     public List<TimeSeriesBucket> getTimeSeries() {
-        // The samplers detectTransactionHierarchy nests: every child of a recorded relationship
-        Set<String> nested = new HashSet<>();
-        for (Set<String> children : explicitTransactions.values()) {
-            synchronized (children) {
-                nested.addAll(children);
-            }
-        }
         return timeBuckets.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
-                .map(e -> e.getValue().toBucket(nested))
+                .map(e -> e.getValue().toBucket())
                 .collect(Collectors.toList());
     }
 
@@ -432,8 +504,9 @@ public class LiveStatisticsEngine {
         // travel with the data rather than stay behind in the engine.
         data.setApdexThreshold(apdexThreshold);
 
-        // Sampler statistics
+        // Sampler statistics, and the whole run's own row
         data.setSamplerStatistics(getStatisticsSnapshot());
+        data.setWholeRun(wholeRun.toStatistics(apdexThreshold));
 
         // Time series
         data.setTimeSeries(getTimeSeries());
@@ -454,17 +527,16 @@ public class LiveStatisticsEngine {
         // Error summaries — aggregate from error records
         data.setErrorSummaries(buildErrorSummaries());
 
-        // Overall percentiles across the merged distribution of top-level samplers (true global
-        // percentile, not an average of per-sampler percentiles). Done after hierarchy detection so
-        // transaction children are excluded (their times are already inside their parent).
+        // Overall percentiles of the whole run's own distribution: every top-level sample, the true
+        // global percentile, not an average of per-sampler percentiles
         computeOverallPercentiles(data);
 
         return data;
     }
 
     /**
-     * Merge the response times of all top-level samplers, set the true overall
-     * percentiles, and keep every distribution reachable from the report data.
+     * Set the true overall percentiles from the whole run's distribution, and keep every
+     * distribution reachable from the report data.
      *
      * <p>The four percentiles below are the ones the report renders. The distributions they came
      * from used to be dropped here, which meant p99.9 — or any quantile a rule names — could
@@ -472,9 +544,10 @@ public class LiveStatisticsEngine {
      * see {@link com.jmeterwebinsightreport.core.model.PercentileSource} for why that is
      * preferable to deciding the percentile set before the statistics are built.
      *
-     * <p>The merged distribution excludes transaction children for the same reason the percentiles
-     * always did: their time is already inside their parent, so including them weights those
-     * samples twice.
+     * <p>The whole run's distribution holds the samples a listener in the plan received: a
+     * transaction's requests are inside it, so including them would weight those samples twice. It
+     * is fed per sample ({@link #wholeRun}), so a name that also ran inside a transaction keeps its
+     * own runs; merging the top-level names' distributions lost them.
      */
     private void computeOverallPercentiles(ReportData data) {
         ResponseTimeDistribution overall = new ResponseTimeDistribution();
@@ -489,10 +562,8 @@ public class LiveStatisticsEngine {
             // Every sampler gets a source, children included: naming a sampler in a rule is an
             // explicit request to judge it, and that has always reached transaction children.
             sources.put(stat.getSamplerName(), agg.percentileSource());
-            if (stat.getParentSamplerName() == null) {
-                agg.mergePercentilesInto(overall);
-            }
         }
+        wholeRun.mergePercentilesInto(overall);
 
         if (overall.getCount() > 0) {
             data.setOverallMedian(overall.getPercentile(50));
@@ -546,36 +617,81 @@ public class LiveStatisticsEngine {
             statsByName.put(stat.getSamplerName(), stat);
         }
 
+        // Each parent's children in the order first seen (snapshot under the set's own monitor —
+        // Collections.synchronizedSet does not guard iteration), parents by name: the map's own order
+        // is a hash map's, and the payload's hierarchy and every choice below are the same every run.
+        Map<String, List<String>> observed = new TreeMap<>();
+        Map<String, java.util.SortedSet<String>> parentsOf = new TreeMap<>();
         for (Map.Entry<String, Set<String>> entry : explicitTransactions.entrySet()) {
             String parent = entry.getKey();
-            SamplerStatistics parentStat = statsByName.get(parent);
-            if (parentStat == null) continue;
-
-            // Snapshot under the set's own monitor — Collections.synchronizedSet does not
-            // guard iteration.
+            if (!statsByName.containsKey(parent)) continue;
             Set<String> childSet = entry.getValue();
-            List<String> observedChildren;
+            List<String> children;
             synchronized (childSet) {
-                observedChildren = new ArrayList<>(childSet);
+                children = new ArrayList<>(childSet);
             }
+            observed.put(parent, children);
+            for (String child : children) {
+                if (statsByName.containsKey(child) && !child.equals(parent)) {
+                    parentsOf.computeIfAbsent(child, k -> new java.util.TreeSet<>()).add(parent);
+                }
+            }
+        }
 
-            List<String> children = new ArrayList<>();
-            for (String child : observedChildren) {
-                SamplerStatistics childStat = statsByName.get(child);
-                if (childStat == null || child.equals(parent)) continue;
-                children.add(child);
-                childStat.setParentSamplerName(parent);
+        // One row per name, so one place in the table: the first parent by name that closes no loop.
+        // It used to be whichever parent the hash map visited last, and the page listed the row under
+        // every parent. A name that also ran on its own is a top-level row (namesSeenTopLevel). Every
+        // other parent is named on the row instead.
+        Map<String, String> placedUnder = new HashMap<>();
+        for (Map.Entry<String, java.util.SortedSet<String>> entry : parentsOf.entrySet()) {
+            String child = entry.getKey();
+            List<String> elsewhere = new ArrayList<>(entry.getValue());
+            if (!namesSeenTopLevel.contains(child)) {
+                for (String candidate : entry.getValue()) {
+                    if (!closesALoop(child, candidate, placedUnder)) {
+                        placedUnder.put(child, candidate);
+                        elsewhere.remove(candidate);
+                        break;
+                    }
+                }
             }
-            if (!children.isEmpty()) {
+            SamplerStatistics childStat = statsByName.get(child);
+            childStat.setParentSamplerName(placedUnder.get(child));
+            childStat.setAlsoRunsInside(elsewhere);
+        }
+
+        for (Map.Entry<String, List<String>> entry : observed.entrySet()) {
+            String parent = entry.getKey();
+            SamplerStatistics parentStat = statsByName.get(parent);
+            List<String> children = new ArrayList<>();
+            for (String child : entry.getValue()) {
+                if (parent.equals(placedUnder.get(child))) {
+                    children.add(child);
+                }
+            }
+            boolean transactionController = transactionControllerParents.contains(parent);
+            if (!children.isEmpty() || transactionController) {
                 // Nest every parent that produced sub-results, but only badge the ones that
-                // really are Transaction Controllers.
-                parentStat.setTransactionController(transactionControllerParents.contains(parent));
+                // really are Transaction Controllers. A Transaction Controller keeps its badge when
+                // every name inside it also ran on its own, and so has no row under it.
+                parentStat.setTransactionController(transactionController);
                 parentStat.setChildSamplerNames(children);
                 hierarchy.put(parent, children);
             }
         }
 
         return hierarchy;
+    }
+
+    /** Whether placing {@code child} under {@code parent} would make the child its own ancestor. */
+    private static boolean closesALoop(String child, String parent, Map<String, String> placedUnder) {
+        Set<String> seen = new HashSet<>();
+        for (String p = parent; p != null; p = placedUnder.get(p)) {
+            if (p.equals(child) || !seen.add(p)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -596,7 +712,9 @@ public class LiveStatisticsEngine {
         Map<String, Long> counts = new LinkedHashMap<>();
         Map<String, long[]> spans = new LinkedHashMap<>();
         Map<String, ErrorRecord> firstRecords;
+        Map<String, Long> topLevelCounts;
         synchronized (errorRecords) {
+            topLevelCounts = new HashMap<>(errorSummaryTopLevelCounts);
             for (Map.Entry<String, long[]> e : errorSummaryCounts.entrySet()) {
                 counts.put(e.getKey(), e.getValue()[0]);
                 spans.put(e.getKey(), new long[]{e.getValue()[1], e.getValue()[2]});
@@ -631,6 +749,7 @@ public class LiveStatisticsEngine {
             s.setFailureMessage(rec.getFailureMessage());
             s.setErrorType(rec.getErrorType());
             s.setOccurrenceCount(entry.getValue());
+            s.setTopLevelOccurrenceCount(topLevelCounts.getOrDefault(entry.getKey(), 0L));
             s.setFirstTimestamp(spans.get(entry.getKey())[0]);
             s.setLastTimestamp(spans.get(entry.getKey())[1]);
             s.setPercentageOfErrors(errors > 0 ? (entry.getValue() * 100.0) / errors : 0);
@@ -646,14 +765,17 @@ public class LiveStatisticsEngine {
      */
     public void reset() {
         aggregators.clear();
+        wholeRun = new SamplerAggregator(WHOLE_RUN, apdexThreshold);
         timeBuckets.clear();
         synchronized (errorRecords) {
             errorRecords.clear();
             errorSummaryCounts.clear();
             errorSummaryFirst.clear();
+            errorSummaryTopLevelCounts.clear();
         }
         explicitTransactions.clear();
         transactionControllerParents.clear();
+        namesSeenTopLevel.clear();
         totalSamples.set(0);
         totalErrors.set(0);
         transactionRowSamples.set(0);

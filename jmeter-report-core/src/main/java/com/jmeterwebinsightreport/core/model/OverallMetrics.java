@@ -19,10 +19,13 @@ import java.util.List;
  *
  * <h2>Population</h2>
  *
- * <p>Top-level samplers only — transaction children are excluded, because their time is
- * already counted inside their parent and including them weights those samples twice. This
- * is the same population the header tiles use, so a percentage "of all samples" means the
- * same thing everywhere on the page.
+ * <p>Every sample a listener in the test plan received, and only those: a transaction's requests
+ * are inside it, and including them weights those samples twice. It is the whole run's own row
+ * ({@link ReportData#getWholeRun()}), counted per sample as JMeter's Aggregate Report feeds its
+ * TOTAL row, so a name that runs both on its own and inside a transaction counts its own runs.
+ * Data assembled without that row falls back to the top-level samplers. This is the same
+ * population the header tiles use, so a percentage "of all samples" means the same thing
+ * everywhere on the page.
  */
 public final class OverallMetrics {
 
@@ -41,12 +44,15 @@ public final class OverallMetrics {
     private final double durationSeconds;
     private final int maxThreads;
     private final PercentileSource percentiles;
+    /** The fastest and slowest sample of the run, 0 with no sample: the Σ Total row's Min and Max. */
+    private final double min;
+    private final double max;
 
     private OverallMetrics(long totalSamples, long totalErrors, double errorRate, double mean,
                            double median, double p90, double p95, double p99, double throughput,
                            double receivedBytesPerSec, double sentBytesPerSec,
                            double apdex, double durationSeconds, int maxThreads,
-                           PercentileSource percentiles) {
+                           PercentileSource percentiles, double min, double max) {
         this.totalSamples = totalSamples;
         this.totalErrors = totalErrors;
         this.errorRate = errorRate;
@@ -62,6 +68,8 @@ public final class OverallMetrics {
         this.durationSeconds = durationSeconds;
         this.maxThreads = maxThreads;
         this.percentiles = percentiles;
+        this.min = min;
+        this.max = max;
     }
 
     public static OverallMetrics of(ReportData data) {
@@ -74,6 +82,13 @@ public final class OverallMetrics {
             }
         }
 
+        // The population: the whole run's own row, counted per sample as the Aggregate Report feeds
+        // its TOTAL row, when the data carries one. Adding up the top-level rows is the fallback for
+        // data assembled without it, and it is wrong whenever one name runs both on its own and inside
+        // a transaction: such a name is a child row, so all its samples left the whole run (2026-11).
+        SamplerStatistics whole = data.getWholeRun();
+        List<SamplerStatistics> population = whole != null ? java.util.Collections.singletonList(whole) : topLevel;
+
         long samples = 0;
         long errors = 0;
         double weightedResponseTime = 0;
@@ -81,7 +96,13 @@ public final class OverallMetrics {
         double satisfied = 0;
         double tolerating = 0;
         boolean apdexCounted = true;
-        for (SamplerStatistics s : topLevel) {
+        double min = Double.POSITIVE_INFINITY;
+        double max = 0;
+        for (SamplerStatistics s : population) {
+            if (s.getSampleCount() > 0) {
+                min = Math.min(min, s.getMinResponseTime());
+                max = Math.max(max, s.getMaxResponseTime());
+            }
             samples += s.getSampleCount();
             errors += s.getErrorCount();
             weightedResponseTime += s.getMeanResponseTime() * s.getSampleCount();
@@ -115,7 +136,7 @@ public final class OverallMetrics {
         if (durationSeconds > 0) {
             double received = 0;
             double sent = 0;
-            for (SamplerStatistics s : topLevel) {
+            for (SamplerStatistics s : population) {
                 received += s.getTotalReceivedBytes();
                 sent += s.getTotalSentBytes();
             }
@@ -126,7 +147,7 @@ public final class OverallMetrics {
             throughput = 0;
             receivedBytesPerSec = 0;
             sentBytesPerSec = 0;
-            for (SamplerStatistics s : topLevel) {
+            for (SamplerStatistics s : population) {
                 throughput += s.getThroughput();
                 receivedBytesPerSec += s.getReceivedBytesPerSec();
                 sentBytesPerSec += s.getSentBytesPerSec();
@@ -138,10 +159,10 @@ public final class OverallMetrics {
         // wrong number — the mean of two p95s is not the p95 of the union — but it is what is
         // available for a ReportData that was assembled rather than aggregated, and it beats
         // reporting zero.
-        double median = data.getOverallMedian() > 0 ? data.getOverallMedian() : weighted(topLevel, samples, Metric.MEDIAN);
-        double p90 = data.getOverallP90() > 0 ? data.getOverallP90() : weighted(topLevel, samples, Metric.P90);
-        double p95 = data.getOverallP95() > 0 ? data.getOverallP95() : weighted(topLevel, samples, Metric.P95);
-        double p99 = data.getOverallP99() > 0 ? data.getOverallP99() : weighted(topLevel, samples, Metric.P99);
+        double median = data.getOverallMedian() > 0 ? data.getOverallMedian() : weighted(population, samples, Metric.MEDIAN);
+        double p90 = data.getOverallP90() > 0 ? data.getOverallP90() : weighted(population, samples, Metric.P90);
+        double p95 = data.getOverallP95() > 0 ? data.getOverallP95() : weighted(population, samples, Metric.P95);
+        double p99 = data.getOverallP99() > 0 ? data.getOverallP99() : weighted(population, samples, Metric.P99);
 
         return new OverallMetrics(
                 samples,
@@ -154,7 +175,8 @@ public final class OverallMetrics {
                 Math.round(apdex * 100.0) / 100.0,
                 durationSeconds,
                 meta != null ? meta.getTotalThreads() : 0,
-                data.overallPercentileSource());
+                data.overallPercentileSource(),
+                min == Double.POSITIVE_INFINITY ? 0 : min, max);
     }
 
     private enum Metric { MEDIAN, P90, P95, P99 }
@@ -221,4 +243,6 @@ public final class OverallMetrics {
     public double getApdex() { return apdex; }
     public double getDurationSeconds() { return durationSeconds; }
     public int getMaxThreads() { return maxThreads; }
+    public double getMin() { return min; }
+    public double getMax() { return max; }
 }

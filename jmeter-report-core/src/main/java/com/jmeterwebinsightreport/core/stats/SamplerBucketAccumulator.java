@@ -28,12 +28,21 @@ class SamplerBucketAccumulator {
     private long sumSentBytes;
     private boolean hasConnectTime;
     private boolean hasLatency;
-    /** For a pool only: the samples its connect time and latency are means over, which are the pooled
-     *  samplers' that had them. A sampler's own are over its every sample. */
+    /** For the whole run only ({@link #forTheWholeRun}): the samples its connect time and latency are
+     *  means over, those that had one. A sampler's own are over its every sample (-1). */
     private long connectCount = -1;
     private long latencyCount = -1;
     private long maxResponseTime = Long.MIN_VALUE;
     private final ResponseTimeDistribution responseTimes = new ResponseTimeDistribution();
+
+    /** A second of the whole run, fed sample by sample (the Σ Total lines): its connect time and latency
+     *  are means over the samples that had one, counted as they arrive. */
+    static SamplerBucketAccumulator forTheWholeRun() {
+        SamplerBucketAccumulator a = new SamplerBucketAccumulator();
+        a.connectCount = 0;
+        a.latencyCount = 0;
+        return a;
+    }
 
     void add(long responseTime, boolean isSuccess, long receivedBytes, long sentBytes,
              long connectTime, long latency) {
@@ -58,38 +67,22 @@ class SamplerBucketAccumulator {
         if (connectTime >= 0) {
             sumConnectTime += connectTime;
             hasConnectTime = true;
+            if (connectCount >= 0) {
+                connectCount += samples;   // the whole run: over the samples that had one
+            }
         }
         if (latency >= 0) {
             sumLatency += latency;
             hasLatency = true;
+            if (latencyCount >= 0) {
+                latencyCount += samples;
+            }
         }
     }
 
     /** Samples of this sampler that started in this second (T7). */
     void addHits(long samples) {
         hits += samples;
-    }
-
-    /** Add this sampler's second to {@code pool}: the Σ Total of the second is its top-level samplers pooled. */
-    void mergeInto(SamplerBucketAccumulator pool) {
-        pool.hits += hits;
-        pool.sampleCount += sampleCount;
-        pool.errorCount += errorCount;
-        pool.sumResponseTime += sumResponseTime;
-        pool.sumReceivedBytes += sumReceivedBytes;
-        pool.sumSentBytes += sumSentBytes;
-        if (hasConnectTime) {
-            pool.sumConnectTime += sumConnectTime;
-            pool.connectCount = Math.max(0, pool.connectCount) + sampleCount;
-            pool.hasConnectTime = true;
-        }
-        if (hasLatency) {
-            pool.sumLatency += sumLatency;
-            pool.latencyCount = Math.max(0, pool.latencyCount) + sampleCount;
-            pool.hasLatency = true;
-        }
-        pool.maxResponseTime = Math.max(pool.maxResponseTime, maxResponseTime);
-        pool.responseTimes.merge(responseTimes);
     }
 
     TimeSeriesBucket.SamplerBucketData toBucketData() {

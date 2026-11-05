@@ -575,7 +575,7 @@ run_test_jmeter() {
     shift 4
     mkdir -p "$out_dir"
     rm -f "$out_dir/.fixture-stamp" "$out_dir/$base.html" "$out_dir/$base.json" \
-          "$out_dir/$base.xml" "$out_dir/$base-data.js" 2>/dev/null
+          "$out_dir/$base.xml" "$out_dir/$base-data.js" "$out_dir/in-test-plan.jtl" 2>/dev/null
     # The default report name's sidecar keeps its literal name (externalDataFilename).
     [[ "$base" != web-insight-report ]] || rm -f "$out_dir/web-insight-data.js" 2>/dev/null
     if [[ -e "$out_dir/$base.html" ]]; then
@@ -586,9 +586,14 @@ run_test_jmeter() {
     # Through run_jmeter, not $JMETER directly, so this function clears its own
     # results.jtl rather than depending on each caller to remember. run-all-tests.sh
     # empties the whole scenario directory first as well; nothing else has to.
+    #
+    # in_test_plan_results_file names the file the plan's "In-test-plan results" Simple Data
+    # Writer fills, sub-results off: one row per sample a listener in the test plan received,
+    # which R07 holds the report's whole-run counts to (JMeter appends, so it was removed above).
     WIR_RUNTIME_LOG="$out_dir/jmeter-runtime.log" \
     run_jmeter -n -t "$TEST_PLANS/$jmx" \
         -l "$out_dir/results.jtl" \
+        -Jin_test_plan_results_file="$out_dir/in-test-plan.jtl" \
         -Jwebinsight.report.output="$out_dir" \
         -Jwebinsight.report.filename="${base}.html" \
         -Jwebinsight.report.title="$title" \
@@ -863,7 +868,7 @@ _several_plugin_jars_sentence() {
 # much JMeter work an automated cycle has to do — every other scenario in
 # run-all-tests.sh validates only "a report was produced" and is manual-tier.
 # Keep in step with REQUIRED_FIXTURES in test-plans/playwright/global-setup.ts.
-FIXTURE_IDS="E02 E05 E06 E07 E08 E09 E10 E11 E12 E19 E25 E26 E27 E28 E29 CMP"
+FIXTURE_IDS="E02 E05 E06 E07 E08 E09 E10 E11 E12 E19 E25 E26 E27 E28 E29 E31 CMP"
 
 # Every tracked .sh and git hook must be committed 100755.
 #
@@ -1349,6 +1354,124 @@ run_live_smoke() {
     rm -f "$report" "$RESULTS_DIR/E30/judged/E30-report.html"
     SKIP_BUILD=1 bash "$TEST_PLANS/scripts/run-all-tests.sh" --suite smoke >/dev/null 2>&1 || return 1
     file_exists "$report" && file_exists "$RESULTS_DIR/E30/judged/E30-report.html"
+}
+
+# R07: every fixture's counts against JMeter's own (test-plans/scripts/verify-data-integrity.py).
+#
+# Nothing held a report's numbers to JMeter's until this. Every whole-run surface read one shared
+# count, so they all agreed with each other while a plan whose transaction also ran inside another
+# one lost its standalone samples from all of them at once (tails-conversation-flows, 2026-11: 0
+# errors shown, 17 real). The references are JMeter's own classes over the run's own files:
+#   - the whole run: the file the plan's "In-test-plan results" Simple Data Writer wrote, sub-results
+#     off, which is what an Aggregate Report in the test plan receives (in-test-plan.jtl, set by
+#     run_test_jmeter and generate-cmp-fixture.sh);
+#   - each sampler: the Aggregate Report over results.jtl, every row.
+# The -g fixtures have no in-test file. Their committed or generated input is the reference only
+# because nothing in it nests; --require-no-nesting refuses one with a transaction row or a renamed
+# sub-result row. E31 is also rebuilt with -g from its own results.jtl: the two reports must agree on
+# the totals and the runId, and the rebuild is held to JMeter sampler by sampler as well.
+#
+# The list is FIXTURE_IDS itself, so a fixture added there is checked or refused, never skipped: a
+# fixture with no reference this function knows is a FAIL that names it. Only called while the
+# fixtures are current (R05's condition), since a stale fixture holds the previous build's numbers.
+# The referee's classes, JMeter's lib/ and lib/ext/ (ApacheJMeter_core.jar is in lib/ext). A Windows
+# java.exe gets each path converted on its own and joined with ';', as wir-collect.sh does it.
+_count_check_classpath() {
+    case "$(uname -s 2>/dev/null)" in
+        MINGW*|MSYS*|CYGWIN*)
+            printf '%s;%s\\*;%s\\*' "$(cygpath -w "$1")" "$(cygpath -w "$JMETER_HOME/lib")" "$(cygpath -w "$JMETER_EXT")" ;;
+        *)
+            printf '%s:%s/*:%s/*' "$1" "$JMETER_HOME/lib" "$JMETER_EXT" ;;
+    esac
+}
+
+_count_check_path() {
+    if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi
+}
+
+run_counts_against_jmeter() {
+    local out="$RESULTS_DIR/R07" fail=0 id cp
+    echo "[COUNTS] The report's counts against JMeter's Aggregate Report"
+    if ! require_python; then
+        echo "[COUNTS] FAIL: this check needs Python 3" >&2
+        return 1
+    fi
+    rm -rf "${out:?}"
+    mkdir -p "$out/classes"
+    if ! javac -nowarn -d "$(_count_check_path "$out/classes")" \
+            -cp "$(_count_check_classpath "$out/classes")" \
+            "$(_count_check_path "$TEST_PLANS/scripts/AggregateReportReferee.java")" > "$out/javac.log" 2>&1; then
+        echo "[COUNTS] FAIL: the referee did not compile — see $out/javac.log" >&2
+        return 1
+    fi
+    cp="$(_count_check_classpath "$out/classes")"
+
+    # _referee <results file> <csv out>
+    _referee() {
+        java -cp "$cp" AggregateReportReferee "$(_count_check_path "$JMETER_HOME")" \
+            "$(_count_check_path "$1")" "$(_count_check_path "$2")" >> "$out/referee.log" 2>&1
+    }
+    # _check <id> <report.json> <results.jtl> <in-test-plan results> [rebuilt report.json]
+    _check() {
+        local name="$1" report="$2" every="$3" in_test="$4" rebuilt="${5:-}"
+        _referee "$every" "$out/$name-every-row.csv" || { echo "  [$name] FAIL: the referee could not read $every"; return 1; }
+        _referee "$in_test" "$out/$name-in-test-plan.csv" || { echo "  [$name] FAIL: the referee could not read $in_test"; return 1; }
+        # No array for the optional argument: under set -u, bash 3.2 (macOS's /bin/bash) calls an
+        # empty one unbound and ends the suite in the middle of R07
+        if [[ -n "$rebuilt" ]]; then
+            PYTHONIOENCODING=utf-8 "$PYTHON" "$TEST_PLANS/scripts/verify-data-integrity.py" --fixture "$name" \
+                --report "$report" --every-row "$out/$name-every-row.csv" --in-test-plan "$out/$name-in-test-plan.csv" \
+                --rebuilt-report "$rebuilt" --output "$out/$name.csv"
+        else
+            PYTHONIOENCODING=utf-8 "$PYTHON" "$TEST_PLANS/scripts/verify-data-integrity.py" --fixture "$name" \
+                --report "$report" --every-row "$out/$name-every-row.csv" --in-test-plan "$out/$name-in-test-plan.csv" \
+                --output "$out/$name.csv"
+        fi
+    }
+    # _check_g <id> <input file>: a -g fixture, whose input must not nest anything
+    _check_g() {
+        local name="$1" input="$2"
+        PYTHONIOENCODING=utf-8 "$PYTHON" "$TEST_PLANS/scripts/verify-data-integrity.py" --require-no-nesting "$input" || return 1
+        _check "$name" "$RESULTS_DIR/$name/$name-report.json" "$input" "$input"
+    }
+
+    for id in $FIXTURE_IDS; do
+        case "$id" in
+            E26|E27|E28) _check_g "$id" "$TEST_PLANS/goldens/plain.jtl" || fail=1 ;;
+            E29)         _check_g "$id" "$RESULTS_DIR/E29-inputs/soak.jtl" || fail=1 ;;
+            CMP)
+                _check CMP "$RESULTS_DIR/CMP/CMP-report.json" "$RESULTS_DIR/CMP/results.jtl" \
+                    "$RESULTS_DIR/CMP/in-test-plan.jtl" || fail=1
+                _check CMP-baseline "$RESULTS_DIR/CMP/baseline.json" "$RESULTS_DIR/CMP/baseline.jtl" \
+                    "$RESULTS_DIR/CMP/baseline-in-test-plan.jtl" || fail=1 ;;
+            E31)
+                # The run report's title, which runId hashes: without it -g names the run otherwise
+                local title
+                title="$("$PYTHON" -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["testName"])' \
+                    "$RESULTS_DIR/E31/E31-report.json" 2>/dev/null)"
+                if ! run_jmeter -g "$RESULTS_DIR/E31/results.jtl" -o "$out/E31-rebuilt" \
+                        -Jwebinsight.report.filename=E31-rebuilt.html \
+                        -Jwebinsight.report.title="$title" > "$out/E31-rebuilt.log" 2>&1 \
+                        || ! file_exists "$out/E31-rebuilt/E31-rebuilt.json"; then
+                    echo "  [E31] FAIL: the -g rebuild wrote no report — see $out/E31-rebuilt.log"; fail=1
+                else
+                    _check E31 "$RESULTS_DIR/E31/E31-report.json" "$RESULTS_DIR/E31/results.jtl" \
+                        "$RESULTS_DIR/E31/in-test-plan.jtl" "$out/E31-rebuilt/E31-rebuilt.json" || fail=1
+                    # and the rebuild sampler by sampler: -g's transaction nesting is its own logic
+                    _check E31-rebuilt "$out/E31-rebuilt/E31-rebuilt.json" "$RESULTS_DIR/E31/results.jtl" \
+                        "$RESULTS_DIR/E31/in-test-plan.jtl" || fail=1
+                fi ;;
+            *)
+                if file_exists "$RESULTS_DIR/$id/in-test-plan.jtl"; then
+                    _check "$id" "$RESULTS_DIR/$id/$id-report.json" "$RESULTS_DIR/$id/results.jtl" \
+                        "$RESULTS_DIR/$id/in-test-plan.jtl" || fail=1
+                else
+                    echo "  [$id] FAIL: no in-test-plan.jtl, so nothing to hold its counts to (does its plan have the In-test-plan results writer?)"
+                    fail=1
+                fi ;;
+        esac
+    done
+    return $fail
 }
 
 # Java unit tests. Fast enough (~5s for 224) that every tier runs them.

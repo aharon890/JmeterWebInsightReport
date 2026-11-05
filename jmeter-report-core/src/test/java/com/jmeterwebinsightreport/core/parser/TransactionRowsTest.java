@@ -58,6 +58,55 @@ class TransactionRowsTest {
         assertNull(parentOf(rows, "TG 1-1", "After", "OK", 1600, 10, 0));
     }
 
+    /* A transaction cut off at the test end. JMeterThread ends it once more when the thread stops
+       (doEndTransactionSampler) without setTransactionDone, so its row carries no "Number of samples"
+       message, and its requests still follow it: a listener in the plan received the transaction alone,
+       its requests inside it (E02: 20 such rows, 40 children; a listener counts 7,224, every row 7,264). */
+
+    @Test
+    void aTransactionCutOffAtTheEndNestsTheRowsAfterItInsideItsSpanWhenItsNameWasMarkedEarlier() {
+        TransactionRows rows = new TransactionRows();
+        parentOf(rows, "TG 1-1", "Search", tx(2, 0), 1000, 300, 0);
+        parentOf(rows, "TG 1-1", "A", "OK", 1000, 150, 0);
+        parentOf(rows, "TG 1-1", "B", "OK", 1150, 150, 0);
+        assertNull(parentOf(rows, "TG 1-1", "Search", "", 1300, 300, 0), "the cut-off row is top-level");
+        assertEquals("Search", parentOf(rows, "TG 1-1", "A", "OK", 1300, 150, 0));
+        assertEquals("Search", parentOf(rows, "TG 1-1", "B", "OK", 1450, 140, 0));
+    }
+
+    @Test
+    void aCutOffTransactionsChildrenEndWhereItsSpanEnds() {
+        TransactionRows rows = new TransactionRows();
+        parentOf(rows, "TG 1-1", "Search", tx(1, 0), 1000, 150, 0);
+        parentOf(rows, "TG 1-1", "A", "OK", 1000, 150, 0);
+        parentOf(rows, "TG 1-1", "Search", "", 1200, 150, 0);
+        assertEquals("Search", parentOf(rows, "TG 1-1", "A", "OK", 1200, 150, 0));
+        assertNull(parentOf(rows, "TG 1-1", "Late", "OK", 1350, 10, 0), "it starts at the span's end");
+    }
+
+    @Test
+    void anUnmarkedRowOfANameNeverMarkedNestsNothing() {
+        // -g cannot know such a row was a transaction: listed as a limit, not guessed
+        TransactionRows rows = new TransactionRows();
+        assertNull(parentOf(rows, "TG 1-1", "Search", "", 1000, 300, 0));
+        assertNull(parentOf(rows, "TG 1-1", "A", "OK", 1000, 150, 0));
+    }
+
+    @Test
+    void aRequestNamedLikeItsTransactionIsNoCutOff() {
+        // S1: a transaction "Login" holding a request "Login". The request has no message and the name
+        // was marked, but nothing of its thread starts inside a request's span: the next row is the
+        // request after it, or the next transaction
+        TransactionRows rows = new TransactionRows();
+        parentOf(rows, "TG 1-1", "Login", tx(2, 0), 1000, 200, 0);
+        assertEquals("Login", parentOf(rows, "TG 1-1", "Login", "OK", 1000, 100, 0));
+        assertEquals("Login", parentOf(rows, "TG 1-1", "Token", "OK", 1100, 100, 0));
+        assertNull(parentOf(rows, "TG 1-1", "Login", tx(2, 0), 1200, 200, 0));
+        assertEquals("Login", parentOf(rows, "TG 1-1", "Login", "OK", 1200, 100, 0));
+        assertEquals("Login", parentOf(rows, "TG 1-1", "Token", "OK", 1300, 100, 0));
+        assertNull(parentOf(rows, "TG 1-1", "Home", "OK", 1400, 10, 0));
+    }
+
     @Test
     void otherThreadsRowsInBetweenAreNotChildren() {
         TransactionRows rows = new TransactionRows();

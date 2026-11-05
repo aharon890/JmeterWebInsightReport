@@ -4,9 +4,11 @@
  * JMeter's Aggregate Report computes its TOTAL row with a calculator of its own, fed every sample, so
  * its rate is all samples over the run's window. The row used to add up the rows' own rates, each
  * over that sampler's own window: P17 read 41.69/s where JMeter's TOTAL is 11.31/s. The row now takes
- * every whole-run figure from chartData.overall (OverallMetrics, the Summary tiles' numbers) and only
- * counts, min and max from the rows. That the row renders is the browser's question
- * (samplers-tab.spec.ts).
+ * every whole-run figure from chartData.overall (OverallMetrics, the Summary tiles' numbers), its
+ * counts, min and max included: the whole run is counted per sample. Adding up the rows that are no
+ * transaction's child left out every sample of a name that also ran inside a transaction
+ * (tails-conversation-flows, 2026-11). The rows stay the fallback for a payload without those fields.
+ * That the row renders is the browser's question (samplers-tab.spec.ts).
  */
 'use strict';
 
@@ -39,7 +41,26 @@ test('B1: the rate, KB/s, mean and Apdex are the whole run\'s, not sums or means
     assert.deepStrictEqual([t.median, t.p90, t.p95, t.p99], [30, 400, 500, 800]);
 });
 
-test('B1: counts, errors, min and max come from the top-level rows', () => {
+test("the counts, errors, min and max are the whole run's too, counted per sample", () => {
+    // "Open" ran on its own 16 times (5 failed) and inside "Whole" 4 times, so its row is a child row
+    // of 20; the whole run is Whole 4 + Open 16 + Heartbeat 20 = 40 samples, 5 failed
+    const scope = loadReportScope();
+    const t = scope.totalRowFigures({
+        samplers: [
+            { name: 'Heartbeat', count: 20, errorCount: 0, min: 3, max: 9 },
+            { name: 'Whole', count: 4, errorCount: 0, min: 40, max: 50 },
+            { name: 'Open', count: 20, errorCount: 5, min: 10, max: 70, parent: 'Whole' },
+        ],
+        overall: { totalSamples: 40, totalErrors: 5, min: 3, max: 70, mean: 20 },
+    }, (name) => name === 'Open');
+    assert.strictEqual(t.samples, 40, "not 24: the rows leave out Open's 16 runs on its own");
+    assert.strictEqual(t.errors, 5, 'not 0');
+    assert.strictEqual(t.errorPct, 5 / 40 * 100);
+    assert.strictEqual(t.min, 3);
+    assert.strictEqual(t.max, 70);
+});
+
+test("B1: without the whole run's counts, they come from the top-level rows", () => {
     const scope = loadReportScope();
     const t = scope.totalRowFigures(payload(), isChild);
     assert.strictEqual(t.samples, 1100);

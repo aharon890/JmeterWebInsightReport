@@ -220,7 +220,7 @@ test.describe('Transaction Hierarchy in Filter Bar', () => {
     });
 
     if (hasHierarchy) {
-      // The Transaction Details toggle lives in the Samplers tab toolbar — switch there first.
+      // "Show transaction details" is in the filter bar's Samplers row; the table is on the Samplers tab.
       await switchTab(page, 'samplers');
 
       // Transaction Details button should be visible
