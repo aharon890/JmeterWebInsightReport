@@ -53,8 +53,9 @@ var showTransactionChildren = false;
 /* Chart granularity in ms — 1000 = 1 second (raw), higher = aggregated */
 var chartGranularity = 1000;
 
-/* Set of child sampler names (populated on init from transactionHierarchy) */
-var transactionChildNames = {};
+/* Set of child sampler names (populated on init from transactionHierarchy). Prototype-free, as every
+   map keyed by a sampler name: a sampler may be called "constructor" or "toString". */
+var transactionChildNames = Object.create(null);
 
 function isTotalVisible() {
     return samplerVisibility[TOTAL_SAMPLER_NAME] === true;
@@ -77,9 +78,9 @@ function isTransactionChild(name) {
  * not in the table leaves its child at the top, a name listed twice goes under the first parent that
  * lists it, and a loop is cut where it closes. Returns [{name, depth}], every name once. */
 function samplerTreeOrder(names, childrenOf, compare) {
-    var present = {};
+    var present = Object.create(null);
     names.forEach(function (n) { present[n] = true; });
-    var parentOf = {};
+    var parentOf = Object.create(null);
     Object.keys(childrenOf || {}).forEach(function (p) {
         if (!present[p] || !Array.isArray(childrenOf[p])) return;
         childrenOf[p].forEach(function (c) {
@@ -87,13 +88,13 @@ function samplerTreeOrder(names, childrenOf, compare) {
         });
     });
     names.forEach(function (n) {
-        var seen = {};
+        var seen = Object.create(null);
         for (var p = parentOf[n]; p !== undefined; p = parentOf[p]) {
             if (p === n || seen[p]) { delete parentOf[n]; return; }
             seen[p] = true;
         }
     });
-    var kids = {};
+    var kids = Object.create(null);
     names.forEach(function (n) {
         var p = parentOf[n];
         if (p !== undefined) (kids[p] = kids[p] || []).push(n);
@@ -106,7 +107,7 @@ function samplerTreeOrder(names, childrenOf, compare) {
     var top = names.filter(function (n) { return parentOf[n] === undefined; });
     if (compare) top = top.slice().sort(compare);
     var out = [];
-    var placed = {};
+    var placed = Object.create(null);
     var visit = function (n, depth) {
         if (placed[n]) return;
         placed[n] = true;
@@ -887,8 +888,8 @@ function initFilterBar(data) {
 
     /* Transaction hierarchy lookup */
     var hierarchy = data.transactionHierarchy || {};
-    var childSet = {};
-    transactionChildNames = {};
+    var childSet = Object.create(null);
+    transactionChildNames = Object.create(null);
     for (var parentName in hierarchy) {
         var children = hierarchy[parentName];
         if (Array.isArray(children)) {
@@ -945,7 +946,7 @@ function initFilterBar(data) {
 
     /* In the table's tree order, a transaction's chips right after its own; each chip keeps the colour
        of its place in the data, as its chart lines do (getColorForSampler's index) */
-    var dataIndex = {};
+    var dataIndex = Object.create(null);
     samplerNames.forEach(function (name, i) { dataIndex[name] = i; });
     samplerTreeOrder(samplerNames, hierarchy).forEach(function (entry) {
         var name = entry.name;
@@ -964,7 +965,7 @@ function initFilterBar(data) {
             label.style.paddingLeft = (12 + 12 * Math.max(1, entry.depth)) + 'px';
             if (!showTransactionChildren) label.style.display = 'none';
         }
-        if (hierarchy[name]) {
+        if (Object.prototype.hasOwnProperty.call(hierarchy, name)) {
             label.classList.add('transaction-parent-filter');
             label.style.fontWeight = '600';
         }
@@ -2785,7 +2786,7 @@ function getFilteredErrorRecords(data) {
 function errorsShownFor(name, visible) {
     if (visible[name]) return true;
     if (showTransactionChildren) return false;
-    var seen = {};
+    var seen = Object.create(null);
     for (var parent = transactionChildNames[name]; parent !== undefined && !seen[parent];
          parent = transactionChildNames[parent]) {
         seen[parent] = true;
@@ -3514,7 +3515,7 @@ function sortTable(colId, type) {
         var v = (nameEl ? nameEl.textContent : cell.textContent).trim();
         return type === 'num' ? parseNumericCell(v) : v;
     };
-    var byName = {};
+    var byName = Object.create(null);
     groups.forEach(function (g) { byName[g.row.getAttribute('data-sampler')] = valueOf(g.row); });
     var compare = function (a, b) {
         var va = byName[a], vb = byName[b];
@@ -3535,7 +3536,7 @@ function arrangeSamplerRows(tbody, compare) {
     var groups = [];
     var orphans = [];
     var owner = null;
-    var byName = {};
+    var byName = Object.create(null);
     Array.from(tbody.rows).forEach(function (r) {
         if (isSamplerCompanionRow(r)) {
             if (owner) owner.companions.push(r); else orphans.push(r);
@@ -3554,7 +3555,7 @@ function arrangeSamplerRows(tbody, compare) {
     if (totalGroup) appendGroup(totalGroup);
     var names = groups.map(function (g) { return g.row.getAttribute('data-sampler'); })
         .filter(function (n) { return n !== null; });
-    var arranged = {};
+    var arranged = Object.create(null);
     samplerTreeOrder(names, hierarchy, compare).forEach(function (entry) {
         var g = byName[entry.name];
         if (!g) return;
@@ -4055,7 +4056,7 @@ function isSamplerRowSuppressed(row) {
     if (row.classList.contains('transaction-child') && !showTransactionChildren) return true;
     var name = row.getAttribute('data-sampler');
     if (name === null || !row.parentNode) return false;
-    var seen = {};
+    var seen = Object.create(null);
     for (var p = transactionChildNames[name]; p !== undefined && !seen[p]; p = transactionChildNames[p]) {
         seen[p] = true;
         var parentRow = samplerRowNamed(row.parentNode, p);
@@ -4092,11 +4093,11 @@ function applySamplerRowVisibility() {
     var kept = null;
     if (filter) {
         kept = [];
-        var keepName = {};
+        var keepName = Object.create(null);
         rows.forEach(function (r) {
             if (samplerRowText(r).indexOf(filter) < 0) return;
             kept.push(r);
-            var seen = {};
+            var seen = Object.create(null);
             for (var p = transactionChildNames[r.getAttribute('data-sampler')]; p !== undefined && !seen[p];
                  p = transactionChildNames[p]) {
                 seen[p] = true;
@@ -4225,7 +4226,7 @@ function initTransactionHierarchy(data) {
     }
 
     /* Build a set of child sampler names */
-    var childOf = {};
+    var childOf = Object.create(null);
     for (var parentName in hierarchy) {
         var children = hierarchy[parentName];
         if (Array.isArray(children)) {
@@ -4235,8 +4236,8 @@ function initTransactionHierarchy(data) {
 
     /* Where else each name ran (a name that also ran on its own, or inside several transactions), and
        per transaction the names inside it whose rows are elsewhere: one row per name has one place */
-    var alsoInside = {};
-    var elsewhere = {};
+    var alsoInside = Object.create(null);
+    var elsewhere = Object.create(null);
     (data.samplers || []).forEach(function (s) {
         if (!Array.isArray(s.alsoInside) || !s.alsoInside.length) return;
         alsoInside[s.name] = s.alsoInside;
@@ -4258,7 +4259,7 @@ function initTransactionHierarchy(data) {
             row.classList.add('transaction-child');
         }
 
-        if (hierarchy[samplerName]) {
+        if (Object.prototype.hasOwnProperty.call(hierarchy, samplerName)) {
             row.classList.add('transaction-parent');
         }
         if (alsoInside[samplerName]) {

@@ -74,6 +74,14 @@ test('a loop in the hierarchy cannot hide a row or recurse forever', () => {
     assert.deepStrictEqual(got.map((r) => r.trim()).sort(), ['A', 'B', 'C']);
 });
 
+test('a sampler may be named like any property of a JavaScript object', () => {
+    // Review finding (2026-11-05): name-keyed maps were plain objects, so "toString" read as present
+    // and "constructor" as already placed, and the row vanished from the table and the chips
+    assert.deepStrictEqual(order(['toString', 'constructor', '__proto__', 'hasOwnProperty', 'A'],
+        { A: ['toString'], constructor: ['hasOwnProperty'] }),
+        ['constructor', '  hasOwnProperty', '__proto__', 'A', '  toString']);
+});
+
 test('no hierarchy keeps the order it was given', () => {
     assert.deepStrictEqual(order(['C', 'A', 'B'], {}), ['C', 'A', 'B']);
 });
