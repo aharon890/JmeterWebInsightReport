@@ -1,0 +1,19 @@
+{
+  "integration": "speckit",
+  "version": "1.4.2",
+  "installed_at": "2026-11-18T22:28:07.684106+00:00",
+  "files": {
+    ".specify/scripts/powershell/check-prerequisites.ps1": "5432d89bd471f8033ec3d45331c571bca8fd0cce1e7e746e88db9ddc882c3d9e",
+    ".specify/scripts/powershell/common.ps1": "01918afe43572c74d4c24fc50812cb935d7847be9346b3952a1f4bb5931d16c0",
+    ".specify/scripts/powershell/create-new-feature.ps1": "f0709c64a17554d4a4f87c9093d1a779ade6ef9621e6e1e502186d6b72d94d71",
+    ".specify/scripts/powershell/resolve-template.ps1": "e87810c30c8ccc15ef07a14836942a3190060ea1e17234cabfc29a273f2a46dc",
+    ".specify/scripts/powershell/setup-plan.ps1": "4a880c4520470de7f27d52d24b84d32f7e49df69fb63c1a5d1ec58dd685a5e34",
+    ".specify/scripts/powershell/setup-tasks.ps1": "943bbd3b41417627342e7523a1794e4fcae00d7b4376b9f83567a9564debd921",
+    ".specify/templates/checklist-template.md": "856532b3cb66171c662cc16f16b31a5856e4655a8666aad1e545bbfc7f603ca1",
+    ".specify/templates/constitution-template.md": "ce7549540fa45543cca797a150201d868e64495fdff39dc38246fb17bd4024b3",
+    ".specify/templates/plan-template.md": "7e637502d41eccf0ca672496636365691fdca62ef37b27ec07fcb412dbfa90d4",
+    ".specify/templates/spec-template.md": "3945437fc35cd30a5b2bf7beea680337c3516826d3efa5a6b92c4a7eca1ba28e",
+    ".specify/templates/tasks-template.md": "fc29a233f6f5a27ca31f1aa46b596af6500c627441c6e62b2bc4a1d721525842",
+    ".specify/.gitignore": "0a61c5378b0bb2e0f85babff99c8b166f2170a2c12378cd17d929aa19296ec88"
+  }
+}
