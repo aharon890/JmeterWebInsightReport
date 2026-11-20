@@ -44,7 +44,12 @@ fi
 ext_dir="$jmeter_home/lib/ext"
 
 if [[ -d "$ext_dir" ]]; then
-    mapfile -t jars < <(ls "$ext_dir"/jmeter-web-insight-report-*.jar 2>/dev/null)
+    # A read loop, not mapfile: mapfile is bash 4, and macOS runs this hook with its
+    # /bin/bash 3.2, where it errors at the end of every turn and never sees the JAR.
+    jars=()
+    while IFS= read -r jar; do
+        jars+=("$jar")
+    done < <(ls "$ext_dir"/jmeter-web-insight-report-*.jar 2>/dev/null)
 
     if [[ ${#jars[@]} -gt 1 ]]; then
         warnings+=("lib/ext holds ${#jars[@]} plugin JARs. JMeter's classpath is flat, so which one wins is non-deterministic. Run ./scripts/build-and-deploy.sh — it purges the old ones.")
