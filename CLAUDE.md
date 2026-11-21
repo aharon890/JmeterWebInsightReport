@@ -878,7 +878,11 @@ ten lines on a ten-sampler plan, nine of them about nothing on screen.
 `grep -cE '\.innerHTML\s*\+?=' jmeter-web-insight-report/src/main/resources/static/js/report.js`
 rather than trusting a number written here — and anything derived from JTL content (sampler
 labels, URLs, response bodies, error messages) must go through `escapeHtml()`.
-`xss-escaping.spec.ts` covers this. Every inline handler in the two editing modules is one
+`xss-escaping.spec.ts` covers this. A chart legend that shows a tooltip takes it from
+`legendNameTooltip()`: ECharts 5.5.0 writes a legend tooltip's text into the page as HTML when
+the tooltip has no formatter, and until 4.4.1 seven legends ran a sampler label holding markup
+when the reader pointed at it. `verify_report_js_rules` refuses the bare form (rule 5), and the
+spec sweeps every legend a fixture draws. Every inline handler in the two editing modules is one
 `onclick="WIR.asserts.x('literal')"` or `WIR.serverKpis.x(...)` call with its arguments through
 `jsArg`, and the server module has no other event attribute (its editor binds a delegated
 listener); `verify_report_js_rules` refuses the rest statically, and the spec has a second,
