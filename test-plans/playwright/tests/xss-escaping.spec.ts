@@ -132,6 +132,97 @@ test.describe('XSS — ECharts tooltip formatters', () => {
       'no chart tooltip formatter consumed the payload — sweep is not exercising the sinks',
     ).toBe(true);
   });
+
+  /**
+   * A legend cuts a long name short and shows the whole of it in a tooltip of its own.
+   * ECharts 5.5.0 writes that text into the page as HTML unless the legend's tooltip has a
+   * formatter, so a legend that switches its tooltip on must give it one that escapes
+   * (legendNameTooltip). The sweep above reads option.tooltip only and never saw a legend's.
+   */
+  test('[C/R] every chart legend tooltip escapes the series name', async ({ page }) => {
+    await loadClean(page, 'E02');
+    for (const tab of ['summary', 'timeline', 'errors', 'samplers']) {
+      await switchTab(page, tab);
+    }
+
+    const result = await page.evaluate((p) => {
+      const w = window as any;
+      const seen = { legends: 0, noFormatter: 0, outputs: [] as string[] };
+      (w.chartInstances || []).forEach((chart: any) => {
+        let option: any;
+        try { option = chart.getOption(); } catch (e) { return; }
+        [].concat(option && option.legend ? option.legend : []).forEach((legend: any) => {
+          const tt = legend && legend.tooltip;
+          if (!tt || !tt.show) return;
+          seen.legends++;
+          if (typeof tt.formatter !== 'function') { seen.noFormatter++; return; }
+          seen.outputs.push(String(tt.formatter({ componentType: 'legend', name: p })));
+        });
+      });
+      return seen;
+    }, PAYLOAD);
+
+    expect(result.legends, 'expected at least one legend that shows a tooltip').toBeGreaterThan(0);
+    expect(result.noFormatter, 'legends whose tooltip has no formatter (ECharts writes the name as HTML)').toBe(0);
+    result.outputs.forEach((html, i) => {
+      assertNoLiveMarkup(html, `legend tooltip #${i}`);
+      assertEscapedPayloadPresent(html, `legend tooltip #${i}`);
+    });
+  });
+
+  test('[C/R] a hostile series name does not run when the reader points at its legend entry', async ({ page }) => {
+    await loadClean(page, 'E02');
+    await switchTab(page, 'timeline');
+
+    // Rename one series of a chart the page drew, as a JTL label would have named it. The
+    // chart keeps the legend the page gave it, tooltip included, and lists that one name.
+    const canvasBox = await page.evaluate((p) => {
+      const w = window as any;
+      const chart = (w.chartInstances || []).find((c: any) => {
+        let option: any;
+        try { option = c.getOption(); } catch (e) { return false; }
+        const dom = c.getDom();
+        return dom && dom.offsetParent !== null && option.series && option.series.length
+          && [].concat(option.legend || []).some((l: any) => l && l.tooltip && l.tooltip.show);
+      });
+      if (!chart) return null;
+      chart.setOption({ legend: { data: [p] }, series: [{ name: p }] });
+      chart.getDom().scrollIntoView({ block: 'center' });
+      const r = chart.getDom().querySelector('canvas').getBoundingClientRect();
+      return { x: r.x, y: r.y, width: r.width, height: r.height };
+    }, PAYLOAD);
+    expect(canvasBox, 'a visible Timeline chart whose legend shows a tooltip').not.toBeNull();
+
+    const state = () => page.evaluate(() => ({
+      ran: (window as any).__XSS__ === 1,
+      // ECharts' tooltip is the only element that holds the payload as text
+      tooltip: Array.from(document.querySelectorAll('div'))
+        .filter((d) => d.children.length === 0 && (d.textContent || '').includes('onerror=')
+          && getComputedStyle(d).display !== 'none')
+        .map((d) => d.textContent || '')[0] || '',
+    }));
+
+    // The one entry is centred near the bottom edge (legend: { bottom: 10 }, about 25px tall).
+    // Sweep outward from the centre along that band until the tooltip shows or the payload runs.
+    const centre = canvasBox!.x + canvasBox!.width / 2;
+    let seen = { ran: false, tooltip: '' };
+    sweep:
+    for (const up of [22, 16, 28]) {
+      for (let off = 0; off < 160; off += 8) {
+        for (const x of off === 0 ? [centre] : [centre - off, centre + off]) {
+          await page.mouse.move(x, canvasBox!.y + canvasBox!.height - up);
+          await page.waitForTimeout(40);
+          seen = await state();
+          if (seen.ran || seen.tooltip) break sweep;
+        }
+      }
+    }
+    await page.waitForTimeout(200); // a broken image reports its error a moment after it is added
+    seen = { ran: (await state()).ran, tooltip: seen.tooltip };
+
+    expect(seen.ran, 'the series name ran as script').toBe(false);
+    expect(seen.tooltip, 'the legend tooltip shows the whole name, as text').toBe(PAYLOAD);
+  });
 });
 
 test.describe('XSS — clipboard HTML', () => {

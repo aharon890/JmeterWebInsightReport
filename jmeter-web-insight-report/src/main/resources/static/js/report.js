@@ -1750,6 +1750,17 @@ function truncateLegendName(name) {
 }
 
 /**
+ * The tooltip of a legend entry: the whole name, where truncateLegendName cut it short.
+ * ECharts 5.5.0 writes a legend tooltip's text into the page as HTML, and the name is a
+ * sampler label out of the JTL, so it goes through escapeHtml() first. Every legend that
+ * shows a tooltip takes it from here; verify_report_js_rules refuses one switched on with no
+ * formatter. A new object per call: ECharts keeps and changes the options it is given.
+ */
+function legendNameTooltip() {
+    return { show: true, formatter: function (params) { return escapeHtml(params.name); } };
+}
+
+/**
  * Shared setup for timeline charts: validate data, handle empty state,
  * create chart instance. Returns { chart, chartDom } or null if skipped.
  */
@@ -1800,7 +1811,7 @@ function finalizeTimelineChart(chart, opts, chartDomId, chartType) {
     var defaults = {
         toolbox: getToolbox(chart),
         tooltip: { trigger: 'axis', axisPointer: { type: 'cross' }, formatter: chartTooltipFormatter },
-        legend: { data: (opts.series || []).map(function (s) { return s.name; }), bottom: 10, type: 'scroll', formatter: truncateLegendName, tooltip: { show: true } },
+        legend: { data: (opts.series || []).map(function (s) { return s.name; }), bottom: 10, type: 'scroll', formatter: truncateLegendName, tooltip: legendNameTooltip() },
         grid: { left: 60, right: 30, top: 40, bottom: 90 },
         xAxis: timelineXAxis(),
         yAxis: { type: 'value', min: 0 },
@@ -1876,7 +1887,7 @@ function initSummaryResponseTimeChart(data) {
             axisPointer: { type: 'cross' },
             formatter: chartTooltipFormatter
         },
-        legend: { data: series.map(function (s) { return s.name; }), bottom: 10, type: 'scroll', formatter: truncateLegendName, tooltip: { show: true } },
+        legend: { data: series.map(function (s) { return s.name; }), bottom: 10, type: 'scroll', formatter: truncateLegendName, tooltip: legendNameTooltip() },
         grid: { left: 60, right: hasThreads ? 80 : 30, top: 40, bottom: 90 },
         xAxis: timelineXAxis(),
         yAxis: yAxes,
@@ -3218,7 +3229,7 @@ function initErrorTimelineChart(data) {
                     'Code: <b>' + escapeHtml(params.value[1]) + '</b>';
             }
         },
-        legend: { data: series.map(function (s) { return s.name; }), bottom: 10, type: 'scroll', formatter: truncateLegendName, tooltip: { show: true } },
+        legend: { data: series.map(function (s) { return s.name; }), bottom: 10, type: 'scroll', formatter: truncateLegendName, tooltip: legendNameTooltip() },
         grid: { left: 60, right: 30, top: 20, bottom: 90 },
         xAxis: timelineXAxis(),
         yAxis: { type: 'category', data: ['Error'], axisLabel: { show: false }, axisTick: { show: false } },
@@ -4762,7 +4773,7 @@ function renderDetailTimeSeries(samplerName, containerId, def) {
         series: series,
         dataZoom: [{ type: 'inside', xAxisIndex: 0 }]
     };
-    if (def.showLegend) { opt.legend = { data: series.map(function (s) { return s.name; }), bottom: 0, textStyle: { fontSize: 9 }, formatter: truncateLegendName, tooltip: { show: true } }; }
+    if (def.showLegend) { opt.legend = { data: series.map(function (s) { return s.name; }), bottom: 0, textStyle: { fontSize: 9 }, formatter: truncateLegendName, tooltip: legendNameTooltip() }; }
     chart.setOption(opt);
 }
 
@@ -4874,7 +4885,7 @@ function initDetailBytes(samplerName, containerId) {
 
         chart.setOption({
             tooltip: { trigger: 'axis' },
-            legend: { data: series.map(function (s) { return s.name; }), bottom: 0, textStyle: { fontSize: 9 }, formatter: truncateLegendName, tooltip: { show: true } },
+            legend: { data: series.map(function (s) { return s.name; }), bottom: 0, textStyle: { fontSize: 9 }, formatter: truncateLegendName, tooltip: legendNameTooltip() },
             grid: { left: 10, right: 10, top: 10, bottom: 30, containLabel: true },
             xAxis: { type: 'time', axisLabel: { fontSize: 9, formatter: formatMiniTimeAxis } },
             yAxis: {
@@ -7199,7 +7210,7 @@ function initCompareRTChart(data) {
     chart.setOption({
         toolbox: getToolbox(chart),
         tooltip: { trigger: 'axis', axisPointer: { type: 'cross' }, formatter: compareTooltipFormatter },
-        legend: { data: series.map(function (s) { return s.name; }), bottom: 10, type: 'scroll', formatter: truncateLegendName, tooltip: { show: true } },
+        legend: { data: series.map(function (s) { return s.name; }), bottom: 10, type: 'scroll', formatter: truncateLegendName, tooltip: legendNameTooltip() },
         grid: { left: 60, right: 30, top: 40, bottom: 90 },
         xAxis: { type: 'value', name: 'Elapsed', axisLabel: { formatter: compareElapsedFormatter }, min: 0, max: maxElapsed },
         yAxis: responseTimeYAxis(getMaxFromSeries(series), 'Response Time'),
@@ -7231,7 +7242,7 @@ function initCompareTPChart(data) {
     chart.setOption({
         toolbox: getToolbox(chart),
         tooltip: { trigger: 'axis', axisPointer: { type: 'cross' }, formatter: compareTpTooltipFormatter },
-        legend: { data: series.map(function (s) { return s.name; }), bottom: 10, type: 'scroll', formatter: truncateLegendName, tooltip: { show: true } },
+        legend: { data: series.map(function (s) { return s.name; }), bottom: 10, type: 'scroll', formatter: truncateLegendName, tooltip: legendNameTooltip() },
         grid: { left: 60, right: 30, top: 40, bottom: 90 },
         xAxis: { type: 'value', name: 'Elapsed', axisLabel: { formatter: compareElapsedFormatter }, min: 0, max: maxElapsed },
         yAxis: { type: 'value', name: 'Requests/sec', min: 0 },

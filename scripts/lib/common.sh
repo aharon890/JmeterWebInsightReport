@@ -1829,7 +1829,20 @@ verify_report_js_rules() {
         fail=1
     fi
 
-    # A FIFTH rule was written and removed: "rule.results is read only inside matchesOf".
+    # 5. A legend that shows a tooltip takes it from legendNameTooltip(). ECharts 5.5.0 writes a
+    #    legend tooltip's text into the page as HTML when the tooltip has no formatter, and that
+    #    text is the series name: a sampler label out of the JTL. Seven legends were written
+    #    `tooltip: { show: true }`, and a label holding <img onerror=...> ran when the reader
+    #    pointed at it (security scan, 2026-11-21). xss-escaping.spec.ts sweeps the legends a
+    #    fixture draws; this refuses the shape in the source, drawn or not.
+    hits=$(grep -anE 'tooltip: *{ *show: *true *}' "$js" || true)
+    if [[ -n "$hits" ]]; then
+        echo "[JSRULES] a tooltip switched on with no formatter (a legend's is legendNameTooltip()):" >&2
+        echo "$hits" >&2
+        fail=1
+    fi
+
+    # Another rule was written and removed: "rule.results is read only inside matchesOf".
     # The invariant is real and CLAUDE.md states it — the array is capped at
     # MAX_MATCHES_PER_RULE keeping the worst by severity, so anything keyed on it answers
     # differently before and after an unrelated edit — but it is semantic, not syntactic. The
@@ -1915,6 +1928,22 @@ selftest_report_js_rules() {
     printf 'var dot = "\0";\n%s\n' "$esc_server" > "$tmp"
     if verify_report_js_rules "$tmp" >/dev/null 2>&1; then
         echo "[SELFTEST] rule 1 was blinded by a NUL byte above the violation (grep without -a)" >&2; fail=1
+    fi
+    # Rule 5: the shape the seven legends shipped with, spaced and unspaced, and the sanctioned call.
+    printf '%s
+' "legend: { data: names, formatter: truncateLegendName, tooltip: { show: true } }," > "$tmp"
+    if verify_report_js_rules "$tmp" >/dev/null 2>&1; then
+        echo "[SELFTEST] rule 5 missed a legend tooltip with no formatter" >&2; fail=1
+    fi
+    printf '%s
+' "legend:{formatter:truncateLegendName,tooltip:{show:true}}," > "$tmp"
+    if verify_report_js_rules "$tmp" >/dev/null 2>&1; then
+        echo "[SELFTEST] rule 5 missed an unspaced legend tooltip with no formatter" >&2; fail=1
+    fi
+    printf '%s
+' "legend: { data: names, formatter: truncateLegendName, tooltip: legendNameTooltip() }," > "$tmp"
+    if ! verify_report_js_rules "$tmp" >/dev/null 2>&1; then
+        echo "[SELFTEST] rule 5 flagged a legend tooltip from legendNameTooltip()" >&2; fail=1
     fi
     rm -f "$tmp"
     [[ $fail -eq 0 ]] || return 1
