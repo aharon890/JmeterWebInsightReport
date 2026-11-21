@@ -119,7 +119,9 @@ function stripComments(src) {
 const JS_CODE = stripComments(JS);
 const CSS_CODE = CSS.replace(/\/\*[\s\S]*?\*\//g, ' ');
 
-const escape = (s) => s.replace(/[-$]/g, '\\$&');
+// A name as literal text in a pattern. The names here hold only - and $ of the regex characters,
+// but a helper that escapes some of them and not the backslash is wrong for the next name.
+const escape = (s) => s.replace(/[\\^$.*+?()[\]{}|-]/g, '\\$&');
 const count = (text, name, extra) => (text.match(new RegExp('(^|[^\\w$' + (extra || '') + '])' + escape(name)
     + '(?![\\w$' + (extra || '') + '])', 'g')) || []).length;
 

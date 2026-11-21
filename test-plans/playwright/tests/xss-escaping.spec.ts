@@ -296,7 +296,8 @@ test.describe('XSS — Asserts inline handlers', () => {
       await loadClean(page, 'E25');
       await initWithRuleId(page, payload);
 
-      const row = page.locator(`tr[data-rule-id="${payload.replace(/"/g, '\\"')}"]`);
+      // A quoted CSS attribute value: the backslash is its escape character, so it is escaped too
+      const row = page.locator(`tr[data-rule-id="${payload.replace(/[\\"]/g, '\\$&')}"]`);
       await expect(row, 'the hostile rule must actually have rendered').toHaveCount(1);
 
       // The row's handlers carry its KEY, which the page mints, and no part of the rule id

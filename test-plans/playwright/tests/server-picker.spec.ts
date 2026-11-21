@@ -432,7 +432,8 @@ test.describe('The metric picker', () => {
       const description = detail.locator('p').first();
       for (const said of h.says) await expect(description).toContainText(said);
       // Last, the name the computed series goes under: what --csv reads, with or without --from.
-      await expect(description).toHaveText(new RegExp(`, and export the result as ${metric.replace(/\./g, '\\.')}\\.$`));
+      // The metric's name as literal text in the pattern: every regex character escaped, not the dot alone
+      await expect(description).toHaveText(new RegExp(`, and export the result as ${metric.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}\\.$`));
       await expect(detail.locator('.wir-pick-facts')).toContainText(h.suggested);
     }
   });
