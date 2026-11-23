@@ -1,6 +1,8 @@
 package com.jmeterwebinsightreport.core.parser;
 
 import com.jmeterwebinsightreport.core.model.ReportData;
+import com.jmeterwebinsightreport.core.rundata.RunSample;
+import com.jmeterwebinsightreport.core.rundata.SampleFeed;
 import com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -247,13 +249,7 @@ public class JtlParser {
         try {
             // A row is the whole run's when a listener in the plan received it itself: nested in
             // nothing, as JMeter's Aggregate Report in the plan counts it
-            sample.feed(engine, parent == null);
-            if (parent != null) {
-                // Nested as the listener nests a parent sample's sub-results: the transaction counts
-                // once in the totals, its requests are its breakdown (B5); a request's own redirects and
-                // embedded resources nest under it, not badged as a transaction
-                engine.recordTransaction(parent.parent, sample.label, parent.transaction);
-            }
+            sample.feed(engine, parent);
         } catch (RuntimeException e) {
             throw new IllegalStateException("The statistics engine failed on the sample '"
                     + sample.label + "' at " + sample.timestamp + ", a row that parsed: "
@@ -344,22 +340,36 @@ public class JtlParser {
          * {@code CSVSaveService} builds a {@code StatisticalSampleResult}, whose
          * {@code setErrorCount} keeps the count. Without them a row is one sample, failed or not.
          */
-        void feed(LiveStatisticsEngine engine, boolean topLevel) {
-            engine.recordSample(label, elapsed, success, bytes, sentBytes, timestamp,
-                    end, connectTime, latency, samples,
-                    errors >= 0 ? errors : (success ? 0 : 1), topLevel);
-            if (threads > 0) {
-                engine.updateActiveThreads(threads, LiveStatisticsEngine.endOf(timestamp, elapsed));
-            }
-            if (LiveStatisticsEngine.isTransactionRow(message)) {
-                engine.recordTransactionRow(samples);
-            } else {
-                engine.recordResponseCode(responseCode, LiveStatisticsEngine.endOf(timestamp, elapsed));
-            }
-            if (!success) {
-                engine.recordError(label, responseCode, message, failureMessage, timestamp, thread, url, null, null,
-                        topLevel, errors >= 0 ? errors : 1);
-            }
+        void feed(LiveStatisticsEngine engine, TransactionRows.Nesting parent) {
+            SampleFeed.feed(engine, toRunSample(parent), parent == null ? null : parent.parent);
+        }
+
+        /**
+         * The row in the common format's model (spec 001). Every column the file lacked keeps the value the parser
+         * always gave it, and the feed applies the rest: threads only above 0, an ErrorCount only when written.
+         */
+        RunSample toRunSample(TransactionRows.Nesting parent) {
+            RunSample s = new RunSample(label, timestamp, elapsed, success);
+            s.end = end;
+            s.idle = idle;
+            s.code = responseCode;
+            s.message = message;
+            s.failureMessage = failureMessage;
+            s.user = thread;
+            s.url = url;
+            s.bytes = bytes;
+            s.sentBytes = sentBytes;
+            s.connect = connectTime;
+            s.latency = latency;
+            s.samples = samples;
+            s.errors = errors >= 0 ? errors : null;
+            s.threads = threads > 0 ? threads : null;
+            // A transaction row is known by its message; a controller cut off by the test's end has none and stays a
+            // request that still nests its requests (TransactionRows)
+            s.kind = LiveStatisticsEngine.isTransactionRow(message) ? RunSample.Kind.TRANSACTION : RunSample.Kind.REQUEST;
+            s.topLevel = parent == null;
+            s.link = parent == null || parent.transaction ? RunSample.Link.TRANSACTION : RunSample.Link.SUBRESULT;
+            return s;
         }
     }
 

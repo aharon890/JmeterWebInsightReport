@@ -1,6 +1,8 @@
 package com.jmeterwebinsightreport.report.listener;
 
 import com.jmeterwebinsightreport.core.model.ReportData;
+import com.jmeterwebinsightreport.core.rundata.RunSample;
+import com.jmeterwebinsightreport.core.rundata.SampleFeed;
 import com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine;
 import com.jmeterwebinsightreport.report.exporter.WebInsightDataExporter;
 import com.jmeterwebinsightreport.report.gate.GateEvaluation;
@@ -478,76 +480,17 @@ public class WebInsightReportListener extends ResultCollector {
      *        run counts the samples a listener in the plan received, a transaction's requests inside it
      */
     private void processSampleResult(LiveStatisticsEngine statsEngine, SampleResult result, boolean topLevel) {
-        // The sample's start, whatever sampleresult.timestamp.start says: getTimeStamp() is its
-        // END when that property is false, and every sample was then placed and windowed by its
-        // end (S46: duration 3 m 10 s against JMeter's 3 m 4 s, B3). JMeter's Aggregate Report
-        // reads getStartTime() too. A result that never set one keeps its time stamp.
-        long start = result.getStartTime() > 0 ? result.getStartTime() : result.getTimeStamp();
-        // And its real end: a Transaction Controller's parent sample with "include timers" off
-        // counts only its children's time as elapsed and its pauses as idle time, and still ends
-        // after them. Its row's throughput window stopped at start + elapsed (P11: 0.86/s on the
-        // transaction row, 0.76/s on the Summary tile for the same 50 transactions, B7).
-        long end = Math.max(result.getEndTime(), start + Math.max(0, result.getTime()));
-        statsEngine.recordSample(
-                result.getSampleLabel(),
-                result.getTime(),
-                result.isSuccessful(),
-                result.getBytesAsLong(),
-                result.getSentBytes(),
-                start,
-                end,
-                result.getConnectTime(),
-                result.getLatency(),
-                // 1 and 0/1 for every sample but one JMeter aggregated (Statistical mode), which
-                // stands for that many, that many failed (B6)
-                result.getSampleCount(),
-                result.getErrorCount(),
-                topLevel
-        );
+        processSampleResult(statsEngine, result, topLevel, null, false);
+    }
 
-        // Track active threads — total across all thread groups, not just this sampler's group.
-        int activeThreads = result.getAllThreads();
-        if (activeThreads <= 0) {
-            activeThreads = result.getGroupThreads();
-        }
-        statsEngine.updateActiveThreads(activeThreads, LiveStatisticsEngine.endOf(start, result.getTime()));
-        if (LiveStatisticsEngine.isTransactionRow(result.getResponseMessage())) {
-            // Left out of the Errors tab, as JMeter's HTML report leaves it out (E3)
-            statsEngine.recordTransactionRow(result.getSampleCount());
-        } else {
-            // and out of the response codes, as its Codes per Second does (T5)
-            statsEngine.recordResponseCode(result.getResponseCode(),
-                    LiveStatisticsEngine.endOf(start, result.getTime()));
-        }
-
-        // Record error details with URL and response body
-        if (!result.isSuccessful()) {
-            String url = null;
-            String responseBody = null;
-            try {
-                url = result.getUrlAsString();
-            } catch (Exception e) { /* ignore */ }
-            try {
-                responseBody = result.getResponseDataAsString();
-            } catch (Exception e) { /* ignore */ }
-            statsEngine.recordError(
-                    result.getSampleLabel(),
-                    result.getResponseCode(),
-                    result.getResponseMessage(),
-                    // what a results file's failureMessage column holds (CSVSaveService), when JMeter would
-                    // type the error by it: the property is on (its default), as the HTML report reads it (E1)
-                    JMeterUtils.getPropDefault("jmeter.save.saveservice.assertion_results_failure_message", true)
-                            ? result.getFirstAssertionFailureMessage() : null,
-                    start,
-                    result.getThreadName(),
-                    url,
-                    null,
-                    responseBody,
-                    topLevel,
-                    // the failures it stands for: 1, or more for a result JMeter aggregated (B6)
-                    result.getErrorCount()
-            );
-        }
+    /**
+     * @param parentLabel the label of the result this one is a sub-result of, or null
+     * @param parentIsTransactionController whether that parent came from a Transaction Controller: a sub-result
+     *        always nests so its time is not counted twice, but only a real controller is presented as one
+     */
+    private void processSampleResult(LiveStatisticsEngine statsEngine, SampleResult result, boolean topLevel,
+                                     String parentLabel, boolean parentIsTransactionController) {
+        SampleFeed.feed(statsEngine, toRunSample(result, topLevel, parentIsTransactionController), parentLabel);
 
         // Process sub-results (Transaction Controller children / embedded resources / redirect
         // hops). Record the REAL parent->child relationship so transaction grouping is based on
@@ -560,13 +503,64 @@ public class WebInsightReportListener extends ResultCollector {
         // the report as a Transaction Controller.
         SampleResult[] subResults = result.getSubResults();
         if (subResults != null && subResults.length > 0) {
-            String parentLabel = result.getSampleLabel();
             boolean fromTransactionController = TransactionController.isFromTransactionController(result);
             for (SampleResult sub : subResults) {
-                statsEngine.recordTransaction(parentLabel, sub.getSampleLabel(), fromTransactionController);
-                processSampleResult(statsEngine, sub, false);
+                processSampleResult(statsEngine, sub, false, result.getSampleLabel(), fromTransactionController);
             }
         }
+    }
+
+    /**
+     * A listener's result in the common format's model (spec 001): what the listener handed the engine before there
+     * was one feed, field for field.
+     */
+    static RunSample toRunSample(SampleResult result, boolean topLevel, boolean parentIsTransactionController) {
+        // The sample's start, whatever sampleresult.timestamp.start says: getTimeStamp() is its
+        // END when that property is false, and every sample was then placed and windowed by its
+        // end (S46: duration 3 m 10 s against JMeter's 3 m 4 s, B3). JMeter's Aggregate Report
+        // reads getStartTime() too. A result that never set one keeps its time stamp.
+        long start = result.getStartTime() > 0 ? result.getStartTime() : result.getTimeStamp();
+        // And its real end: a Transaction Controller's parent sample with "include timers" off
+        // counts only its children's time as elapsed and its pauses as idle time, and still ends
+        // after them. Its row's throughput window stopped at start + elapsed (P11: 0.86/s on the
+        // transaction row, 0.76/s on the Summary tile for the same 50 transactions, B7).
+        long end = Math.max(result.getEndTime(), start + Math.max(0, result.getTime()));
+        RunSample s = new RunSample(result.getSampleLabel(), start, result.getTime(), result.isSuccessful());
+        s.end = end;
+        s.idle = Math.max(0, end - start - Math.max(0, result.getTime()));
+        s.bytes = result.getBytesAsLong();
+        s.sentBytes = result.getSentBytes();
+        s.connect = result.getConnectTime();
+        s.latency = result.getLatency();
+        // 1 and 0/1 for every sample but one JMeter aggregated (Statistical mode), which stands for that many, that
+        // many failed (B6)
+        s.samples = result.getSampleCount();
+        s.errors = (long) result.getErrorCount();
+        // Active threads, total across all thread groups, not just this sampler's group
+        int activeThreads = result.getAllThreads();
+        s.threads = activeThreads > 0 ? activeThreads : result.getGroupThreads();
+        s.code = result.getResponseCode();
+        s.message = result.getResponseMessage();
+        s.user = result.getThreadName();
+        // A Transaction Controller's own result is left out of the Errors tab (E3) and the response codes (T5)
+        s.kind = LiveStatisticsEngine.isTransactionRow(result.getResponseMessage())
+                ? RunSample.Kind.TRANSACTION : RunSample.Kind.REQUEST;
+        s.topLevel = topLevel;
+        s.link = parentIsTransactionController ? RunSample.Link.TRANSACTION : RunSample.Link.SUBRESULT;
+        if (!result.isSuccessful()) {
+            // Error details with URL and response body
+            try {
+                s.url = result.getUrlAsString();
+            } catch (Exception e) { /* ignore */ }
+            try {
+                s.responseBody = result.getResponseDataAsString();
+            } catch (Exception e) { /* ignore */ }
+            // what a results file's failureMessage column holds (CSVSaveService), when JMeter would type the error by
+            // it: the property is on (its default), as the HTML report reads it (E1)
+            s.failureMessage = JMeterUtils.getPropDefault("jmeter.save.saveservice.assertion_results_failure_message",
+                    true) ? result.getFirstAssertionFailureMessage() : null;
+        }
+        return s;
     }
 
     @Override

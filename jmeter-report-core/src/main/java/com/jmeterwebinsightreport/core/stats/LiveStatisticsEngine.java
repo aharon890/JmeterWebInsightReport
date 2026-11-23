@@ -50,6 +50,8 @@ public class LiveStatisticsEngine {
      *  monitor. */
     private final Map<String, long[]> errorSummaryCounts = new LinkedHashMap<>();
     private final Map<String, ErrorRecord> errorSummaryFirst = new LinkedHashMap<>();
+    /** The error groups that hold a transaction's own failures, guarded by {@code errorRecords}. */
+    private final Set<String> transactionErrorGroups = new HashSet<>();
     /** Per group, the failures that were samples of the whole run (top-level): what an overall
      *  code= or class= rule counts. Guarded by the {@code errorRecords} monitor. */
     private final Map<String, Long> errorSummaryTopLevelCounts = new HashMap<>();
@@ -256,8 +258,20 @@ public class LiveStatisticsEngine {
                             String failureMessage, long timestamp, String threadName,
                             String requestUrl, String requestHeaders, String responseBody,
                             boolean topLevel, long failures) {
+        recordError(samplerName, responseCode, responseMessage, failureMessage, timestamp, threadName, requestUrl,
+                requestHeaders, responseBody, topLevel, failures, isTransactionRow(responseMessage));
+    }
+
+    /**
+     * @param transactionRow whether the failed result is a transaction's own ({@link #recordTransactionRow}). A
+     *        JMeter result says so by its message ({@link #isTransactionRow}); a run of another tool says so by the
+     *        sample's kind, and its group passes carry no message (spec 001, finding I2).
+     */
+    public void recordError(String samplerName, String responseCode, String responseMessage,
+                            String failureMessage, long timestamp, String threadName,
+                            String requestUrl, String requestHeaders, String responseBody,
+                            boolean topLevel, long failures, boolean transactionRow) {
         long n = Math.max(1, failures);
-        boolean transactionRow = isTransactionRow(responseMessage);
         synchronized (errorRecords) {
             // Unbounded aggregation for summaries and error charts — updated for every error. Grouped
             // per sampler by JMeter's type of error, as the HTML report's Top 5 Errors by Sampler
@@ -265,6 +279,9 @@ public class LiveStatisticsEngine {
             // failures are a group of their own: the asserts count them, the Errors tab does not (E3).
             String key = samplerName + "|" + ErrorType.of(responseCode, responseMessage, failureMessage)
                     + (transactionRow ? "|transaction" : "");
+            if (transactionRow) {
+                transactionErrorGroups.add(key);
+            }
             long[] c = errorSummaryCounts.get(key);
             if (c == null) {
                 c = new long[]{0, timestamp, timestamp};
@@ -713,6 +730,7 @@ public class LiveStatisticsEngine {
         Map<String, long[]> spans = new LinkedHashMap<>();
         Map<String, ErrorRecord> firstRecords;
         Map<String, Long> topLevelCounts;
+        Set<String> transactionGroups;
         synchronized (errorRecords) {
             topLevelCounts = new HashMap<>(errorSummaryTopLevelCounts);
             for (Map.Entry<String, long[]> e : errorSummaryCounts.entrySet()) {
@@ -720,6 +738,7 @@ public class LiveStatisticsEngine {
                 spans.put(e.getKey(), new long[]{e.getValue()[1], e.getValue()[2]});
             }
             firstRecords = new LinkedHashMap<>(errorSummaryFirst);
+            transactionGroups = new HashSet<>(transactionErrorGroups);
         }
 
         if (counts.isEmpty()) {
@@ -728,7 +747,7 @@ public class LiveStatisticsEngine {
         long requestErrors = 0;
         long transactionErrors = 0;
         for (Map.Entry<String, Long> entry : counts.entrySet()) {
-            if (isTransactionRow(firstRecords.get(entry.getKey()).getResponseMessage())) {
+            if (transactionGroups.contains(entry.getKey())) {
                 transactionErrors += entry.getValue();
             } else {
                 requestErrors += entry.getValue();
@@ -738,7 +757,7 @@ public class LiveStatisticsEngine {
         List<ErrorSummary> result = new ArrayList<>(counts.size());
         for (Map.Entry<String, Long> entry : counts.entrySet()) {
             ErrorRecord rec = firstRecords.get(entry.getKey());
-            boolean transactionRow = isTransactionRow(rec.getResponseMessage());
+            boolean transactionRow = transactionGroups.contains(entry.getKey());
             long errors = transactionRow ? transactionErrors : requestErrors;
             long total = transactionRow ? transactionSamples : requestSamples;
             ErrorSummary s = new ErrorSummary();
@@ -772,6 +791,7 @@ public class LiveStatisticsEngine {
             errorSummaryCounts.clear();
             errorSummaryFirst.clear();
             errorSummaryTopLevelCounts.clear();
+            transactionErrorGroups.clear();
         }
         explicitTransactions.clear();
         transactionControllerParents.clear();

@@ -67,7 +67,7 @@ a report on a machine with no JMeter.
 
 ### Tests first (red)
 
-- [ ] T007 [P] `core-test/rundata/SampleFeedTest.java`: every input of T006 through the new feed gives the captured
+- [X] T007 [P] `core-test/rundata/SampleFeedTest.java`: every input of T006 through the new feed gives the captured
   `ReportData` and CI/CD JSON. That covers both JTL paths and the listener: response bodies in the Errors tab,
   sub-results nested as `subresult`, cut-off controllers as requests with transaction children, and threads fed only
   when above 0 on the JTL path [U6, I1, I3].
@@ -127,18 +127,18 @@ a report on a machine with no JMeter.
 
 ### Implementation
 
-- [ ] T016 `core/rundata/RunSample.java` and `core/rundata/SampleFeed.java` (research R3):
+- [X] T016 `core/rundata/RunSample.java` and `core/rundata/SampleFeed.java` (research R3):
   - the sample model with every field of data-model.md `Sample`: `id`, `parent`, `link`, `kind`, `name`, `start`,
     `elapsed`, `idle`, `wallTime`, `success`, `code`, `message`, `failureMessage`, `user`, `iteration`, `topLevel`,
     `samples`, `errors`, `bytes`, `sentBytes`, `latency`, `connect`, `threads`, `url`, `method`, `timings`;
   - the response body (data-model.md `Sample.responseBody`, decision 11);
   - the one feed into `LiveStatisticsEngine`.
-- [ ] T017 `core/stats/LiveStatisticsEngine.java`: the methods that test `isTransactionRow(message)` (:202-204, :260,
+- [X] T017 `core/stats/LiveStatisticsEngine.java`: the methods that test `isTransactionRow(message)` (:202-204, :260,
   :289, :517, :741) take the transaction flag from the caller instead. The JTL path and the listener pass the marker
   test, and `SampleFeed` passes `kind == transaction` [I2].
-- [ ] T018 Route `core/parser/JtlParser.java` `ParsedSample.feed` through `SampleFeed`, setting `kind` from the marker
+- [X] T018 Route `core/parser/JtlParser.java` `ParsedSample.feed` through `SampleFeed`, setting `kind` from the marker
   and `link` from `TransactionRows.Nesting` [I1]. Depends on T016 and T017.
-- [ ] T019 Route `plugin/report/listener/WebInsightReportListener.java` (the sample and its sub-results, :491-566,
+- [X] T019 Route `plugin/report/listener/WebInsightReportListener.java` (the sample and its sub-results, :491-566,
   response bodies :524-549) through `SampleFeed` [I1, I3]. Depends on T016 and T017.
 - [ ] T020 [P] `core/rundata/RunDataFormat.java` (`VERSION = "1.0"`, the versions read, the record type names) and
   `core/rundata/RunHeader.java`, with data-model.md `Run.formatVersion`, `Run.tool.name`, `Run.tool.version`,
