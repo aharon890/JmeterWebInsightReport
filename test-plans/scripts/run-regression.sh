@@ -220,6 +220,20 @@ if fixtures_current; then
 else
     record R07 "Counts against JMeter's Aggregate Report" FAIL "fixtures stale — R04 names them"
 fi
+
+# --- 8. Run data conformance (spec 001) -----------------------------------------
+# Every producer of run data held to JMeter's Aggregate Report: the k6 fixtures through build-report --from k6,
+# and the JMeter plugin itself, E02 and E31 written as run data by -g and built again (run-run-data.sh).
+if fixtures_current; then
+    if "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/run-run-data.sh" > "$RESULTS_DIR/run-data.log" 2>&1; then
+        record R08 "Run data conformance (k6 fixtures, JMeter as a producer)" PASS
+    else
+        grep -E 'FAIL' "$RESULTS_DIR/run-data.log" | head -20 >&2
+        record R08 "Run data conformance (k6 fixtures, JMeter as a producer)" FAIL "see $RESULTS_DIR/run-data.log"
+    fi
+else
+    record R08 "Run data conformance (k6 fixtures, JMeter as a producer)" FAIL "fixtures stale — R04 names them"
+fi
 print_summary "REGRESSION SUMMARY"
 echo ""
 echo "  Not covered here — run manually before a release:"

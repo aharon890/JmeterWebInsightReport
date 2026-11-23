@@ -1,0 +1,106 @@
+{
+  "testName": "K3",
+  "tool": {
+    "name": "k6"
+  },
+  "status": "UNKNOWN",
+  "assertsEvaluated": false,
+  "duration": 36021,
+  "window": {
+    "start": "2026-11-22T16:33:03.979Z",
+    "end": "2026-11-22T16:33:40Z",
+    "startMillis": 1795365183979,
+    "endMillis": 1795365220000
+  },
+  "totalSamples": 42,
+  "totalErrors": 0,
+  "errorRate": 0.0,
+  "samplers": [
+    {
+      "name": "Browse Pets",
+      "sampleCount": 6,
+      "mean": 17.0,
+      "p95": 21.0,
+      "p99": 21.0,
+      "errorRate": 0.0,
+      "throughput": 0.25,
+      "apdex": 1.0
+    },
+    {
+      "name": "Browse by Category",
+      "sampleCount": 6,
+      "mean": 13.83,
+      "p95": 16.0,
+      "p99": 16.0,
+      "errorRate": 0.0,
+      "throughput": 0.24,
+      "apdex": 1.0
+    },
+    {
+      "name": "Check Stock",
+      "sampleCount": 6,
+      "mean": 8.83,
+      "p95": 11.0,
+      "p99": 11.0,
+      "errorRate": 0.0,
+      "throughput": 0.26,
+      "apdex": 1.0
+    },
+    {
+      "name": "Filter by Price",
+      "sampleCount": 6,
+      "mean": 30.5,
+      "p95": 36.0,
+      "p99": 36.0,
+      "errorRate": 0.0,
+      "throughput": 0.25,
+      "apdex": 1.0
+    },
+    {
+      "name": "Get Categories",
+      "sampleCount": 6,
+      "mean": 8.83,
+      "p95": 10.0,
+      "p99": 10.0,
+      "errorRate": 0.0,
+      "throughput": 0.26,
+      "apdex": 1.0
+    },
+    {
+      "name": "Search Pets",
+      "sampleCount": 6,
+      "mean": 15.67,
+      "p95": 19.0,
+      "p99": 19.0,
+      "errorRate": 0.0,
+      "throughput": 0.25,
+      "apdex": 1.0
+    },
+    {
+      "name": "View Pet Detail",
+      "sampleCount": 6,
+      "mean": 9.17,
+      "p95": 11.0,
+      "p99": 11.0,
+      "errorRate": 0.0,
+      "throughput": 0.25,
+      "apdex": 1.0
+    }
+  ],
+  "artifacts": {
+    "outputDirectory": "<outputDir>",
+    "html": {
+      "path": "K3-report.html",
+      "outcome": "WRITTEN"
+    },
+    "json": {
+      "path": "K3-report.json",
+      "outcome": "WRITTEN"
+    },
+    "data": {
+      "path": "K3-report-data.js",
+      "outcome": "SKIPPED",
+      "detail": "inline"
+    }
+  }
+}

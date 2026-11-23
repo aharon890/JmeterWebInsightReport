@@ -1,0 +1,176 @@
+{
+  "testName": "K1",
+  "tool": {
+    "name": "k6"
+  },
+  "status": "UNKNOWN",
+  "assertsEvaluated": false,
+  "duration": 6066,
+  "window": {
+    "start": "2026-11-23T16:45:59.384Z",
+    "end": "2026-11-23T16:46:05.450Z",
+    "startMillis": 1795452359384,
+    "endMillis": 1795452365450
+  },
+  "totalSamples": 48,
+  "totalErrors": 12,
+  "errorRate": 25.0,
+  "samplers": [
+    {
+      "name": "Batch A",
+      "sampleCount": 12,
+      "mean": 31.25,
+      "p95": 32.0,
+      "p99": 32.0,
+      "errorRate": 0.0,
+      "throughput": 2.17,
+      "apdex": 1.0
+    },
+    {
+      "name": "Batch B",
+      "sampleCount": 12,
+      "mean": 31.33,
+      "p95": 32.0,
+      "p99": 32.0,
+      "errorRate": 0.0,
+      "throughput": 2.17,
+      "apdex": 1.0
+    },
+    {
+      "name": "Complete Checkout Flow",
+      "sampleCount": 23,
+      "mean": 97.87,
+      "p95": 159.0,
+      "p99": 161.0,
+      "errorRate": 52.17,
+      "throughput": 3.88,
+      "apdex": 0.478
+    },
+    {
+      "name": "Inner Payment",
+      "sampleCount": 12,
+      "mean": 31.25,
+      "p95": 32.0,
+      "p99": 32.0,
+      "errorRate": 0.0,
+      "throughput": 2.13,
+      "apdex": 1.0
+    },
+    {
+      "name": "Login",
+      "sampleCount": 12,
+      "mean": 31.33,
+      "p95": 32.0,
+      "p99": 32.0,
+      "errorRate": 0.0,
+      "throughput": 2.17,
+      "apdex": 1.0
+    },
+    {
+      "name": "Outside Group",
+      "sampleCount": 12,
+      "mean": 31.83,
+      "p95": 32.0,
+      "p99": 32.0,
+      "errorRate": 0.0,
+      "throughput": 2.17,
+      "apdex": 1.0
+    },
+    {
+      "name": "Pay",
+      "sampleCount": 12,
+      "mean": 31.25,
+      "p95": 32.0,
+      "p99": 32.0,
+      "errorRate": 0.0,
+      "throughput": 2.17,
+      "apdex": 1.0
+    },
+    {
+      "name": "Redirected",
+      "sampleCount": 24,
+      "mean": 16.04,
+      "p95": 31.0,
+      "p99": 32.0,
+      "errorRate": 0.0,
+      "throughput": 4.34,
+      "apdex": 1.0
+    },
+    {
+      "name": "Refused",
+      "sampleCount": 12,
+      "mean": 0.0,
+      "p95": 0.0,
+      "p99": 0.0,
+      "errorRate": 100.0,
+      "throughput": 2.18,
+      "apdex": 0.0
+    },
+    {
+      "name": "Second Pass",
+      "sampleCount": 11,
+      "mean": 31.91,
+      "p95": 32.0,
+      "p99": 32.0,
+      "errorRate": 0.0,
+      "throughput": 2.19,
+      "apdex": 1.0
+    },
+    {
+      "name": "Server Error",
+      "sampleCount": 12,
+      "mean": 1.08,
+      "p95": 1.0,
+      "p99": 2.0,
+      "errorRate": 100.0,
+      "throughput": 2.18,
+      "apdex": 0.0
+    },
+    {
+      "name": "Setup Read",
+      "sampleCount": 1,
+      "mean": 32.0,
+      "p95": 32.0,
+      "p99": 32.0,
+      "errorRate": 0.0,
+      "throughput": 31.25,
+      "apdex": 1.0
+    },
+    {
+      "name": "Teardown Clean",
+      "sampleCount": 1,
+      "mean": 32.0,
+      "p95": 32.0,
+      "p99": 32.0,
+      "errorRate": 0.0,
+      "throughput": 31.25,
+      "apdex": 1.0
+    },
+    {
+      "name": "http://127.0.0.1:8080/unnamed?token=secret123",
+      "sampleCount": 11,
+      "mean": 31.27,
+      "p95": 32.0,
+      "p99": 32.0,
+      "errorRate": 0.0,
+      "throughput": 2.19,
+      "apdex": 1.0
+    }
+  ],
+  "artifacts": {
+    "outputDirectory": "<outputDir>",
+    "html": {
+      "path": "K1-report.html",
+      "outcome": "WRITTEN"
+    },
+    "json": {
+      "path": "K1-report.json",
+      "outcome": "WRITTEN"
+    },
+    "data": {
+      "path": "K1-report-data.js",
+      "outcome": "SKIPPED",
+      "detail": "inline"
+    }
+  }
+}

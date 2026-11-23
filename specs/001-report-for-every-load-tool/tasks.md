@@ -234,7 +234,7 @@ to JMeter's Aggregate Report.
   - `run.timeResolution` is `s`, and `notMeasured` includes `user` and `iteration` (data-model.md `Run.timeResolution`,
     `Run.notMeasured`);
   - same-second requests split by adjacency [A4, U2].
-- [ ] T041 [US2] `test-plans/scripts/run-run-data.sh` (+x, `.bat` twin), step R08 of `run-regression.sh`:
+- [X] T041 [US2] `test-plans/scripts/run-run-data.sh` (+x, `.bat` twin), step R08 of `run-regression.sh`:
   - **k6:** each K fixture through `build-report --from k6 --write-run-data`.
   - **JMeter [C1]:** E02 and E31 through `jmeter -g … -Jwebinsight.report.rundata=true`, then `build-report --run-data`
     on the file written.
@@ -258,9 +258,9 @@ to JMeter's Aggregate Report.
   - K1 with `webinsight.report.externaldata=true` writes and references the sidecar data file (FR-009);
   - a K1 copy whose summary marks a threshold failed, under annotations that pass, gives the client verdict PASS with
     the threshold marked failed (decision 4).
-- [ ] T048 [US2] Write `test-plans/run-data/K1/expected/` and `K3/expected/` with `run-run-data.sh --accept`, read every
+- [X] T048 [US2] Write `test-plans/run-data/K1/expected/` and `K3/expected/` with `run-run-data.sh --accept`, read every
   number against the referee before committing, and commit them. K2's follow T005.
-- [ ] T049 [US2] Add R08 to `test-plans/scripts/run-regression.sh` and its summary. Add a `docs/` page "k6" with the two
+- [X] T049 [US2] Add R08 to `test-plans/scripts/run-regression.sh` and its summary. Add a `docs/` page "k6" with the two
   k6 settings, the summary, the test name, and how k6's own numbers can differ from the report's.
 
 ---
