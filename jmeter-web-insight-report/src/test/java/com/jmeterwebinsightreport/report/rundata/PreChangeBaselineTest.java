@@ -43,9 +43,6 @@ class PreChangeBaselineTest {
 
     private static final Path BASELINES = Path.of("src/test/resources/rundata/baseline-4.4.1");
     private static final boolean WRITE = Boolean.getBoolean("wir.baseline.write");
-    private static final String HEADER = "timeStamp,elapsed,label,responseCode,responseMessage,"
-            + "threadName,dataType,success,failureMessage,bytes,sentBytes,grpThreads,allThreads,"
-            + "URL,Latency,IdleTime,Connect";
 
     @TempDir
     Path tmp;
@@ -56,35 +53,7 @@ class PreChangeBaselineTest {
 
     /** Every committed JTL a JMeter run can produce that the JTL path reads, by baseline name. */
     private Map<String, File> jtls() throws IOException {
-        Map<String, File> m = new LinkedHashMap<>();
-        m.put("goldens-plain", new File("../test-plans/goldens/plain.jtl"));
-        for (String n : new String[]{"high-error-rate", "malformed-rows", "missing-optional-columns", "quoted-fields",
-                "single-sampler", "transaction-controllers", "valid-small"}) {
-            m.put("core-" + n, new File("../jmeter-report-core/src/test/resources/jtl/" + n + ".jtl"));
-        }
-        // JtlParserTest's two cut-off shapes (a controller the test end or a "Stop Thread" cut off)
-        m.put("cut-off-at-end", write("cut-off.jtl", HEADER + "\n"
-                + "1700000000000,300,Search,200," + tx(1, 0) + ",TG 1-1,,true,,300,30,1,1,,0,0,0\n"
-                + "1700000000000,300,A,200,OK,TG 1-1,text,true,,300,30,1,1,http://x/a,20,0,5\n"
-                + "1700000001000,300,Search,200,,TG 1-1,,true,,300,30,1,1,,0,0,0\n"
-                + "1700000001000,150,A,200,OK,TG 1-1,text,true,,300,30,1,1,http://x/a,20,0,5\n"
-                + "1700000001150,150,B,200,OK,TG 1-1,text,true,,300,30,1,1,http://x/b,20,0,5\n"));
-        m.put("cut-off-before-completed", write("stopped-first.jtl", HEADER + "\n"
-                + "1700000000000,598,Checkout,500,,Stopper 1-1,,false,,0,0,1,2,,0,0,0\n"
-                + "1700000000000,598,Pay,500,Error,Stopper 1-1,text,false,,0,0,1,2,http://x/pay,0,0,0\n"
-                + "1700000001000,300,Checkout,200," + tx(1, 0) + ",Shopper 2-1,,true,,0,0,1,1,,0,0,0\n"
-                + "1700000001000,300,Pay,200,OK,Shopper 2-1,text,true,,0,0,1,1,http://x/pay,0,0,0\n"));
-        m.put("statistical", write("statistical.jtl",
-                "timeStamp,elapsed,label,responseCode,responseMessage,threadName,success,SampleCount,ErrorCount\n"
-                + "1700000000000,500,Search,500,Internal Server Error,TG 1-1,false,5,3\n"
-                + "1700000001000,200,Search,200,OK,TG 1-1,true,2,0\n"));
-        return m;
-    }
-
-    private File write(String name, String text) throws IOException {
-        Path p = tmp.resolve(name);
-        Files.writeString(p, text, StandardCharsets.UTF_8);
-        return p.toFile();
+        return BaselineInputs.jtls(tmp);
     }
 
     @Test

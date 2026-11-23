@@ -14,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * Parses JMeter JTL/CSV result files and produces ReportData via LiveStatisticsEngine.
@@ -53,6 +54,8 @@ public class JtlParser {
      *  message is a 2xx failure's type of error, as JMeter's HTML report reads it ({@code
      *  ErrorsSummaryConsumer}); off, every such failure is "Assertion failed" (E1). */
     private boolean failureMessageTypesErrors = true;
+    /** Sees every sample fed, with an id and its parent's id: the -g path's run data (spec 001). */
+    private Consumer<RunSample> sampleTap;
 
     public void setRampUpDurationMillis(long rampUpDurationMillis) {
         this.rampUpDurationMillis = rampUpDurationMillis;
@@ -64,6 +67,14 @@ public class JtlParser {
 
     public void setFailureMessageTypesErrors(boolean failureMessageTypesErrors) {
         this.failureMessageTypesErrors = failureMessageTypesErrors;
+    }
+
+    /**
+     * Hands every sample the parse feeds to {@code tap} as well, each with an id and its parent's id, so it can be
+     * written as run data that rebuilds the same report (spec 001, {@code webinsight.report.rundata}).
+     */
+    public void setSampleTap(Consumer<RunSample> tap) {
+        this.sampleTap = tap;
     }
 
     public void setTimestampIsStart(boolean timestampIsStart) {
@@ -133,8 +144,8 @@ public class JtlParser {
             // Every name a transaction row carries anywhere in the file, before any row is read: a
             // transaction the test end or a "Stop Thread" cut off is written without the message, and
             // it can come before the first one that completed (TransactionRows)
-            TransactionRows transactions = new TransactionRows(
-                    transactionNames(jtlFile, colLabel, colMessage, headers.size()));
+            Rows transactions = new Rows(new TransactionRows(
+                    transactionNames(jtlFile, colLabel, colMessage, headers.size())), sampleTap);
 
             int expectedColumns = headers.size();
             List<String> physicalLines;
@@ -216,7 +227,7 @@ public class JtlParser {
                                    int colSuccess, int colBytes, int colSentBytes, int colConnect,
                                    int colLatency, int colThreads, int colMessage, int colThread,
                                    int colUrl, int colSampleCount, int colErrorCount, int colIdle,
-                                   int colFailure, TransactionRows transactions) {
+                                   int colFailure, Rows transactions) {
         ParsedSample sample;
         try {
             sample = parseSample(record, expectedColumns, colTimestamp, colElapsed, colLabel,
@@ -244,12 +255,12 @@ public class JtlParser {
             sample.end = sample.timestamp + Math.max(0, sample.elapsed) + Math.max(0, sample.idle);
         }
         long realStart = sample.timestamp;
-        TransactionRows.Nesting parent = transactions.parentOf(sample.thread, sample.label, sample.message,
+        TransactionRows.Nesting parent = transactions.nesting.parentOf(sample.thread, sample.label, sample.message,
                 realStart, sample.elapsed, sample.idle);
         try {
             // A row is the whole run's when a listener in the plan received it itself: nested in
             // nothing, as JMeter's Aggregate Report in the plan counts it
-            sample.feed(engine, parent);
+            sample.feed(engine, parent, transactions);
         } catch (RuntimeException e) {
             throw new IllegalStateException("The statistics engine failed on the sample '"
                     + sample.label + "' at " + sample.timestamp + ", a row that parsed: "
@@ -312,6 +323,32 @@ public class JtlParser {
         return s;
     }
 
+    /**
+     * The nesting of the rows, and, when a tap is set, their ids: a row's parent is the latest row of its thread with
+     * the parent's name, which JMeter writes before its children (TransactionRows).
+     */
+    private static final class Rows {
+        final TransactionRows nesting;
+        final Consumer<RunSample> tap;
+        private final Map<String, Map<String, String>> latestByThread = new java.util.HashMap<>();
+        private long next;
+
+        Rows(TransactionRows nesting, Consumer<RunSample> tap) {
+            this.nesting = nesting;
+            this.tap = tap;
+        }
+
+        void identify(RunSample s, String thread, TransactionRows.Nesting parent) {
+            String key = thread == null ? "" : thread;
+            Map<String, String> latest = latestByThread.computeIfAbsent(key, k -> new java.util.HashMap<>());
+            if (parent != null) {
+                s.parent = latest.get(parent.parent);
+            }
+            s.id = "r" + (++next);
+            latest.put(s.name, s.id);
+        }
+    }
+
     /** A parsed record, held so feeding the engine sits outside the parse's catch. */
     private static final class ParsedSample {
         long timestamp;
@@ -340,8 +377,15 @@ public class JtlParser {
          * {@code CSVSaveService} builds a {@code StatisticalSampleResult}, whose
          * {@code setErrorCount} keeps the count. Without them a row is one sample, failed or not.
          */
-        void feed(LiveStatisticsEngine engine, TransactionRows.Nesting parent) {
-            SampleFeed.feed(engine, toRunSample(parent), parent == null ? null : parent.parent);
+        void feed(LiveStatisticsEngine engine, TransactionRows.Nesting parent, Rows rows) {
+            RunSample s = toRunSample(parent);
+            if (rows.tap != null) {
+                rows.identify(s, thread, parent);
+            }
+            SampleFeed.feed(engine, s, parent == null ? null : parent.parent);
+            if (rows.tap != null) {
+                rows.tap.accept(s);
+            }
         }
 
         /**

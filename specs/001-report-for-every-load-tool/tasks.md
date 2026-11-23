@@ -71,7 +71,7 @@ a report on a machine with no JMeter.
   `ReportData` and CI/CD JSON. That covers both JTL paths and the listener: response bodies in the Errors tab,
   sub-results nested as `subresult`, cut-off controllers as requests with transaction children, and threads fed only
   when above 0 on the JTL path [U6, I1, I3].
-- [ ] T008 [P] `core-test/rundata/RunDataReaderTest.java`:
+- [X] T008 [P] `core-test/rundata/RunDataReaderTest.java`:
   - reads `.jsonl` and `.jsonl.gz`;
   - refuses a first record that is not `run`, and a major version it does not read, with the FR-011 message
     (data-model.md `Run.formatVersion`);
@@ -82,9 +82,9 @@ a report on a machine with no JMeter.
   - feeds `users` records to the active threads (data-model.md `Active users`) [G1];
   - reads child-before-parent and nested-group orders the same as parent-first (data-model.md "Reading order and
     memory") [U1].
-- [ ] T009 [P] `core-test/rundata/RunDataRoundTripTest.java`: every T006 input, JTL → `RunDataWriter` → `RunDataReader`,
+- [X] T009 [P] `core-test/rundata/RunDataRoundTripTest.java`: every T006 input, JTL → `RunDataWriter` → `RunDataReader`,
   gives the same CI/CD JSON as the JTL alone, `runId` included (FR-006, FR-013) [I1].
-- [ ] T010 [P] `core-test/stats/TransactionRulesTest.java`:
+- [X] T010 [P] `core-test/stats/TransactionRulesTest.java`:
   - a transaction with no `elapsed` gets the sum of its direct `transaction`-linked children (data-model.md
     `Sample.elapsed`, `Sample.link`);
   - `wallTime` minus that is its idle time, unless `idle` is given (data-model.md `Sample.wallTime`, `Sample.idle`);
@@ -127,6 +127,10 @@ a report on a machine with no JMeter.
 
 ### Implementation
 
+As built: T010's cases are in `core-test/rundata/RunDataReaderTest.java`, and T024's rule lives in
+`RunDataReader`'s first pass, so every producer that is not JMeter gets it. The JMeter paths give elapsed and success
+themselves. T009 runs in `plugin-test/report/rundata/RunDataRoundTripTest.java`, with the JTL parser's sample tap.
+
 - [X] T016 `core/rundata/RunSample.java` and `core/rundata/SampleFeed.java` (research R3):
   - the sample model with every field of data-model.md `Sample`: `id`, `parent`, `link`, `kind`, `name`, `start`,
     `elapsed`, `idle`, `wallTime`, `success`, `code`, `message`, `failureMessage`, `user`, `iteration`, `topLevel`,
@@ -140,22 +144,22 @@ a report on a machine with no JMeter.
   and `link` from `TransactionRows.Nesting` [I1]. Depends on T016 and T017.
 - [X] T019 Route `plugin/report/listener/WebInsightReportListener.java` (the sample and its sub-results, :491-566,
   response bodies :524-549) through `SampleFeed` [I1, I3]. Depends on T016 and T017.
-- [ ] T020 [P] `core/rundata/RunDataFormat.java` (`VERSION = "1.0"`, the versions read, the record type names) and
+- [X] T020 [P] `core/rundata/RunDataFormat.java` (`VERSION = "1.0"`, the versions read, the record type names) and
   `core/rundata/RunHeader.java`, with data-model.md `Run.formatVersion`, `Run.tool.name`, `Run.tool.version`,
   `Run.testName`, `Run.producer.name`, `Run.producer.version`, `Run.timeResolution` and `Run.notMeasured` [U2].
-- [ ] T021 [P] `core/rundata/ToolRecords.java`: data-model.md `Active users` (`time`, `active`) and "A tool's own
+- [X] T021 [P] `core/rundata/ToolRecords.java`: data-model.md `Active users` (`time`, `active`) and "A tool's own
   measures" (`check`, `threshold`, `counter`, with their fields).
-- [ ] T022 `core/rundata/RunDataReader.java` (data-model.md "Reading order and memory", "Validation") [U1, G1]:
+- [X] T022 `core/rundata/RunDataReader.java` (data-model.md "Reading order and memory", "Validation") [U1, G1]:
   - two passes with Jackson streaming, `.gz` decompressed twice;
   - pass 1 indexes every `id` (name, kind, link) and works out the children's elapsed sum and failure for each
     transaction without them;
   - pass 2 feeds every record in file order: `users` → `updateActiveThreads`, and `Sample.parent` → the parent's name
     and `Sample.link`.
   - Depends on T016, T020 and T021.
-- [ ] T023 `core/rundata/RunDataWriter.java`: writes the records in contracts/run-data-format.md's order, bodies
+- [X] T023 `core/rundata/RunDataWriter.java`: writes the records in contracts/run-data-format.md's order, bodies
   as the report carries them (data-model.md `Sample.responseBody`).
   Depends on T020 and T021.
-- [ ] T024 `core/stats/LiveStatisticsEngine.java`: a transaction's elapsed time, idle time and success from its
+- [X] T024 `core/stats/LiveStatisticsEngine.java`: a transaction's elapsed time, idle time and success from its
   children when not given (data-model.md `Sample.elapsed`, `Sample.idle`, `Sample.wallTime`, `Sample.success`;
   research R4). Depends on T016.
 - [ ] T025 `webinsight.report.rundata` in both JMeter paths, default `false` (decision 9):
