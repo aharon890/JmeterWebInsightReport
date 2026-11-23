@@ -93,10 +93,10 @@ a report on a machine with no JMeter.
   - a `kind` `transaction` sample with no message is kept out of the Errors tab's sample count and of Codes per Second
     (data-model.md `Sample.kind`) [I2];
   - nested groups and a pass with no request are included.
-- [ ] T011 [P] `plugin-test/report/generator/ComparisonPropertiesTest.java`: with a baseline configured (the only path
+- [X] T011 [P] `plugin-test/report/generator/ComparisonPropertiesTest.java`: with a baseline configured (the only path
   that reaches `WebInsightReportGenerator.java:930`) and no JMeter class on the class path, the generator reads
   `webinsight.compare.*` from the configuration's property function (research R5) [A2].
-- [ ] T012 [P] `plugin-test/WirCollectLauncherTest.java`, new cases:
+- [X] T012 [P] `plugin-test/WirCollectLauncherTest.java`, new cases:
   - `build-report` dispatch, with the collector still the default;
   - `lib/` beside the JAR found second, also with a wrong `JMETER_HOME` set and a non-JMeter `jmeter` on `PATH`
     (contracts/build-report-cli.md) [U4].
@@ -119,7 +119,7 @@ a report on a machine with no JMeter.
   - in distributed mode the controller writes one file;
   - a failed write is a failed artifact under `failonerror`;
   - the name is in `PropertyCheck.KNOWN`.
-- [ ] T015 Config scenario C44 in `test-plans/scripts/run-config-tests.sh` [G6]:
+- [X] T015 Config scenario C44 in `test-plans/scripts/run-config-tests.sh` [G6]:
   - unzip the standalone bundle;
   - with `JMETER_HOME` unset and JMeter not on `PATH`, under `-verbose:class`, run `build-report --run-data`,
     `build-report --from k6` (K1), `wir-collect --run-data` and `wir-collect --from k6`;
@@ -178,9 +178,9 @@ themselves. T009 runs in `plugin-test/report/rundata/RunDataRoundTripTest.java`,
 - [X] T029 `plugin/BuildReport.java`: the `build-report` command over `ReportRebuild` (contracts/build-report-cli.md),
   with `--run-data`, the test name rule (data-model.md `Run.testName`) and `--help`. `--from k6` comes in US2. Document
   it in a `docs/` page "build-report".
-- [ ] T030 `plugin/WirCollectLauncher.java`: dispatch `build-report`, keep the collector as the default, and look in
+- [X] T030 `plugin/WirCollectLauncher.java`: dispatch `build-report`, keep the collector as the default, and look in
   `lib/` beside the JAR second (contracts/build-report-cli.md) [U4].
-- [ ] T031 `assembly/standalone.xml` and the module pom: build `jmeter-web-insight-report-<v>-standalone.zip` [L1-4].
+- [X] T031 `assembly/standalone.xml` and the module pom: build `jmeter-web-insight-report-<v>-standalone.zip` [L1-4].
   - It holds the JAR plus `lib/` with Jackson 2.16.1 (databind, core, annotations), commons-math3 3.6.1, slf4j-api
     1.7.36 and slf4j-simple 1.7.36. slf4j-simple is a new dependency, used only by the assembly.
   - `verify_shaded_jar` stays unchanged, and the shaded JAR's contents do not change.
