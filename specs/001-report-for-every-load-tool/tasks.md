@@ -93,7 +93,7 @@ a report on a machine with no JMeter.
   - a `kind` `transaction` sample with no message is kept out of the Errors tab's sample count and of Codes per Second
     (data-model.md `Sample.kind`) [I2];
   - nested groups and a pass with no request are included.
-- [X] T011 [P] `plugin-test/report/generator/ComparisonPropertiesTest.java`: with a baseline configured (the only path
+- [ ] T011 [P] `plugin-test/report/generator/ComparisonPropertiesTest.java`: with a baseline configured (the only path
   that reaches `WebInsightReportGenerator.java:930`) and no JMeter class on the class path, the generator reads
   `webinsight.compare.*` from the configuration's property function (research R5) [A2].
 - [ ] T012 [P] `plugin-test/WirCollectLauncherTest.java`, new cases:
