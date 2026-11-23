@@ -120,6 +120,10 @@ public final class ToolTab {
         for (ToolRecords.Threshold t : m.records().thresholds()) {
             thresholds.add(new ThresholdRow(t));
         }
+        // The failed ones first, then by metric, as k6's own summary groups them: a run can declare dozens (perf
+        // hub's petstore-checkout declares 50), and the one that failed must not be hunted for
+        thresholds.sort(java.util.Comparator.comparing((ThresholdRow t) -> t.passed)
+                .thenComparing(t -> String.valueOf(t.metric)).thenComparing(t -> String.valueOf(t.expression)));
         thresholdsFailed = thresholds.stream().filter(t -> !t.passed).count();
         title = tool + "'s own measures";
         // decision 4: shown as the tool judged them, and never the report's verdict

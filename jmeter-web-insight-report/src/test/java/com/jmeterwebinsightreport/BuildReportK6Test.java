@@ -73,6 +73,11 @@ class BuildReportK6Test {
         assertTrue(page.contains("id=\"toolThresholds\""), "the k6 tab lists the thresholds");
         assertTrue(page.contains("Thresholds (2 of 3 passed)"), "and says one failed");
         assertTrue(page.contains("class=\"wir-tool-failed\">failed</td>"), "marking it failed");
+        // A run can declare dozens of thresholds (perf hub's K2 has 50): the failed ones come first
+        int table = page.indexOf("id=\"toolThresholds\"");
+        int firstRow = page.indexOf("<tr>", page.indexOf("<tbody>", table));
+        assertTrue(page.indexOf("http_req_failed", firstRow) < page.indexOf("</tr>", firstRow),
+                "the first row is K1's failed threshold, http_req_failed rate<0.01");
         assertTrue(page.contains("ASSERTS PASS"), "while the header's verdict is the asserts'");
     }
 

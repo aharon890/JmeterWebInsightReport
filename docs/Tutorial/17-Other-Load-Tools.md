@@ -82,7 +82,7 @@ reads exactly as before.
 | Section | What it holds |
 |---|---|
 | Counters | `iterations`, `dropped_iterations` and `vus_max` (the VUs k6 allocated) from `summary.json`; "not measured" without it. Max VUs on the Summary tab is the most VUs active at once, k6's `vus`. |
-| Thresholds | Every threshold, with its metric and expression, as k6 judged it. |
+| Thresholds | Every threshold, with its metric and expression, as k6 judged it: the failed ones first, then by metric. |
 | Checks | Passes, fails and pass rate per group and check. |
 | Group duration | Each group's passes on their wall time, think time included (`group_duration`). |
 | HTTP timings | The six parts (`http_req_blocked`, `_connecting`, `_tls_handshaking`, `_sending`, `_waiting`, `_receiving`) over every request and per request, to the hundredth of a millisecond. |
