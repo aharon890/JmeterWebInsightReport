@@ -20,6 +20,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.util.function.Function;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -402,15 +403,6 @@ public class WebInsightDataExporter extends AbstractDataExporter {
                 WebInsightDataExporter::warn);
     }
 
-    /** @see BooleanSetting#warningFor */
-    private static void warnIfNotBoolean(String propertyName, String raw) {
-        // No test element on this path, so there is nothing for an unrecognised value to fall
-        // through TO — unlike the listener, where the GUI checkbox is still standing.
-        warn(BooleanSetting.warningFor(propertyName, raw,
-                "and there is no GUI or JMX field on the -g -o path to fall back to, so this "
-                        + "setting is off for this run"));
-    }
-
     private static void warn(String warning) {
         if (warning != null) {
             log.warn(warning);
@@ -426,85 +418,9 @@ public class WebInsightDataExporter extends AbstractDataExporter {
      * sets a property and asserts the field is the only thing that catches it.
      */
     ReportConfiguration buildConfiguration(File outputDir) {
-        ReportConfiguration config = new ReportConfiguration();
-        config.setOutputDirectory(outputDir);
-
-        // The title is invisible to this exporter for exactly the same reason the filename was:
-        // WebInsightReport.reportTitle is a test-element property. So when both generators ran,
-        // the duplicate report carried the DEFAULT title while the listener's carried the
-        // configured one — the two artifacts of one run disagreeing on the name of the test.
-        String title = firstNonEmpty(JMeterUtils.getProperty(RESOLVED_TITLE_PROPERTY),
-                JMeterUtils.getProperty("webinsight.report.title"));
-        if (title != null && !title.isEmpty()) {
-            config.setReportTitle(title);
-        }
-
-        String filename = JMeterUtils.getProperty("webinsight.report.filename");
-        if (filename != null && !filename.isEmpty()) {
-            config.setReportFilename(filename);
-        }
-
-        String baseline = JMeterUtils.getProperty("webinsight.report.baseline");
-        if (baseline != null && !baseline.isEmpty()) {
-            config.setBaselineJtlFile(new File(baseline));
-        }
-
-        // -J first, then whatever the listener judged against in this same JVM. The second half
-        // is the GUI/JMX case, which no property on this path can otherwise reach: precedence is
-        // the same as everywhere else, so an explicit -J still wins.
-        String annotations = JMeterUtils.getProperty("webinsight.report.annotations");
-        if (annotations == null || annotations.isEmpty()) {
-            annotations = JMeterUtils.getProperty(RESOLVED_ANNOTATIONS_PROPERTY);
-            if (annotations != null && !annotations.isEmpty()) {
-                log.info("Judging against the annotations file the listener used: {}", annotations);
-            }
-        }
-        if (annotations != null && !annotations.isEmpty()) {
-            config.setAnnotationsFile(new File(annotations));
-        }
-
-        // The server-metrics payload wir-collect wrote between the run and this report. No
-        // auto-detection: -g -o refuses a non-empty output directory, so there is nowhere a
-        // payload could be detected in; the path is explicit or there is none.
-        String serverMetrics = JMeterUtils.getProperty("webinsight.report.servermetrics");
-        if (serverMetrics != null && !serverMetrics.isEmpty()) {
-            config.setServerMetricsFile(new File(serverMetrics));
-        }
-
-        String rampUp = JMeterUtils.getProperty("webinsight.report.rampup");
-        if (rampUp != null && !rampUp.isEmpty()) {
-            try {
-                config.setRampUpDurationMillis(Long.parseLong(rampUp));
-            } catch (NumberFormatException e) {
-                log.warn("Invalid rampup value: {}", rampUp);
-            }
-        }
-
-        // Same flag the listener honours. Without this the documented -J property silently
-        // did nothing in -g -o mode, which is the mode most likely to hit a payload big
-        // enough to want it.
-        //
-        // There is no GUI or JMX surface on this path — the exporter runs outside the test plan
-        // — so "unset" means off for both of these. The warning still matters: it is the only
-        // way an operator learns that -Jwebinsight.report.junit=yes did nothing.
-        String externalProp = JMeterUtils.getProperty("webinsight.report.externaldata");
-        warnIfNotBoolean("webinsight.report.externaldata", externalProp);
-        config.setExternalDataMode(BooleanSetting.parse(externalProp).orElse(false));
-
-        String junitProp = JMeterUtils.getProperty("webinsight.report.junit");
-        warnIfNotBoolean("webinsight.report.junit", junitProp);
-        config.setGenerateJunitXml(BooleanSetting.parse(junitProp).orElse(false));
-
-        // Same property, same validation as the listener — `-g -o` is the mode most likely to
-        // handle a payload big enough to want it tuned.
-        String thresholdWarning = config.applyExternalDataThreshold(
-                JMeterUtils.getProperty("webinsight.report.externaldata.threshold"));
-        if (thresholdWarning != null) {
-            log.warn(thresholdWarning);
-        }
-
-        return config;
+        return ReportRebuild.configuration(outputDir, JMeterUtils::getProperty);
     }
+
 
     /**
      * Is the report already in this directory <em>this run's own</em>?
@@ -591,14 +507,6 @@ public class WebInsightDataExporter extends AbstractDataExporter {
             }
         }
         return found;
-    }
-
-    /** First of the two that is neither null nor empty, or null. */
-    private static String firstNonEmpty(String preferred, String fallback) {
-        if (preferred != null && !preferred.isEmpty()) {
-            return preferred;
-        }
-        return fallback != null && !fallback.isEmpty() ? fallback : null;
     }
 
     private static Pattern globToPattern(String glob) {

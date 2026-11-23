@@ -43,7 +43,9 @@ public class JtlParser {
     private static final int MAX_REPORTED_ERRORS = 3;
 
     private long rampUpDurationMillis;
-    private double apdexThreshold = 500;
+    /** The Apdex T when none is configured, ms. */
+    public static final double DEFAULT_APDEX_THRESHOLD = 500;
+    private double apdexThreshold = DEFAULT_APDEX_THRESHOLD;
     /** {@code sampleresult.timestamp.start}: whether the file's timeStamp is when a sample started
      *  (JMeter's shipped setting) or when it ended. JMeter itself reads the file with this setting
      *  ({@code SampleResult.stampAndTime}: start = timeStamp - elapsed when false); reading every

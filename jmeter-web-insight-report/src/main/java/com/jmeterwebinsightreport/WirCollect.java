@@ -5,6 +5,8 @@ import com.jmeterwebinsightreport.core.assertion.AssertionValidator;
 import com.jmeterwebinsightreport.core.model.ReportData;
 import com.jmeterwebinsightreport.core.model.TestMetadata;
 import com.jmeterwebinsightreport.core.parser.JtlParser;
+import com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine;
+import com.jmeterwebinsightreport.core.rundata.RunDataReader;
 import com.jmeterwebinsightreport.core.servermetrics.CollectionStatus;
 import com.jmeterwebinsightreport.core.servermetrics.Durations;
 import com.jmeterwebinsightreport.core.servermetrics.KpiUsability;
@@ -104,7 +106,8 @@ import java.util.function.Function;
  */
 public final class WirCollect {
 
-    static final String USAGE = "usage: wir-collect --jtl <results.jtl> --annotations <report-annotations.json>"
+    static final String USAGE = "usage: wir-collect (--jtl <results.jtl> | --run-data <run-data.jsonl.gz>)"
+            + " --annotations <report-annotations.json>"
             + " --out <server-metrics.json> (--prometheus-url URL [--prometheus-token-env NAME] | --recording DIR"
             + " | --csv FILE [--from TOOL] [--layout wide [--columns MAP]] [--csv-columns SPEC] [--component ID]"
             + " [--time-zone ZONE])"
@@ -126,7 +129,7 @@ public final class WirCollect {
      * {@code --help} and {@code -h} are not in here: {@link #asksForHelp} answers them before the
      * arguments are parsed, where an option can stand and never as an option's value. */
     static final Set<String> OPTIONS = new LinkedHashSet<>(Arrays.asList(
-            "jtl", "annotations", "out", "prometheus-url", "prometheus-token-env", "recording", "csv", "from",
+            "jtl", "run-data", "annotations", "out", "prometheus-url", "prometheus-token-env", "recording", "csv", "from",
             "layout", "columns", "csv-columns", "component", "time-zone", "step", "clock-offset", "env", "test-name",
             "rampup", "max-wait", "no-wait", "collected-at"));
 
@@ -181,11 +184,13 @@ public final class WirCollect {
             return 1;
         }
 
-        File jtl = new File(opts.get("jtl"));
+        boolean runData = opts.containsKey("run-data");
+        File jtl = new File(runData ? opts.get("run-data") : opts.get("jtl"));
         File annotations = new File(opts.get("annotations"));
         File outFile = new File(opts.get("out"));
         if (!jtl.isFile()) {
-            println(err, "wir-collect: JTL does not exist: " + jtl.getAbsolutePath());
+            println(err, "wir-collect: " + (runData ? "the run data" : "JTL") + " does not exist: "
+                    + jtl.getAbsolutePath());
             return 1;
         }
 
@@ -197,6 +202,24 @@ public final class WirCollect {
             data = parsed;
             if (parsed.getMetadata() != null && parsed.getMetadata().getTestName() != null) {
                 testName = parsed.getMetadata().getTestName();
+            }
+        } else if (runData) {
+            // Run data names its own run: the test name its report hashes into the runId is in the file
+            try {
+                LiveStatisticsEngine engine = new LiveStatisticsEngine();
+                RunDataReader.Result read = new RunDataReader().read(jtl, engine);
+                if (opts.containsKey("test-name") && !opts.get("test-name").equals(read.header.testName)) {
+                    println(err, "wir-collect: --test-name \"" + opts.get("test-name") + "\" is not the run's test name \""
+                            + read.header.testName + "\", which its run data records and its report hashes into the"
+                            + " runId - leave --test-name out");
+                    return 1;
+                }
+                testName = read.header.testName;
+                data = engine.buildReportData(testName);
+            } catch (Exception e) {
+                println(err, "wir-collect: the run data could not be read: " + jtl.getAbsolutePath() + " - "
+                        + e.getMessage());
+                return 1;
             }
         } else {
             try {
@@ -639,6 +662,8 @@ public final class WirCollect {
                 + "\n"
                 + "Options:\n"
                 + "  --jtl FILE            the finished run; its first and last sample are the window\n"
+                + "  --run-data FILE       or the run as run data, of any tool (instead of --jtl); its test name\n"
+                + "                        is the file's\n"
                 + "  --annotations FILE    the file that declares serverMetrics: components and server asserts\n"
                 + "  --out FILE            where the payload is written, e.g. server-metrics.json\n"
                 + "Where the metrics come from - exactly one:\n"
@@ -1068,7 +1093,12 @@ public final class WirCollect {
                 opts.put(key, key.equals("no-wait") ? "true" : inlineValue);
             }
         }
-        for (String required : new String[] {"jtl", "annotations", "out"}) {
+        // The run: a JMeter results file, or run data of any tool (spec 001) - exactly one
+        if (opts.containsKey("jtl") == opts.containsKey("run-data")) {
+            throw new IllegalArgumentException(opts.containsKey("jtl")
+                    ? "give the run once: --jtl or --run-data, not both" : "--jtl (or --run-data) is required");
+        }
+        for (String required : new String[] {"annotations", "out"}) {
             if (!opts.containsKey(required)) {
                 throw new IllegalArgumentException("--" + required + " is required");
             }

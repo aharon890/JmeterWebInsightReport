@@ -27,12 +27,16 @@ public final class WirCollectLauncher {
     private WirCollectLauncher() {
     }
 
+    /** The first argument that starts the JMeter-free report command instead of the collector (spec 001). */
+    static final String BUILD_REPORT = "build-report";
+
     public static void main(String[] args) {
         int code;
         try {
             code = run(args);
         } catch (Refusal r) {
-            System.err.println("wir-collect: " + r.getMessage());
+            System.err.println((args.length > 0 && BUILD_REPORT.equals(args[0]) ? BUILD_REPORT : "wir-collect") + ": "
+                    + r.getMessage());
             code = 1;
         }
         if (code != 0) {
@@ -43,17 +47,30 @@ public final class WirCollectLauncher {
     /** The launch; returns only on a refusal - WirCollect.main exits the JVM itself. */
     static int run(String[] args) throws Refusal {
         File jar = ownJar();
-        File home = jmeterHome(jar, System.getenv("JMETER_HOME"), System.getenv("PATH"));
-        File plugin = onePluginJar(new File(home, "lib/ext"), jar, System.getProperty("java.class.path", ""));
+        boolean buildReport = args.length > 0 && BUILD_REPORT.equals(args[0]);
+        String mainClass = buildReport ? "com.jmeterwebinsightreport.BuildReport" : "com.jmeterwebinsightreport.WirCollect";
+        String[] rest = buildReport ? java.util.Arrays.copyOfRange(args, 1, args.length) : args;
         List<URL> urls = new ArrayList<>();
         try {
-            urls.add(plugin.toURI().toURL());
-            File[] lib = new File(home, "lib").listFiles((d, n) -> n.endsWith(".jar"));
-            if (lib == null || lib.length == 0) {
-                throw new Refusal(home + " has no lib/*.jar - is JMETER_HOME a JMeter installation?");
-            }
-            for (File f : lib) {
-                urls.add(f.toURI().toURL());
+            File bundle = inLibExt(jar) ? null : bundleLib(jar);
+            if (bundle != null) {
+                // The standalone bundle (spec 001, research R6): this JAR and the lib/ beside it, before JMETER_HOME or
+                // a jmeter on PATH, so a wrong JMETER_HOME or another JMeter cannot refuse a machine with no JMeter
+                urls.add(jar.toURI().toURL());
+                for (File f : jarsIn(bundle)) {
+                    urls.add(f.toURI().toURL());
+                }
+            } else {
+                File home = jmeterHome(jar, System.getenv("JMETER_HOME"), System.getenv("PATH"));
+                File plugin = onePluginJar(new File(home, "lib/ext"), jar, System.getProperty("java.class.path", ""));
+                urls.add(plugin.toURI().toURL());
+                File[] lib = new File(home, "lib").listFiles((d, n) -> n.endsWith(".jar"));
+                if (lib == null || lib.length == 0) {
+                    throw new Refusal(home + " has no lib/*.jar - is JMETER_HOME a JMeter installation?");
+                }
+                for (File f : lib) {
+                    urls.add(f.toURI().toURL());
+                }
             }
         } catch (java.net.MalformedURLException e) {
             throw new Refusal("could not build the classpath: " + e.getMessage());
@@ -61,8 +78,8 @@ public final class WirCollectLauncher {
         ClassLoader loader = new URLClassLoader(urls.toArray(new URL[0]), ClassLoader.getPlatformClassLoader());
         Thread.currentThread().setContextClassLoader(loader);
         try {
-            Method main = loader.loadClass("com.jmeterwebinsightreport.WirCollect").getMethod("main", String[].class);
-            main.invoke(null, (Object) args);
+            Method main = loader.loadClass(mainClass).getMethod("main", String[].class);
+            main.invoke(null, (Object) rest);
         } catch (InvocationTargetException e) {
             Throwable cause = e.getCause();
             if (cause instanceof RuntimeException) {
@@ -76,6 +93,29 @@ public final class WirCollectLauncher {
             throw new Refusal("could not start the collector: " + e);
         }
         return 0;
+    }
+
+    /**
+     * The standalone bundle's {@code lib/} beside {@code jar}: a folder holding Jackson, the one library every command
+     * needs. Null when there is none, and the JAR finds its libraries in a JMeter install as before.
+     */
+    static File bundleLib(File jar) {
+        File lib = new File(jar.getAbsoluteFile().getParentFile(), "lib");
+        for (File f : jarsIn(lib)) {
+            if (f.getName().startsWith("jackson-databind")) {
+                return lib;
+            }
+        }
+        return null;
+    }
+
+    private static File[] jarsIn(File dir) {
+        File[] jars = dir.listFiles((d, n) -> n.endsWith(".jar"));
+        if (jars == null) {
+            return new File[0];
+        }
+        java.util.Arrays.sort(jars);
+        return jars;
     }
 
     private static File ownJar() throws Refusal {

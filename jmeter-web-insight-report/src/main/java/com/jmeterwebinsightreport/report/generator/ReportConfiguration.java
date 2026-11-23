@@ -3,12 +3,33 @@ package com.jmeterwebinsightreport.report.generator;
 import com.jmeterwebinsightreport.core.filter.SamplerFilterConfig;
 
 import java.io.File;
+import java.util.function.Function;
 
 /**
  * Configuration for the Web Insight Report — output directory, title, and the rest.
  * Populated from JMeter properties or GUI configuration panel.
  */
 public class ReportConfiguration {
+
+    /**
+     * The properties this run was configured from: the command line's outside JMeter, JMeter's inside it. Never
+     * {@code JMeterUtils} when JMeter is not there: its absence is an Error, not an exception (finding 13).
+     */
+    public Function<String, String> getProperties() {
+        return properties != null ? properties : ReportConfiguration::jmeterProperty;
+    }
+
+    public void setProperties(Function<String, String> properties) {
+        this.properties = properties;
+    }
+
+    private static String jmeterProperty(String key) {
+        try {
+            return org.apache.jmeter.util.JMeterUtils.getProperty(key);
+        } catch (LinkageError | RuntimeException e) {
+            return null;
+        }
+    }
 
     private File outputDirectory;
     private String reportTitle = "JMeter Web Insight Report";
@@ -80,6 +101,8 @@ public class ReportConfiguration {
      * loud rather than silently absent.
      */
     private File serverMetricsFile;
+    /** Where the report reads its properties (spec 001, research R5): JMeter's, or a command's. */
+    private Function<String, String> properties;
 
     /**
      * Why the server data given to this -g run could not be collected in-process (a CSV

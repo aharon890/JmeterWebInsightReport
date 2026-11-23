@@ -926,8 +926,7 @@ public class WebInsightReportGenerator {
      * JMeter properties override annotation values.
      */
     private ComparisonThresholds buildComparisonThresholds(ReportAnnotations annotations) {
-        return ComparisonThresholdResolver.resolve(annotations,
-                org.apache.jmeter.util.JMeterUtils::getProperty);
+        return ComparisonThresholdResolver.resolve(annotations, configuration.getProperties());
     }
 
     /**

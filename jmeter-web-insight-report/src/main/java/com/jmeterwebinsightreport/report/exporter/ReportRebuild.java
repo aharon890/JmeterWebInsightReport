@@ -2,7 +2,12 @@ package com.jmeterwebinsightreport.report.exporter;
 
 import com.jmeterwebinsightreport.WirCollect;
 import com.jmeterwebinsightreport.core.model.ReportData;
+import com.jmeterwebinsightreport.core.model.TestMetadata;
+import com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine;
+import com.jmeterwebinsightreport.core.rundata.RunDataReader;
+import com.jmeterwebinsightreport.core.rundata.RunDataFormat;
 import com.jmeterwebinsightreport.core.parser.JtlParser;
+import com.jmeterwebinsightreport.report.generator.BooleanSetting;
 import com.jmeterwebinsightreport.report.generator.ReportArtifacts;
 import com.jmeterwebinsightreport.report.generator.ReportConfiguration;
 import com.jmeterwebinsightreport.report.generator.WebInsightReportGenerator;
@@ -84,7 +89,9 @@ public final class ReportRebuild {
                 "give webinsight.report.annotations too"),
         /** The listener panel's Rebuild button: a dialog, and the panel's fields. */
         LISTENER_PANEL("the wir-collect lines in the Rebuild dialog say why",
-                "name one in the listener's Annotations File field (or webinsight.report.annotations)");
+                "name one in the listener's Annotations File field (or webinsight.report.annotations)"),
+        /** {@code build-report}, with no JMeter (spec 001): a console, and its options. */
+        BUILD_REPORT("the wir-collect lines on the console say why", "give --annotations too");
 
         private final String whyCollectionWasRefused;
         private final String howToGiveAnnotations;
@@ -172,10 +179,173 @@ public final class ReportRebuild {
             if (version != null) {
                 reportData.getMetadata().setJmeterVersion(version);
             }
-        } catch (Exception e) {
-            // JMeterUtils may not be available
+        } catch (Exception | LinkageError e) {
+            // JMeterUtils may not be available: its absence is an Error, not an exception
         }
         return reportData;
+    }
+
+    /**
+     * Run data parsed as the report reads it (spec 001): through the same engine, with the same ramp-up, Apdex
+     * threshold and error typing a JTL's parse takes from the properties. The title is the run record's test name,
+     * which the run's identity hashes, so a {@code webinsight.report.title} that says otherwise is refused rather
+     * than given another run's identity. The tool, what it does not measure and its own records go into the data.
+     */
+    public static ReportData parseRunData(File runData, ReportConfiguration config, Function<String, String> props)
+            throws IOException {
+        LiveStatisticsEngine engine = new LiveStatisticsEngine();
+        engine.setRampUpDurationMillis(Math.max(0, config.getRampUpDurationMillis()));
+        engine.setApdexThreshold(apdexThreshold(props));
+        RunDataReader reader = new RunDataReader();
+        reader.setFailureMessageTypesErrors(failureMessageTypesErrors(
+                props.apply("jmeter.save.saveservice.assertion_results_failure_message")));
+        RunDataReader.Result read = reader.read(runData, engine);
+        for (String problem : read.problems) {
+            log.warn("Run data {}: {}", runData.getName(), problem);
+        }
+        String title = props.apply("webinsight.report.title");
+        if (title != null && !title.trim().isEmpty() && !title.equals(read.header.testName)) {
+            throw new IOException("webinsight.report.title \"" + title + "\" is not this run's test name \""
+                    + read.header.testName + "\", which its run data records and its identity (runId) hashes -"
+                    + " leave the title out, or write the run data under that name");
+        }
+        config.setReportTitle(read.header.testName);
+        ReportData data = engine.buildReportData(read.header.testName);
+        TestMetadata meta = data.getMetadata();
+        if (read.header.isJMeter()) {
+            meta.setJmeterVersion(read.header.toolVersion);
+        } else {
+            meta.setToolName(read.header.toolName);
+            meta.setToolVersion(read.header.toolVersion);
+        }
+        if (read.header.notMeasured != null && !read.header.notMeasured.isEmpty()) {
+            meta.setNotMeasured(new java.util.ArrayList<>(read.header.notMeasured));
+        }
+        if (read.header.wholeSeconds()) {
+            meta.setTimeResolution("s");
+        }
+        data.setToolRecords(read.tool.isEmpty() ? null : read.tool);
+        return data;
+    }
+
+    /** {@code webinsight.apdex.threshold}, or the parser's default; an unreadable one is warned about, as on a JTL. */
+    private static double apdexThreshold(Function<String, String> props) {
+        String apdexStr = props.apply("webinsight.apdex.threshold");
+        if (apdexStr != null && !apdexStr.isEmpty()) {
+            try {
+                return Double.parseDouble(apdexStr);
+            } catch (NumberFormatException e) {
+                log.warn("Invalid webinsight.apdex.threshold: {}", apdexStr);
+            }
+        }
+        return JtlParser.DEFAULT_APDEX_THRESHOLD;
+    }
+
+    /**
+     * The report's configuration from any source of properties: JMeter's on {@code -g}, the command line's on
+     * {@code build-report} (spec 001), so the two paths read every setting by one set of rules (constitution VI).
+     * It lives here, not in the exporter, because loading the exporter loads JMeter's AbstractDataExporter.
+     */
+    public static ReportConfiguration configuration(File outputDir, Function<String, String> props) {
+        ReportConfiguration config = new ReportConfiguration();
+        config.setProperties(props);
+        config.setOutputDirectory(outputDir);
+
+        // The title is invisible to this exporter for exactly the same reason the filename was:
+        // WebInsightReport.reportTitle is a test-element property. So when both generators ran,
+        // the duplicate report carried the DEFAULT title while the listener's carried the
+        // configured one — the two artifacts of one run disagreeing on the name of the test.
+        String title = firstNonEmpty(props.apply(WebInsightDataExporter.RESOLVED_TITLE_PROPERTY),
+                props.apply("webinsight.report.title"));
+        if (title != null && !title.isEmpty()) {
+            config.setReportTitle(title);
+        }
+
+        String filename = props.apply("webinsight.report.filename");
+        if (filename != null && !filename.isEmpty()) {
+            config.setReportFilename(filename);
+        }
+
+        String baseline = props.apply("webinsight.report.baseline");
+        if (baseline != null && !baseline.isEmpty()) {
+            config.setBaselineJtlFile(new File(baseline));
+        }
+
+        // -J first, then whatever the listener judged against in this same JVM. The second half
+        // is the GUI/JMX case, which no property on this path can otherwise reach: precedence is
+        // the same as everywhere else, so an explicit -J still wins.
+        String annotations = props.apply("webinsight.report.annotations");
+        if (annotations == null || annotations.isEmpty()) {
+            annotations = props.apply(WebInsightDataExporter.RESOLVED_ANNOTATIONS_PROPERTY);
+            if (annotations != null && !annotations.isEmpty()) {
+                log.info("Judging against the annotations file the listener used: {}", annotations);
+            }
+        }
+        if (annotations != null && !annotations.isEmpty()) {
+            config.setAnnotationsFile(new File(annotations));
+        }
+
+        // The server-metrics payload wir-collect wrote between the run and this report. No
+        // auto-detection: -g -o refuses a non-empty output directory, so there is nowhere a
+        // payload could be detected in; the path is explicit or there is none.
+        String serverMetrics = props.apply("webinsight.report.servermetrics");
+        if (serverMetrics != null && !serverMetrics.isEmpty()) {
+            config.setServerMetricsFile(new File(serverMetrics));
+        }
+
+        String rampUp = props.apply("webinsight.report.rampup");
+        if (rampUp != null && !rampUp.isEmpty()) {
+            try {
+                config.setRampUpDurationMillis(Long.parseLong(rampUp));
+            } catch (NumberFormatException e) {
+                log.warn("Invalid rampup value: {}", rampUp);
+            }
+        }
+
+        // Same flag the listener honours. Without this the documented -J property silently
+        // did nothing in -g -o mode, which is the mode most likely to hit a payload big
+        // enough to want it.
+        //
+        // There is no GUI or JMX surface on this path — the exporter runs outside the test plan
+        // — so "unset" means off for both of these. The warning still matters: it is the only
+        // way an operator learns that -Jwebinsight.report.junit=yes did nothing.
+        String externalProp = props.apply("webinsight.report.externaldata");
+        warnIfNotBoolean("webinsight.report.externaldata", externalProp);
+        config.setExternalDataMode(BooleanSetting.parse(externalProp).orElse(false));
+
+        String junitProp = props.apply("webinsight.report.junit");
+        warnIfNotBoolean("webinsight.report.junit", junitProp);
+        config.setGenerateJunitXml(BooleanSetting.parse(junitProp).orElse(false));
+
+        // Same property, same validation as the listener — `-g -o` is the mode most likely to
+        // handle a payload big enough to want it tuned.
+        String thresholdWarning = config.applyExternalDataThreshold(
+                props.apply("webinsight.report.externaldata.threshold"));
+        if (thresholdWarning != null) {
+            log.warn(thresholdWarning);
+        }
+
+        return config;
+    }
+
+    /** @see BooleanSetting#warningFor */
+    private static void warnIfNotBoolean(String propertyName, String raw) {
+        // No test element on this path, so there is nothing for an unrecognised value to fall
+        // through TO - unlike the listener, where the GUI checkbox is still standing.
+        String warning = BooleanSetting.warningFor(propertyName, raw,
+                "and there is no GUI or JMX field on the -g -o path to fall back to, so this "
+                        + "setting is off for this run");
+        if (warning != null) {
+            log.warn(warning);
+        }
+    }
+
+    /** First of the two that is neither null nor empty, or null. */
+    private static String firstNonEmpty(String preferred, String fallback) {
+        if (preferred != null && !preferred.isEmpty()) {
+            return preferred;
+        }
+        return fallback != null && !fallback.isEmpty() ? fallback : null;
     }
 
     /**
@@ -191,6 +361,7 @@ public final class ReportRebuild {
                                           Function<String, String> props, PrintStream out, PrintStream err,
                                           Map<String, String> env, Route route) {
         autoDetectCompanionFiles(config, outputDir);
+        refuseCrossToolBaseline(config, parsed, err);
         collectServerCsvIfGiven(config, jtl, parsed, props, out, err, env, route);
     }
 
@@ -250,6 +421,26 @@ public final class ReportRebuild {
     /**
      * Auto-detect report-annotations.json and baseline.jtl in the output directory.
      */
+    /**
+     * A baseline is a JMeter results file, so on another tool's run it would compare two tools: Compare for those runs,
+     * and across tools, is later (spec 001, decision 6, FR-017). It is refused with a sentence, and the report is
+     * built without Compare.
+     */
+    static void refuseCrossToolBaseline(ReportConfiguration config, ReportData parsed, PrintStream err) {
+        if (config.getBaselineJtlFile() == null || parsed == null || parsed.getMetadata() == null
+                || parsed.getMetadata().getToolName() == null) {
+            return;
+        }
+        String line = "WARNING the Compare baseline " + config.getBaselineJtlFile().getName() + " is left out: this run is "
+                + parsed.getMetadata().getToolName() + "'s, and Compare for runs of other tools than JMeter, and across"
+                + " tools, comes later (spec 001, decision 6). The report is built without the Compare tab";
+        log.warn(line);
+        if (err != null) {
+            err.println(line);
+        }
+        config.setBaselineJtlFile(null);
+    }
+
     private static void autoDetectCompanionFiles(ReportConfiguration config, File outputDir) {
         if (config.getAnnotationsFile() == null) {
             File autoAnnotations = new File(outputDir, "report-annotations.json");
@@ -311,7 +502,8 @@ public final class ReportRebuild {
             return;
         }
         List<String> args = new ArrayList<>(Arrays.asList(
-                "--jtl", jtlFile.getAbsolutePath(), "--annotations", config.getAnnotationsFile().getPath(),
+                RunDataFormat.isRunDataFile(jtlFile) ? "--run-data" : "--jtl", jtlFile.getAbsolutePath(),
+                "--annotations", config.getAnnotationsFile().getPath(),
                 "--csv", given.getPath(), "--no-wait",
                 "--collected-at", java.time.Instant.ofEpochMilli(given.lastModified()).toString()));
         File payload;

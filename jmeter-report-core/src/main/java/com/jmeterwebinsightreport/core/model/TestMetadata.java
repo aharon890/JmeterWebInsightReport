@@ -1,5 +1,6 @@
 package com.jmeterwebinsightreport.core.model;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.Instant;
 
 /**
@@ -17,6 +18,17 @@ public class TestMetadata {
     private long totalSamples;
     private long totalErrors;
     private String jmeterVersion;
+    /** The tool that recorded the samples, on a run that is not JMeter's (spec 001); null on a JMeter run. */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String toolName;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String toolVersion;
+    /** Sample fields the tool does not record, which read "not measured"; null when it records all. */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private java.util.List<String> notMeasured;
+    /** "s" when the tool's file had whole-second times; null for milliseconds. */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String timeResolution;
     private String reportGeneratedAt;
     private String reportGeneratedAtIso;
     private long rampUpDurationMillis;
@@ -80,6 +92,38 @@ public class TestMetadata {
 
     public void setTotalErrors(long totalErrors) {
         this.totalErrors = totalErrors;
+    }
+
+    public String getToolName() {
+        return toolName;
+    }
+
+    public void setToolName(String toolName) {
+        this.toolName = toolName;
+    }
+
+    public String getToolVersion() {
+        return toolVersion;
+    }
+
+    public void setToolVersion(String toolVersion) {
+        this.toolVersion = toolVersion;
+    }
+
+    public java.util.List<String> getNotMeasured() {
+        return notMeasured;
+    }
+
+    public void setNotMeasured(java.util.List<String> notMeasured) {
+        this.notMeasured = notMeasured;
+    }
+
+    public String getTimeResolution() {
+        return timeResolution;
+    }
+
+    public void setTimeResolution(String timeResolution) {
+        this.timeResolution = timeResolution;
     }
 
     public String getJmeterVersion() {

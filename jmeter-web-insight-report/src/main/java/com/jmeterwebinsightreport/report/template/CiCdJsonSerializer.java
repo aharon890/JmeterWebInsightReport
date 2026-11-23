@@ -131,6 +131,16 @@ public class CiCdJsonSerializer {
         // answer "is the report already here mine?" — see the exists-policy.
         cicd.put("runId", com.jmeterwebinsightreport.core.util.RunIdentity.of(reportData));
         cicd.put("testName", meta != null ? meta.getTestName() : "Unknown");
+        if (meta != null && meta.getToolName() != null) {
+            // The tool, only on a run that is not JMeter's (spec 001, decision 12): a JMeter run's JSON, every
+            // golden and every pipeline reading it stay as they were
+            Map<String, Object> tool = new LinkedHashMap<>();
+            tool.put("name", meta.getToolName());
+            if (meta.getToolVersion() != null) {
+                tool.put("version", meta.getToolVersion());
+            }
+            cicd.put("tool", tool);
+        }
         cicd.put("status", overallStatus != null ? overallStatus.name() : "UNKNOWN");
         // D24: the server side's own word, beside the client's and never folded into it — present
         // exactly when serverGates is, so a pipeline that reads one reads the other.

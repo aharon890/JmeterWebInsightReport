@@ -27,6 +27,12 @@ public final class RunDataFormat {
     private RunDataFormat() {
     }
 
+    /** Whether {@code file} is run data by its name: {@code .jsonl}, or {@code .jsonl.gz}. */
+    public static boolean isRunDataFile(java.io.File file) {
+        String n = file == null ? "" : file.getName().toLowerCase(java.util.Locale.ROOT);
+        return n.endsWith(".jsonl") || n.endsWith(".jsonl.gz");
+    }
+
     /** Whether this release reads a file of {@code version} ("1.0", "1.3"): its major version is one it reads. */
     public static boolean reads(String version) {
         if (version == null) {

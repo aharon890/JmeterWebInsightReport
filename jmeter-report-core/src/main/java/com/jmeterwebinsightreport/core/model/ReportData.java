@@ -17,6 +17,18 @@ public class ReportData {
     private java.util.Map<String, List<String>> transactionHierarchy = new java.util.LinkedHashMap<>();
     /** True when {@link #errorRecords} is a truncated sample (more errors occurred than the detail cap). */
     private boolean errorRecordsTruncated;
+    /** A tool's own checks, thresholds and counters (spec 001): its tab's, and never a verdict. */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private com.jmeterwebinsightreport.core.rundata.ToolRecords toolRecords;
+
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public com.jmeterwebinsightreport.core.rundata.ToolRecords getToolRecords() {
+        return toolRecords;
+    }
+
+    public void setToolRecords(com.jmeterwebinsightreport.core.rundata.ToolRecords toolRecords) {
+        this.toolRecords = toolRecords;
+    }
     /** Every recorded sample but a Transaction Controller's own results: what the Errors tab's
      *  "% of all samples" divides by, as JMeter's HTML report does (E3). */
     private long requestSampleCount;

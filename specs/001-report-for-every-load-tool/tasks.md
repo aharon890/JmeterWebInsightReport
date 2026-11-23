@@ -93,14 +93,14 @@ a report on a machine with no JMeter.
   - a `kind` `transaction` sample with no message is kept out of the Errors tab's sample count and of Codes per Second
     (data-model.md `Sample.kind`) [I2];
   - nested groups and a pass with no request are included.
-- [ ] T011 [P] `plugin-test/report/generator/ComparisonPropertiesTest.java`: with a baseline configured (the only path
+- [X] T011 [P] `plugin-test/report/generator/ComparisonPropertiesTest.java`: with a baseline configured (the only path
   that reaches `WebInsightReportGenerator.java:930`) and no JMeter class on the class path, the generator reads
   `webinsight.compare.*` from the configuration's property function (research R5) [A2].
 - [ ] T012 [P] `plugin-test/WirCollectLauncherTest.java`, new cases:
   - `build-report` dispatch, with the collector still the default;
   - `lib/` beside the JAR found second, also with a wrong `JMETER_HOME` set and a non-JMeter `jmeter` on `PATH`
     (contracts/build-report-cli.md) [U4].
-- [ ] T013 [P] `plugin-test/BuildReportTest.java`:
+- [X] T013 [P] `plugin-test/BuildReportTest.java`:
   - `build-report --run-data` writes the page, the CI/CD JSON and, with `webinsight.report.junit=true`, JUnit into
     `--out`;
   - `--property` wins over `--properties`, which wins over the defaults;
@@ -167,15 +167,15 @@ themselves. T009 runs in `plugin-test/report/rundata/RunDataRoundTripTest.java`,
   - `plugin/report/exporter/WebInsightDataExporter.java`;
   - `ArtifactPublication` gets the file, `PropertyCheck.KNOWN` the name;
   - document it in `docs/` [G3].
-- [ ] T026 `plugin/report/generator/WebInsightReportGenerator.java` and `ReportConfiguration`: pass the configuration's
+- [X] T026 `plugin/report/generator/WebInsightReportGenerator.java` and `ReportConfiguration`: pass the configuration's
   property function to `ComparisonThresholdResolver`, so no `JMeterUtils` is on the build path (research R5). In
   `plugin/report/exporter/ReportRebuild.java:171`, read the JMeter version only on the JMeter paths.
-- [ ] T027 `plugin/report/exporter/ReportRebuild.java`: `parse(RunData…)` beside `parse(File jtl, …)`. The tool and its
+- [X] T027 `plugin/report/exporter/ReportRebuild.java`: `parse(RunData…)` beside `parse(File jtl, …)`. The tool and its
   version come from the `run` record (data-model.md `Run.tool.name`, `Run.tool.version`). A non-JMeter run's baseline
   is refused (FR-017).
-- [ ] T028 `plugin/report/template/CiCdJsonSerializer.java`: `"tool": {"name", "version"}` only when `tool.name` is
+- [X] T028 `plugin/report/template/CiCdJsonSerializer.java`: `"tool": {"name", "version"}` only when `tool.name` is
   not `jmeter` (decision 12). No golden moves [I4].
-- [ ] T029 `plugin/BuildReport.java`: the `build-report` command over `ReportRebuild` (contracts/build-report-cli.md),
+- [X] T029 `plugin/BuildReport.java`: the `build-report` command over `ReportRebuild` (contracts/build-report-cli.md),
   with `--run-data`, the test name rule (data-model.md `Run.testName`) and `--help`. `--from k6` comes in US2. Document
   it in a `docs/` page "build-report".
 - [ ] T030 `plugin/WirCollectLauncher.java`: dispatch `build-report`, keep the collector as the default, and look in
