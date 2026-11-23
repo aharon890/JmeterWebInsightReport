@@ -244,7 +244,7 @@ public final class ReportRebuild {
         if (read.header.wholeSeconds()) {
             meta.setTimeResolution("s");
         }
-        data.setToolRecords(read.tool.isEmpty() ? null : read.tool);
+        data.setToolMeasures(read.header.isJMeter() || read.measures.isEmpty() ? null : read.measures);
         return data;
     }
 

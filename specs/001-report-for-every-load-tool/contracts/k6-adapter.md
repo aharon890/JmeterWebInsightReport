@@ -31,7 +31,7 @@ seconds, still split correctly. The window is one request: nothing older is held
 | `message` | tag `error` |
 | `user`, `iteration` | `VU <vu>`, `iter` from `metadata` |
 | `method`, `url` | tags |
-| `timings` | `http_req_blocked`, `_connecting`, `_tls_handshaking`, `_sending`, `_waiting`, `_receiving` |
+| `timings` | `http_req_blocked`, `_connecting`, `_tls_handshaking`, `_sending`, `_waiting`, `_receiving`, to the hundredth of a ms |
 | `parent` | the current pass of the innermost group in the `group` tag path (`::A::B`) of that vu and iter |
 
 - Each redirect hop is its own request, as k6 records it.

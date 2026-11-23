@@ -242,7 +242,7 @@ public final class K6Results {
             for (Map.Entry<String, String> t : TIMINGS.entrySet()) {
                 Double d = v.get(t.getKey());
                 if (d != null) {
-                    s.timing(t.getValue(), (long) Math.rint(d));
+                    s.timing(t.getValue(), d);
                 }
             }
             Node n = new Node(false);

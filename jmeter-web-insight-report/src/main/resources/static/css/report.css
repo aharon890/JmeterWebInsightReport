@@ -3724,7 +3724,9 @@ body.dark-mode .wir-status-menu { box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5); }
 
 /* The client filter bar does nothing to a server series (D4). */
 body.wir-on-server-tab #filterBar,
-body.wir-on-server-tab .filter-bar-toggle-wrapper {
+body.wir-on-server-tab .filter-bar-toggle-wrapper,
+body.wir-on-tool-tab #filterBar,
+body.wir-on-tool-tab .filter-bar-toggle-wrapper {
     display: none;
 }
 
@@ -4379,3 +4381,7 @@ body.dark-mode .wir-gate-badge {
 .wir-gate-breach {
     margin: 4px 0;
 }
+
+/* The tool's own tab (spec 001): k6's own pass and fail, in its words, never a verdict badge */
+.wir-tool-passed { color: var(--color-success, #16a34a); }
+.wir-tool-failed { color: var(--color-error, #dc2626); font-weight: 600; }

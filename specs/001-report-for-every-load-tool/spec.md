@@ -64,6 +64,10 @@ Dependencies.
     included. No new setting.
 12. **The CI/CD JSON names the tool only on non-JMeter runs** (answered 2026-11-23): `"tool": {"name", "version"}`.
     A JMeter run's JSON stays as today, so no golden and no pipeline changes.
+13. **k6's response time definition is explained in the docs, not on the page** (answered 2026-11-23, during US3):
+    a k6 request's time is k6's `http_req_duration` (sending, waiting, receiving), without the blocked, connecting and
+    TLS time JMeter's elapsed counts. The "k6 and other load tools" docs page says so, and the k6 tab shows those parts
+    as their own rows; the report adds no note to the Requests table or the Notes tab.
 
 ## What was checked (2026-11-23)
 

@@ -41,7 +41,7 @@ fields, validation, and what each field means per tool. Revised on 2026-11-23 af
 | `bytes`, `sentBytes`, `latency`, `connect` | integer | no | Absent: the JMeter feeders keep today's defaults, and the page says "not measured" only for fields in `Run.notMeasured`. |
 | `threads` | integer | no | Active threads when it ended (JMeter's allThreads). Fed to the engine only when above 0, as the JTL path does today. |
 | `url`, `method` | string | no | As recorded. |
-| `timings` | object of integer ms | no | k6's `blocked`, `connecting`, `tlsHandshaking`, `sending`, `waiting`, `receiving`. |
+| `timings` | object of numbers, ms to the hundredth | no | k6's `blocked`, `connecting`, `tlsHandshaking`, `sending`, `waiting`, `receiving`. Kept to 0.01 ms, because most of them are below a millisecond: whole milliseconds read 0 for four of the six on K1 (revised 2026-11-23, US3). |
 | `responseBody` | string | no | A failed sample's response body, exactly as the report carries it: failed samples only, cut at `webinsight.error.body.maxsize` (decision 11). Only JMeter's listener path has bodies: a JTL and k6 have none. |
 
 **Response bodies (decision 11):** run data carries exactly the bodies the report carries, so a report rebuilt from a

@@ -45,7 +45,23 @@ var TOTAL_SAMPLER_NAME = '\u03A3 Total';
    group together, as the Max Threads tile counts them. JMeter's Active Threads Over Time draws each
    thread group's mean instead and has no all-groups line, so this one is named for what it is, and a
    window above 1 s takes its seconds' maximum, not the mean of their maxima. */
-var MAX_THREADS_SERIES = 'Max Active Threads';
+/* The page's words (spec 001, contracts/page-words.md): JMeter's on a JMeter run, the tool's own on another
+   tool's run (Requests, VU, Group on k6). One table, templates/page-words.json, decides them: the template puts the
+   run's column in window.WIR_WORDS before this script runs, and the node harness hands in JMeter's. A key the table
+   lacks reads as itself, and js-unit's page-words test fails on it. */
+function W(key) {
+    var words = (typeof window !== 'undefined' && window.WIR_WORDS) || null;
+    return words && words[key] != null ? words[key] : key;
+}
+
+/* Whether the run's tool records this sample field (data-model.md Run.notMeasured): k6 records no bytes, latency or
+   connect time per request. A field it does not record reads "not measured", never 0 (FR-008). */
+function isNotMeasured(field) {
+    var nm = (typeof window !== 'undefined' && window.WIR_NOT_MEASURED) || null;
+    return !!nm && nm.indexOf(field) >= 0;
+}
+
+var MAX_THREADS_SERIES = W('maxActiveThreads');
 
 /* Transaction Controller children visibility — false = hide children (like JMeter native) */
 var showTransactionChildren = false;
@@ -866,6 +882,8 @@ function switchTab(tabId) {
        chartGranularity (SF39); it used to be, which made this sentence false. */
     if (document.body && document.body.classList) {
         document.body.classList.toggle('wir-on-server-tab', tabId === 'server');
+        /* nor does it do anything to the tool's own measures */
+        document.body.classList.toggle('wir-on-tool-tab', tabId === 'tool');
     }
 
     setTimeout(function () {
@@ -1416,7 +1434,8 @@ function sigmaTotalCellTexts(t) {
     return [wholeNumberText(t.samples), wholeNumberText(t.errors), twoDecimalsText(t.errorPct) + '%',
         wholeNumberText(t.mean), wholeNumberText(t.median), wholeNumberText(t.p90), wholeNumberText(t.p95),
         wholeNumberText(t.p99), wholeNumberText(t.min), wholeNumberText(t.max), formatRate(t.throughput),
-        twoDecimalsText(t.receivedKBs), twoDecimalsText(t.sentKBs)];
+        isNotMeasured('bytes') ? W('notMeasured') : twoDecimalsText(t.receivedKBs),
+        isNotMeasured('sentBytes') ? W('notMeasured') : twoDecimalsText(t.sentKBs)];
 }
 
 /**
@@ -1774,7 +1793,7 @@ function initTimelineChart(domId, data) {
 function handleEmptySamplers(ctx, series) {
     if (series.length === 0 && ctx.data.perSamplerSeries && getVisibleSamplerNames().length === 0 && !isTotalVisible()) {
         ctx.chartDom.style.height = '80px';
-        showNoData(ctx.chartDom, 'No samplers selected.');
+        showNoData(ctx.chartDom, 'No ' + W('samplers') + ' selected.');
         return true;
     }
     return false;
@@ -1873,7 +1892,7 @@ function initSummaryResponseTimeChart(data) {
     var maxRT = getMaxFromSeries(rtSeries);
     var yAxes = [responseTimeYAxis(maxRT, 'Response Time')];
     if (hasThreads) {
-        yAxes.push({ type: 'value', name: 'Threads', min: 0, splitLine: { show: false } });
+        yAxes.push({ type: 'value', name: W('Threads'), min: 0, splitLine: { show: false } });
     }
 
     injectMarkLines(series, data, 'responseTime');
@@ -1932,7 +1951,7 @@ function initResponseTimeChart(data) {
     var maxRT = getMaxFromSeries(rtSeries);
     var yAxes = [responseTimeYAxis(maxRT, 'Response Time')];
     if (hasThreads) {
-        yAxes.push({ type: 'value', name: 'Threads', min: 0, splitLine: { show: false } });
+        yAxes.push({ type: 'value', name: W('Threads'), min: 0, splitLine: { show: false } });
     }
 
     injectMarkLines(series, data, 'responseTime');
@@ -2000,7 +2019,7 @@ function initHeatmapChart(data) {
     if (heatData.length === 0) {
         disposeLastChart(chart);
         chartDom.style.height = '80px';
-        showNoData(chartDom, 'No heatmap data for selected samplers.');
+        showNoData(chartDom, 'No heatmap data for selected ' + W('samplers') + '.');
         return;
     }
 
@@ -2169,6 +2188,11 @@ function initErrorRateChart(data) {
 function initBytesThroughputChart(data) {
     var ctx = initTimelineChart('bytes-throughput-chart', data);
     if (!ctx) return;
+    if (isNotMeasured('bytes') && isNotMeasured('sentBytes')) {
+        ctx.chartDom.style.height = '80px';
+        showNoData(ctx.chartDom, W('bytesNotMeasured'));
+        return;
+    }
 
     var perSampler = data.perSamplerSeries;
     if (!perSampler) {
@@ -2230,7 +2254,7 @@ function initBytesThroughputChart(data) {
     if (series.length === 0) {
         disposeLastChart(chart);
         chartDom.style.height = '80px';
-        showNoData(chartDom, 'No bytes throughput data for selected samplers.');
+        showNoData(chartDom, 'No bytes throughput data for selected ' + W('samplers') + '.');
         return;
     }
 
@@ -2337,6 +2361,11 @@ function connectLatencyBreakdown(perSampler, names, n) {
 function initConnectLatencyChart(data) {
     var ctx = initTimelineChart('connect-latency-chart', data);
     if (!ctx) return;
+    if (isNotMeasured('connect') && isNotMeasured('latency')) {
+        ctx.chartDom.style.height = '80px';
+        showNoData(ctx.chartDom, W('latencyNotMeasured'));
+        return;
+    }
 
     var perSampler = data.perSamplerSeries;
     if (!perSampler) {
@@ -2371,7 +2400,7 @@ function initConnectLatencyChart(data) {
 
     if (!hasData) {
         chartDom.style.height = '80px';
-        showNoData(chartDom, 'No connect/latency breakdown data for selected samplers.');
+        showNoData(chartDom, 'No connect/latency breakdown data for selected ' + W('samplers') + '.');
         return;
     }
 
@@ -2477,8 +2506,7 @@ function initResponseCodesChart(data) {
     });
 
     /* JMeter's chart is of the whole run, so the sampler filter cannot narrow it: said under it. */
-    setTruncationNote(chartDom, 'Every response of every sampler, per code, as JMeter\'s Codes per Second '
-        + 'counts them: the sampler filter does not apply, and a transaction\'s own result is not a response.');
+    setTruncationNote(chartDom, W('responseCodesNote'));
 }
 
 /* ============================================================
@@ -2496,7 +2524,7 @@ function initPercentileBarChart(data) {
 
     if (visibleSamplers.length === 0 && !isTotalVisible()) {
         chartDom.style.height = '80px';
-        showNoData(chartDom, 'No samplers selected.');
+        showNoData(chartDom, 'No ' + W('samplers') + ' selected.');
         return;
     }
 
@@ -2628,7 +2656,7 @@ function initScatterChart(data) {
     if (series.length === 0) {
         disposeLastChart(chart);
         chartDom.style.height = '80px';
-        showNoData(chartDom, 'No scatter data for selected samplers.');
+        showNoData(chartDom, 'No scatter data for selected ' + W('samplers') + '.');
         return;
     }
 
@@ -2939,7 +2967,7 @@ function setTruncationNote(chartDom, message) {
  * applying. */
 function appendTruncationNote(chartDom, full) {
     setTruncationNote(chartDom, full
-        ? 'Showing all errors (detail capped at 500; sampler filter not applied here).'
+        ? 'Showing all errors (detail capped at 500; ' + W('sampler') + ' filter not applied here).'
         : null);
 }
 
@@ -3004,7 +3032,7 @@ function buildErrorSummaryTotalRow() {
     var errors = (globalChartData && globalChartData.requestErrorCount) || every;
     var samples = (globalChartData && globalChartData.requestSampleCount) || 0;
     var share = function (of) { return of > 0 ? (count * 100.0 / of).toFixed(2) + '%' : ''; };
-    var labelCol = col['Sampler'] !== undefined ? col['Sampler'] : 0;
+    var labelCol = col[W('Sampler')] !== undefined ? col[W('Sampler')] : 0;
 
     var tr = document.createElement('tr');
     tr.className = 'error-summary-total';
@@ -3052,7 +3080,7 @@ function initErrorByTypeChart(data) {
     var codeMap = codeCounts.map;
     if (Object.keys(codeMap).length === 0) {
         chartDom.style.height = '80px';
-        showNoData(chartDom, 'No errors for selected samplers.');
+        showNoData(chartDom, 'No errors for selected ' + W('samplers') + '.');
         return;
     }
     chartDom.style.height = '300px';
@@ -3133,7 +3161,7 @@ function initErrorBySamplerChart(data) {
     var samplerMap = samplerCounts.map;
     if (Object.keys(samplerMap).length === 0) {
         chartDom.style.height = '80px';
-        showNoData(chartDom, 'No errors for selected samplers.');
+        showNoData(chartDom, 'No errors for selected ' + W('samplers') + '.');
         return;
     }
     chartDom.style.height = '300px';
@@ -3182,12 +3210,12 @@ function initErrorTimelineChart(data) {
     var filtered = getFilteredErrorRecords(data);
     if (filtered.length === 0) {
         chartDom.style.height = '80px';
-        showNoData(chartDom, 'No errors for selected samplers.');
+        showNoData(chartDom, 'No errors for selected ' + W('samplers') + '.');
         /* Keep the caption when the records are truncated. "No errors for selected samplers"
          * is only true of the 500 kept records — clearing the note here told the reader there
          * were no errors at all, which is the opposite of what truncation means. */
         setTruncationNote(chartDom, truncated
-            ? 'Only the first 500 errors are kept, and none of them belong to the selected samplers — '
+            ? 'Only the first 500 errors are kept, and none of them belong to the selected ' + W('samplers') + ' — '
               + 'later errors are not shown here.'
             : null);
         return;
@@ -4174,7 +4202,7 @@ function getChartTheme() {
  * ============================================================ */
 
 /* The Aggregate Report's columns (StatGraphVisualizer), Sent KB/s included (B8), plus Apdex. */
-var COLUMN_NAMES = ['Sampler', 'Samples', 'Errors', 'Error %', 'Mean (ms)',
+var COLUMN_NAMES = [W('Sampler'), 'Samples', 'Errors', 'Error %', 'Mean (ms)',
     'Median (ms)', 'P90 (ms)', 'P95 (ms)', 'P99 (ms)', 'Min (ms)', 'Max (ms)',
     'Throughput', 'Recv KB/s', 'Sent KB/s', 'Apdex'];
 
@@ -4705,7 +4733,7 @@ var DETAIL_CHART_RENDERERS = {
             { key: 'latency', name: 'Latency', color: '#8b5cf6' },
             { key: 'responseTime', name: 'Response Time', color: '#3b82f6' }
         ],
-        noDataMsg: 'No data', showLegend: true, yAxisName: 'ms'
+        noDataMsg: 'No data', showLegend: true, yAxisName: 'ms', notMeasured: ['connect', 'latency']
     },
     percentiles: {
         metrics: [
@@ -4723,6 +4751,10 @@ function renderDetailTimeSeries(samplerName, containerId, def) {
     var chartDom = document.getElementById(containerId);
     if (!chartDom || !globalChartData) return;
 
+    if (def.notMeasured && def.notMeasured.every(isNotMeasured)) {
+        showNoData(chartDom, W('latencyNotMeasured'), true);
+        return;
+    }
     var perSampler = globalChartData.perSamplerSeries;
     if (!perSampler || !perSampler[samplerName]) {
         showNoData(chartDom, def.noDataMsg, true);
@@ -4835,6 +4867,10 @@ function initDetailHistogram(samplerName, containerId) {
 function initDetailBytes(samplerName, containerId) {
     var chartDom = document.getElementById(containerId);
     if (!chartDom || !globalChartData) return;
+    if (isNotMeasured('bytes') && isNotMeasured('sentBytes')) {
+        showNoData(chartDom, W('bytesNotMeasured'), true);
+        return;
+    }
 
     /* Show received/sent byte stats from sampler data */
     var sampler = null;
@@ -5569,8 +5605,8 @@ function copySummaryAsHtml() {
     var top5Rows = document.querySelectorAll('#tab-summary .top-sampler-row');
     var top5Html = '';
     if (top5Rows.length > 0) {
-        top5Html = '<h3>Top 5 Slowest Samplers</h3><table border="1" cellpadding="4" cellspacing="0" style="border-collapse:collapse;">' +
-            '<tr><th>#</th><th>Sampler</th><th>P95</th><th>Mean</th></tr>';
+        top5Html = '<h3>Top 5 Slowest ' + W('Samplers') + '</h3><table border="1" cellpadding="4" cellspacing="0" style="border-collapse:collapse;">' +
+            '<tr><th>#</th><th>' + W('Sampler') + '</th><th>P95</th><th>Mean</th></tr>';
         top5Rows.forEach(function (row) {
             var rank = row.querySelector('.top-sampler-rank');
             var name = row.querySelector('.top-sampler-name');
@@ -7484,7 +7520,7 @@ function initWhatChanged(data) {
     /* New samplers */
     if (newSamplers.length > 0) {
         html += '<div class="what-changed-line what-changed-new">';
-        html += '<span class="status-badge badge-info" style="font-size:0.65rem;padding:2px 8px;margin-right:6px;">New samplers (' + newSamplers.length + ')</span>';
+        html += '<span class="status-badge badge-info" style="font-size:0.65rem;padding:2px 8px;margin-right:6px;">New ' + W('samplers') + ' (' + newSamplers.length + ')</span>';
         var topNew = newSamplers.slice(0, 3);
         var newNames = topNew.map(function (d) {
             return escapeHtml(truncateName(d.name));
@@ -7891,38 +7927,43 @@ function fmtNum(v, decimals) {
     return decimals != null ? Number(v).toFixed(decimals) : String(v);
 }
 
+/* A CSV cell for a sample field: "not measured" where the run's tool does not record it (FR-008). */
+function measuredOr(field, text) {
+    return isNotMeasured(field) ? W('notMeasured') : text;
+}
+
 function exportSamplerStatsCsv() {
     if (!globalChartData || !globalChartData.samplers) return;
-    var headers = ['Sampler', 'Samples', 'Errors', 'Error %', 'Mean (ms)', 'Median (ms)',
+    var headers = [W('Sampler'), 'Samples', 'Errors', 'Error %', 'Mean (ms)', 'Median (ms)',
         'P90 (ms)', 'P95 (ms)', 'P99 (ms)', 'Min (ms)', 'Max (ms)', 'Std Dev',
         'Throughput (/s)', 'Received B/s', 'Sent B/s', 'Avg Connect (ms)', 'Avg Latency (ms)', 'Apdex'];
     var rows = globalChartData.samplers.map(function (s) {
         return [s.name, s.count, s.errorCount, fmtNum(s.errorRate, 2),
             fmtNum(s.mean, 2), fmtNum(s.median, 2), fmtNum(s.p90, 2), fmtNum(s.p95, 2),
             fmtNum(s.p99, 2), fmtNum(s.min, 2), fmtNum(s.max, 2), fmtNum(s.stdDev, 2),
-            fmtNum(s.throughput, 2), fmtNum(s.receivedBytesPerSec, 2),
-            fmtNum(s.sentBytesPerSec, 2), fmtNum(s.meanConnectTime, 2), fmtNum(s.meanLatency, 2),
-            fmtNum(s.apdex, 2)];
+            fmtNum(s.throughput, 2), measuredOr('bytes', fmtNum(s.receivedBytesPerSec, 2)),
+            measuredOr('sentBytes', fmtNum(s.sentBytesPerSec, 2)), measuredOr('connect', fmtNum(s.meanConnectTime, 2)),
+            measuredOr('latency', fmtNum(s.meanLatency, 2)), fmtNum(s.apdex, 2)];
     });
-    downloadCsvFile('sampler-statistics.csv', buildCsvFromArrays(headers, rows));
+    downloadCsvFile(W('sampler') + '-statistics.csv', buildCsvFromArrays(headers, rows));
 }
 
 function exportTop5SlowestCsv() {
     if (!globalChartData || !globalChartData.samplers) return;
     var sorted = globalChartData.samplers.slice().sort(function (a, b) { return (b.p95 || 0) - (a.p95 || 0); });
     var top5 = sorted.slice(0, 5);
-    var headers = ['Rank', 'Sampler', 'P95 (ms)', 'Mean (ms)', 'P99 (ms)', 'Samples', 'Error %'];
+    var headers = ['Rank', W('Sampler'), 'P95 (ms)', 'Mean (ms)', 'P99 (ms)', 'Samples', 'Error %'];
     var rows = top5.map(function (s, i) {
         return [i + 1, s.name, fmtNum(s.p95, 2), fmtNum(s.mean, 2), fmtNum(s.p99, 2),
             s.count, fmtNum(s.errorRate, 2)];
     });
-    downloadCsvFile('top5-slowest-samplers.csv', buildCsvFromArrays(headers, rows));
+    downloadCsvFile('top5-slowest-' + W('samplers') + '.csv', buildCsvFromArrays(headers, rows));
 }
 
 function exportErrorSummaryCsv() {
     if (!globalChartData) return;
     var records = globalChartData.errorSummaries ? requestErrorSummaries(globalChartData) : (globalChartData.errorsByType || []);
-    var headers = ['Sampler', 'Response Code', 'Type of Error', 'Error Class', 'Response Message', 'Count',
+    var headers = [W('Sampler'), 'Response Code', 'Type of Error', 'Error Class', 'Response Message', 'Count',
         '% of Errors', '% of All Samples'];
     var rows = records.map(function (e) {
         return [e.samplerName || e.sampler || '', e.responseCode || e.code || '', e.errorType || '',
@@ -7938,8 +7979,8 @@ function exportErrorSummaryCsv() {
 
 function exportErrorDetailsCsv() {
     if (!globalChartData || !globalChartData.errorRecords) return;
-    var headers = ['Timestamp', 'Sampler', 'Response Code', 'Type of Error', 'Error Class', 'Response Message',
-        'Thread', 'URL', 'Request Headers', 'Response Body'];
+    var headers = ['Timestamp', W('Sampler'), 'Response Code', 'Type of Error', 'Error Class', 'Response Message',
+        W('Thread'), 'URL', 'Request Headers', 'Response Body'];
     var rows = globalChartData.errorRecords.map(function (e) {
         var ts = e.timestamp ? new Date(e.timestamp).toISOString() : '';
         return [ts, e.samplerName || e.sampler || '', e.responseCode || e.code || '', e.errorType || '',
@@ -10727,7 +10768,7 @@ WIR.asserts = (function () {
         /* By what a target resolves to, the whole run as OVERALL_KEY — first, then the samplers —
            and "Whole run" only as that option's label (REV-4). The values were the resolved labels,
            so a sampler called "Whole run" and the run were one option, which showed both's rules. */
-        { key: 'sampler', kind: 'select', label: 'Judges sampler', cls: 'wir-filter-select-wide',
+        { key: 'sampler', kind: 'select', label: 'Judges ' + W('sampler'), cls: 'wir-filter-select-wide',
           values: function () {
               var keys = distinctValues(function (r) { return resolvedKeys(r); });
               var whole = keys.indexOf(OVERALL_KEY);
@@ -10744,7 +10785,7 @@ WIR.asserts = (function () {
     var REASON_PHRASE = WIR.status.REASON_PHRASE;
 
     var TARGET_KIND_LABEL = {
-        sampler: 'One sampler', samplers: 'Sampler list', match: 'Pattern', overall: 'Whole run'
+        sampler: 'One ' + W('sampler'), samplers: W('Sampler') + ' list', match: 'Pattern', overall: 'Whole run'
     };
 
     /* Every sortable header must appear here: sortBy() returns immediately on a column this
@@ -11626,7 +11667,7 @@ WIR.asserts = (function () {
                 '', 'wir-num') +
             headerCell('budget', 'Budget', 'Sort by how much of the fail band was used',
                 '', 'wir-num') +
-            headerCell('matches', 'Matches', 'Sort by how many samplers the rule judged', '') +
+            headerCell('matches', 'Matches', 'Sort by how many ' + W('samplers') + ' the rule judged', '') +
             '<th></th>' +
             '</tr></thead><tbody>' +
             visible.map(ruleRow).join('') +
@@ -11735,7 +11776,7 @@ WIR.asserts = (function () {
     function filterBar() {
         return '<div class="wir-filter-bar">' +
             '<input type="text" class="wir-rules-search" id="assertsSearch"' +
-            ' placeholder="Filter rules — id, description, target, sampler, metric…"' +
+            ' placeholder="Filter rules — id, description, target, ' + W('sampler') + ', metric…"' +
             ' aria-label="Filter rules" value="' + esc(state.filters.q) + '"' +
             ' oninput="WIR.asserts.setQuery(this.value)"/>' +
             statusChips() +
@@ -11985,7 +12026,7 @@ WIR.asserts = (function () {
             (rule.description ? '<div class="wir-rule-desc">' + esc(rule.description) + '</div>' : '') +
             '</td>' +
             '<td><span class="wir-kind wir-kind-' + esc(rule.target.kind) + '">' +
-            esc(rule.target.kind) + '</span>' +
+            esc(kindWord(rule.target.kind)) + '</span>' +
             '<code class="wir-target" title="' + esc(rule.target.text) + '">' +
             esc(rule.target.text) + '</code></td>' +
             '<td><code>' + esc(rule.metric) + '</code></td>' +
@@ -12118,7 +12159,7 @@ WIR.asserts = (function () {
             '<button type="button" class="wir-btn" id="emptyGenerateBtn" ' +
             'onclick="WIR.asserts.generate()">Generate from this run' + ELLIPSIS + '</button>' +
             '</div>' +
-            '<p class="wir-muted">Or press the ' + SEED_GLYPH + ' beside any number in Sampler ' +
+            '<p class="wir-muted">Or press the ' + SEED_GLYPH + ' beside any number in ' + W('Sampler') + ' ' +
             'Statistics to start from a value you are already looking at. Nothing is saved until ' +
             'you download <code>report-annotations.json</code>.</p>' +
             '</div>';
@@ -13699,8 +13740,8 @@ WIR.asserts = (function () {
      */
     function validateEditor(rule) {
         if (!rule.metric) return 'Pick a metric.';
-        if (editor.mode === 'sampler' && !editor.sampler) return 'Pick a sampler.';
-        if (editor.mode === 'samplers' && !editor.samplers.length) return 'Pick at least one sampler.';
+        if (editor.mode === 'sampler' && !editor.sampler) return 'Pick a ' + W('sampler') + '.';
+        if (editor.mode === 'samplers' && !editor.samplers.length) return 'Pick at least one ' + W('sampler') + '.';
         if (editor.mode === 'match' && !editor.pattern.trim()) return 'Enter a pattern.';
         if (editor.mode === 'match' && compileGlob(editor.pattern) === null) {
             return 'That pattern is not a valid expression.';
@@ -14292,7 +14333,7 @@ WIR.asserts = (function () {
 
     function targetSection(overall) {
         var modes = [
-            { key: 'sampler', label: 'One sampler' },
+            { key: 'sampler', label: 'One ' + W('sampler') },
             { key: 'samplers', label: 'Several' },
             { key: 'match', label: 'Pattern' },
             { key: 'overall', label: 'Whole run' }
@@ -14308,7 +14349,7 @@ WIR.asserts = (function () {
         var body;
         if (overall) {
             body = '<p class="wir-muted">The run as a whole: merged percentiles, total ' +
-                'throughput, overall error rate, apdex, duration, max threads.</p>';
+                'throughput, overall error rate, apdex, duration, ' + W('maxThreadsLower') + '.</p>';
         } else if (editor.mode === 'match') {
             body = '<input type="text" class="wir-input" id="editorPattern" ' +
                 'placeholder="GET /api/*   or   regex:^POST /(a|b)" value="' +
@@ -14356,7 +14397,7 @@ WIR.asserts = (function () {
                 'Matches nothing in this run, so this rule would judge nothing.</div>';
         }
         return '<div class="wir-preview-ok" id="editorMatchPreview">Matches ' + names.length +
-            ' sampler' + (names.length === 1 ? '' : 's') + ' in this run: ' +
+            ' ' + (names.length === 1 ? W('sampler') : W('samplers')) + ' in this run: ' +
             names.slice(0, 4).map(esc).join(', ') +
             (names.length > 4 ? ', …' : '') + '</div>';
     }
@@ -14783,6 +14824,12 @@ WIR.asserts = (function () {
      * have to keep in step. The button carries its own metric, so it survives the
      * column drag-and-drop that moves whole cells around.
      */
+    /* A target kind as the reader's words say it: the file's "sampler" and "samplers" keys are a request and
+       requests on a k6 run (spec 001); the others are the same for every tool. */
+    function kindWord(kind) {
+        return kind === 'sampler' ? W('sampler') : kind === 'samplers' ? W('samplers') : kind;
+    }
+
     function decorateSamplerTable() {
         var table = document.getElementById('samplerTable');
         if (!table || table.getAttribute('data-assert-decorated')) return;
@@ -14800,6 +14847,8 @@ WIR.asserts = (function () {
             row.querySelectorAll('td').forEach(function (cell, i) {
                 var metric = metricByIndex[i];
                 if (!metric) return;
+                /* A measure the run's tool does not record has no number to assert on (FR-008) */
+                if (cell.textContent.trim() === W('notMeasured')) return;
                 /* On the cell, not only on the button: refreshCellVerdicts has to find every
                    assertable cell on every render, including the ones whose rule was just
                    deleted and which therefore have nothing but a ⊕ left in them. */
@@ -14809,7 +14858,7 @@ WIR.asserts = (function () {
                 button.type = 'button';
                 button.className = 'wir-seed-btn';
                 button.textContent = SEED_GLYPH;
-                button.title = 'Assert ' + metric + ' of this sampler';
+                button.title = 'Assert ' + metric + ' of this ' + W('sampler');
                 button.setAttribute('data-seed-metric', metric);
                 button.setAttribute('data-seed-sampler', sampler);
                 button.addEventListener('click', function (event) {
@@ -14862,7 +14911,7 @@ WIR.asserts = (function () {
             button.type = 'button';
             button.className = 'wir-seed-btn';
             button.textContent = SEED_GLYPH;
-            button.title = 'Assert ' + metric + ' of this sampler';
+            button.title = 'Assert ' + metric + ' of this ' + W('sampler');
             /* Listener, not an inline onclick: a sampler name can contain quotes. */
             button.addEventListener('click', function (event) {
                 event.stopPropagation();
@@ -14960,7 +15009,7 @@ WIR.asserts = (function () {
             if (!cell || !CELL_GLYPH[cell.worst]) {
                 if (marker) marker.remove();
                 td.removeAttribute('data-asserted');
-                if (seed) seed.title = 'Assert ' + metric + ' of this sampler';
+                if (seed) seed.title = 'Assert ' + metric + ' of this ' + W('sampler');
                 return;
             }
 
@@ -14993,7 +15042,7 @@ WIR.asserts = (function () {
             td.setAttribute('data-asserted', cell.worst);
             /* An unqualified "Assert p95" beside a cell that already has one is the invitation
                to the duplicate this whole function exists to prevent. */
-            if (seed) seed.title = 'Add another assert on ' + metric + ' of this sampler';
+            if (seed) seed.title = 'Add another assert on ' + metric + ' of this ' + W('sampler');
         });
     }
 
@@ -15159,7 +15208,7 @@ WIR.asserts = (function () {
             }
             badge.className = 'assert-badge-mini assert-badge-' + verdict.toLowerCase();
             badge.textContent = chipLabel(verdict);
-            badge.title = 'Click to see the rules judging this sampler';
+            badge.title = 'Click to see the rules judging this ' + W('sampler');
             badge.style.cursor = 'pointer';
             if (!badge.getAttribute('data-assert-bound')) {
                 badge.setAttribute('data-assert-bound', '1');
@@ -15232,7 +15281,7 @@ WIR.asserts = (function () {
                     '<code class="wir-rule-id">' + esc(line.id) + '</code>' +
                     '<span>' + esc(line.text) + '</span></div>';
             }).join('')
-            : '<div class="wir-muted">No rules target this sampler — it is reported, not judged.</div>';
+            : '<div class="wir-muted">No rules target this ' + W('sampler') + ' — it is reported, not judged.</div>';
 
         detail.innerHTML = '<td colspan="' + columns + '">' + body + '</td>';
         row.parentNode.insertBefore(detail, row.nextSibling);
@@ -15483,11 +15532,11 @@ WIR.asserts = (function () {
         }).join('');
 
         return '<table class="wir-wz-table" id="wizardSamplerTable">' +
-            '<thead><tr><th></th><th>Sampler</th><th class="wir-num">Samples</th>' +
+            '<thead><tr><th></th><th>' + W('Sampler') + '</th><th class="wir-num">Samples</th>' +
             '<th class="wir-num">Err %</th><th class="wir-num">p95</th>' +
             '<th class="wir-num">Thr</th></tr></thead><tbody>' +
             (rows || '<tr><td colspan="6" class="wir-muted wir-wz-none">' +
-                'No sampler matches that filter.</td></tr>') +
+                'No ' + W('sampler') + ' matches that filter.</td></tr>') +
             '</tbody></table>';
     }
 
@@ -15503,7 +15552,7 @@ WIR.asserts = (function () {
 
         return '<div class="wir-field">' +
             '<div class="wir-wz-head"><span class="wir-field-label" id="wizardSamplerCount">' +
-            'Samplers ' + MIDDOT + ' ' + chosen + ' of ' + all.length + ' selected</span>' +
+            W('Samplers') + ' ' + MIDDOT + ' ' + chosen + ' of ' + all.length + ' selected</span>' +
             '<span class="wir-wz-acts">' +
             '<button type="button" class="wir-link" id="wizardSamplersAll" ' +
             'onclick="WIR.asserts.pickWizardSamplers(\'all\')">All</button>' +
@@ -15516,7 +15565,7 @@ WIR.asserts = (function () {
             '</span></div>' +
             '<div class="wir-wz-box">' +
             '<div class="wir-wz-tools"><input type="text" id="wizardSamplerSearch" ' +
-            'class="wir-wz-search" placeholder="Filter samplers' + ELLIPSIS + '" ' +
+            'class="wir-wz-search" placeholder="Filter ' + W('samplers') + ELLIPSIS + '" ' +
             'value="' + esc(wizard.search) + '" ' +
             'oninput="WIR.asserts.setWizardSearch(this.value)"></div>' +
             '<div class="wir-wz-scroll" id="wizardSamplerRows">' + wizardSamplerRows() +
@@ -15534,15 +15583,12 @@ WIR.asserts = (function () {
      */
     function helperHintText(helpersOff) {
         return (helpersOff
-            ? '<strong>' + helpersOff + ' helper sampler' + (helpersOff === 1 ? '' : 's') +
-              ' unticked by default</strong> ' + EM_DASH + ' setUp, tearDown, Debug and ' +
-              'JSR223 samplers are rarely worth gating, and their numbers seed poor ' +
-              'thresholds. Tick any of them to include it. '
+            ? '<strong>' + helpersOff + ' helper ' + (helpersOff === 1 ? W('sampler') : W('samplers')) +
+              ' unticked by default</strong> ' + EM_DASH + ' ' + W('helperHintReason')
             : '') +
             /* It claimed every sampler was listed: wizardTargets leaves out Transaction Controller
                children, samplers the report hides by default and samplers with no samples. */
-            'Every top-level sampler with samples is listed; Transaction Controller children ' +
-            'and the samplers the report hides by default are not.';
+            W('wizardListed');
     }
 
     /** The metric picker: the engine's vocabulary, grouped by family. */
@@ -15581,7 +15627,7 @@ WIR.asserts = (function () {
             'onclick="WIR.asserts.pickWizardMetrics(\'none\')">None</button>' +
             '</span></div>' +
             '<div class="wir-wz-box" id="wizardMetrics">' + groups + '</div>' +
-            '<p class="wir-hint">Every metric the gate can evaluate for a sampler. Direction is ' +
+            '<p class="wir-hint">Every metric the gate can evaluate for a ' + W('sampler') + '. Direction is ' +
             'inferred: throughput, received KB/s and apdex seed as <em>fail below</em>, ' +
             'everything else as ' +
             '<em>fail above</em>.</p>' +
@@ -15644,7 +15690,7 @@ WIR.asserts = (function () {
                 ? 'Will create ' + preview.length + ' draft rule' +
                   (preview.length === 1 ? '' : 's') +
                   (wizard.shape === 'per-sampler'
-                      ? ' (' + nSamplers + ' sampler' + (nSamplers === 1 ? '' : 's') + ' ' +
+                      ? ' (' + nSamplers + ' ' + (nSamplers === 1 ? W('sampler') : W('samplers')) + ' ' +
                         TIMES + ' ' + nMetrics + ' metric' + (nMetrics === 1 ? '' : 's') + ')'
                       : '')
                 : 'Nothing selected yet') +
@@ -15655,7 +15701,7 @@ WIR.asserts = (function () {
                         esc(r.target.text) + '</code><span>' + esc(r.metric) + ' ' +
                         esc(describeCriteria(r)) + '</span></div>';
                 }).join('')
-                : '<div class="wir-muted">Pick at least one sampler and one metric.</div>') +
+                : '<div class="wir-muted">Pick at least one ' + W('sampler') + ' and one metric.</div>') +
             (preview.length > 3 ? '<div class="wir-muted">' + ELLIPSIS + ' and ' +
                 (preview.length - 3) + ' more</div>' : '') +
             (noWarn
@@ -15730,17 +15776,17 @@ WIR.asserts = (function () {
             '<button type="button" class="wir-seg' +
             (wizard.shape === 'per-sampler' ? ' wir-seg-active' : '') +
             '" id="wizardShapePerSampler" onclick="WIR.asserts.setWizard(\'shape\', \'per-sampler\')">' +
-            'Per sampler ' + TIMES + ' metric</button>' +
+            'Per ' + W('sampler') + ' ' + TIMES + ' metric</button>' +
             '<button type="button" class="wir-seg' +
             (wizard.shape === 'blanket' ? ' wir-seg-active' : '') +
             '" id="wizardShapeBlanket" onclick="WIR.asserts.setWizard(\'shape\', \'blanket\')">' +
             'One rule per metric, across the selection</button>' +
             '</div>' +
             '<p class="wir-hint">' + (wizard.shape === 'blanket'
-                ? 'One rule per metric, seeded from the worst value across the samplers you ' +
+                ? 'One rule per metric, seeded from the worst value across the ' + W('samplers') + ' you ' +
                   'select. Seeded from the best it would fail the run the moment it was written.'
-                : 'One rule per selected sampler per selected metric, each seeded from that ' +
-                  'sampler’s own number.') + '</p>' +
+                : 'One rule per selected ' + W('sampler') + ' per selected metric, each seeded from that ' +
+                  W('sampler') + '’s own number.') + '</p>' +
             '</div>' +
             wizardSamplerBlock() +
             wizardMetricBlock() +
@@ -15836,7 +15882,7 @@ WIR.asserts = (function () {
 
         var samplerCount = document.getElementById('wizardSamplerCount');
         if (samplerCount) {
-            samplerCount.textContent = 'Samplers ' + MIDDOT + ' ' + wizardSelected().length +
+            samplerCount.textContent = W('Samplers') + ' ' + MIDDOT + ' ' + wizardSelected().length +
                 ' of ' + all.length + ' selected';
         }
 
@@ -18096,8 +18142,7 @@ WIR.serverKpis = (function () {
         if (row.withheld) {
             return { cls: 'wir-withheld-row', text: 'Not re-judged — this series reached the page capped ('
                 + cappedText(series) + '), so a server assert the build did not judge as written here '
-                + 'cannot be judged in the browser without estimating. Download the file and '
-                + 'run jmeter -g with the same payload to judge it.' };
+                + 'cannot be judged in the browser without estimating. ' + W('serverRejudge') };
         }
         /* Step 1 of the choreography, or a refused payload: the assert is declared and has no
            collected series on this page to be judged against. Said per row, so the board can be
@@ -18429,7 +18474,7 @@ WIR.serverKpis = (function () {
        report (C-9). */
     function notCollectedHtml() {
         /* Quoted: Windows PowerShell splits an unquoted -Jwebinsight.report.x=y at the first dot. */
-        var regenerate = '"-Jwebinsight.report.servermetrics=<server-metrics.json>"';
+        var regenerate = W('serverDataOption');
         if (!state.declaredKpis.length) {
             /* A block holding nothing but a retired key (`kpis`, `packs`) reaches here with no
                component at all: the findings below say what is wrong, and a sentence claiming
@@ -18463,8 +18508,7 @@ WIR.serverKpis = (function () {
         }
         return '<p class="wir-empty">'
             + state.declaredKpis.length + esc(' server assert(s) were declared and none was judged — '
-            + 'no server data was given to this report. Add it as below: a CSV goes straight to '
-            + 'jmeter -g, Prometheus through wir-collect.')
+            + W('serverAddRoutes'))
             + '</p>' + finishHtml();
     }
 
@@ -18526,15 +18570,9 @@ WIR.serverKpis = (function () {
         }
         /* Three routes, the GUI's own first. The page cannot tell a GUI run from -n, and must name
            no local path (report_local_path), so the listener's field is named, never its value. */
-        html += '<li><strong>Add it to this run</strong>: in the JMeter GUI, set the Web Insight Report'
-            + ' listener’s <strong>Server data (CSV)</strong> field to the exported file and click'
-            + ' <strong>Rebuild report with server data</strong>. It rebuilds this report in place from the'
-            + ' run’s results file, so without response bodies. For a results file written by'
-            + ' <code>-l</code> or another listener: Tools › Generate HTML report with that file, a'
-            + ' properties file naming <code>webinsight.report.annotations</code> and'
-            + ' <code>webinsight.report.servermetrics</code> (forward slashes in paths) and a new output'
-            + ' folder. From any shell: <code>jmeter -g &lt;results.jtl&gt; -o &lt;new folder&gt; -q'
-            + ' run.properties</code>. Server data never changes the build’s exit code.</li></ol></div>';
+        /* The run's own tool decides the route (spec 001): the JMeter GUI and jmeter -g on a JMeter run,
+           build-report on any other tool's. A trusted sentence of the words table, never data. */
+        html += W('serverFinishRoute') + '</ol></div>';
         return html;
     }
 

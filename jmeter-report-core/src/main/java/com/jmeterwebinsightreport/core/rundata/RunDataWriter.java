@@ -121,8 +121,11 @@ public final class RunDataWriter implements Closeable {
         string("method", s.method);
         if (s.timings != null && !s.timings.isEmpty()) {
             gen.writeObjectFieldStart("timings");
-            for (Map.Entry<String, Long> t : s.timings.entrySet()) {
-                gen.writeNumberField(t.getKey(), t.getValue());
+            for (Map.Entry<String, Double> t : s.timings.entrySet()) {
+                // Hundredths written as such, with no float noise: 31.29, 0.15, 30
+                gen.writeFieldName(t.getKey());
+                gen.writeNumber(java.math.BigDecimal.valueOf(RunSample.hundredths(t.getValue()), 2)
+                        .stripTrailingZeros().toPlainString());
             }
             gen.writeEndObject();
         }

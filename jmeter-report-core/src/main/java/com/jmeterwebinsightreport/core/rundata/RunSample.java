@@ -64,8 +64,11 @@ public final class RunSample {
     public Integer threads;
     public String url;
     public String method;
-    /** A tool's timing parts in ms (k6's blocked, connecting, tlsHandshaking, sending, waiting, receiving). */
-    public Map<String, Long> timings;
+    /**
+     * A tool's timing parts in ms, to the hundredth (k6's blocked, connecting, tlsHandshaking, sending, waiting,
+     * receiving). Most of them are below a millisecond, so whole milliseconds would read 0 for them.
+     */
+    public Map<String, Double> timings;
     /** A failed sample's response body, as the report carries it (decision 11). */
     public String responseBody;
     /**
@@ -84,13 +87,18 @@ public final class RunSample {
         this.success = success;
     }
 
-    /** Adds one timing part, keeping the order the producer gives. */
-    public RunSample timing(String part, long millis) {
+    /** Adds one timing part, kept to the hundredth of a millisecond, in the order the producer gives. */
+    public RunSample timing(String part, double millis) {
         if (timings == null) {
             timings = new LinkedHashMap<>();
         }
-        timings.put(part, millis);
+        timings.put(part, hundredths(millis) / 100.0);
         return this;
+    }
+
+    /** A time in ms as whole hundredths of a millisecond, half up: the resolution timing parts are kept at. */
+    public static long hundredths(double millis) {
+        return Math.round(millis * 100);
     }
 
     public boolean isTransaction() {

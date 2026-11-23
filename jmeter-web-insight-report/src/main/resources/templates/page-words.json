@@ -1,0 +1,165 @@
+{
+  "_about": [
+    "The page's words per tool (spec 001, decision 7, contracts/page-words.md). One column per tool: jmeter is",
+    "today's text, exactly; k6 is k6's words; other is any other tool's, with {tool} its name. ThymeleafReportRenderer",
+    "puts the run's column in the template's context and in window.WIR_WORDS for report.js. A tool added later",
+    "(Gatling) adds a column here, with no other change. PageWordsTest holds every key to every column."
+  ],
+  "columns": [
+    "jmeter",
+    "k6",
+    "other"
+  ],
+  "words": {
+    "tool": {
+      "jmeter": "JMeter",
+      "k6": "k6",
+      "other": "{tool}"
+    },
+    "Samplers": {
+      "jmeter": "Samplers",
+      "k6": "Requests",
+      "other": "Requests"
+    },
+    "Sampler": {
+      "jmeter": "Sampler",
+      "k6": "Request",
+      "other": "Request"
+    },
+    "samplers": {
+      "jmeter": "samplers",
+      "k6": "requests",
+      "other": "requests"
+    },
+    "sampler": {
+      "jmeter": "sampler",
+      "k6": "request",
+      "other": "request"
+    },
+    "Thread": {
+      "jmeter": "Thread",
+      "k6": "VU",
+      "other": "User"
+    },
+    "Threads": {
+      "jmeter": "Threads",
+      "k6": "VUs",
+      "other": "Users"
+    },
+    "maxThreads": {
+      "jmeter": "Max Threads",
+      "k6": "Max VUs",
+      "other": "Max Users"
+    },
+    "maxThreadsLower": {
+      "jmeter": "max threads",
+      "k6": "max VUs",
+      "other": "max users"
+    },
+    "maxActiveThreads": {
+      "jmeter": "Max Active Threads",
+      "k6": "Max Active VUs",
+      "other": "Max Active Users"
+    },
+    "transactionController": {
+      "jmeter": "Transaction Controller",
+      "k6": "Group",
+      "other": "Transaction"
+    },
+    "showTransactionDetails": {
+      "jmeter": "Show transaction details",
+      "k6": "Show group details",
+      "other": "Show transaction details"
+    },
+    "hierarchyTitle": {
+      "jmeter": "Show the requests and nested transactions inside each Transaction Controller: in this list, on the charts, in the Errors tab's sampler filter and in the Samplers table",
+      "k6": "Show the requests and nested groups inside each group: in this list, on the charts, in the Errors tab's request filter and in the Requests table",
+      "other": "Show the requests and nested transactions inside each transaction: in this list, on the charts, in the Errors tab's request filter and in the Requests table"
+    },
+    "summaryTransactionNote": {
+      "jmeter": "Each transaction counts once, with its requests inside it, as JMeter's Aggregate Report in the test plan counts them. The Samplers table lists the requests under their transaction.",
+      "k6": "Each group pass counts once, with its requests inside it: its time is the sum of its requests' times. Numbers follow JMeter's Aggregate Report rules. The Requests table lists the requests under their group.",
+      "other": "Each transaction counts once, with its requests inside it. Numbers follow JMeter's Aggregate Report rules. The Requests table lists the requests under their transaction."
+    },
+    "meanTitle": {
+      "jmeter": "The mean response time, rounded to the nearest ms. JMeter's Aggregate Report shows the same mean with its decimals cut off (4.86 ms reads 4), its HTML report with two decimals (4.86).",
+      "k6": "The mean response time, rounded to the nearest ms. Numbers follow JMeter's Aggregate Report rules.",
+      "other": "The mean response time, rounded to the nearest ms. Numbers follow JMeter's Aggregate Report rules."
+    },
+    "errorsTransactionNote": {
+      "jmeter": "This tab counts failed requests, as JMeter's HTML report does: a transaction's own result is left out, because its failure is the failure of a request inside it. The Error Rate on the Summary tab counts failed transactions, as JMeter's Aggregate Report does.",
+      "k6": "This tab counts failed requests: a group pass's own result is left out, because its failure is the failure of a request inside it. The Error Rate on the Summary tab counts failed group passes too. Numbers follow JMeter's Aggregate Report rules.",
+      "other": "This tab counts failed requests: a transaction's own result is left out, because its failure is the failure of a request inside it. The Error Rate on the Summary tab counts failed transactions too. Numbers follow JMeter's Aggregate Report rules."
+    },
+    "errorTypeTitle": {
+      "jmeter": "As JMeter's HTML report words it: the code and message, or for a failed assertion its message",
+      "k6": "The response code and message",
+      "other": "The response code and message"
+    },
+    "errorGroupedTitle": {
+      "jmeter": "By sampler and type of error, as JMeter's HTML report groups errors",
+      "k6": "By request and type of error",
+      "other": "By request and type of error"
+    },
+    "responseCodesNote": {
+      "jmeter": "Every response of every sampler, per code, as JMeter's Codes per Second counts them: the sampler filter does not apply, and a transaction's own result is not a response.",
+      "k6": "Every response of every request, per code: the request filter does not apply, and a group pass's own result is not a response.",
+      "other": "Every response of every request, per code: the request filter does not apply, and a transaction's own result is not a response."
+    },
+    "helperHintReason": {
+      "jmeter": "setUp, tearDown, Debug and JSR223 samplers are rarely worth gating, and their numbers seed poor thresholds. Tick any of them to include it. ",
+      "k6": "setup, teardown and debug requests are rarely worth gating, and their numbers seed poor thresholds. Tick any of them to include it. ",
+      "other": "setup, teardown and debug requests are rarely worth gating, and their numbers seed poor thresholds. Tick any of them to include it. "
+    },
+    "wizardListed": {
+      "jmeter": "Every top-level sampler with samples is listed; Transaction Controller children and the samplers the report hides by default are not.",
+      "k6": "Every top-level request with samples is listed; requests inside a group and the requests the report hides by default are not.",
+      "other": "Every top-level request with samples is listed; requests inside a transaction and the requests the report hides by default are not."
+    },
+    "serverRejudge": {
+      "jmeter": "Download the file and run jmeter -g with the same payload to judge it.",
+      "k6": "Download the file and build the report again with the same server data to judge it.",
+      "other": "Download the file and build the report again with the same server data to judge it."
+    },
+    "serverDataOption": {
+      "jmeter": "\"-Jwebinsight.report.servermetrics=<server-metrics.json>\"",
+      "k6": "--servermetrics <server-metrics.json>",
+      "other": "--servermetrics <server-metrics.json>"
+    },
+    "serverAddRoutes": {
+      "jmeter": "no server data was given to this report. Add it as below: a CSV goes straight to jmeter -g, Prometheus through wir-collect.",
+      "k6": "no server data was given to this report. Add it as below: a CSV goes straight to build-report, Prometheus through wir-collect.",
+      "other": "no server data was given to this report. Add it as below: a CSV goes straight to build-report, Prometheus through wir-collect."
+    },
+    "serverFinishRoute": {
+      "jmeter": "<li><strong>Add it to this run</strong>: in the JMeter GUI, set the Web Insight Report listener’s <strong>Server data (CSV)</strong> field to the exported file and click <strong>Rebuild report with server data</strong>. It rebuilds this report in place from the run’s results file, so without response bodies. For a results file written by <code>-l</code> or another listener: Tools › Generate HTML report with that file, a properties file naming <code>webinsight.report.annotations</code> and <code>webinsight.report.servermetrics</code> (forward slashes in paths) and a new output folder. From any shell: <code>jmeter -g &lt;results.jtl&gt; -o &lt;new folder&gt; -q run.properties</code>. Server data never changes the build’s exit code.</li>",
+      "k6": "<li><strong>Add it to this run</strong>: build this report again from the same k6 files, with the same title (<code>webinsight.report.title</code>) and the server data: <code>java -jar jmeter-web-insight-report-&lt;version&gt;.jar build-report --from k6 --k6-results &lt;results.csv.gz&gt; --k6-summary &lt;summary.json&gt; --annotations &lt;annotations.json&gt; --servermetrics &lt;server.csv&gt; --out &lt;new folder&gt;</code>. Server data never changes the build’s exit code.</li>",
+      "other": "<li><strong>Add it to this run</strong>: build this report again from the same run data, with the server data: <code>java -jar jmeter-web-insight-report-&lt;version&gt;.jar build-report --run-data &lt;run-data.jsonl.gz&gt; --annotations &lt;annotations.json&gt; --servermetrics &lt;server.csv&gt; --out &lt;new folder&gt;</code>. Server data never changes the build’s exit code.</li>"
+    },
+    "notMeasured": {
+      "jmeter": "not measured",
+      "k6": "not measured",
+      "other": "not measured"
+    },
+    "bytesNotMeasured": {
+      "jmeter": "Bytes were not recorded for this run: not measured.",
+      "k6": "k6 does not measure bytes per request: not measured.",
+      "other": "{tool} does not record bytes per request: not measured."
+    },
+    "latencyNotMeasured": {
+      "jmeter": "Connect time and latency were not recorded for this run: not measured.",
+      "k6": "k6 does not measure connect time and latency per request: not measured. Its own timing parts are on the k6 tab.",
+      "other": "{tool} does not record connect time and latency per request: not measured."
+    },
+    "wholeSecondsNote": {
+      "jmeter": "This run's results file has whole-second times: each request's start and end are known to the second only, so the per-second figures and the run's window are approximate.",
+      "k6": "k6's results file has whole-second times (an older k6 file, written without K6_CSV_TIME_FORMAT=unix_milli): each request's start and end are known to the second only, so the per-second figures and the run's window are approximate.",
+      "other": "{tool}'s file has whole-second times: each request's start and end are known to the second only, so the per-second figures and the run's window are approximate."
+    },
+    "regressionThresholdsTitle": {
+      "jmeter": "Configure when a sampler is flagged as REGRESSION in the comparison table.\n\nEach metric defines a threshold: if the change exceeds it, the sampler is marked REGRESSION.\n\nP95/P99/Mean: percentage increase vs baseline (e.g., 10 = flag if P95 grew by more than 10%).\nError rate: absolute increase in error percentage (e.g., 2 = flag if errors grew by more than 2%).\nThroughput: percentage decrease vs baseline.\n\nSet to -1 to disable a metric. Click Apply to re-evaluate without regenerating the report.",
+      "k6": "Configure when a request is flagged as REGRESSION in the comparison table.\n\nEach metric defines a threshold: if the change exceeds it, the request is marked REGRESSION.\n\nP95/P99/Mean: percentage increase vs baseline (e.g., 10 = flag if P95 grew by more than 10%).\nError rate: absolute increase in error percentage (e.g., 2 = flag if errors grew by more than 2%).\nThroughput: percentage decrease vs baseline.\n\nSet to -1 to disable a metric. Click Apply to re-evaluate without regenerating the report.",
+      "other": "Configure when a request is flagged as REGRESSION in the comparison table.\n\nEach metric defines a threshold: if the change exceeds it, the request is marked REGRESSION.\n\nP95/P99/Mean: percentage increase vs baseline (e.g., 10 = flag if P95 grew by more than 10%).\nError rate: absolute increase in error percentage (e.g., 2 = flag if errors grew by more than 2%).\nThroughput: percentage decrease vs baseline.\n\nSet to -1 to disable a metric. Click Apply to re-evaluate without regenerating the report."
+    }
+  }
+}

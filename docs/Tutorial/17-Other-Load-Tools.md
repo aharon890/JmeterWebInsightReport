@@ -69,8 +69,27 @@ no groups, and `build-report` says so on the console.
 | A request's time | `http_req_duration`: sending, waiting and receiving. Connecting and TLS are not included, unlike JMeter's elapsed. |
 | A failed request | `http_req_failed` (k6's expected responses). A failed check does not fail a request. |
 | A `group()` pass | A transaction: its time is the sum of its requests', as JMeter's Transaction Controller counts it with "Generate parent sample" on. k6's own group duration, think time included, is kept as the pass's wall time. |
-| Bytes, latency, connect | Not measured per request by k6. |
-| Checks and thresholds | Read with the run, for k6's own tab (coming next). They never decide the verdict: the test's asserts do. |
+| Bytes, latency, connect | Not measured per request by k6. Their cells read "not measured", never 0, and the Bytes and Connect/Latency charts say so. |
+| Checks and thresholds | Shown on the k6 tab, each with k6's own result. They never decide the verdict: the test's asserts do. |
+
+**k6's words.** A k6 run's report uses k6's words: Requests (not Samplers), VU (not Thread), Max VUs, and Group (not
+Transaction). The header names k6, and its version when k6's files give one. Two things keep JMeter's name: the
+product's own name, and the sentence saying the numbers follow JMeter's Aggregate Report rules. A JMeter run's report
+reads exactly as before.
+
+**The k6 tab** comes after Server, on k6 runs only. It shows what k6's own end-of-test summary shows:
+
+| Section | What it holds |
+|---|---|
+| Counters | `iterations`, `dropped_iterations` and `vus_max` (the VUs k6 allocated) from `summary.json`; "not measured" without it. Max VUs on the Summary tab is the most VUs active at once, k6's `vus`. |
+| Thresholds | Every threshold, with its metric and expression, as k6 judged it. |
+| Checks | Passes, fails and pass rate per group and check. |
+| Group duration | Each group's passes on their wall time, think time included (`group_duration`). |
+| HTTP timings | The six parts (`http_req_blocked`, `_connecting`, `_tls_handshaking`, `_sending`, `_waiting`, `_receiving`) over every request and per request, to the hundredth of a millisecond. |
+
+Its columns are k6's: avg, min, med, max, p(90), p(95). A percentile is computed the Aggregate Report's way, the value
+some request really had, where k6's own summary interpolates between two values, so the two can differ by less than one
+step. An older k6 file with whole-second times is said in the Notes tab.
 
 ## Server data for any tool
 

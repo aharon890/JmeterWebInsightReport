@@ -177,6 +177,7 @@ public class ThymeleafReportRenderer {
                 && reportData.getMetadata().getTestName() != null
                 ? reportData.getMetadata().getTestName() : "");
         context.setVariable("fmt", new FormatUtilHelper());
+        putToolWords(context, reportData);
 
         // Chart data: inline or external
         if (externalDataMode) {
@@ -251,6 +252,40 @@ public class ThymeleafReportRenderer {
         }
 
         return context;
+    }
+
+    /**
+     * The run's tool, in the page's words (spec 001, decisions 7 and 10, FR-007 and FR-008):
+     * <ul>
+     *   <li>{@code words}: the tool's column of the words table, which the template reads, and {@code wordsJson},
+     *       the same column for report.js;</li>
+     *   <li>{@code notMeasured} (and its JSON): the sample fields the tool does not record, which read "not measured";
+     *       </li>
+     *   <li>{@code toolTab}: the tool's own tab, on a run another tool recorded that carries its own measures.</li>
+     * </ul>
+     * A JMeter run names no tool: it gets JMeter's column, which is today's text, and no tab.
+     */
+    private static void putToolWords(Context context, ReportData reportData) {
+        com.jmeterwebinsightreport.core.model.TestMetadata meta = reportData.getMetadata();
+        String tool = meta == null ? null : meta.getToolName();
+        java.util.Map<String, String> words = PageWords.forTool(tool);
+        context.setVariable("words", words);
+        context.setVariable("wordsJson", PageWords.json(words));
+        java.util.List<String> notMeasured = meta == null || meta.getNotMeasured() == null || tool == null
+                ? java.util.Collections.emptyList() : meta.getNotMeasured();
+        context.setVariable("notMeasured", new java.util.HashSet<>(notMeasured));
+        context.setVariable("notMeasuredJson", notMeasuredJson(notMeasured));
+        context.setVariable("wholeSeconds", tool != null && "s".equals(meta.getTimeResolution()));
+        context.setVariable("toolTab", ToolTab.of(tool, reportData.getToolMeasures(), words));
+    }
+
+    private static String notMeasuredJson(java.util.List<String> fields) {
+        StringBuilder b = new StringBuilder("[");
+        for (int i = 0; i < fields.size(); i++) {
+            // the run record's field names: letters only (data-model.md Run.notMeasured)
+            b.append(i == 0 ? "" : ",").append('"').append(fields.get(i).replaceAll("[^A-Za-z]", "")).append('"');
+        }
+        return b.append(']').toString();
     }
 
     /**

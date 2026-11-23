@@ -56,7 +56,8 @@ for dir in "$RD"/K*/; do
         fail=1
         continue
     fi
-    referee_check "$id" "$out/$id-report.json" "$dir/results.jtl" "$dir/in-test-plan.jtl" || fail=1
+    referee_check "$id" "$out/$id-report.json" "$dir/results.jtl" "$dir/in-test-plan.jtl" "" \
+        "$out/$id-report-run-data.jsonl.gz" || fail=1
 
     # The CI/CD JSON against the fixture's expected one: counts, verdicts, the tool (SC-005)
     "$PYTHON" "$CANON" "$out/$id-report.json" "$out/$id.canonical.json" || { fail=1; continue; }

@@ -637,6 +637,8 @@ _fixture_stamp_files() {
     # costs a full regeneration. That is the right trade here: the alternative is a directory
     # whose contents silently do not count.
     #
+    # test-plans/run-data is K1's input (spec 001): the k6 run, its summary and annotations.
+    #
     # test-plans/playwright/fixture-stamp.js walks the same directories (STAMP_ROOTS) to compare
     # the listing whole for global-setup.ts, and js-unit/fixture-stamp.test.js parses this find
     # and fails when the two lists differ. Keep it a plain `find \`, one directory per line,
@@ -647,6 +649,7 @@ _fixture_stamp_files() {
         test-plans/server-metrics \
         test-plans/server-catalogue \
         test-plans/server-fixtures \
+        test-plans/run-data \
         -type f 2>/dev/null | sort )
 }
 
@@ -868,7 +871,7 @@ _several_plugin_jars_sentence() {
 # much JMeter work an automated cycle has to do — every other scenario in
 # run-all-tests.sh validates only "a report was produced" and is manual-tier.
 # Keep in step with REQUIRED_FIXTURES in test-plans/playwright/global-setup.ts.
-FIXTURE_IDS="E02 E05 E06 E07 E08 E09 E10 E11 E12 E19 E25 E26 E27 E28 E29 E31 CMP CMP31"
+FIXTURE_IDS="E02 E05 E06 E07 E08 E09 E10 E11 E12 E19 E25 E26 E27 E28 E29 E31 CMP CMP31 K1"
 
 # Every tracked .sh and git hook must be committed 100755.
 #
@@ -1412,9 +1415,11 @@ referee_run() {
         "$(_count_check_path "$1")" "$(_count_check_path "$2")" >> "$REFEREE_OUT/referee.log" 2>&1
 }
 
-# referee_check <id> <report.json> <results.jtl> <in-test-plan results> [rebuilt report.json]
+# referee_check <id> <report.json> <results.jtl> <in-test-plan results> [rebuilt report.json] [run data]
+# The run data of a run another tool recorded names the columns that tool does not measure: those read
+# "not measured" on the page where JMeter's table shows a number (spec 001, I5). Pass "" for no rebuilt report.
 referee_check() {
-    local name="$1" report="$2" every="$3" in_test="$4" rebuilt="${5:-}" page out="$REFEREE_OUT"
+    local name="$1" report="$2" every="$3" in_test="$4" rebuilt="${5:-}" run_data="${6:-}" page out="$REFEREE_OUT"
     # The report's page beside its JSON: its Samplers rows against the Aggregate Report's table text
     page="${report%.json}.html"
     referee_run "$every" "$out/$name-every-row.csv" || { echo "  [$name] FAIL: the referee could not read $every"; return 1; }
@@ -1425,6 +1430,10 @@ referee_check() {
         PYTHONIOENCODING=utf-8 "$PYTHON" "$TEST_PLANS/scripts/verify-data-integrity.py" --fixture "$name" \
             --report "$report" --every-row "$out/$name-every-row.csv" --in-test-plan "$out/$name-in-test-plan.csv" \
             --rebuilt-report "$rebuilt" --report-html "$page" --output "$out/$name.csv"
+    elif [[ -n "$run_data" ]]; then
+        PYTHONIOENCODING=utf-8 "$PYTHON" "$TEST_PLANS/scripts/verify-data-integrity.py" --fixture "$name" \
+            --report "$report" --every-row "$out/$name-every-row.csv" --in-test-plan "$out/$name-in-test-plan.csv" \
+            --report-html "$page" --run-data "$run_data" --output "$out/$name.csv"
     else
         PYTHONIOENCODING=utf-8 "$PYTHON" "$TEST_PLANS/scripts/verify-data-integrity.py" --fixture "$name" \
             --report "$report" --every-row "$out/$name-every-row.csv" --in-test-plan "$out/$name-in-test-plan.csv" \
@@ -1452,6 +1461,12 @@ run_counts_against_jmeter() {
         case "$id" in
             E26|E27|E28) _check_g "$id" "$TEST_PLANS/goldens/plain.jtl" || fail=1 ;;
             E29)         _check_g "$id" "$RESULTS_DIR/E29-inputs/soak.jtl" || fail=1 ;;
+            K1)
+                # A k6 run: held to the JMeter-format copy of its samples, written by the research's independent
+                # converter (test-plans/run-data/README.md); its run data names what k6 does not measure
+                _check K1 "$RESULTS_DIR/K1/K1-report.json" "$TEST_PLANS/run-data/K1/results.jtl" \
+                    "$TEST_PLANS/run-data/K1/in-test-plan.jtl" "" "$RESULTS_DIR/K1/K1-report-run-data.jsonl.gz" \
+                    || fail=1 ;;
             CMP|CMP31)
                 # A comparison fixture: both of its runs, each held to its own files
                 _check "$id" "$RESULTS_DIR/$id/$id-report.json" "$RESULTS_DIR/$id/results.jtl" \

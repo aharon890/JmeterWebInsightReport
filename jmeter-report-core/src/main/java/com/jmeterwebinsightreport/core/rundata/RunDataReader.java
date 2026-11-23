@@ -45,6 +45,9 @@ public final class RunDataReader {
     public static final class Result {
         public RunHeader header;
         public final ToolRecords tool = new ToolRecords();
+        /** The tool's tab: its records above, and the distributions built from the samples (FR-008). */
+        public final com.jmeterwebinsightreport.core.model.ToolMeasures measures =
+                new com.jmeterwebinsightreport.core.model.ToolMeasures(tool);
         public long samples;
         public long skipped;
         /** The first problems, each naming its line. */
@@ -202,6 +205,7 @@ public final class RunDataReader {
                                 s.topLevel = true;
                             }
                             SampleFeed.feed(engine, s, parentName);
+                            result.measures.add(s);
                             result.samples++;
                         }
                     } else if (RunDataFormat.TYPE_USERS.equals(type)) {
@@ -289,7 +293,7 @@ public final class RunDataReader {
             while (it.hasNext()) {
                 Map.Entry<String, JsonNode> t = it.next();
                 if (t.getValue().isNumber()) {
-                    s.timing(t.getKey(), t.getValue().asLong());
+                    s.timing(t.getKey(), t.getValue().asDouble());
                 }
             }
         }
