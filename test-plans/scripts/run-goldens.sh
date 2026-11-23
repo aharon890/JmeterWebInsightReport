@@ -45,6 +45,7 @@ require_python || { echo "[GOLDEN] FAIL: the goldens could not be compared" >&2;
 PY="$PYTHON"
 
 # id | annotations file (or -) | baseline jtl (or -) | server-metrics payload or CSV (or -) | extra -J (or none)
+#    | the run, when it is run data rather than plain.jtl (built by build-report, with no jmeter -g)
 CASES=(
     "G1|-|-|-"
     "G2|gate-mixed.json|-|-"
@@ -57,7 +58,12 @@ CASES=(
     "G10|gate-server.json|-|server-metrics.csv|-Jwebinsight.report.servermetrics.step=1s"
     "G11|gate-catalogue.json|-|../server-catalogue/server-metrics.json"
     "G12|../server-metrics/e26-server.json|-|../server-metrics/server-metrics.json"
+    "G13|gate-server.json|-|server-metrics.csv|-Jwebinsight.report.servermetrics.step=1s|../run-data/S1/k6-run-data.jsonl"
 )
+# G13 is spec 001's US1: the same Server tab whatever tool drove the load. Its run is plain.jtl's samples as run
+# data under a k6 run record (test-plans/run-data/S1), built by build-report with no jmeter -g, over G10's inputs:
+# G4's client and server asserts and the goldens' CSV collected in-process. Below the loop it is held to G10: the
+# same components, server asserts, states and verdicts, and the same JUnit, but for the run's tool.
 # G11 is the only golden with CATALOGUE components: a postgres and a kafka component over E27's
 # committed payload, each assert naming a catalogue metric, one overriding the catalogue's reducer.
 # Every other server golden is custom, so how a catalogue assert reaches the wire - serverAsserts[]
@@ -118,7 +124,7 @@ fail=0
 accepted=0
 
 for case in "${CASES[@]}"; do
-    IFS='|' read -r id ann base payload extra <<< "$case"
+    IFS='|' read -r id ann base payload extra input <<< "$case"
     out="$WORK_DIR/$id"
     # NOT created here, and nothing is written into it before JMeter runs: `-g -o` refuses a
     # directory that is not empty, so even the log has to live outside it. CLAUDE.md documents
@@ -135,7 +141,21 @@ for case in "${CASES[@]}"; do
     [[ -n "$extra" ]] && args+=("$extra")
 
     echo "[GOLDEN] $id ..."
-    "$JMETER" "${args[@]}" > "$log" 2>&1
+    if [[ -n "$input" && "$input" != "-" ]]; then
+        # Run data: the report built with no JMeter (spec 001), the same settings given as --property
+        jar="$(ls "$JMETER_HOME"/lib/ext/jmeter-web-insight-report-*.jar 2>/dev/null | head -1)"
+        bargs=(build-report --run-data "$GOLDEN_DIR/$input" --out "$out"
+               --property webinsight.report.junit=true
+               --property webinsight.report.failonerror=false
+               --property webinsight.report.filename="$id-report.html")
+        [[ "$ann"  != "-" ]] && bargs+=(--annotations "$GOLDEN_DIR/$ann")
+        [[ "$base" != "-" ]] && bargs+=(--baseline "$GOLDEN_DIR/$base")
+        [[ "$payload" != "-" ]] && bargs+=(--servermetrics "$GOLDEN_DIR/$payload")
+        [[ -n "$extra" ]] && bargs+=(--property "${extra#-J}")
+        java -jar "$jar" "${bargs[@]}" > "$log" 2>&1
+    else
+        "$JMETER" "${args[@]}" > "$log" 2>&1
+    fi
     rc=$?
 
     for ext in json xml; do
@@ -202,6 +222,46 @@ for case in "${CASES[@]}"; do
         fail=1
     fi
 done
+
+# G13 against G10 (spec 001, SC-003): another tool's run data over the same server data and asserts gives the same
+# server half. The CI/CD JSON differs only by the run's tool (decision 12); the JUnit and the page's server data
+# not at all. Each artifact names its own case (G10-report.html), so the case ids are set aside first.
+if [[ $ACCEPT -eq 0 && $fail -eq 0 ]]; then
+    if ! "$PY" - "$WORK_DIR" <<'PYEOF'
+import json, sys, os
+work = sys.argv[1]
+def load(name):
+    with open(os.path.join(work, name), encoding="utf-8") as f:
+        return json.load(f)
+def strip(node):
+    if isinstance(node, dict):
+        return {k: strip(v) for k, v in node.items() if k != "tool"}
+    if isinstance(node, list):
+        return [strip(v) for v in node]
+    return node
+def text(case, ext):
+    return open(os.path.join(work, case + ".canonical." + ext), encoding="utf-8").read().replace(case + "-report", "ID-report")
+problems = []
+g10, g13 = json.loads(text("G10", "json")), json.loads(text("G13", "json"))
+if g13.get("tool", {}).get("name") != "k6":
+    problems.append("G13's JSON does not name the tool k6")
+if "tool" in g10:
+    problems.append("G10's JSON names a tool: a JMeter run's JSON must not (decision 12)")
+if strip(g10) != strip(g13):
+    problems.append("G13's CI/CD JSON differs from G10's beyond the run's tool")
+for ext in ("xml", "server.json"):
+    if text("G10", ext) != text("G13", ext):
+        problems.append("G13." + ext + " differs from G10." + ext)
+for p in problems:
+    print("[GOLDEN] G13 against G10: " + p, file=sys.stderr)
+sys.exit(1 if problems else 0)
+PYEOF
+    then
+        fail=1
+    else
+        echo "[GOLDEN] G13 equals G10 but for the run's tool: one Server tab whatever drove the load"
+    fi
+fi
 
 if [[ $ACCEPT -eq 1 ]]; then
     echo "[GOLDEN] accepted $accepted baseline(s) into test-plans/goldens/expected/"

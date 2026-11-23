@@ -194,17 +194,17 @@ themselves. T009 runs in `plugin-test/report/rundata/RunDataRoundTripTest.java`,
 **Independent test**: build two reports from hand-written run data, one with `tool.name` `jmeter` and one with `k6`,
 over the same window and server CSV. The two Server tabs are identical (SC-003).
 
-- [ ] T032 [P] [US1] `test-plans/run-data/S1/`: `jmeter.jsonl` and `k6.jsonl`, written by hand to the same window, with
+- [X] T032 [P] [US1] `test-plans/run-data/S1/`: `jmeter.jsonl` and `k6.jsonl`, written by hand to the same window, with
   the same `server.csv` and `server-asserts.json` (one component, one PASS, one FAIL and one NOT_JUDGED assert) [L1-2].
-- [ ] T033 [P] [US1] `plugin-test/WirCollectTest.java`: `--run-data` gives the window, `runId` and test name from the
+- [X] T033 [P] [US1] `plugin-test/WirCollectTest.java`: `--run-data` gives the window, `runId` and test name from the
   run data; exactly one of `--jtl` and `--run-data` is accepted; `--jtl` and `--help` are unchanged except for the new
   line.
-- [ ] T034 [P] [US1] Golden G13 in `test-plans/scripts/run-goldens.sh`: S1's `k6.jsonl` through `build-report
+- [X] T034 [P] [US1] Golden G13 in `test-plans/scripts/run-goldens.sh`: S1's `k6.jsonl` through `build-report
   --servermetrics server.csv`. Its `.json`, `.xml` and `.server.json` are compared with `jmeter.jsonl`'s. They are equal
   except for `tool` (absent on the JMeter one), `runId` and `testName`.
-- [ ] T035 [US1] `plugin/WirCollect.java`: `--run-data FILE` through `RunDataReader`, plus its `--help` line. Depends on
+- [X] T035 [US1] `plugin/WirCollect.java`: `--run-data FILE` through `RunDataReader`, plus its `--help` line. Depends on
   T022.
-- [ ] T036 [US1] `plugin/BuildReport.java`: `--servermetrics` (a payload or a CSV) and `--annotations`, through
+- [X] T036 [US1] `plugin/BuildReport.java`: `--servermetrics` (a payload or a CSV) and `--annotations`, through
   `ReportRebuild.readCompanionFiles`. The in-process CSV collection is handed the parsed `ReportData`, not a `--jtl`
   (ReportRebuild.java:314, WirCollect.java:163), with the report title as test name, as `-g` does [L1-3].
 - [ ] T037 [US1] Accept G13's baselines with `run-goldens.sh --accept` and commit them with T035-T036. Document

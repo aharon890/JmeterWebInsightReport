@@ -9,9 +9,13 @@ Report exactly as it holds a JMeter fixture.
 |---|---|---|---|
 | K1 | Every shape a k6 run writes: a nested group, a 500, a refused connection (status 0), `http.batch`, a redirect, a second pass of a group, an unnamed request, setup and teardown, passing and failing checks, passing and failing thresholds, and one group pass cut off by the test's end | `results.csv.gz`, `summary.json` | `results.jtl`, `in-test-plan.jtl` |
 | K2 | petstore-checkout SMOKE, recorded with perf hub's two k6 settings, at the smallest load and on the owner's yes | `results.csv.gz`, `summary.json` | `results.jtl`, `in-test-plan.jtl` |
+| S1 | The goldens' `plain.jtl` as run data under a k6 run record: the same samples another tool's producer would write. Golden G13 builds it with `build-report` over G10's inputs and holds it to G10 (spec 001, US1) | `k6-run-data.jsonl` | `../../goldens/plain.jtl` |
 | K3 | An older k6 file: whole-second times and no vu/iter (perf hub run #66, petstore-browse SMOKE). It gives request rows only | `results.csv.gz`, `summary.json` | `results.jtl`, `in-test-plan.jtl` |
 
 ## How they were made
+
+- **S1** is `jmeter -g plain.jtl -Jwebinsight.report.rundata=true`'s run data with its run record's tool set
+  to k6 2.4.0, uncompressed.
 
 - **K1** is recorded in perf hub's k6 image against local stub servers. No test bed is involved.
 
