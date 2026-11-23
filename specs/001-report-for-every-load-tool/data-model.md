@@ -42,9 +42,10 @@ fields, validation, and what each field means per tool. Revised on 2026-11-23 af
 | `threads` | integer | no | Active threads when it ended (JMeter's allThreads). Fed to the engine only when above 0, as the JTL path does today. |
 | `url`, `method` | string | no | As recorded. |
 | `timings` | object of integer ms | no | k6's `blocked`, `connecting`, `tlsHandshaking`, `sending`, `waiting`, `receiving`. |
+| `responseBody` | string | no | A failed sample's response body, exactly as the report carries it: failed samples only, cut at `webinsight.error.body.maxsize` (decision 11). Only JMeter's listener path has bodies: a JTL and k6 have none. |
 
-**Not in run data, ever (decision 11):** response bodies. The listener hands them to the engine in memory, as today, so
-the JMeter report's Errors tab is unchanged. A report rebuilt from run data shows the errors without bodies.
+**Response bodies (decision 11):** run data carries exactly the bodies the report carries, so a report rebuilt from a
+listener run's file shows the same Errors tab, bodies included.
 
 ### Active users (`users` record, zero or more)
 

@@ -35,7 +35,7 @@ Transaction Controller with "Generate parent sample" on, the mode of petstore's 
 ## A JMeter run's run data (`webinsight.report.rundata=true`)
 
 It holds the same samples the report was built from, with `tool.name` `jmeter`, explicit `parent`, `link`, `kind`,
-`topLevel`, `threads`, `idle`, `samples`/`errors` and `failureMessage`. It holds no response bodies (decision 11). A report built from it equals the JTL's report: CI/CD JSON,
+`topLevel`, `threads`, `idle`, `samples`/`errors` and `failureMessage`. It holds the failed samples' response bodies exactly as the report does (`responseBody`, decision 11). A report built from it equals the JTL's report: CI/CD JSON,
 `runId` included (plan stage 2).
 
 ## Versions

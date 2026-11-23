@@ -113,7 +113,8 @@ a report on a machine with no JMeter.
 - [ ] T014 [P] `plugin-test/report/RunDataSettingTest.java` (`webinsight.report.rundata`) [G3]:
   - default off writes nothing, on both paths;
   - on, the listener and `-g` each write `<report name>-run-data.jsonl.gz` through the publication set;
-  - the file never contains a response body (decision 11) [I3];
+  - the file carries the failed samples' bodies exactly as the report does, cut at `webinsight.error.body.maxsize`,
+    and a report rebuilt from a listener run's file has the same Errors tab, bodies included (decision 11) [I3];
   - concurrent listener threads write one well-formed file;
   - in distributed mode the controller writes one file;
   - a failed write is a failed artifact under `failonerror`;
@@ -130,7 +131,7 @@ a report on a machine with no JMeter.
   - the sample model with every field of data-model.md `Sample`: `id`, `parent`, `link`, `kind`, `name`, `start`,
     `elapsed`, `idle`, `wallTime`, `success`, `code`, `message`, `failureMessage`, `user`, `iteration`, `topLevel`,
     `samples`, `errors`, `bytes`, `sentBytes`, `latency`, `connect`, `threads`, `url`, `method`, `timings`;
-  - an in-memory-only response body (decision 11);
+  - the response body (data-model.md `Sample.responseBody`, decision 11);
   - the one feed into `LiveStatisticsEngine`.
 - [ ] T017 `core/stats/LiveStatisticsEngine.java`: the methods that test `isTransactionRow(message)` (:202-204, :260,
   :289, :517, :741) take the transaction flag from the caller instead. The JTL path and the listener pass the marker
@@ -151,7 +152,8 @@ a report on a machine with no JMeter.
   - pass 2 feeds every record in file order: `users` → `updateActiveThreads`, and `Sample.parent` → the parent's name
     and `Sample.link`.
   - Depends on T016, T020 and T021.
-- [ ] T023 `core/rundata/RunDataWriter.java`: writes the records in contracts/run-data-format.md's order, never a body.
+- [ ] T023 `core/rundata/RunDataWriter.java`: writes the records in contracts/run-data-format.md's order, bodies
+  as the report carries them (data-model.md `Sample.responseBody`).
   Depends on T020 and T021.
 - [ ] T024 `core/stats/LiveStatisticsEngine.java`: a transaction's elapsed time, idle time and success from its
   children when not given (data-model.md `Sample.elapsed`, `Sample.idle`, `Sample.wallTime`, `Sample.success`;
@@ -327,7 +329,7 @@ report with the common tabs, `demo` in the header, and a `demo` tab only if it c
   - the versions read and written;
   - reading order and memory;
   - the pairing with server data (research R12);
-  - no response bodies (decision 11);
+  - response bodies, as the report carries them (decision 11);
   - how to run R08's conformance on a new producer.
 
   Add it to `docs/_sidebar.md`.

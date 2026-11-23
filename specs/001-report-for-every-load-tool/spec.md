@@ -57,8 +57,11 @@ Dependencies.
    `webinsight.report.rundata=true`. Off by default, so a JMeter user sees no change.
 10. **A tool's own measures get a tab named after the tool** (answered 2026-11-23): a "k6" tab after Server and before
     Notes, only on k6 runs. JMeter reports don't change.
-11. **Response bodies are never written to run data** (answered 2026-11-23, after `/speckit-analyze`). They can hold
-    tokens or personal data. The JMeter report's Errors tab keeps showing them, as today.
+11. **Run data carries the response bodies the report carries** (answered 2026-11-23, after `/speckit-analyze`; first
+    answered "never", then revised the same day after discussing it). Only failed samples' bodies, cut at
+    `webinsight.error.body.maxsize` (16 KB by default), exactly as the HTML report beside the file already holds them.
+    So the file adds no new kind of exposure, and a report rebuilt from it is identical to the original, Errors tab
+    included. No new setting.
 12. **The CI/CD JSON names the tool only on non-JMeter runs** (answered 2026-11-23): `"tool": {"name", "version"}`.
     A JMeter run's JSON stays as today, so no golden and no pipeline changes.
 
