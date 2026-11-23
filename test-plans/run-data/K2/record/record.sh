@@ -3,7 +3,9 @@
 # hub gives every k6 run (perf hub spec 010, FR-002). A real run against the petstore_ms test bed, so only on the
 # owner's yes, and at the runner's own smallest load: its K6_PROPERTIES block (SMOKE) is passed to the test as is.
 #
-#   PETSTORE_DIR=<petstore_ms checkout> test-plans/run-data/K2/record/record.sh
+#   PETSTORE_DIR=<petstore_ms checkout> test-plans/run-data/K2/record/record.sh [output folder]
+#
+# With no folder it writes the fixture itself (K2/). Give a folder to run the same smoke without touching it.
 #
 # The gateway is the test bed's dev port on this PC (9080); the container reaches it as host.docker.internal.
 # Afterwards: python -I test-plans/run-data/tools/k6_to_jtl.py K2/results.csv.gz K2/results.jtl K2/in-test-plan.jtl
@@ -11,7 +13,9 @@ set -euo pipefail
 : "${PETSTORE_DIR:?set PETSTORE_DIR to the petstore_ms checkout}"
 runner="$PETSTORE_DIR/test/k6Scripts/DEV/Storefront/run_petstore-checkout_SMOKE_DEV.sh"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-out="$(cd "$here/.." && pwd)"
+out="${1:-$here/..}"
+mkdir -p "$out"
+out="$(cd "$out" && pwd)"
 native() { if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else printf '%s' "$1"; fi; }
 
 # The runner's block, KEY=VALUE per line between K6_PROPERTIES: and K6_PROPERTIES_END, each passed as -e. The
