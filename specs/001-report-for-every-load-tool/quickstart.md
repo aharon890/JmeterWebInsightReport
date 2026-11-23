@@ -56,13 +56,12 @@ Expected:
 ## 5. Same server data, same Server tab (SC-003)
 
 ```bash
-java -jar $J build-report --from k6 --k6-results test-plans/run-data/K1/results.csv.gz --out tmp/qs/k1s \
-    --write-run-data \
-    --annotations test-plans/run-data/K1/server-asserts.json --servermetrics test-plans/run-data/K1/server.csv
+java -jar $J build-report --run-data test-plans/run-data/S1/k6.jsonl --out tmp/qs/k1s \
+    --annotations test-plans/run-data/S1/server-asserts.json --servermetrics test-plans/run-data/S1/server.csv
 # the collector is the JAR's default command
-java -jar $J --run-data tmp/qs/k1s/web-insight-report-run-data.jsonl.gz \
-    --annotations test-plans/run-data/K1/server-asserts.json --out tmp/qs/k1s.payload.json \
-    --csv test-plans/run-data/K1/server.csv
+java -jar $J --run-data test-plans/run-data/S1/k6.jsonl \
+    --annotations test-plans/run-data/S1/server-asserts.json --out tmp/qs/k1s.payload.json \
+    --csv test-plans/run-data/S1/server.csv
 ```
 
 Expected:

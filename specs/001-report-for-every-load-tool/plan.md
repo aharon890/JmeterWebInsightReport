@@ -87,6 +87,10 @@ Gatling is later, by the same contract.
 | V. Branch, one version | `feat/001-report-for-every-load-tool`. The format version is one constant, `RunDataFormat.VERSION`, written into the schema by the build (R9). | PASS |
 | VI. Every setting | `build-report` takes every `webinsight.*` property as `--property key=value` and from `--properties FILE`, over the defaults (R5). The docs ship in the same change. | PASS |
 | VII. One engine | Producers write samples only (data-model.md). Transactions' figures, identity and window are the engine's. Verdicts are the annotations file's. A tool's checks are shown in its tab and never judged. | PASS |
+
+After `/speckit-analyze` (2026-11-23), III and V needed tasks they did not have yet: a conformance case for the JMeter
+plugin as a producer (C1), the run-data fixtures in the fixture stamp (C2), and the schema held to the one version
+constant (C3). tasks.md now has them, so both pass.
 | Technical Constraints | The plugin's two paths and the run-data reader feed one engine through one feed (R3). | PASS |
 
 ## Project Structure

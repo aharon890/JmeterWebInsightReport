@@ -16,8 +16,10 @@ the engine (research R4).
 
 ## Requests
 
-The rows of one request share (vu, iter, timestamp, name, method, url), and k6 writes them together. The adapter
-joins them in a small streaming window.
+k6 writes a request's rows together, one after another. The adapter joins them by adjacency: consecutive rows with the
+same (timestamp, name, method, url, vu, iter) form one request, and a second `http_req_duration` for the same key starts
+a new one. So two `http.batch` requests ending in the same millisecond, and an older file with no vu/iter and whole
+seconds, still split correctly. The window is one request: nothing older is held.
 
 | Run data field | From |
 |---|---|
@@ -35,6 +37,12 @@ joins them in a small streaming window.
 - Each redirect hop is its own request, as k6 records it.
 - Setup and teardown rows, which have no `vu` and an empty scenario, are kept as requests of user `setup`/`teardown`
   with no group.
+- Requests inside a group pass have `topLevel` false, and requests outside any group are top-level. That is a
+  Transaction Controller with "Generate parent sample" on, the mode of petstore's checkout JMeter plan, so the whole-run
+  figures match the JMeter twin's.
+- The `run` record gets `tool` {`k6`, the version from summary.json's state, when present}, and `notMeasured`
+  `bytes`, `sentBytes`, `latency`, `connect`. An older file (10-digit times, no `metadata`) also gets
+  `timeResolution` `s` and adds `user`, `iteration` to `notMeasured`, and no group passes are built.
 
 ## Group passes (transactions)
 
@@ -51,7 +59,7 @@ joins them in a small streaming window.
 | `users` | `vus` rows |
 | `check` | `checks` rows: tag `check`, value 1 or 0, tag `group` |
 | `threshold` | summary.json, every metric with thresholds: `metric` with its tag filter, `expression`, `passed` = `ok` |
-| `counter` | summary.json: `dropped_iterations`, `iterations` |
+| `counter` | summary.json: `dropped_iterations`, `iterations`, `vus_max` |
 
 `data_sent`, `data_received` and `iteration_duration` are per iteration, not per request. They are not written, and
 the report says "not measured" for bytes.

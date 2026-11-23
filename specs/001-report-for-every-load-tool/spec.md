@@ -57,6 +57,10 @@ Dependencies.
    `webinsight.report.rundata=true`. Off by default, so a JMeter user sees no change.
 10. **A tool's own measures get a tab named after the tool** (answered 2026-11-23): a "k6" tab after Server and before
     Notes, only on k6 runs. JMeter reports don't change.
+11. **Response bodies are never written to run data** (answered 2026-11-23, after `/speckit-analyze`). They can hold
+    tokens or personal data. The JMeter report's Errors tab keeps showing them, as today.
+12. **The CI/CD JSON names the tool only on non-JMeter runs** (answered 2026-11-23): `"tool": {"name", "version"}`.
+    A JMeter run's JSON stays as today, so no golden and no pipeline changes.
 
 ## What was checked (2026-11-23)
 
@@ -185,8 +189,9 @@ report.
 ### Edge Cases
 
 - **Groups and transactions:** one pass of a tool's group is a transaction sample. Its elapsed time is the sum of its
-  requests' elapsed times, and the rest of its wall time is idle time, as JMeter's Transaction Controller records it by
-  default. It is counted once in the whole-run figures. The tool's own group duration (k6's `group_duration`, think time
+  requests' elapsed times, and the rest of its wall time is idle time, as JMeter's Transaction Controller records it
+  with "Generate parent sample" on and timers off: the mode of petstore's checkout JMeter plan, so a k6 run and its
+  JMeter twin count the whole run the same way. It is counted once in the whole-run figures. The tool's own group duration (k6's `group_duration`, think time
   included) is shown in the tool's section.
 - **What a failed request is,** and how long a request took, are the tool's own, written in the samples:
   - **JMeter:** the sample's success flag (an assertion failure included, as JMeter's Aggregate Report counts it) and
@@ -223,7 +228,8 @@ report.
   - active users over time;
   - the tool's own measures (for k6: thresholds and checks with their results, group durations, the timing parts,
     iterations);
-  - server data, when it was collected.
+  - nothing about server data: the server payload (or CSV) stays its own file, paired with the run by its identity
+    (`runId`), as today.
 - **FR-002**: The report MUST be built from that data, the test's annotations file, an optional baseline and the report
   properties, and nothing else. Every figure MUST be worked out by this report's one engine from the samples: counts,
   percentiles, rates, the whole-run row, transaction figures, time buckets and the run's identity. A producer's own code
@@ -280,6 +286,8 @@ report.
 - **FR-016**: The report's command MUST read k6's own results file (with millisecond times and each request's virtual
   user and pass) and, when given, k6's end-of-test summary, and build the report from them through the common format
   (decision 8). The same files MUST give the same report whoever runs the command.
+- **FR-017**: On a non-JMeter run, a Compare baseline MUST be refused with a sentence naming decision 6, and the
+  report built without Compare.
 
 ### Key Entities
 

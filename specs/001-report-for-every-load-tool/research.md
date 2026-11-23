@@ -9,7 +9,8 @@ hub spec 010, and its findings are not repeated here. The facts below were check
 - **One engine, fed sample by sample.** `LiveStatisticsEngine` builds `ReportData` (`buildReportData`). Both JMeter
   paths call the same methods:
   - `recordSample(label, elapsed, success, bytes, sentBytes, start, end, connect, latency, samples, errors, topLevel)`;
-  - `recordTransaction(parent, child)`;
+  - `recordTransaction(parent, child, transaction)`: the third argument says whether the child nests under a
+    transaction or is a request's sub-result (JtlParser.java:255, listener :566);
   - `recordError(...)`, `recordResponseCode(...)`, `updateActiveThreads(...)` and `recordTransactionRow(...)`.
 
   The JTL path calls them in `JtlParser.ParsedSample.feed` (JtlParser.java:347), and the listener at
@@ -28,7 +29,12 @@ hub spec 010, and its findings are not repeated here. The facts below were check
   - `WebInsightReportGenerator.java:930` passes `org.apache.jmeter.util.JMeterUtils::getProperty` to
     `ComparisonThresholdResolver`. Without JMeter on the class path that is a `NoClassDefFoundError`, and the resolver
     only catches `RuntimeException` (:74).
-  - The JMeter version is read in `ReportRebuild.java:171` and `WebInsightReportListener.java:638`.
+  - The call is reached only when a baseline is configured (WebInsightReportGenerator.java:193-197 → :930).
+  - The JMeter version is read in `ReportRebuild.java:171`, under a `catch (Exception)` that does not catch a
+    `NoClassDefFoundError`, and in `WebInsightReportListener.java:638`.
+- **"Transaction row" is decided by the response message** ("Number of samples in transaction", LiveStatisticsEngine
+  .java:28-30, used at :202-204, :260, :289, :517 and :741). A k6 group pass has no message, so `SampleFeed` must give
+  the engine an explicit transaction flag (data-model.md `Sample.kind`).
 - **The libraries match.** WIR's parent pom pins Jackson 2.16.1, Commons Math 3 3.6.1 and SLF4J 1.7.36 as `provided`,
   the very jars `apache-jmeter-5.6.3/lib/` holds.
   - `WirCollectLauncher` already runs `WirCollect` over the plugin JAR plus `<JMETER_HOME>/lib/*.jar`, and
@@ -113,9 +119,10 @@ hub spec 010, and its findings are not repeated here. The facts below were check
 
 - **Decision:** the launcher looks for its libraries in this order:
   1. the JAR's own `lib/ext` (today's order);
-  2. `JMETER_HOME`;
-  3. `jmeter` on `PATH`;
-  4. **new:** a `lib/` folder beside the JAR.
+  2. **new:** a `lib/` folder beside the JAR, so the bundle works even when `JMETER_HOME` is wrong or another
+     `jmeter` is on `PATH` (the launcher refuses those before looking further, WirCollectLauncher.java:100-117);
+  3. `JMETER_HOME`;
+  4. `jmeter` on `PATH`.
 
   A release also attaches `jmeter-web-insight-report-<v>-standalone.zip`: the same JAR, plus `lib/` with
   jackson-databind/core/annotations 2.16.1, commons-math3 3.6.1, slf4j-api 1.7.36 and slf4j-simple 1.7.36.
