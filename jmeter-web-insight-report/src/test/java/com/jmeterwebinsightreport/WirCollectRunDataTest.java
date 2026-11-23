@@ -53,7 +53,7 @@ class WirCollectRunDataTest {
     void theRunIsGivenOnceAndATestNameThatIsNotTheRunsIsRefused() {
         assertEquals(1, collect("--jtl", "a.jtl", "--run-data", K6_RUN.getPath(), "--annotations",
                 ANNOTATIONS.getPath(), "--csv", CSV.getPath(), "--out", tmp.resolve("x.json").toString()));
-        assertTrue(err.toString(StandardCharsets.UTF_8).contains("not both"), err.toString(StandardCharsets.UTF_8));
+        assertTrue(err.toString(StandardCharsets.UTF_8).contains("give the run once"), err.toString(StandardCharsets.UTF_8));
 
         err.reset();
         assertEquals(1, collect("--run-data", K6_RUN.getPath(), "--annotations", ANNOTATIONS.getPath(),

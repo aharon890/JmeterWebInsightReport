@@ -162,9 +162,34 @@ class BuildReportTest {
     }
 
     @Test
+    void fromK6ItReadsK6sOwnFilesAndKeepsTheRunDataWhenAsked() throws Exception {
+        // Decision 8: the report's k6 adapter
+        File k1 = new File("../test-plans/run-data/K1");
+        File out = tmp.resolve("k6-files").toFile();
+        assertEquals(0, run("--from", "k6", "--k6-results", new File(k1, "results.csv.gz").getPath(),
+                "--k6-summary", new File(k1, "summary.json").getPath(), "--out", out.getPath(), "--write-run-data",
+                "--property", "webinsight.report.title=K1 (k6)"), err());
+        JsonNode j = json(out);
+        assertEquals("k6", j.path("tool").path("name").asText());
+        assertEquals("K1 (k6)", j.path("testName").asText(), "the title is the run's test name");
+        assertTrue(new File(out, "web-insight-report-run-data.jsonl.gz").isFile(), "--write-run-data keeps it");
+        assertTrue(outBytes.toString(StandardCharsets.UTF_8).contains("132 requests"),
+                outBytes.toString(StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void fromTakesK6Only() {
+        assertEquals(1, run("--from", "gatling", "--k6-results", "x.csv", "--out", tmp.toString()));
+        assertTrue(err().contains("--from takes k6"), err());
+        errBytes.reset();
+        assertEquals(1, run("--from", "k6", "--k6-results", "x.csv", "--run-data", "y.jsonl", "--out", tmp.toString()));
+        assertTrue(err().contains("give the run once"), err());
+    }
+
+    @Test
     void usageFaultsExit1WithTheUsage() {
         assertEquals(1, run("--out", tmp.toString()));
-        assertTrue(err().contains("--run-data is required") && err().contains("usage: build-report"), err());
+        assertTrue(err().contains("is required") && err().contains("usage: build-report"), err());
         assertEquals(1, run("--run-data", "missing.jsonl", "--out", tmp.toString()));
         assertTrue(err().contains("does not exist"), err());
     }

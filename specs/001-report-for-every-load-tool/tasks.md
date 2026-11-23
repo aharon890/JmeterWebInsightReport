@@ -220,16 +220,16 @@ to JMeter's Aggregate Report.
 **Independent test**: K1-K3 through `build-report --from k6`, and E02/E31 through `rundata=true` and `build-report
 --run-data`. Every row equals the referee's (SC-002), and the CI/CD JSON equals `expected/` (SC-005).
 
-- [ ] T038 [P] [US2] `core-test/adapter/k6/K6ResultsReaderTest.java` over K1:
+- [X] T038 [P] [US2] `core-test/adapter/k6/K6ResultsReaderTest.java` over K1:
   - one sample per request, fields per contracts/k6-adapter.md "Requests";
   - adjacency joins, with two `http.batch` requests ending in the same millisecond [A4];
   - group passes as transactions with `topLevel` false children;
   - redirect hops, status 0 with `error_code` 1212, and setup/teardown rows;
   - group passes not in the Errors tab or Codes per Second [I2];
   - `users` from `vus` rows [G1].
-- [ ] T039 [P] [US2] `core-test/adapter/k6/K6SummaryReaderTest.java`: threshold, check and counter (`vus_max`
+- [X] T039 [P] [US2] `core-test/adapter/k6/K6SummaryReaderTest.java`: threshold, check and counter (`vus_max`
   included) records from K1's `summary.json` (contracts/k6-adapter.md "The tool's own records").
-- [ ] T040 [P] [US2] `core-test/adapter/k6/OlderK6FileTest.java` over K3:
+- [X] T040 [P] [US2] `core-test/adapter/k6/OlderK6FileTest.java` over K3:
   - whole seconds and no vu/iter give request rows only and no transactions;
   - `run.timeResolution` is `s`, and `notMeasured` includes `user` and `iteration` (data-model.md `Run.timeResolution`,
     `Run.notMeasured`);
@@ -245,14 +245,14 @@ to JMeter's Aggregate Report.
       when `expected/` is dirty, as R06 does.
 - [ ] T042 [US2] `test-plans/scripts/verify-data-integrity.py`: a third stated exception. A column the run's
   `notMeasured` names reads "not measured" where JMeter's table shows a number [I5].
-- [ ] T043 [US2] `core/adapter/k6/K6ResultsReader.java`: streams k6's CSV (`.gz` too), joins each request's rows by
+- [X] T043 [US2] `core/adapter/k6/K6ResultsReader.java`: streams k6's CSV (`.gz` too), joins each request's rows by
   adjacency, opens and closes group passes, and sets the run record's `tool`, `timeResolution` and `notMeasured`
   (contracts/k6-adapter.md). Depends on T016 and T020.
-- [ ] T044 [US2] `core/adapter/k6/K6SummaryReader.java`: threshold, check and counter records. Depends on T021.
-- [ ] T045 [US2] `plugin/BuildReport.java`: `--from k6 --k6-results FILE [--k6-summary FILE] [--write-run-data]`, with
+- [X] T044 [US2] `core/adapter/k6/K6SummaryReader.java`: threshold, check and counter records. Depends on T021.
+- [X] T045 [US2] `plugin/BuildReport.java`: `--from k6 --k6-results FILE [--k6-summary FILE] [--write-run-data]`, with
   the test name from `webinsight.report.title`, else the default (data-model.md `Run.testName`) [A1], and `--help`.
   Depends on T029, T043 and T044.
-- [ ] T046 [US2] `plugin/WirCollect.java`: `--from k6 --k6-results FILE` with `--test-name`, giving the same window and
+- [X] T046 [US2] `plugin/WirCollect.java`: `--from k6 --k6-results FILE` with `--test-name`, giving the same window and
   identity as `build-report`, plus `--help`. Depends on T043.
 - [ ] T047 [US2] `plugin-test/BuildReportK6Test.java` [G4]:
   - K1 with `webinsight.report.externaldata=true` writes and references the sidecar data file (FR-009);

@@ -1,6 +1,7 @@
 package com.jmeterwebinsightreport;
 
 import com.jmeterwebinsightreport.core.model.ReportData;
+import com.jmeterwebinsightreport.core.adapter.k6.K6Results;
 import com.jmeterwebinsightreport.core.rundata.RunDataFormat;
 import com.jmeterwebinsightreport.report.exporter.ReportRebuild;
 import com.jmeterwebinsightreport.report.generator.ExitPolicy;
@@ -38,7 +39,9 @@ import java.util.function.Function;
  */
 public final class BuildReport {
 
-    static final String USAGE = "usage: build-report --run-data <run-data.jsonl.gz> --out <folder>"
+    static final String USAGE = "usage: build-report (--run-data <run-data.jsonl.gz>"
+            + " | --from k6 --k6-results <results.csv.gz> [--k6-summary <summary.json>] [--write-run-data])"
+            + " --out <folder>"
             + " [--annotations FILE] [--servermetrics FILE] [--baseline FILE]"
             + " [--property key=value]... [--properties FILE]";
     private static final String MORE = "build-report --help lists every option";
@@ -65,8 +68,14 @@ public final class BuildReport {
             err.println(MORE);
             return 1;
         }
-        if (!o.runData.isFile()) {
-            err.println("build-report: the run data does not exist: " + o.runData.getAbsolutePath());
+        File given = o.k6Results != null ? o.k6Results : o.runData;
+        if (!given.isFile()) {
+            err.println("build-report: " + (o.k6Results != null ? "k6's results" : "the run data")
+                    + " does not exist: " + given.getAbsolutePath());
+            return 1;
+        }
+        if (o.k6Summary != null && !o.k6Summary.isFile()) {
+            err.println("build-report: k6's summary does not exist: " + o.k6Summary.getAbsolutePath());
             return 1;
         }
         Map<String, String> settings;
@@ -98,6 +107,10 @@ public final class BuildReport {
                 return 1;
             }
             ReportConfiguration config = ReportRebuild.configuration(o.out, props);
+            if (o.k6Results != null) {
+                // k6's own files through the report's k6 adapter (decision 8), as run data the report then reads
+                o.runData = k6RunData(o, config, props, out);
+            }
             ReportData data = ReportRebuild.parseRunData(o.runData, config, props);
             out.println("build-report: " + toolLine(data) + ", run data format " + RunDataFormat.VERSION
                     + " reader");
@@ -137,6 +150,36 @@ public final class BuildReport {
         }
     }
 
+    /**
+     * k6's results as run data: beside the report when {@code --write-run-data} asks, else a scratch file. The test
+     * name is the report title ({@code webinsight.report.title}, else the default title), which the run's identity
+     * hashes: {@code wir-collect --k6-results} must be given the same as {@code --test-name}.
+     */
+    private static File k6RunData(Options o, ReportConfiguration config, Function<String, String> props,
+                                  PrintStream out) throws IOException {
+        String title = props.apply("webinsight.report.title");
+        String testName = title != null && !title.trim().isEmpty() ? title : config.getReportTitle();
+        File target;
+        if (o.writeRunData) {
+            String html = props.apply("webinsight.report.filename");
+            String base = html == null || html.trim().isEmpty() ? "web-insight-report"
+                    : (html.endsWith(".html") ? html.substring(0, html.length() - 5) : html);
+            target = new File(o.out, base + RunDataFormat.FILE_SUFFIX);
+        } else {
+            target = File.createTempFile("wir-k6-run-data-", ".jsonl.gz");
+            target.deleteOnExit();
+        }
+        K6Results.Result r = K6Results.toRunData(o.k6Results, o.k6Summary, testName, target);
+        out.println("build-report: k6 results read: " + r.requests + " requests, " + r.passes + " group passes"
+                + (r.cutOffPasses > 0 ? " (" + r.cutOffPasses + " cut off by the end of the test)" : "")
+                + (r.wholeSeconds ? "; whole-second times" : "")
+                + (r.withoutUsers ? "; no vu and iter, so request rows only" : ""));
+        if (o.writeRunData) {
+            out.println("Run data: " + target.getPath());
+        }
+        return target;
+    }
+
     private static String toolLine(ReportData data) {
         String tool = data.getMetadata().getToolName();
         String version = tool == null ? data.getMetadata().getJmeterVersion() : data.getMetadata().getToolVersion();
@@ -150,6 +193,11 @@ public final class BuildReport {
                 + "\n"
                 + "Options:\n"
                 + "  --run-data FILE       the run's samples as run data (.jsonl or .jsonl.gz), of any tool\n"
+                + "  --from k6             or k6's own files, through the report's k6 adapter:\n"
+                + "  --k6-results FILE     k6's --out csv file (.csv or .csv.gz), written with\n"
+                + "                        K6_CSV_TIME_FORMAT=unix_milli and vu,iter in K6_SYSTEM_TAGS\n"
+                + "  --k6-summary FILE     k6's end-of-test summary (handleSummary's data): thresholds, counters\n"
+                + "  --write-run-data      with --from k6, also keep the run data beside the report\n"
                 + "  --out FOLDER          where the report is written; created if missing\n"
                 + "  --annotations FILE    the test's asserts (else auto-detected in --out, as on jmeter -g)\n"
                 + "  --servermetrics FILE  server data: a payload wir-collect wrote, or a CSV read in-process\n"
@@ -172,6 +220,10 @@ public final class BuildReport {
     /** The command line, read. */
     static final class Options {
         File runData;
+        File k6Results;
+        File k6Summary;
+        String from;
+        boolean writeRunData;
         File out;
         File annotations;
         File serverMetrics;
@@ -188,6 +240,10 @@ public final class BuildReport {
                     throw new IllegalArgumentException("unexpected argument: " + a);
                 }
                 String key = a.substring(2);
+                if ("write-run-data".equals(key)) {
+                    o.writeRunData = true;
+                    continue;
+                }
                 if (i + 1 >= args.length) {
                     throw new IllegalArgumentException("--" + key + " needs a value");
                 }
@@ -200,6 +256,9 @@ public final class BuildReport {
                 }
                 switch (key) {
                     case "run-data": o.runData = new File(value); break;
+                    case "from": o.from = value; break;
+                    case "k6-results": o.k6Results = new File(value); break;
+                    case "k6-summary": o.k6Summary = new File(value); break;
                     case "out": o.out = new File(value); break;
                     case "annotations": o.annotations = new File(value); break;
                     case "servermetrics": o.serverMetrics = new File(value); break;
@@ -217,8 +276,22 @@ public final class BuildReport {
                         throw new IllegalArgumentException("unknown option --" + key);
                 }
             }
-            if (o.runData == null) {
-                throw new IllegalArgumentException("--run-data is required");
+            boolean k6 = o.from != null || o.k6Results != null;
+            if (o.from != null && !"k6".equals(o.from)) {
+                throw new IllegalArgumentException("--from takes k6, the one tool this report reads the files of"
+                        + " (another tool writes run data: --run-data)");
+            }
+            if (k6 && (o.from == null || o.k6Results == null)) {
+                throw new IllegalArgumentException("k6's files are read with --from k6 --k6-results FILE");
+            }
+            if (k6 && o.runData != null) {
+                throw new IllegalArgumentException("give the run once: --run-data, or --from k6 --k6-results");
+            }
+            if (!k6 && o.runData == null) {
+                throw new IllegalArgumentException("--run-data (or --from k6 --k6-results) is required");
+            }
+            if (o.writeRunData && !k6) {
+                throw new IllegalArgumentException("--write-run-data goes with --from k6: run data is already run data");
             }
             if (o.out == null) {
                 throw new IllegalArgumentException("--out is required");
