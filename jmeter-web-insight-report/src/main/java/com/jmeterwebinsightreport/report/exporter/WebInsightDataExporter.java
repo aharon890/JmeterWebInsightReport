@@ -201,6 +201,14 @@ public class WebInsightDataExporter extends AbstractDataExporter {
                             + " (set -Jwebinsight.report.failonerror=false to exit 0 anyway)");
                 }
             }
+            if (config.getRunDataProblem() != null) {
+                // webinsight.report.rundata asked for the file, so its absence is a missing artifact (spec 001)
+                System.err.println("WEB-INSIGHT-REPORT: INCOMPLETE — " + config.getRunDataProblem());
+                if (failOnError()) {
+                    throw new ExportException(config.getRunDataProblem()
+                            + " (set -Jwebinsight.report.failonerror=false to exit 0 anyway)");
+                }
+            }
             failOnAssertIfAsked(artifacts);
         } catch (ExportException e) {
             throw e;

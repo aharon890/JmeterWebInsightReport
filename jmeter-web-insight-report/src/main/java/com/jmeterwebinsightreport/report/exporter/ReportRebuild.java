@@ -2,6 +2,8 @@ package com.jmeterwebinsightreport.report.exporter;
 
 import com.jmeterwebinsightreport.WirCollect;
 import com.jmeterwebinsightreport.core.model.ReportData;
+import com.jmeterwebinsightreport.core.rundata.RunHeader;
+import com.jmeterwebinsightreport.core.rundata.RunDataRecorder;
 import com.jmeterwebinsightreport.core.model.TestMetadata;
 import com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine;
 import com.jmeterwebinsightreport.core.rundata.RunDataReader;
@@ -171,8 +173,26 @@ public final class ReportRebuild {
         parser.setTimestampIsStart(stampedAtStart(props.apply("sampleresult.timestamp.start")));
         parser.setFailureMessageTypesErrors(failureMessageTypesErrors(
                 props.apply("jmeter.save.saveservice.assertion_results_failure_message")));
+        RunDataRecorder recorder = null;
+        if (ReportConfiguration.writesRunData(props)) {
+            // The run's samples as run data, beside the report (spec 001, decision 9): every row the parse feeds, with
+            // ids and parents, so a report rebuilt from the file is this one
+            recorder = RunDataRecorder.open(new RunHeader(RunHeader.TOOL_JMETER, jmeterVersionOrNull(),
+                    config.getReportTitle()), Integer.MAX_VALUE);
+            parser.setSampleTap(recorder::sample);
+            config.setRunDataRecorder(recorder);
+        }
 
-        ReportData reportData = parser.parse(jtl, config.getReportTitle());
+        ReportData reportData;
+        try {
+            reportData = parser.parse(jtl, config.getReportTitle());
+        } catch (IOException | RuntimeException e) {
+            if (recorder != null) {
+                recorder.discard();
+                config.setRunDataRecorder(null);
+            }
+            throw e;
+        }
 
         try {
             String version = JMeterUtils.getJMeterVersion();
@@ -226,6 +246,39 @@ public final class ReportRebuild {
         }
         data.setToolRecords(read.tool.isEmpty() ? null : read.tool);
         return data;
+    }
+
+    private static String jmeterVersionOrNull() {
+        try {
+            return JMeterUtils.getJMeterVersion();
+        } catch (Exception | LinkageError e) {
+            return null;
+        }
+    }
+
+    /**
+     * Puts the run data recorded during the parse beside the report (spec 001, decision 9), and says where. A file
+     * that could not be written is the run's {@code runDataProblem}: its caller prints INCOMPLETE and decides, by
+     * {@code failonerror}, whether that fails the run, as for any other artifact.
+     */
+    static void publishRunData(ReportConfiguration config, ReportArtifacts artifacts, PrintStream out) {
+        RunDataRecorder recorder = config.getRunDataRecorder();
+        if (recorder == null) {
+            return;
+        }
+        config.setRunDataRecorder(null);
+        if (artifacts.html() == null) {
+            recorder.discard();
+            return;
+        }
+        try {
+            File written = recorder.publish(artifacts.outputDirectory(), artifacts.html().getName());
+            out.println("Run data: " + written.getPath());
+            log.info("Run data written: {}", written.getAbsolutePath());
+        } catch (IOException e) {
+            config.setRunDataProblem(e.getMessage());
+            log.warn("Run data not written: {}", e.getMessage());
+        }
     }
 
     /** {@code webinsight.apdex.threshold}, or the parser's default; an unreadable one is warned about, as on a JTL. */
@@ -383,6 +436,7 @@ public final class ReportRebuild {
             throws IOException {
         try {
             ReportArtifacts artifacts = new WebInsightReportGenerator(config).generateReport(data);
+            publishRunData(config, artifacts, out);
             if (log != null) {
                 log.accept(artifacts.successMarker());
             }

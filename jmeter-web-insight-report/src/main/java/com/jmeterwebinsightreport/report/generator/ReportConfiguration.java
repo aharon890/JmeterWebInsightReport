@@ -103,6 +103,31 @@ public class ReportConfiguration {
     private File serverMetricsFile;
     /** Where the report reads its properties (spec 001, research R5): JMeter's, or a command's. */
     private Function<String, String> properties;
+    /** The run data being recorded beside the report ({@code webinsight.report.rundata}), or null. */
+    private com.jmeterwebinsightreport.core.rundata.RunDataRecorder runDataRecorder;
+    /** Why the run data could not be written beside the report, or null. */
+    private String runDataProblem;
+
+    public com.jmeterwebinsightreport.core.rundata.RunDataRecorder getRunDataRecorder() {
+        return runDataRecorder;
+    }
+
+    public void setRunDataRecorder(com.jmeterwebinsightreport.core.rundata.RunDataRecorder runDataRecorder) {
+        this.runDataRecorder = runDataRecorder;
+    }
+
+    public String getRunDataProblem() {
+        return runDataProblem;
+    }
+
+    public void setRunDataProblem(String runDataProblem) {
+        this.runDataProblem = runDataProblem;
+    }
+
+    /** {@code webinsight.report.rundata}: whether the run's samples are written beside the report (decision 9). */
+    public static boolean writesRunData(Function<String, String> props) {
+        return BooleanSetting.parse(props.apply("webinsight.report.rundata")).orElse(false);
+    }
 
     /**
      * Why the server data given to this -g run could not be collected in-process (a CSV

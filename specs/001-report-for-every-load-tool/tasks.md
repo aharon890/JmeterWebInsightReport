@@ -110,7 +110,7 @@ a report on a machine with no JMeter.
   - a baseline on a non-JMeter run is refused with its sentence, and the report is built without Compare (FR-017) [A2];
   - a non-JMeter run's JSON has `tool`, and a JMeter run's JSON has no `tool` key (decision 12) [I4];
   - `--help` lists every option.
-- [ ] T014 [P] `plugin-test/report/RunDataSettingTest.java` (`webinsight.report.rundata`) [G3]:
+- [X] T014 [P] `plugin-test/report/RunDataSettingTest.java` (`webinsight.report.rundata`) [G3]:
   - default off writes nothing, on both paths;
   - on, the listener and `-g` each write `<report name>-run-data.jsonl.gz` through the publication set;
   - the file carries the failed samples' bodies exactly as the report does, cut at `webinsight.error.body.maxsize`,
@@ -162,7 +162,7 @@ themselves. T009 runs in `plugin-test/report/rundata/RunDataRoundTripTest.java`,
 - [X] T024 `core/stats/LiveStatisticsEngine.java`: a transaction's elapsed time, idle time and success from its
   children when not given (data-model.md `Sample.elapsed`, `Sample.idle`, `Sample.wallTime`, `Sample.success`;
   research R4). Depends on T016.
-- [ ] T025 `webinsight.report.rundata` in both JMeter paths, default `false` (decision 9):
+- [X] T025 `webinsight.report.rundata` in both JMeter paths, default `false` (decision 9):
   - `plugin/report/listener/WebInsightReportListener.java` uses one synchronised writer, published at test end;
   - `plugin/report/exporter/WebInsightDataExporter.java`;
   - `ArtifactPublication` gets the file, `PropertyCheck.KNOWN` the name;

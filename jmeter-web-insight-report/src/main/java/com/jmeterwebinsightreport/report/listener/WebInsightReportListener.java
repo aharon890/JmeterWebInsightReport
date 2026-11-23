@@ -2,6 +2,8 @@ package com.jmeterwebinsightreport.report.listener;
 
 import com.jmeterwebinsightreport.core.model.ReportData;
 import com.jmeterwebinsightreport.core.rundata.RunSample;
+import com.jmeterwebinsightreport.core.rundata.RunHeader;
+import com.jmeterwebinsightreport.core.rundata.RunDataRecorder;
 import com.jmeterwebinsightreport.core.rundata.SampleFeed;
 import com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine;
 import com.jmeterwebinsightreport.report.exporter.WebInsightDataExporter;
@@ -205,6 +207,7 @@ public class WebInsightReportListener extends ResultCollector {
                 annotationsRaw = rawText(ANNOTATIONS_FILE);
                 annotationsResolved = getPropertyAsString(ANNOTATIONS_FILE);
                 configuration = config;
+                runDataRecorder = openRunDataRecorder(config, engine);
                 statsEngine = engine;
             } else {
                 log.info("Web Insight Report Listener: additional host started (host={}), {} now active",
@@ -472,6 +475,28 @@ public class WebInsightReportListener extends ResultCollector {
         }
     }
 
+    /** The run data being recorded ({@code webinsight.report.rundata}, spec 001), or null; set before the engine. */
+    private volatile RunDataRecorder runDataRecorder;
+
+    private RunDataRecorder openRunDataRecorder(ReportConfiguration config, LiveStatisticsEngine engine) {
+        if (!ReportConfiguration.writesRunData(this::getJMeterProperty)) {
+            return null;
+        }
+        try {
+            String version = null;
+            try {
+                version = JMeterUtils.getJMeterVersion();
+            } catch (Exception | LinkageError e) {
+                // no version to name
+            }
+            return RunDataRecorder.open(new RunHeader(RunHeader.TOOL_JMETER, version, config.getReportTitle()),
+                    engine.getMaxResponseBodyLength());
+        } catch (java.io.IOException e) {
+            log.warn("webinsight.report.rundata=true, but the run data cannot be recorded: {}", e.getMessage());
+            return null;
+        }
+    }
+
     /**
      * Process a single SampleResult and recursively process any sub-results.
      * Transaction Controllers with parent=true wrap child samples as sub-results.
@@ -480,7 +505,7 @@ public class WebInsightReportListener extends ResultCollector {
      *        run counts the samples a listener in the plan received, a transaction's requests inside it
      */
     private void processSampleResult(LiveStatisticsEngine statsEngine, SampleResult result, boolean topLevel) {
-        processSampleResult(statsEngine, result, topLevel, null, false);
+        processSampleResult(statsEngine, result, topLevel, null, false, null);
     }
 
     /**
@@ -489,8 +514,15 @@ public class WebInsightReportListener extends ResultCollector {
      *        always nests so its time is not counted twice, but only a real controller is presented as one
      */
     private void processSampleResult(LiveStatisticsEngine statsEngine, SampleResult result, boolean topLevel,
-                                     String parentLabel, boolean parentIsTransactionController) {
-        SampleFeed.feed(statsEngine, toRunSample(result, topLevel, parentIsTransactionController), parentLabel);
+                                     String parentLabel, boolean parentIsTransactionController, String parentId) {
+        RunSample sample = toRunSample(result, topLevel, parentIsTransactionController);
+        SampleFeed.feed(statsEngine, sample, parentLabel);
+        RunDataRecorder recorder = runDataRecorder;
+        if (recorder != null) {
+            sample.id = recorder.nextId();
+            sample.parent = parentId;
+            recorder.sample(sample);
+        }
 
         // Process sub-results (Transaction Controller children / embedded resources / redirect
         // hops). Record the REAL parent->child relationship so transaction grouping is based on
@@ -505,7 +537,8 @@ public class WebInsightReportListener extends ResultCollector {
         if (subResults != null && subResults.length > 0) {
             boolean fromTransactionController = TransactionController.isFromTransactionController(result);
             for (SampleResult sub : subResults) {
-                processSampleResult(statsEngine, sub, false, result.getSampleLabel(), fromTransactionController);
+                processSampleResult(statsEngine, sub, false, result.getSampleLabel(), fromTransactionController,
+                        sample.id);
             }
         }
     }
@@ -678,6 +711,7 @@ public class WebInsightReportListener extends ResultCollector {
 
             WebInsightReportGenerator generator = new WebInsightReportGenerator(configuration);
             ReportArtifacts artifacts = generator.generateReport(reportData);
+            publishRunData(artifacts);
 
             // Tell the -g -o exporter what we actually wrote, so a combined
             // `-n -t … -e -o` run does not produce a second, differently-named report of the
@@ -811,6 +845,31 @@ public class WebInsightReportListener extends ResultCollector {
      * rule to be fatal has {@code gate.notJudged.invalidRule} in the CI/CD JSON and can say so
      * itself — which is a decision it makes, rather than one made for it here.
      */
+    /**
+     * The recorded run data beside the report ({@code webinsight.report.rundata}, spec 001). A file that could not be
+     * written is a missing artifact: INCOMPLETE, and a failed run under {@code failonerror}.
+     */
+    private void publishRunData(ReportArtifacts artifacts) {
+        RunDataRecorder recorder = runDataRecorder;
+        runDataRecorder = null;
+        if (recorder == null) {
+            return;
+        }
+        if (artifacts.html() == null) {
+            recorder.discard();
+            return;
+        }
+        try {
+            File written = recorder.publish(artifacts.outputDirectory(), artifacts.html().getName());
+            log.info("Web Insight Report: run data written to {}", written.getAbsolutePath());
+        } catch (java.io.IOException e) {
+            System.err.println("WEB-INSIGHT-REPORT: INCOMPLETE — " + e.getMessage());
+            if (failOnError()) {
+                failTheRun(NonZeroExit.FAIL_ON_ERROR, e);
+            }
+        }
+    }
+
     private void failOnAssertIfAsked(ReportArtifacts artifacts) {
         // The client gate's FAIL, or a FAIL on any server gate that builds (D4): the fold is
         // the artifacts', and the verdict line already names which gate said it.

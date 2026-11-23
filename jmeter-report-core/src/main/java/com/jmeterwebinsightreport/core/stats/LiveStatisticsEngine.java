@@ -417,6 +417,11 @@ public class LiveStatisticsEngine {
         this.maxResponseBodyLength = maxResponseBodyLength;
     }
 
+    /** Characters of a failed sample's response body each error record keeps. */
+    public int getMaxResponseBodyLength() {
+        return maxResponseBodyLength;
+    }
+
     public void setApdexThreshold(double apdexThreshold) {
         this.apdexThreshold = apdexThreshold;
         // Every caller sets T before the first sample. One that did not would drop the samples already
