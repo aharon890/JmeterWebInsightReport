@@ -47,7 +47,7 @@ each command's `--help` changes in the task that adds the option (Principle VI).
   `results.csv.gz`, `summary.json` and `shapes.js`, plus `results.jtl` and `in-test-plan.jtl` written by T002 [G2].
 - [X] T004 [P] Commit fixture K3 (an older k6 file: whole seconds, no vu/iter, from perf hub run #66) in
   `test-plans/run-data/K3/`: `results.csv.gz`, `summary.json`, `results.jtl` and `in-test-plan.jtl`.
-- [ ] T005 Record fixture K2 (petstore-checkout SMOKE with both k6 settings) into `test-plans/run-data/K2/`, **only
+- [X] T005 Record fixture K2 (petstore-checkout SMOKE with both k6 settings) into `test-plans/run-data/K2/`, **only
   after the owner's yes and at the smallest load**. Commit the same four files. Until then, the tasks that use K2 run on
   K1 and K3 only.
 - [X] T006 Capture the pre-change outputs [U6]. With today's build, write `ReportData` dumps and CI/CD JSON into
