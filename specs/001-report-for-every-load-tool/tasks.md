@@ -37,20 +37,20 @@ each command's `--help` changes in the task that adds the option (Principle VI).
 
 **Purpose**: the committed inputs every later test reads.
 
-- [ ] T001 Create `test-plans/run-data/` with a `README.md` saying what each fixture is, where it came from and how to
+- [X] T001 Create `test-plans/run-data/` with a `README.md` saying what each fixture is, where it came from and how to
   rebuild it.
-- [ ] T002 [P] Commit the reference converter as test provenance: `test-plans/run-data/tools/k6_to_jtl.py`. It comes from
+- [X] T002 [P] Commit the reference converter as test provenance: `test-plans/run-data/tools/k6_to_jtl.py`. It comes from
   perf hub's `tmp/k6-web-insight-report/shapes/k6_to_jtl_v3.py`, the version that matched the referee 198 of 198.
   - Give it a header naming its origin and its one use: writing the JMeter-format copies.
   - Extend it to also write `in-test-plan.jtl`: the top-level rows only, R07's whole-run reference [G2].
-- [ ] T003 [P] Commit fixture K1 (the shapes run, recorded with both k6 settings) in `test-plans/run-data/K1/`:
+- [X] T003 [P] Commit fixture K1 (the shapes run, recorded with both k6 settings) in `test-plans/run-data/K1/`:
   `results.csv.gz`, `summary.json` and `shapes.js`, plus `results.jtl` and `in-test-plan.jtl` written by T002 [G2].
-- [ ] T004 [P] Commit fixture K3 (an older k6 file: whole seconds, no vu/iter, from perf hub run #66) in
+- [X] T004 [P] Commit fixture K3 (an older k6 file: whole seconds, no vu/iter, from perf hub run #66) in
   `test-plans/run-data/K3/`: `results.csv.gz`, `summary.json`, `results.jtl` and `in-test-plan.jtl`.
 - [ ] T005 Record fixture K2 (petstore-checkout SMOKE with both k6 settings) into `test-plans/run-data/K2/`, **only
   after the owner's yes and at the smallest load**. Commit the same four files. Until then, the tasks that use K2 run on
   K1 and K3 only.
-- [ ] T006 Capture the pre-change outputs [U6]. With today's build, write `ReportData` dumps and CI/CD JSON into
+- [X] T006 Capture the pre-change outputs [U6]. With today's build, write `ReportData` dumps and CI/CD JSON into
   `test-plans/run-data/baseline-4.4.1/`, for `goldens/plain.jtl`, E02, E31's shape,
   `core-test` resources `transaction-controllers.jtl` and `missing-optional-columns.jtl`, and the JtlParserTest
   cut-off cases (`JtlParserTest.java:732`, `:751`). Also write one listener run's dump (a failed sample with a response
@@ -381,8 +381,13 @@ report with the common tabs, `demo` in the header, and a `demo` tab only if it c
 
 ## Implementation strategy
 
-1. **MVP = Foundational + US1.** A run's Server tab is judged from run data, whatever wrote it. Stop and show the owner.
-2. **US2** gives k6 runs their whole report through `build-report --from k6`. Perf hub spec 010 can start its plan.
-3. **US3**, then **US4**, then Polish and the release decision (the owner's).
+The owner (2026-11-23): "there is no point to merge to main unless there is some point at which i can test it end to
+end". So nothing merges until the owner has tested, and the PRs stay open with the code on this branch.
+
+1. **First stop = Foundational + US1 + US2.** A real petstore-checkout k6 smoke (K2) gets its report from `build-report
+   --from k6`, with no JMeter, and its Server tab is judged from petstore's Prometheus by the same server asserts as the
+   JMeter twin. A JMeter smoke's report is unchanged. The owner gets a step-by-step page with screenshots, and runs it.
+2. **Second stop = US3**: k6's words and the k6 tab.
+3. **US4**, then Polish, then the release decision (the owner's). Perf hub spec 010 plans after the first stop.
 
 Each phase is red first, then green, then sanity and regression, then a commit with the counts. The owner merges.

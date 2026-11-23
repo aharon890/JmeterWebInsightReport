@@ -1,0 +1,168 @@
+timeStamp,elapsed,label,responseCode,responseMessage,threadName,dataType,success,failureMessage,bytes,sentBytes,grpThreads,allThreads,URL,Latency,IdleTime,Connect
+1795452359384,32,Setup Read,200,OK,setup,text,true,,0,0,1,1,,32,0,0
+1795452359418,31,Outside Group,200,OK,flow 1-1,text,true,,0,0,1,1,,31,0,0
+1795452359917,32,Outside Group,200,OK,flow 1-3,text,true,,0,0,1,1,,32,0,0
+1795452359449,158,Complete Checkout Flow,500,"Number of samples in transaction : 8, number of failing samples : 2",flow 1-1,,false,,0,0,1,1,null,0,575,0
+1795452359449,31,Login,200,OK,flow 1-1,text,true,,0,0,1,1,,31,0,0
+1795452359681,32,Inner Payment,200,"Number of samples in transaction : 1, number of failing samples : 0",flow 1-1,,true,,0,0,1,1,null,0,101,0
+1795452359682,32,Pay,200,OK,flow 1-1,text,true,,0,0,1,1,,32,0,0
+1795452359815,1,Server Error,500,,flow 1-1,text,false,,0,0,1,1,,1,0,0
+1795452359816,0,Refused,Non HTTP response code: 1212,dial: connection refused,flow 1-1,text,false,,0,0,1,1,,0,0,0
+1795452359817,31,Batch B,200,OK,flow 1-1,text,true,,0,0,1,1,,31,0,0
+1795452359817,31,Batch A,200,OK,flow 1-1,text,true,,0,0,1,1,,31,0,0
+1795452359848,1,Redirected,302,OK,flow 1-1,text,true,,0,0,1,1,,1,0,0
+1795452359850,31,Redirected,200,OK,flow 1-1,text,true,,0,0,1,1,,31,0,0
+1795452360182,32,Complete Checkout Flow,200,"Number of samples in transaction : 1, number of failing samples : 0",flow 1-1,,true,,0,0,1,1,null,0,0,0
+1795452360182,32,Second Pass,200,OK,flow 1-1,text,true,,0,0,1,1,,32,0,0
+1795452360214,32,http://127.0.0.1:8080/unnamed?token=secret123,200,OK,flow 1-1,text,true,,0,0,1,1,,32,0,0
+1795452360417,32,Outside Group,200,OK,flow 1-2,text,true,,0,0,1,1,,31,0,0
+1795452359949,158,Complete Checkout Flow,500,"Number of samples in transaction : 8, number of failing samples : 2",flow 1-3,,false,,0,0,1,1,null,0,574,0
+1795452359950,31,Login,200,OK,flow 1-3,text,true,,0,0,1,1,,31,0,0
+1795452360181,32,Inner Payment,200,"Number of samples in transaction : 1, number of failing samples : 0",flow 1-3,,true,,0,0,1,1,null,0,101,0
+1795452360182,32,Pay,200,OK,flow 1-3,text,true,,0,0,1,1,,32,0,0
+1795452360315,1,Server Error,500,,flow 1-3,text,false,,0,0,1,1,,1,0,0
+1795452360316,0,Refused,Non HTTP response code: 1212,dial: connection refused,flow 1-3,text,false,,0,0,1,1,,0,0,0
+1795452360317,31,Batch A,200,OK,flow 1-3,text,true,,0,0,1,1,,31,0,0
+1795452360317,31,Batch B,200,OK,flow 1-3,text,true,,0,0,1,1,,31,0,0
+1795452360348,1,Redirected,302,OK,flow 1-3,text,true,,0,0,1,1,,1,0,0
+1795452360349,31,Redirected,200,OK,flow 1-3,text,true,,0,0,1,1,,31,0,0
+1795452360681,32,Complete Checkout Flow,200,"Number of samples in transaction : 1, number of failing samples : 0",flow 1-3,,true,,0,0,1,1,null,0,0,0
+1795452360681,32,Second Pass,200,OK,flow 1-3,text,true,,0,0,1,1,,31,0,0
+1795452360713,32,http://127.0.0.1:8080/unnamed?token=secret123,200,OK,flow 1-3,text,true,,0,0,1,1,,32,0,0
+1795452360918,32,Outside Group,200,OK,flow 1-1,text,true,,0,0,1,1,,32,0,0
+1795452360450,159,Complete Checkout Flow,500,"Number of samples in transaction : 8, number of failing samples : 2",flow 1-2,,false,,0,0,1,1,null,0,571,0
+1795452360450,31,Login,200,OK,flow 1-2,text,true,,0,0,1,1,,31,0,0
+1795452360681,31,Inner Payment,200,"Number of samples in transaction : 1, number of failing samples : 0",flow 1-2,,true,,0,0,1,1,null,0,101,0
+1795452360682,31,Pay,200,OK,flow 1-2,text,true,,0,0,1,1,,31,0,0
+1795452360814,1,Server Error,500,,flow 1-2,text,false,,0,0,1,1,,1,0,0
+1795452360815,0,Refused,Non HTTP response code: 1212,dial: connection refused,flow 1-2,text,false,,0,0,1,1,,0,0,0
+1795452360815,32,Batch B,200,OK,flow 1-2,text,true,,0,0,1,1,,32,0,0
+1795452360815,32,Batch A,200,OK,flow 1-2,text,true,,0,0,1,1,,32,0,0
+1795452360847,1,Redirected,302,OK,flow 1-2,text,true,,0,0,1,1,,1,0,0
+1795452360848,31,Redirected,200,OK,flow 1-2,text,true,,0,0,1,1,,31,0,0
+1795452361179,32,Complete Checkout Flow,200,"Number of samples in transaction : 1, number of failing samples : 0",flow 1-2,,true,,0,0,1,1,null,0,1,0
+1795452361179,32,Second Pass,200,OK,flow 1-2,text,true,,0,0,1,1,,31,0,0
+1795452361212,31,http://127.0.0.1:8080/unnamed?token=secret123,200,OK,flow 1-2,text,true,,0,0,1,1,,31,0,0
+1795452361417,32,Outside Group,200,OK,flow 1-3,text,true,,0,0,1,1,,31,0,0
+1795452360949,158,Complete Checkout Flow,500,"Number of samples in transaction : 8, number of failing samples : 2",flow 1-1,,false,,0,0,1,1,null,0,574,0
+1795452360950,32,Login,200,OK,flow 1-1,text,true,,0,0,1,1,,32,0,0
+1795452361182,31,Inner Payment,200,"Number of samples in transaction : 1, number of failing samples : 0",flow 1-1,,true,,0,0,1,1,null,0,102,0
+1795452361183,31,Pay,200,OK,flow 1-1,text,true,,0,0,1,1,,31,0,0
+1795452361315,1,Server Error,500,,flow 1-1,text,false,,0,0,1,1,,1,0,0
+1795452361316,0,Refused,Non HTTP response code: 1212,dial: connection refused,flow 1-1,text,false,,0,0,1,1,,0,0,0
+1795452361317,31,Batch B,200,OK,flow 1-1,text,true,,0,0,1,1,,31,0,0
+1795452361317,31,Batch A,200,OK,flow 1-1,text,true,,0,0,1,1,,31,0,0
+1795452361348,1,Redirected,302,OK,flow 1-1,text,true,,0,0,1,1,,1,0,0
+1795452361350,31,Redirected,200,OK,flow 1-1,text,true,,0,0,1,1,,31,0,0
+1795452361681,31,Complete Checkout Flow,200,"Number of samples in transaction : 1, number of failing samples : 0",flow 1-1,,true,,0,0,1,1,null,0,1,0
+1795452361682,31,Second Pass,200,OK,flow 1-1,text,true,,0,0,1,1,,31,0,0
+1795452361713,32,http://127.0.0.1:8080/unnamed?token=secret123,200,OK,flow 1-1,text,true,,0,0,1,1,,32,0,0
+1795452361917,32,Outside Group,200,OK,flow 1-2,text,true,,0,0,1,1,,32,0,0
+1795452361448,159,Complete Checkout Flow,500,"Number of samples in transaction : 8, number of failing samples : 2",flow 1-3,,false,,0,0,1,1,null,0,573,0
+1795452361448,32,Login,200,OK,flow 1-3,text,true,,0,0,1,1,,31,0,0
+1795452361681,31,Inner Payment,200,"Number of samples in transaction : 1, number of failing samples : 0",flow 1-3,,true,,0,0,1,1,null,0,101,0
+1795452361682,31,Pay,200,OK,flow 1-3,text,true,,0,0,1,1,,31,0,0
+1795452361814,1,Server Error,500,,flow 1-3,text,false,,0,0,1,1,,1,0,0
+1795452361815,0,Refused,Non HTTP response code: 1212,dial: connection refused,flow 1-3,text,false,,0,0,1,1,,0,0,0
+1795452361816,31,Batch A,200,OK,flow 1-3,text,true,,0,0,1,1,,31,0,0
+1795452361816,31,Batch B,200,OK,flow 1-3,text,true,,0,0,1,1,,31,0,0
+1795452361847,1,Redirected,302,OK,flow 1-3,text,true,,0,0,1,1,,1,0,0
+1795452361847,32,Redirected,200,OK,flow 1-3,text,true,,0,0,1,1,,31,0,0
+1795452362180,32,Complete Checkout Flow,200,"Number of samples in transaction : 1, number of failing samples : 0",flow 1-3,,true,,0,0,1,1,null,0,0,0
+1795452362180,32,Second Pass,200,OK,flow 1-3,text,true,,0,0,1,1,,32,0,0
+1795452362213,31,http://127.0.0.1:8080/unnamed?token=secret123,200,OK,flow 1-3,text,true,,0,0,1,1,,31,0,0
+1795452362417,32,Outside Group,200,OK,flow 1-1,text,true,,0,0,1,1,,32,0,0
+1795452361949,157,Complete Checkout Flow,500,"Number of samples in transaction : 8, number of failing samples : 2",flow 1-2,,false,,0,0,1,1,null,0,574,0
+1795452361950,31,Login,200,OK,flow 1-2,text,true,,0,0,1,1,,31,0,0
+1795452362181,31,Inner Payment,200,"Number of samples in transaction : 1, number of failing samples : 0",flow 1-2,,true,,0,0,1,1,null,0,101,0
+1795452362182,31,Pay,200,OK,flow 1-2,text,true,,0,0,1,1,,31,0,0
+1795452362313,1,Server Error,500,,flow 1-2,text,false,,0,0,1,1,,1,0,0
+1795452362314,0,Refused,Non HTTP response code: 1212,dial: connection refused,flow 1-2,text,false,,0,0,1,1,,0,0,0
+1795452362315,31,Batch A,200,OK,flow 1-2,text,true,,0,0,1,1,,31,0,0
+1795452362315,31,Batch B,200,OK,flow 1-2,text,true,,0,0,1,1,,31,0,0
+1795452362346,1,Redirected,302,OK,flow 1-2,text,true,,0,0,1,1,,1,0,0
+1795452362348,31,Redirected,200,OK,flow 1-2,text,true,,0,0,1,1,,31,0,0
+1795452362680,32,Complete Checkout Flow,200,"Number of samples in transaction : 1, number of failing samples : 0",flow 1-2,,true,,0,0,1,1,null,0,0,0
+1795452362680,32,Second Pass,200,OK,flow 1-2,text,true,,0,0,1,1,,32,0,0
+1795452362713,31,http://127.0.0.1:8080/unnamed?token=secret123,200,OK,flow 1-2,text,true,,0,0,1,1,,31,0,0
+1795452362917,32,Outside Group,200,OK,flow 1-3,text,true,,0,0,1,1,,31,0,0
+1795452362449,159,Complete Checkout Flow,500,"Number of samples in transaction : 8, number of failing samples : 2",flow 1-1,,false,,0,0,1,1,null,0,572,0
+1795452362450,31,Login,200,OK,flow 1-1,text,true,,0,0,1,1,,31,0,0
+1795452362682,31,Inner Payment,200,"Number of samples in transaction : 1, number of failing samples : 0",flow 1-1,,true,,0,0,1,1,null,0,101,0
+1795452362682,31,Pay,200,OK,flow 1-1,text,true,,0,0,1,1,,31,0,0
+1795452362814,1,Server Error,500,,flow 1-1,text,false,,0,0,1,1,,1,0,0
+1795452362815,0,Refused,Non HTTP response code: 1212,dial: connection refused,flow 1-1,text,false,,0,0,1,1,,0,0,0
+1795452362815,32,Batch B,200,OK,flow 1-1,text,true,,0,0,1,1,,31,0,0
+1795452362815,32,Batch A,200,OK,flow 1-1,text,true,,0,0,1,1,,32,0,0
+1795452362847,1,Redirected,302,OK,flow 1-1,text,true,,0,0,1,1,,1,0,0
+1795452362849,31,Redirected,200,OK,flow 1-1,text,true,,0,0,1,1,,31,0,0
+1795452363180,32,Complete Checkout Flow,200,"Number of samples in transaction : 1, number of failing samples : 0",flow 1-1,,true,,0,0,1,1,null,0,0,0
+1795452363180,32,Second Pass,200,OK,flow 1-1,text,true,,0,0,1,1,,32,0,0
+1795452363213,31,http://127.0.0.1:8080/unnamed?token=secret123,200,OK,flow 1-1,text,true,,0,0,1,1,,31,0,0
+1795452363418,32,Outside Group,200,OK,flow 1-2,text,true,,0,0,1,1,,31,0,0
+1795452362948,161,Complete Checkout Flow,500,"Number of samples in transaction : 8, number of failing samples : 2",flow 1-3,,false,,0,0,1,1,null,0,571,0
+1795452362949,31,Login,200,OK,flow 1-3,text,true,,0,0,1,1,,31,0,0
+1795452363180,32,Inner Payment,200,"Number of samples in transaction : 1, number of failing samples : 0",flow 1-3,,true,,0,0,1,1,null,0,101,0
+1795452363180,32,Pay,200,OK,flow 1-3,text,true,,0,0,1,1,,32,0,0
+1795452363313,2,Server Error,500,,flow 1-3,text,false,,0,0,1,1,,2,0,0
+1795452363315,0,Refused,Non HTTP response code: 1212,dial: connection refused,flow 1-3,text,false,,0,0,1,1,,0,0,0
+1795452363315,32,Batch A,200,OK,flow 1-3,text,true,,0,0,1,1,,31,0,0
+1795452363315,32,Batch B,200,OK,flow 1-3,text,true,,0,0,1,1,,31,0,0
+1795452363347,1,Redirected,302,OK,flow 1-3,text,true,,0,0,1,1,,1,0,0
+1795452363348,31,Redirected,200,OK,flow 1-3,text,true,,0,0,1,1,,31,0,0
+1795452363680,32,Complete Checkout Flow,200,"Number of samples in transaction : 1, number of failing samples : 0",flow 1-3,,true,,0,0,1,1,null,0,0,0
+1795452363680,32,Second Pass,200,OK,flow 1-3,text,true,,0,0,1,1,,32,0,0
+1795452363713,31,http://127.0.0.1:8080/unnamed?token=secret123,200,OK,flow 1-3,text,true,,0,0,1,1,,31,0,0
+1795452363917,32,Outside Group,200,OK,flow 1-1,text,true,,0,0,1,1,,31,0,0
+1795452363449,157,Complete Checkout Flow,500,"Number of samples in transaction : 8, number of failing samples : 2",flow 1-2,,false,,0,0,1,1,null,0,574,0
+1795452363450,31,Login,200,OK,flow 1-2,text,true,,0,0,1,1,,31,0,0
+1795452363681,31,Inner Payment,200,"Number of samples in transaction : 1, number of failing samples : 0",flow 1-2,,true,,0,0,1,1,null,0,102,0
+1795452363682,31,Pay,200,OK,flow 1-2,text,true,,0,0,1,1,,31,0,0
+1795452363814,1,Server Error,500,,flow 1-2,text,false,,0,0,1,1,,1,0,0
+1795452363816,0,Refused,Non HTTP response code: 1212,dial: connection refused,flow 1-2,text,false,,0,0,1,1,,0,0,0
+1795452363816,31,Batch B,200,OK,flow 1-2,text,true,,0,0,1,1,,31,0,0
+1795452363816,31,Batch A,200,OK,flow 1-2,text,true,,0,0,1,1,,31,0,0
+1795452363847,1,Redirected,302,OK,flow 1-2,text,true,,0,0,1,1,,1,0,0
+1795452363849,31,Redirected,200,OK,flow 1-2,text,true,,0,0,1,1,,31,0,0
+1795452364180,32,Complete Checkout Flow,200,"Number of samples in transaction : 1, number of failing samples : 0",flow 1-2,,true,,0,0,1,1,null,0,0,0
+1795452364180,32,Second Pass,200,OK,flow 1-2,text,true,,0,0,1,1,,31,0,0
+1795452364213,31,http://127.0.0.1:8080/unnamed?token=secret123,200,OK,flow 1-2,text,true,,0,0,1,1,,31,0,0
+1795452364417,32,Outside Group,200,OK,flow 1-3,text,true,,0,0,1,1,,31,0,0
+1795452363949,158,Complete Checkout Flow,500,"Number of samples in transaction : 8, number of failing samples : 2",flow 1-1,,false,,0,0,1,1,null,0,572,0
+1795452363949,31,Login,200,OK,flow 1-1,text,true,,0,0,1,1,,31,0,0
+1795452364180,31,Inner Payment,200,"Number of samples in transaction : 1, number of failing samples : 0",flow 1-1,,true,,0,0,1,1,null,0,102,0
+1795452364181,31,Pay,200,OK,flow 1-1,text,true,,0,0,1,1,,31,0,0
+1795452364313,1,Server Error,500,,flow 1-1,text,false,,0,0,1,1,,1,0,0
+1795452364314,0,Refused,Non HTTP response code: 1212,dial: connection refused,flow 1-1,text,false,,0,0,1,1,,0,0,0
+1795452364314,32,Batch B,200,OK,flow 1-1,text,true,,0,0,1,1,,31,0,0
+1795452364315,31,Batch A,200,OK,flow 1-1,text,true,,0,0,1,1,,31,0,0
+1795452364346,1,Redirected,302,OK,flow 1-1,text,true,,0,0,1,1,,1,0,0
+1795452364348,31,Redirected,200,OK,flow 1-1,text,true,,0,0,1,1,,31,0,0
+1795452364679,32,Complete Checkout Flow,200,"Number of samples in transaction : 1, number of failing samples : 0",flow 1-1,,true,,0,0,1,1,null,0,0,0
+1795452364679,32,Second Pass,200,OK,flow 1-1,text,true,,0,0,1,1,,32,0,0
+1795452364712,31,http://127.0.0.1:8080/unnamed?token=secret123,200,OK,flow 1-1,text,true,,0,0,1,1,,31,0,0
+1795452364918,31,Outside Group,200,OK,flow 1-2,text,true,,0,0,1,1,,31,0,0
+1795452364449,158,Complete Checkout Flow,500,"Number of samples in transaction : 8, number of failing samples : 2",flow 1-3,,false,,0,0,1,1,null,0,573,0
+1795452364449,32,Login,200,OK,flow 1-3,text,true,,0,0,1,1,,31,0,0
+1795452364682,31,Inner Payment,200,"Number of samples in transaction : 1, number of failing samples : 0",flow 1-3,,true,,0,0,1,1,null,0,101,0
+1795452364682,31,Pay,200,OK,flow 1-3,text,true,,0,0,1,1,,31,0,0
+1795452364814,1,Server Error,500,,flow 1-3,text,false,,0,0,1,1,,1,0,0
+1795452364815,0,Refused,Non HTTP response code: 1212,dial: connection refused,flow 1-3,text,false,,0,0,1,1,,0,0,0
+1795452364816,31,Batch A,200,OK,flow 1-3,text,true,,0,0,1,1,,31,0,0
+1795452364816,31,Batch B,200,OK,flow 1-3,text,true,,0,0,1,1,,31,0,0
+1795452364847,1,Redirected,302,OK,flow 1-3,text,true,,0,0,1,1,,1,0,0
+1795452364849,31,Redirected,200,OK,flow 1-3,text,true,,0,0,1,1,,31,0,0
+1795452365180,32,Complete Checkout Flow,200,"Number of samples in transaction : 1, number of failing samples : 0",flow 1-3,,true,,0,0,1,1,null,0,0,0
+1795452365180,32,Second Pass,200,OK,flow 1-3,text,true,,0,0,1,1,,32,0,0
+1795452365213,31,http://127.0.0.1:8080/unnamed?token=secret123,200,OK,flow 1-3,text,true,,0,0,1,1,,31,0,0
+1795452364949,158,Complete Checkout Flow,500,,flow 1-2,,false,,0,0,1,1,null,0,273,0
+1795452364949,32,Login,200,OK,flow 1-2,text,true,,0,0,1,1,,31,0,0
+1795452365181,31,Inner Payment,200,"Number of samples in transaction : 1, number of failing samples : 0",flow 1-2,,true,,0,0,1,1,null,0,102,0
+1795452365182,31,Pay,200,OK,flow 1-2,text,true,,0,0,1,1,,31,0,0
+1795452365315,1,Server Error,500,,flow 1-2,text,false,,0,0,1,1,,1,0,0
+1795452365316,0,Refused,Non HTTP response code: 1212,dial: connection refused,flow 1-2,text,false,,0,0,1,1,,0,0,0
+1795452365317,31,Batch A,200,OK,flow 1-2,text,true,,0,0,1,1,,31,0,0
+1795452365317,31,Batch B,200,OK,flow 1-2,text,true,,0,0,1,1,,31,0,0
+1795452365348,1,Redirected,302,OK,flow 1-2,text,true,,0,0,1,1,,1,0,0
+1795452365349,31,Redirected,200,OK,flow 1-2,text,true,,0,0,1,1,,31,0,0
+1795452365418,32,Teardown Clean,200,OK,teardown,text,true,,0,0,1,1,,32,0,0
