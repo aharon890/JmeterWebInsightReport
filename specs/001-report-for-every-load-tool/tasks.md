@@ -207,7 +207,7 @@ over the same window and server CSV. The two Server tabs are identical (SC-003).
 - [X] T036 [US1] `plugin/BuildReport.java`: `--servermetrics` (a payload or a CSV) and `--annotations`, through
   `ReportRebuild.readCompanionFiles`. The in-process CSV collection is handed the parsed `ReportData`, not a `--jtl`
   (ReportRebuild.java:314, WirCollect.java:163), with the report title as test name, as `-g` does [L1-3].
-- [ ] T037 [US1] Accept G13's baselines with `run-goldens.sh --accept` and commit them with T035-T036. Document
+- [X] T037 [US1] Accept G13's baselines with `run-goldens.sh --accept` and commit them with T035-T036. Document
   `wir-collect --run-data` in the server-data docs.
 
 ---
@@ -334,15 +334,15 @@ As built (2026-11-23):
 **Independent test**: a hand-written run data file for an imaginary tool `demo`, written from the docs alone, builds a
 report with the common tabs, `demo` in the header, and a `demo` tab only if it carries tool records.
 
-- [ ] T059 [P] [US4] `plugin-test/report/RunDataSchemaTest.java` [C3]:
+- [X] T059 [P] [US4] `plugin-test/report/RunDataSchemaTest.java` [C3]:
   - every record's fields in `resources/static/schema/run-data.schema.json` are held to the Java records, as
     `AnnotationsSchemaTest` holds the annotations schema;
   - its `formatVersion` pattern is held to `RunDataFormat.VERSION` and `READS`;
   - a js-unit test holds `docs/schema/run-data.schema.json` identical to it, like `schema-published.test.js`.
-- [ ] T060 [P] [US4] `test-plans/run-data/D1/`: the `demo` tool's run data and expected JSON, run by R08. Depends on
+- [X] T060 [P] [US4] `test-plans/run-data/D1/`: the `demo` tool's run data and expected JSON, run by R08. Depends on
   T041 [I7].
-- [ ] T061 [US4] `resources/static/schema/run-data.schema.json` and `docs/schema/run-data.schema.json` (research R9).
-- [ ] T062 [US4] A `docs/` page "Run data":
+- [X] T061 [US4] `resources/static/schema/run-data.schema.json` and `docs/schema/run-data.schema.json` (research R9).
+- [X] T062 [US4] A `docs/` page "Run data":
   - the format;
   - the per-tool meaning table (data-model.md "Per-tool meaning"), including the Transaction Controller mode [A3];
   - the versions read and written;
@@ -355,16 +355,24 @@ report with the common tabs, `demo` in the header, and a `demo` tab only if it c
 
 ---
 
+As built (2026-11-23): D1 is a run of an imaginary tool, `demo`, written from `docs/Tutorial/18-Run-Data.md` alone,
+with a JMeter-format copy written by hand; R08 holds it to JMeter's Aggregate Report (58 of 58) and to `expected/`.
+`BuildReportOtherToolTest` holds US4's independent test. Another tool's tab shows only what its run carries, and its
+counters under their own names; k6's keeps every section. `RunDataSchemaTest` holds the schema's fields to what
+`RunDataWriter` writes (shown to fail on a renamed field), and `run-data-schema-published.test.js` the published copy.
+
+---
+
 ## Phase 7: Polish and cross-cutting
 
-- [ ] T063 [P] `docs/FEATURES.md` and `docs/Instructions.md`: run data, `build-report`, R08, C44 and the K fixtures.
-- [ ] T064 [P] `CLAUDE.md`, to stay consistent with constitution 2.0.0 (Governance):
+- [X] T063 [P] `docs/FEATURES.md` and `docs/Instructions.md`: run data, `build-report`, R08, C44 and the K fixtures.
+- [X] T064 [P] `CLAUDE.md`, to stay consistent with constitution 2.0.0 (Governance):
   - "Two ingestion paths, one generator" becomes three feeders and one feed, with the explicit transaction flag;
   - the collector's libraries and the launcher's order;
   - R08 and its stated "not measured" exception [I5];
   - the K fixtures and the stamp.
-- [ ] T065 [P] `.claude/skills/_perf_release/SKILL.md`: attach the standalone zip and the run data schema.
-- [ ] T066 [P] `.github/workflows/cross-os.yml`: `build-report --from k6` over K1 on Windows, macOS and Linux, from the
+- [X] T065 [P] `.claude/skills/_perf_release/SKILL.md`: attach the standalone zip and the run data schema.
+- [X] T066 [P] `.github/workflows/cross-os.yml`: `build-report --from k6` over K1 on Windows, macOS and Linux, from the
   standalone bundle.
 - [ ] T067 `test-plans/scripts/measure-run-data.sh` (+x, `.bat` twin): K2 (or K1) repeated to 134,400 requests [G5].
   - Build time against `jmeter -g` over the JMeter-format copy, and against the 4.4.1 JAR over the same samples.

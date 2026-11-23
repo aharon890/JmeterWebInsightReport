@@ -1,0 +1,15 @@
+{"type":"run","formatVersion":"1.0","tool":{"name":"demo","version":"0.1"},"testName":"D1","producer":{"name":"demo-producer","version":"0.1"},"notMeasured":["bytes","sentBytes","latency","connect"]}
+{"type":"users","time":1795452400000,"active":2}
+{"type":"sample","id":"t1","kind":"transaction","name":"Checkout","start":1795452400000,"wallTime":300,"user":"user 1","iteration":0}
+{"type":"sample","parent":"t1","name":"Login","start":1795452400000,"elapsed":40,"success":true,"code":"200","message":"OK","user":"user 1","iteration":0,"method":"POST","url":"http://shop.test/login"}
+{"type":"sample","parent":"t1","name":"Pay","start":1795452400100,"elapsed":60,"success":false,"code":"500","message":"Internal Server Error","user":"user 1","iteration":0,"method":"POST","url":"http://shop.test/pay"}
+{"type":"sample","id":"t2","kind":"transaction","name":"Checkout","start":1795452400050,"wallTime":250,"user":"user 2","iteration":0}
+{"type":"sample","parent":"t2","name":"Login","start":1795452400050,"elapsed":35,"success":true,"code":"200","message":"OK","user":"user 2","iteration":0,"method":"POST","url":"http://shop.test/login"}
+{"type":"sample","parent":"t2","name":"Pay","start":1795452400150,"elapsed":55,"success":true,"code":"200","message":"OK","user":"user 2","iteration":0,"method":"POST","url":"http://shop.test/pay"}
+{"type":"check","time":1795452400160,"name":"pay is 200","group":"::Checkout","passed":false,"user":"user 1","iteration":0}
+{"type":"check","time":1795452400205,"name":"pay is 200","group":"::Checkout","passed":true,"user":"user 2","iteration":0}
+{"type":"sample","name":"Health","start":1795452401000,"elapsed":5,"success":true,"code":"200","message":"OK","user":"user 1","method":"GET","url":"http://shop.test/health"}
+{"type":"sample","name":"Health","start":1795452401200,"elapsed":7,"success":true,"code":"200","message":"OK","user":"user 2","method":"GET","url":"http://shop.test/health"}
+{"type":"users","time":1795452401300,"active":0}
+{"type":"threshold","metric":"checkout_time","expression":"p(95)<500","passed":true}
+{"type":"counter","name":"iterations","value":2}

@@ -84,8 +84,8 @@ longer match the tree, so a change that touched no plugin source costs the same 
 sanity. Force it with `--force-fixtures`.
 
 The stamp hashes **every file under both modules' `src/main`**, plus `test-plans/server-metrics`,
-`test-plans/server-catalogue` and `test-plans/server-fixtures` (E26's, E27's, E28's and E29's inputs), not a hand-picked
-list. It used to name five rendering files, which meant a change to `core/stats`
+`test-plans/server-catalogue`, `test-plans/server-fixtures` (E26's, E27's, E28's and E29's inputs) and
+`test-plans/run-data` (K1's, spec 001), not a hand-picked list. It used to name five rendering files, which meant a change to `core/stats`
 left every stamp matching — regeneration was skipped and every browser test
 asserted against numbers from the previous build, green. Widening it also made the
 check ~29x faster, because the hashes are now computed in one pass and compared as
@@ -112,7 +112,13 @@ R07 also holds each Samplers row's text, as the page's HTML writes it, to the te
 Report table shows in that row: the referee draws it with JMeter's table model and renderers
 (`StatGraphVisualizer.createObjectTableModel`/`getRenderers`, by reflection) under jmeter.bat's English
 locale, and `verify-data-integrity.py --report-html` compares cell by cell. Two stated exceptions: the
-Mean is rounded (B8) and the rate's unit is `/s` for `/sec`. The referee puts each row's IdleTime back
+Mean is rounded (B8) and the rate's unit is `/s` for `/sec`. A third for a run another tool recorded (spec 001, I5):
+with `--run-data`, the columns the run's `notMeasured` names (k6: Recv and Sent KB/s) must read "not measured" where
+JMeter's table over the JMeter-format copy shows 0.00. **R08** (`run-run-data.sh`) holds every run data producer to the
+same referee: the k6 fixtures K1-K3 (`build-report --from k6`), the hand-written D1 (`build-report --run-data`), and E02
+and E31 written as run data by `-g -Jwebinsight.report.rundata=true` and built again, which must equal the `-g`
+report's CI/CD JSON. The K fixtures' JMeter-format copies come from an independent converter
+(`test-plans/run-data/tools/k6_to_jtl.py`), so two translations must agree. The referee puts each row's IdleTime back
 on its end, as the listener's SampleResult ends it, so a transaction's windows run to its real end (B7).
 `whole-run-totals.spec.ts` closes the other half: it reads each tab as displayed (Summary tiles, Σ
 Total row, Timeline Σ lines, every Samplers row, the Errors tab) and holds it to that JSON, over every
@@ -125,7 +131,8 @@ reader in New York and fails on any difference in what they are shown: every tab
 tooltip, copy and download. JMeter's HTML report reads the same in every browser, and so must this one.
 
 The suites cover the JMeter scenarios Playwright actually opens (E02, E05-E12, E19, E25-E29, E31)
-plus CMP and CMP31 (E31's plan compared with itself, `CMP_ID=CMP31 generate-cmp-fixture.sh`) — the same
+plus CMP and CMP31 (E31's plan compared with itself, `CMP_ID=CMP31 generate-cmp-fixture.sh`) and K1, a k6 run's
+report built by `build-report --from k6` with no JMeter run (`tool-words.spec.ts`, `tool-tab.spec.ts`) — the same
 list as `FIXTURE_IDS` in `common.sh`, which is where to check rather than
 here. E19 is easy to forget: `external-data.spec.ts` opens it to assert the payload was written
 to a sibling `.js` and referenced by `<script src>`, which is the one product promise no
@@ -448,16 +455,27 @@ The failures these catch are all silent in the wild:
 
 ## Architecture
 
-### Two ingestion paths, one generator
+### Three feeders, one feed, one generator
 
-Each produces a `ReportData` and hands it to `WebInsightReportGenerator` (the third row is the second
-path started from the GUI):
+Every sample reaches `LiveStatisticsEngine` through one feed, `core/rundata/SampleFeed`, with an explicit
+transaction flag (constitution VII, spec 001): the listener, the JTL parser and the run data reader
+(`core/rundata/RunDataReader`, behind `build-report` and the k6 adapter `core/adapter/k6/K6Results`) all call it, so
+one run's samples give one report whichever path carried them. Each path produces a `ReportData` and hands it to
+`WebInsightReportGenerator` (the third row is the second path started from the GUI):
 
 | Path | Entry point | Source of stats |
 |------|-------------|-----------------|
 | Listener (GUI or `-n -t`) | `WebInsightReportListener extends ResultCollector` | `LiveStatisticsEngine` fed per-sample from `sampleOccurred` |
 | CLI `jmeter -g x.jtl -o dir` | `WebInsightDataExporter extends AbstractDataExporter` | `JtlParser` re-parses the JTL (JMeter's own `SampleContext` is discarded — it lacks the fidelity the report needs) |
 | GUI **Rebuild report with server data** (the listener panel's button, after a run) | `report/listener/rebuild/GuiRebuild` | `JtlParser`, through `report/exporter/ReportRebuild` — the service the exporter runs |
+| `build-report --run-data` / `--from k6` (no JMeter) | `BuildReport`, dispatched by `WirCollectLauncher` | `RunDataReader` over run data (k6's files are first turned into run data by `K6Results`), through `ReportRebuild.parseRunData` |
+
+A run another tool recorded names its tool in `TestMetadata` (`toolName`, `toolVersion`, `notMeasured`,
+`timeResolution`; all absent on a JMeter run, so no JMeter artifact moves). The page then reads that tool's column of
+the words table, `templates/page-words.json` (`PageWords`; report.js reads it through `W(key)`), adds the tool's tab
+(`ToolTab` over `core/model/ToolMeasures`), and writes "not measured" for the fields the tool does not record. A JMeter
+run gets JMeter's column, which is today's text exactly. `build-report` runs from the standalone bundle's `lib/` with
+no JMeter (C44): the launcher looks for JMeter's `lib/` as before, and second for a `lib/` beside the JAR.
 
 `ReportRebuild` (parse, companion files with the in-process CSV collection, generate and announce) is
 the one rebuild, so the button cannot drift from `-g` the way `failonassert` once drifted between the
@@ -471,8 +489,8 @@ property — the generator resolves `${timestamp}`, appends a missing `.html`, a
 names containing path separators, so a naive derivation misses in exactly the
 configurations the check exists for and both generators run.
 
-`ReportData` (`core/model/`) is the contract between the two halves: change it and both
-ingestion paths plus every serializer must follow.
+`ReportData` (`core/model/`) is the contract between the two halves: change it and every
+ingestion path plus every serializer must follow.
 
 **The whole run is counted per sample, never as a sum of rows.** `ReportData.getWholeRun()` is one row
 fed only the samples a listener in the test plan received, as JMeter's Aggregate Report feeds its TOTAL
@@ -1567,6 +1585,7 @@ test-plans/goldens/          R06: plain.jtl, the G1-G12 annotation cases (no G6;
 test-plans/server-metrics/   E26's committed annotations, CSV server data and payload
 test-plans/server-catalogue/ E27's: two catalogue components (postgres, kafka) with D1 data, the picker's fixture
 test-plans/server-fixtures/  E28 (a CSV that does not line up, plus real interim and refused pages) and E29 (a generated 4 h soak)
+test-plans/run-data/         Spec 001: the k6 fixtures K1-K3 and the hand-written D1, each with its JMeter-format copy and expected/ (R08); S1 (G13)
 test-plans/playwright/tests/ Browser specs; helpers.ts resolves fixture paths
 test-plans/scripts/          Runners (.sh = logic, .bat = wrapper) + Python verifiers
 test-plans/js-unit/          report.js unit tests in node — harness.js + *.test.js, no browser

@@ -5,6 +5,8 @@
 #  - The k6 fixtures (test-plans/run-data/K*) through build-report --from k6, with no jmeter -g: R07's referee
 #    over each fixture's JMeter-format copy (results.jtl for every row, in-test-plan.jtl for the whole run), the
 #    page's Samplers rows against the Aggregate Report table's text, and the CI/CD JSON against expected/.
+#  - Another tool's run data, written by hand from the docs alone (test-plans/run-data/D*, US4): build-report
+#    --run-data, held the same way through its own JMeter-format copy.
 #  - The JMeter plugin as a producer (finding C1): E02 and E31 through jmeter -g with webinsight.report.rundata,
 #    then build-report over the run data it wrote. The rebuilt report is held to the referee too, and its CI/CD
 #    JSON must equal the -g report's.
@@ -60,6 +62,35 @@ for dir in "$RD"/K*/; do
         "$out/$id-report-run-data.jsonl.gz" || fail=1
 
     # The CI/CD JSON against the fixture's expected one: counts, verdicts, the tool (SC-005)
+    "$PYTHON" "$CANON" "$out/$id-report.json" "$out/$id.canonical.json" || { fail=1; continue; }
+    expected="$dir/expected/$id.json"
+    if [[ $ACCEPT -eq 1 ]]; then
+        mkdir -p "$dir/expected"
+        cp "$out/$id.canonical.json" "$expected"
+        echo "  [$id] accepted $expected"
+    elif [[ ! -f "$expected" ]]; then
+        echo "  [$id] FAIL: no expected/$id.json - run $0 --accept, read it, commit it"
+        fail=1
+    elif ! diff -u "$expected" "$out/$id.canonical.json" > "$out/$id.json.diff"; then
+        echo "  [$id] FAIL: the CI/CD JSON changed:"
+        head -30 "$out/$id.json.diff"
+        fail=1
+    fi
+done
+
+echo "[RUN-DATA] Another tool's run data, written by hand from the docs (US4)"
+for dir in "$RD"/D*/; do
+    id="$(basename "$dir")"
+    out="$OUT/$id"
+    java -jar "$JAR" build-report --run-data "$dir/run-data.jsonl" --out "$out" \
+        --property webinsight.report.filename="$id-report.html" > "$out.log" 2>&1
+    if [[ ! -f "$out/$id-report.json" ]]; then
+        echo "  [$id] FAIL: build-report wrote no report - see $out.log"
+        fail=1
+        continue
+    fi
+    referee_check "$id" "$out/$id-report.json" "$dir/results.jtl" "$dir/in-test-plan.jtl" "" "$dir/run-data.jsonl" \
+        || fail=1
     "$PYTHON" "$CANON" "$out/$id-report.json" "$out/$id.canonical.json" || { fail=1; continue; }
     expected="$dir/expected/$id.json"
     if [[ $ACCEPT -eq 1 ]]; then

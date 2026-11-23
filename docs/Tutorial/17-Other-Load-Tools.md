@@ -107,6 +107,8 @@ java -jar jmeter-web-insight-report-<version>.jar --k6-results results.csv.gz --
 
 ## Run data, the common format
 
+The whole format, with a run written by hand: [Run data](/Tutorial/18-Run-Data.md).
+
 One JSON record per line (JSON Lines), UTF-8, gzip when the name ends in `.gz`. The first line is the `run` record.
 Every other record comes in any order:
 

@@ -832,6 +832,25 @@ Updates live when regression thresholds are adjusted via the Compare tab control
 
 ---
 
+## Other load tools: k6 and run data
+
+The same report, numbers, asserts and Server tab for a run of any load tool, built with no JMeter
+([k6 and other load tools](Tutorial/17-Other-Load-Tools.md), [Run data](Tutorial/18-Run-Data.md)).
+
+- **`build-report`**: `java -jar jmeter-web-insight-report-<version>.jar build-report` builds the report from run data
+  (`--run-data`) or from k6's own files (`--from k6 --k6-results ... --k6-summary ...`). It runs from the standalone
+  bundle on a machine with no JMeter.
+- **Run data**: the common format, JSON Lines, version 1.0, with a published JSON Schema
+  (`schema/run-data.schema.json`). A JMeter run writes it with `-Jwebinsight.report.rundata=true`; a report rebuilt
+  from it equals the original.
+- **The tool's words**: a k6 run's report says Requests, VU, Max VUs and Group, and names k6 in its header; another
+  tool's uses neutral words and its own name. A JMeter run's report is word for word as before.
+- **The tool's tab**: on a k6 run, a k6 tab after Server with k6's thresholds and checks (as k6 judged them, never the
+  verdict), group durations, the six HTTP timing parts, iterations, dropped iterations and `vus_max`, in k6's summary
+  columns. Another tool's run gets a tab named after it when it carries its own records.
+- **Not measured**: a measure the tool does not record (k6: bytes, latency and connect time per request) reads "not
+  measured", never 0, and can't be asserted on.
+
 ## Smart Defaults
 
 The report auto-detects and handles common patterns:

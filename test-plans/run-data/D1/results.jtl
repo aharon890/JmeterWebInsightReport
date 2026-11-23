@@ -1,0 +1,9 @@
+timeStamp,elapsed,label,responseCode,responseMessage,threadName,dataType,success,failureMessage,bytes,sentBytes,grpThreads,allThreads,URL,Latency,IdleTime,Connect
+1795452400000,40,Login,200,OK,user 1,text,true,,0,0,2,2,http://shop.test/login,40,0,0
+1795452400100,60,Pay,500,Internal Server Error,user 1,text,false,,0,0,2,2,http://shop.test/pay,60,0,0
+1795452400000,100,Checkout,500,"Number of samples in transaction : 2, number of failing samples : 1",user 1,,false,,0,0,2,2,null,0,200,0
+1795452400050,35,Login,200,OK,user 2,text,true,,0,0,2,2,http://shop.test/login,35,0,0
+1795452400150,55,Pay,200,OK,user 2,text,true,,0,0,2,2,http://shop.test/pay,55,0,0
+1795452400050,90,Checkout,200,"Number of samples in transaction : 2, number of failing samples : 0",user 2,,true,,0,0,2,2,null,0,160,0
+1795452401000,5,Health,200,OK,user 1,text,true,,0,0,2,2,http://shop.test/health,5,0,0
+1795452401200,7,Health,200,OK,user 2,text,true,,0,0,2,2,http://shop.test/health,7,0,0

@@ -1,0 +1,77 @@
+{
+  "testName": "D1",
+  "tool": {
+    "name": "demo",
+    "version": "0.1"
+  },
+  "status": "UNKNOWN",
+  "assertsEvaluated": false,
+  "duration": 1207,
+  "window": {
+    "start": "2026-11-23T16:46:40Z",
+    "end": "2026-11-23T16:46:41.207Z",
+    "startMillis": 1795452400000,
+    "endMillis": 1795452401207
+  },
+  "totalSamples": 4,
+  "totalErrors": 1,
+  "errorRate": 25.0,
+  "samplers": [
+    {
+      "name": "Checkout",
+      "sampleCount": 2,
+      "mean": 95.0,
+      "p95": 100.0,
+      "p99": 100.0,
+      "errorRate": 50.0,
+      "throughput": 6.67,
+      "apdex": 0.5
+    },
+    {
+      "name": "Health",
+      "sampleCount": 2,
+      "mean": 6.0,
+      "p95": 7.0,
+      "p99": 7.0,
+      "errorRate": 0.0,
+      "throughput": 9.66,
+      "apdex": 1.0
+    },
+    {
+      "name": "Login",
+      "sampleCount": 2,
+      "mean": 37.5,
+      "p95": 40.0,
+      "p99": 40.0,
+      "errorRate": 0.0,
+      "throughput": 23.53,
+      "apdex": 1.0
+    },
+    {
+      "name": "Pay",
+      "sampleCount": 2,
+      "mean": 57.5,
+      "p95": 60.0,
+      "p99": 60.0,
+      "errorRate": 50.0,
+      "throughput": 19.05,
+      "apdex": 0.5
+    }
+  ],
+  "artifacts": {
+    "outputDirectory": "<outputDir>",
+    "html": {
+      "path": "D1-report.html",
+      "outcome": "WRITTEN"
+    },
+    "json": {
+      "path": "D1-report.json",
+      "outcome": "WRITTEN"
+    },
+    "data": {
+      "path": "D1-report-data.js",
+      "outcome": "SKIPPED",
+      "detail": "inline"
+    }
+  }
+}

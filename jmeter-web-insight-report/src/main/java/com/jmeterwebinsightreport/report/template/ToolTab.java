@@ -96,6 +96,11 @@ public final class ToolTab {
     public static final String EVERY_REQUEST = "*";
 
     public final String tool;
+    /**
+     * k6's tab shows every section k6's summary has, saying "none" or "not measured" where the run has nothing. Another
+     * tool's shows only what its run carries, and its counters under their own names (US4).
+     */
+    public final boolean k6;
     public final List<ThresholdRow> thresholds = new ArrayList<>();
     public final List<CheckRow> checks = new ArrayList<>();
     public final List<TrendRow> groupDurations = new ArrayList<>();
@@ -111,6 +116,7 @@ public final class ToolTab {
 
     private ToolTab(String tool, ToolMeasures m, String notMeasured) {
         this.tool = tool;
+        this.k6 = "k6".equals(tool);
         for (ToolRecords.Threshold t : m.records().thresholds()) {
             thresholds.add(new ThresholdRow(t));
         }
@@ -138,9 +144,15 @@ public final class ToolTab {
                 timings.add(new TrendRow(r.getKey(), p.getKey(), p.getValue()));
             }
         }
-        counters.add(counter(m, "iterations", "Iterations", notMeasured));
-        counters.add(counter(m, "dropped_iterations", "Dropped iterations", notMeasured));
-        counters.add(counter(m, "vus_max", "VUs allocated (vus_max)", notMeasured));
+        if (k6) {
+            counters.add(counter(m, "iterations", "Iterations", notMeasured));
+            counters.add(counter(m, "dropped_iterations", "Dropped iterations", notMeasured));
+            counters.add(counter(m, "vus_max", "VUs allocated (vus_max)", notMeasured));
+        } else {
+            for (Map.Entry<String, Double> c : m.records().counters().entrySet()) {
+                counters.add(new Counter(c.getKey(), c.getKey(), FormatUtil.formatNumber(c.getValue())));
+            }
+        }
     }
 
     /** The tab of a run another tool recorded, or null when it has nothing of its own to show. */
