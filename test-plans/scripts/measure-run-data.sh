@@ -52,9 +52,11 @@ echo "[MEASURE] 1. build-report --from k6, under -Xmx512m"
     --k6-summary "$TEST_PLANS/run-data/K2/summary.json" --out "$OUT/k6" \
     --property webinsight.report.title=K2x --property webinsight.report.filename=k6.html
 
+# JMeter's launcher is a shell script, which Python cannot start on Windows: it runs through bash, with
+# JMETER_HOME naming the JMeter that runs, so the baseline's copy never loads this branch's JAR
 echo "[MEASURE] 2. jmeter -g over the same samples as a JTL"
 "$PYTHON" "$HELP" time "jmeter -g, this build" "$FIG" -- \
-    "$JMETER" -g "$OUT/results.jtl" -o "$OUT/g" -Jwebinsight.report.title=K2x \
+    env JMETER_HOME="$JMETER_HOME" bash "$JMETER" -g "$OUT/results.jtl" -o "$OUT/g" -Jwebinsight.report.title=K2x \
     -Jwebinsight.report.filename=g.html -Jwebinsight.report.failonerror=false
 
 if [[ -n "$BASELINE_JAR" ]]; then
@@ -64,7 +66,7 @@ if [[ -n "$BASELINE_JAR" ]]; then
     rm -f "$BASE_HOME"/lib/ext/jmeter-web-insight-report-*.jar
     cp "$BASELINE_JAR" "$BASE_HOME/lib/ext/"
     "$PYTHON" "$HELP" time "jmeter -g, $(basename "$BASELINE_JAR")" "$FIG" -- \
-        "$BASE_HOME/bin/jmeter" -g "$OUT/results.jtl" -o "$OUT/baseline" \
+        env JMETER_HOME="$BASE_HOME" bash "$BASE_HOME/bin/jmeter" -g "$OUT/results.jtl" -o "$OUT/baseline" \
         -Jwebinsight.report.title=K2x -Jwebinsight.report.filename=baseline.html \
         -Jwebinsight.report.failonerror=false
 fi

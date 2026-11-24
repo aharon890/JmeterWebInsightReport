@@ -374,12 +374,18 @@ counters under their own names; k6's keeps every section. `RunDataSchemaTest` ho
 - [X] T065 [P] `.claude/skills/_perf_release/SKILL.md`: attach the standalone zip and the run data schema.
 - [X] T066 [P] `.github/workflows/cross-os.yml`: `build-report --from k6` over K1 on Windows, macOS and Linux, from the
   standalone bundle.
-- [ ] T067 `test-plans/scripts/measure-run-data.sh` (+x, `.bat` twin): K2 (or K1) repeated to 134,400 requests [G5].
+- [X] T067 `test-plans/scripts/measure-run-data.sh` (+x, `.bat` twin): K2 (or K1) repeated to 134,400 requests [G5].
   - Build time against `jmeter -g` over the JMeter-format copy, and against the 4.4.1 JAR over the same samples.
   - The heap under `-Xmx512m`.
   - The Summary tab's draw time over `file://`, for the new report and for 4.4.1's.
 
   Report the figures (plan's Performance Goals, SC-006).
+  Measured 2026-11-24 on the owner's PC, quiet (no game, CPU under 10%): K2 repeated to 134,406 requests (148,554
+  samples with the group passes, about an hour of k6 time; 21,222 at the top level, the same in all three reports).
+  `build-report --from k6` under `-Xmx512m`: 3.89 s. `jmeter -g` over the same samples as a JTL: 4.55 s with this build,
+  4.58 s with the 4.4.1 release. The Summary tab draws every chart in 0.31 s (k6 report), 0.30 s (`-g`, this build) and
+  0.29 s (4.4.1), the median of three, the spread of each about 15 ms. Every goal met: within `-g` plus 20% (faster), the
+  heap ceiling, SC-006's 5 s, and no slower than 4.4.1 beyond the runs' own spread.
 - [ ] T068 Run quickstart.md scenarios 1-7, write each result into the PR, and run the full release tier
   (`run-all-tests.sh`, `run-config-tests.sh`, `run-error-tests.sh`) before the owner's release decision.
 
