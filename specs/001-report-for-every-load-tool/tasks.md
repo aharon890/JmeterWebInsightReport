@@ -386,8 +386,24 @@ counters under their own names; k6's keeps every section. `RunDataSchemaTest` ho
   4.58 s with the 4.4.1 release. The Summary tab draws every chart in 0.31 s (k6 report), 0.30 s (`-g`, this build) and
   0.29 s (4.4.1), the median of three, the spread of each about 15 ms. Every goal met: within `-g` plus 20% (faster), the
   heap ceiling, SC-006's 5 s, and no slower than 4.4.1 beyond the runs' own spread.
-- [ ] T068 Run quickstart.md scenarios 1-7, write each result into the PR, and run the full release tier
+- [X] T068 Run quickstart.md scenarios 1-7, write each result into the PR, and run the full release tier
   (`run-all-tests.sh`, `run-config-tests.sh`, `run-error-tests.sh`) before the owner's release decision.
+
+---
+
+Run 2026-11-24 (T068), each result also in a comment on PR #43:
+
+| Scenario | Result |
+|---|---|
+| 1. JMeter users see no change | sanity and regression green (R05 1222 browser tests, R06 G1-G13, R07 every fixture); four JMeter reports read the same on every tab before and after |
+| 2. A JTL and its run data give one report | the CI/CD JSON is equal after canonicalising, `runId` included |
+| 3. No JMeter on the machine | K1's report written from the standalone bundle, 0 `org.apache.jmeter` classes loaded |
+| 4. A k6 run follows JMeter's Aggregate Report | R08: K1 198/198, K2 184/184, K3 100/100, D1 58/58 |
+| 5. Same server data, same Server tab | S1 as k6 over the goldens' server data: the same components, server asserts and FAIL as JMeter's G10, by the in-process CSV and by `wir-collect`'s payload |
+| 6. A k6 report reads as k6 | `tool-words.spec.ts` and `tool-tab.spec.ts` 11 of 11 |
+| 7. Size and speed | T067's figures above: every goal met |
+
+Release tier: `run-all-tests.sh` 26 of 26, `run-config-tests.sh` 45 of 45 (C44 included), `run-error-tests.sh` 9 of 9.
 
 ---
 
