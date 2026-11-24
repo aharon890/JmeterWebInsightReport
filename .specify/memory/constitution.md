@@ -15,16 +15,24 @@ Rationale: an implementation nobody asked for costs a review; a question costs o
 
 ### II. The Report Follows JMeter
 
-- Counts and statistics MUST match JMeter's Aggregate Report for the same run. Where JMeter and
-  this report could differ, JMeter's own logic decides.
+- Counts and statistics MUST match JMeter's Aggregate Report computed over the same samples,
+  whichever load tool recorded them. Where JMeter and this report could differ, JMeter's own logic
+  decides.
+- How long a sample took and whether it failed are the recording tool's own, written in its
+  samples: for JMeter the sample's elapsed time and success flag, for another tool what the common
+  format's documentation states for it. The report never redefines them.
 - Numbers and times MUST read the same for every reader, "like in JMeter": `.` for decimals, no
   thousands separator, the Aggregate Report's patterns, times in the zone of the machine that
   built the report.
+- A JMeter run's report keeps JMeter's words. A run of another tool uses that tool's own words,
+  and JMeter's appear on it only as the product's name and the one sentence saying the numbers
+  follow JMeter's Aggregate Report.
 - New reporting logic MUST NOT be invented where JMeter, Grafana or Prometheus already define the
   behaviour; an open question is settled by what those tools do.
 
 Rationale: users compare this report with the tools they already trust; a number that differs
-from JMeter's is a defect, whatever the reasoning behind it.
+from JMeter's is a defect, whatever the reasoning behind it. Measuring every tool by the same rules
+is what lets a JMeter run and its twin in another tool be compared at all.
 
 ### III. Tests Are the Gate, Read as Counts
 
@@ -33,25 +41,35 @@ from JMeter's is a defect, whatever the reasoning behind it.
 - A defect is pinned by a test that fails on it before it is fixed. A spec written against a
   defect is handed over red; the product is never adjusted just to turn a spec green.
 - Every fixture MUST have an Aggregate Report reference (R07); a fixture without one is a FAIL,
-  never a skip.
-- Playwright specs generate nothing; fixtures come from the runners and are regenerated when
-  their provenance stamps no longer match the tree.
+  never a skip. A fixture recorded by another load tool is committed data (no tool but JMeter
+  runs in the suites) and carries a JMeter-format copy of its samples, so R07 holds it the same
+  way.
+- Every producer of the common format MUST pass the conformance set: its reports match the
+  expected CI/CD JSON (counts, verdicts, every assert) and each row's text.
+- Playwright specs generate nothing; fixtures come from the runners, or from committed data for
+  other tools, and are regenerated when their provenance stamps no longer match the tree.
 
 Rationale: every suite that compares the report only with itself has, at least once, agreed with
 itself on a wrong number.
 
 ### IV. One Self-Contained Artifact
 
-- `jmeter-web-insight-report-*.jar` is the only deployed artifact: a shaded fat JAR. The core JAR
-  MUST NOT be deployed beside it.
+- Inside JMeter, `jmeter-web-insight-report-*.jar` is the only deployed artifact: a shaded fat
+  JAR in `lib/ext`. The core JAR MUST NOT be deployed beside it.
 - Shading is an allowlist. Every bundled third-party library MUST be relocated under
   `com.jmeterwebinsightreport.shaded`; `verify_shaded_jar` fails the build otherwise.
 - `jmeter-report-core` classes are not relocated, because listener and exporter class names
   appear in users' JMX files and `reportgenerator.properties`.
-- The report is one self-contained HTML file that opens without a server or network access.
+- The same engine MUST run outside JMeter, from the same release: with no JMeter class on its
+  path, with the libraries it needs from JMeter today (Jackson, SLF4J, Commons Math 3) either
+  brought along or named as the host's, and with the report properties handed in by the producer
+  rather than read from `JMeterUtils`. A producer never carries its own copy of the engine.
+- The report is one self-contained HTML file that opens without a server or network access, with
+  its external data file beside it for large runs.
 
 Rationale: the JAR lands in JMeter's flat `lib/ext` classpath, where a duplicate class is a
-non-deterministic failure on someone else's machine.
+non-deterministic failure on someone else's machine; and a producer outside JMeter must get the
+same report from the same release, not from a second build of it.
 
 ### V. Branch-First, One Version, Clean Text
 
@@ -59,15 +77,20 @@ non-deterministic failure on someone else's machine.
   Branch prefixes: `feat/`, `fix/`, `docs/`, `chore/`, `refactor/`.
 - The version lives in one place, `<revision>` in the parent `pom.xml`. It MUST NOT be hardcoded
   anywhere else.
+- The common format's version is a data-contract version, separate from `<revision>`, and also
+  lives in one place. Each release reads every earlier released format version, and its
+  documentation states which versions it reads and which it writes.
 - Every text blob is LF in git; `verify_line_endings` enforces it.
 - Scripts: `.sh` holds the logic, `.bat` is a thin wrapper.
 
-Rationale: each of these rules replaced a failure that had already happened once.
+Rationale: each of these rules replaced a failure that had already happened once. A producer and
+the report it feeds are released apart, so the data between them needs a version of its own.
 
 ### VI. Every Setting Reachable by the User
 
-- Every report property MUST be settable per run, following the documented configuration
-  precedence.
+- Every report property MUST be settable per run, whoever produces the data, following the
+  documented configuration precedence: inside JMeter `-J` properties over GUI fields over
+  defaults; outside JMeter the properties the producer passes over the defaults.
 - Names of properties, statuses and files are long and self-explaining; abbreviations that need a
   legend are not used.
 - User-visible behaviour is documented in `docs/` in the same change that introduces it.
@@ -75,13 +98,36 @@ Rationale: each of these rules replaced a failure that had already happened once
 Rationale: the plugin is used by testers on runs the authors never see; whatever cannot be set or
 understood from the outside does not exist for them.
 
+### VII. One Engine for Every Load Tool
+
+- A producer (this plugin inside JMeter, perf hub, a k6 plugin, a later Gatling producer) writes
+  a run's samples in the one documented, versioned common format, and nothing else. Every figure
+  (counts, percentiles, rates, the whole-run row, transactions, time buckets) and the run's
+  identity MUST be worked out by this report's engine from those samples. The same data MUST give
+  the same report, with the same numbers, verdicts and text, whichever producer wrote it.
+- The verdicts are the test's asserts (its annotations file) for every tool: a client verdict and
+  a server verdict, with no rollup. A tool's own checks (k6's thresholds and checks, JMeter's
+  assertions) show in that tool's section and never decide a verdict directly.
+- Server data is tied to a run through the common format, never through a JMeter results file
+  alone, and is judged by the same rules whatever tool drove the load.
+- The run's identity follows one documented rule over the samples and is never written by a
+  producer. A JMeter run keeps the identity it has today, so every committed payload still
+  matches.
+- JMeter users see no change from any of this: every fixture, R07 and every existing gate hold
+  as before.
+
+Rationale: the owner wants one report per test whatever the tool, above all one Server tab and
+one set of server asserts. Two places that work out one figure drift apart, which is why the
+page's evaluators are held to Java's by parity vectors today.
+
 ## Technical Constraints
 
 - Two Maven modules: `jmeter-report-core` (models, parser, statistics, assertions, baseline
   comparison, server asserts) and `jmeter-web-insight-report` (listener, `-g -o` exporter,
   Thymeleaf template, report JS/CSS, the `wir-collect` collector).
-- Target: Apache JMeter 5.6.3. Two ingestion paths (live listener and JTL export) feed one
-  generator and MUST produce the same report for the same samples.
+- The plugin targets Apache JMeter 5.6.3. Its two ingestion paths (live listener and JTL export)
+  and every producer outside JMeter feed one engine, and MUST produce the same report for the
+  same samples.
 - Percentiles are exact counts; no approximating sketch.
 - CI runs the fast tier only (`mvn verify`, `report.js` unit tests, static checks). The fixture
   and browser tiers run locally before a push; no required status check may depend on them.
@@ -111,4 +157,4 @@ file is not created in `plans/` for work that has a spec.
 - Every plan MUST include a constitution check; a deviation is written down with its reason in
   the plan.
 
-**Version**: 1.0.0 | **Ratified**: 2026-11-19 | **Last Amended**: 2026-11-19
+**Version**: 2.0.0 | **Ratified**: 2026-11-19 | **Last Amended**: 2026-11-23
