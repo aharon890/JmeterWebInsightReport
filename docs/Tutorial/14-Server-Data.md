@@ -144,6 +144,12 @@ the exit code (a client FAIL under `failonassert`, a configuration error), call 
 `java -jar <jmeter>/bin/ApacheJMeter.jar -g …` — the same text on every OS, with the real exit code —
 or gate on the JSON.
 
+**A run of another load tool (k6, run data).** The same server data, the same Server tab: the collector takes the
+run's window, identity and test name from its run data (`wir-collect --run-data run-data.jsonl.gz`) or from k6's own
+results (`--k6-results results.csv.gz --test-name "<the report title>"`), and `build-report --servermetrics server.csv`
+collects a CSV in-process as `jmeter -g` does. See [k6 and other load tools](/Tutorial/17-Other-Load-Tools.md) and
+[Run data](/Tutorial/18-Run-Data.md).
+
 ## Automated: a script or webhook
 
 The contract is files and one command; the plugin needs no daemon or endpoint.

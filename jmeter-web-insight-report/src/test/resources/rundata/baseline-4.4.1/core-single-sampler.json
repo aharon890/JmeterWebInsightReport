@@ -1,0 +1,568 @@
+{
+  "apdexThreshold" : 500.0,
+  "errorRecords" : [ ],
+  "errorRecordsTruncated" : false,
+  "errorSummaries" : [ ],
+  "hiddenSamplers" : [ ],
+  "metadata" : {
+    "durationMillis" : 10097,
+    "endTime" : 1700000010097,
+    "jmeterVersion" : null,
+    "rampUpDurationMillis" : 0,
+    "startTime" : 1700000000000,
+    "testName" : "core-single-sampler",
+    "totalErrors" : 0,
+    "totalSamples" : 100,
+    "totalThreads" : 5
+  },
+  "overallMedian" : 93.0,
+  "overallP90" : 138.0,
+  "overallP95" : 145.0,
+  "overallP99" : 150.0,
+  "requestSampleCount" : 100,
+  "samplerStatistics" : [ {
+    "alsoRunsInside" : [ ],
+    "apdexSatisfied" : 100.0,
+    "apdexScore" : 1.0,
+    "apdexTolerating" : 0.0,
+    "childSamplerNames" : null,
+    "errorCount" : 0,
+    "errorRate" : 0.0,
+    "maxResponseTime" : 150.0,
+    "meanConnectTime" : 3.0,
+    "meanLatency" : 8.0,
+    "meanResponseTime" : 95.97,
+    "medianResponseTime" : 93.0,
+    "minResponseTime" : 50.0,
+    "parentSamplerName" : null,
+    "percentile90" : 138.0,
+    "percentile95" : 145.0,
+    "percentile99" : 150.0,
+    "receivedBytesPerSec" : 1980.7863721897595,
+    "sampleCount" : 100,
+    "samplerName" : "GET /api/health",
+    "sentBytesPerSec" : 495.1965930474399,
+    "standardDeviation" : 28.828962867227805,
+    "throughput" : 9.903931860948797,
+    "totalReceivedBytes" : 20000.0,
+    "totalSentBytes" : 5000.0,
+    "transactionController" : false
+  } ],
+  "timeSeries" : [ {
+    "activeThreads" : 5,
+    "errorRate" : 0.0,
+    "meanResponseTime" : 61.4,
+    "perSamplerData" : {
+      "GET /api/health" : {
+        "connectTime" : 3.0,
+        "errorRate" : 0.0,
+        "histogramBins" : [ 0, 10, 0, 0, 0, 0, 0, 0 ],
+        "latency" : 8.0,
+        "max" : 73.0,
+        "meanResponseTime" : 61.4,
+        "p50" : 60.0,
+        "p90" : 70.0,
+        "p95" : 70.0,
+        "p99" : 73.0,
+        "receivedBytes" : 2000.0,
+        "sampleCount" : 10,
+        "sentBytes" : 500.0,
+        "throughput" : 10.0
+      }
+    },
+    "responseCodes" : {
+      "200" : 10
+    },
+    "sampleCount" : 10,
+    "throughput" : 10.0,
+    "timestamp" : 1700000000000,
+    "total" : {
+      "connectTime" : 3.0,
+      "errorRate" : 0.0,
+      "histogramBins" : [ 0, 10, 0, 0, 0, 0, 0, 0 ],
+      "latency" : 8.0,
+      "max" : 73.0,
+      "meanResponseTime" : 61.4,
+      "p50" : 60.0,
+      "p90" : 70.0,
+      "p95" : 70.0,
+      "p99" : 73.0,
+      "receivedBytes" : 2000.0,
+      "sampleCount" : 10,
+      "sentBytes" : 500.0,
+      "throughput" : 10.0
+    }
+  }, {
+    "activeThreads" : 5,
+    "errorRate" : 0.0,
+    "meanResponseTime" : 85.22222222222223,
+    "perSamplerData" : {
+      "GET /api/health" : {
+        "connectTime" : 3.0,
+        "errorRate" : 0.0,
+        "histogramBins" : [ 0, 9, 0, 0, 0, 0, 0, 0 ],
+        "latency" : 8.0,
+        "max" : 95.0,
+        "meanResponseTime" : 85.22222222222223,
+        "p50" : 85.0,
+        "p90" : 93.0,
+        "p95" : 95.0,
+        "p99" : 95.0,
+        "receivedBytes" : 1800.0,
+        "sampleCount" : 9,
+        "sentBytes" : 450.0,
+        "throughput" : 10.0
+      }
+    },
+    "responseCodes" : {
+      "200" : 9
+    },
+    "sampleCount" : 9,
+    "throughput" : 10.0,
+    "timestamp" : 1700000001000,
+    "total" : {
+      "connectTime" : 3.0,
+      "errorRate" : 0.0,
+      "histogramBins" : [ 0, 9, 0, 0, 0, 0, 0, 0 ],
+      "latency" : 8.0,
+      "max" : 95.0,
+      "meanResponseTime" : 85.22222222222223,
+      "p50" : 85.0,
+      "p90" : 93.0,
+      "p95" : 95.0,
+      "p99" : 95.0,
+      "receivedBytes" : 1800.0,
+      "sampleCount" : 9,
+      "sentBytes" : 450.0,
+      "throughput" : 10.0
+    }
+  }, {
+    "activeThreads" : 5,
+    "errorRate" : 0.0,
+    "meanResponseTime" : 109.0,
+    "perSamplerData" : {
+      "GET /api/health" : {
+        "connectTime" : 3.0,
+        "errorRate" : 0.0,
+        "histogramBins" : [ 0, 1, 9, 0, 0, 0, 0, 0 ],
+        "latency" : 8.0,
+        "max" : 120.0,
+        "meanResponseTime" : 109.0,
+        "p50" : 108.0,
+        "p90" : 118.0,
+        "p95" : 118.0,
+        "p99" : 120.0,
+        "receivedBytes" : 2000.0,
+        "sampleCount" : 10,
+        "sentBytes" : 500.0,
+        "throughput" : 10.0
+      }
+    },
+    "responseCodes" : {
+      "200" : 10
+    },
+    "sampleCount" : 10,
+    "throughput" : 10.0,
+    "timestamp" : 1700000002000,
+    "total" : {
+      "connectTime" : 3.0,
+      "errorRate" : 0.0,
+      "histogramBins" : [ 0, 1, 9, 0, 0, 0, 0, 0 ],
+      "latency" : 8.0,
+      "max" : 120.0,
+      "meanResponseTime" : 109.0,
+      "p50" : 108.0,
+      "p90" : 118.0,
+      "p95" : 118.0,
+      "p99" : 120.0,
+      "receivedBytes" : 2000.0,
+      "sampleCount" : 10,
+      "sentBytes" : 500.0,
+      "throughput" : 10.0
+    }
+  }, {
+    "activeThreads" : 5,
+    "errorRate" : 0.0,
+    "meanResponseTime" : 134.0,
+    "perSamplerData" : {
+      "GET /api/health" : {
+        "connectTime" : 3.0,
+        "errorRate" : 0.0,
+        "histogramBins" : [ 0, 0, 10, 0, 0, 0, 0, 0 ],
+        "latency" : 8.0,
+        "max" : 145.0,
+        "meanResponseTime" : 134.0,
+        "p50" : 133.0,
+        "p90" : 143.0,
+        "p95" : 143.0,
+        "p99" : 145.0,
+        "receivedBytes" : 2000.0,
+        "sampleCount" : 10,
+        "sentBytes" : 500.0,
+        "throughput" : 10.0
+      }
+    },
+    "responseCodes" : {
+      "200" : 10
+    },
+    "sampleCount" : 10,
+    "throughput" : 10.0,
+    "timestamp" : 1700000003000,
+    "total" : {
+      "connectTime" : 3.0,
+      "errorRate" : 0.0,
+      "histogramBins" : [ 0, 0, 10, 0, 0, 0, 0, 0 ],
+      "latency" : 8.0,
+      "max" : 145.0,
+      "meanResponseTime" : 134.0,
+      "p50" : 133.0,
+      "p90" : 143.0,
+      "p95" : 143.0,
+      "p99" : 145.0,
+      "receivedBytes" : 2000.0,
+      "sampleCount" : 10,
+      "sentBytes" : 500.0,
+      "throughput" : 10.0
+    }
+  }, {
+    "activeThreads" : 5,
+    "errorRate" : 0.0,
+    "meanResponseTime" : 78.9,
+    "perSamplerData" : {
+      "GET /api/health" : {
+        "connectTime" : 3.0,
+        "errorRate" : 0.0,
+        "histogramBins" : [ 0, 8, 2, 0, 0, 0, 0, 0 ],
+        "latency" : 8.0,
+        "max" : 150.0,
+        "meanResponseTime" : 78.9,
+        "p50" : 63.0,
+        "p90" : 148.0,
+        "p95" : 148.0,
+        "p99" : 150.0,
+        "receivedBytes" : 2000.0,
+        "sampleCount" : 10,
+        "sentBytes" : 500.0,
+        "throughput" : 10.0
+      }
+    },
+    "responseCodes" : {
+      "200" : 10
+    },
+    "sampleCount" : 10,
+    "throughput" : 10.0,
+    "timestamp" : 1700000004000,
+    "total" : {
+      "connectTime" : 3.0,
+      "errorRate" : 0.0,
+      "histogramBins" : [ 0, 8, 2, 0, 0, 0, 0, 0 ],
+      "latency" : 8.0,
+      "max" : 150.0,
+      "meanResponseTime" : 78.9,
+      "p50" : 63.0,
+      "p90" : 148.0,
+      "p95" : 148.0,
+      "p99" : 150.0,
+      "receivedBytes" : 2000.0,
+      "sampleCount" : 10,
+      "sentBytes" : 500.0,
+      "throughput" : 10.0
+    }
+  }, {
+    "activeThreads" : 5,
+    "errorRate" : 0.0,
+    "meanResponseTime" : 84.0,
+    "perSamplerData" : {
+      "GET /api/health" : {
+        "connectTime" : 3.0,
+        "errorRate" : 0.0,
+        "histogramBins" : [ 0, 10, 0, 0, 0, 0, 0, 0 ],
+        "latency" : 8.0,
+        "max" : 95.0,
+        "meanResponseTime" : 84.0,
+        "p50" : 83.0,
+        "p90" : 93.0,
+        "p95" : 93.0,
+        "p99" : 95.0,
+        "receivedBytes" : 2000.0,
+        "sampleCount" : 10,
+        "sentBytes" : 500.0,
+        "throughput" : 10.0
+      }
+    },
+    "responseCodes" : {
+      "200" : 10
+    },
+    "sampleCount" : 10,
+    "throughput" : 10.0,
+    "timestamp" : 1700000005000,
+    "total" : {
+      "connectTime" : 3.0,
+      "errorRate" : 0.0,
+      "histogramBins" : [ 0, 10, 0, 0, 0, 0, 0, 0 ],
+      "latency" : 8.0,
+      "max" : 95.0,
+      "meanResponseTime" : 84.0,
+      "p50" : 83.0,
+      "p90" : 93.0,
+      "p95" : 93.0,
+      "p99" : 95.0,
+      "receivedBytes" : 2000.0,
+      "sampleCount" : 10,
+      "sentBytes" : 500.0,
+      "throughput" : 10.0
+    }
+  }, {
+    "activeThreads" : 5,
+    "errorRate" : 0.0,
+    "meanResponseTime" : 109.0,
+    "perSamplerData" : {
+      "GET /api/health" : {
+        "connectTime" : 3.0,
+        "errorRate" : 0.0,
+        "histogramBins" : [ 0, 1, 9, 0, 0, 0, 0, 0 ],
+        "latency" : 8.0,
+        "max" : 120.0,
+        "meanResponseTime" : 109.0,
+        "p50" : 108.0,
+        "p90" : 118.0,
+        "p95" : 118.0,
+        "p99" : 120.0,
+        "receivedBytes" : 2000.0,
+        "sampleCount" : 10,
+        "sentBytes" : 500.0,
+        "throughput" : 10.0
+      }
+    },
+    "responseCodes" : {
+      "200" : 10
+    },
+    "sampleCount" : 10,
+    "throughput" : 10.0,
+    "timestamp" : 1700000006000,
+    "total" : {
+      "connectTime" : 3.0,
+      "errorRate" : 0.0,
+      "histogramBins" : [ 0, 1, 9, 0, 0, 0, 0, 0 ],
+      "latency" : 8.0,
+      "max" : 120.0,
+      "meanResponseTime" : 109.0,
+      "p50" : 108.0,
+      "p90" : 118.0,
+      "p95" : 118.0,
+      "p99" : 120.0,
+      "receivedBytes" : 2000.0,
+      "sampleCount" : 10,
+      "sentBytes" : 500.0,
+      "throughput" : 10.0
+    }
+  }, {
+    "activeThreads" : 5,
+    "errorRate" : 0.0,
+    "meanResponseTime" : 132.77777777777777,
+    "perSamplerData" : {
+      "GET /api/health" : {
+        "connectTime" : 3.0,
+        "errorRate" : 0.0,
+        "histogramBins" : [ 0, 0, 9, 0, 0, 0, 0, 0 ],
+        "latency" : 8.0,
+        "max" : 143.0,
+        "meanResponseTime" : 132.77777777777777,
+        "p50" : 133.0,
+        "p90" : 140.0,
+        "p95" : 143.0,
+        "p99" : 143.0,
+        "receivedBytes" : 1800.0,
+        "sampleCount" : 9,
+        "sentBytes" : 450.0,
+        "throughput" : 10.0
+      }
+    },
+    "responseCodes" : {
+      "200" : 9
+    },
+    "sampleCount" : 9,
+    "throughput" : 10.0,
+    "timestamp" : 1700000007000,
+    "total" : {
+      "connectTime" : 3.0,
+      "errorRate" : 0.0,
+      "histogramBins" : [ 0, 0, 9, 0, 0, 0, 0, 0 ],
+      "latency" : 8.0,
+      "max" : 143.0,
+      "meanResponseTime" : 132.77777777777777,
+      "p50" : 133.0,
+      "p90" : 140.0,
+      "p95" : 143.0,
+      "p99" : 143.0,
+      "receivedBytes" : 1800.0,
+      "sampleCount" : 9,
+      "sentBytes" : 450.0,
+      "throughput" : 10.0
+    }
+  }, {
+    "activeThreads" : 5,
+    "errorRate" : 0.0,
+    "meanResponseTime" : 84.9090909090909,
+    "perSamplerData" : {
+      "GET /api/health" : {
+        "connectTime" : 3.0,
+        "errorRate" : 0.0,
+        "histogramBins" : [ 0, 8, 3, 0, 0, 0, 0, 0 ],
+        "latency" : 8.0,
+        "max" : 150.0,
+        "meanResponseTime" : 84.9090909090909,
+        "p50" : 65.0,
+        "p90" : 148.0,
+        "p95" : 148.0,
+        "p99" : 150.0,
+        "receivedBytes" : 2200.0,
+        "sampleCount" : 11,
+        "sentBytes" : 550.0,
+        "throughput" : 10.0
+      }
+    },
+    "responseCodes" : {
+      "200" : 11
+    },
+    "sampleCount" : 11,
+    "throughput" : 10.0,
+    "timestamp" : 1700000008000,
+    "total" : {
+      "connectTime" : 3.0,
+      "errorRate" : 0.0,
+      "histogramBins" : [ 0, 8, 3, 0, 0, 0, 0, 0 ],
+      "latency" : 8.0,
+      "max" : 150.0,
+      "meanResponseTime" : 84.9090909090909,
+      "p50" : 65.0,
+      "p90" : 148.0,
+      "p95" : 148.0,
+      "p99" : 150.0,
+      "receivedBytes" : 2200.0,
+      "sampleCount" : 11,
+      "sentBytes" : 550.0,
+      "throughput" : 10.0
+    }
+  }, {
+    "activeThreads" : 5,
+    "errorRate" : 0.0,
+    "meanResponseTime" : 84.0,
+    "perSamplerData" : {
+      "GET /api/health" : {
+        "connectTime" : 3.0,
+        "errorRate" : 0.0,
+        "histogramBins" : [ 0, 10, 0, 0, 0, 0, 0, 0 ],
+        "latency" : 8.0,
+        "max" : 95.0,
+        "meanResponseTime" : 84.0,
+        "p50" : 83.0,
+        "p90" : 93.0,
+        "p95" : 93.0,
+        "p99" : 95.0,
+        "receivedBytes" : 2000.0,
+        "sampleCount" : 10,
+        "sentBytes" : 500.0,
+        "throughput" : 10.0
+      }
+    },
+    "responseCodes" : {
+      "200" : 10
+    },
+    "sampleCount" : 10,
+    "throughput" : 10.0,
+    "timestamp" : 1700000009000,
+    "total" : {
+      "connectTime" : 3.0,
+      "errorRate" : 0.0,
+      "histogramBins" : [ 0, 10, 0, 0, 0, 0, 0, 0 ],
+      "latency" : 8.0,
+      "max" : 95.0,
+      "meanResponseTime" : 84.0,
+      "p50" : 83.0,
+      "p90" : 93.0,
+      "p95" : 93.0,
+      "p99" : 95.0,
+      "receivedBytes" : 2000.0,
+      "sampleCount" : 10,
+      "sentBytes" : 500.0,
+      "throughput" : 10.0
+    }
+  }, {
+    "activeThreads" : 5,
+    "errorRate" : 0.0,
+    "meanResponseTime" : 98.0,
+    "perSamplerData" : {
+      "GET /api/health" : {
+        "connectTime" : 3.0,
+        "errorRate" : 0.0,
+        "histogramBins" : [ 0, 1, 0, 0, 0, 0, 0, 0 ],
+        "latency" : 8.0,
+        "max" : 98.0,
+        "meanResponseTime" : 98.0,
+        "p50" : 98.0,
+        "p90" : 98.0,
+        "p95" : 98.0,
+        "p99" : 98.0,
+        "receivedBytes" : 200.0,
+        "sampleCount" : 1,
+        "sentBytes" : 50.0,
+        "throughput" : 0.0
+      }
+    },
+    "responseCodes" : {
+      "200" : 1
+    },
+    "sampleCount" : 1,
+    "throughput" : 0.0,
+    "timestamp" : 1700000010000,
+    "total" : {
+      "connectTime" : 3.0,
+      "errorRate" : 0.0,
+      "histogramBins" : [ 0, 1, 0, 0, 0, 0, 0, 0 ],
+      "latency" : 8.0,
+      "max" : 98.0,
+      "meanResponseTime" : 98.0,
+      "p50" : 98.0,
+      "p90" : 98.0,
+      "p95" : 98.0,
+      "p99" : 98.0,
+      "receivedBytes" : 200.0,
+      "sampleCount" : 1,
+      "sentBytes" : 50.0,
+      "throughput" : 0.0
+    }
+  } ],
+  "topLevelErrorCount" : 0,
+  "topLevelSampleCount" : 100,
+  "transactionHierarchy" : { },
+  "wholeRun" : {
+    "alsoRunsInside" : [ ],
+    "apdexSatisfied" : 100.0,
+    "apdexScore" : 1.0,
+    "apdexTolerating" : 0.0,
+    "childSamplerNames" : null,
+    "errorCount" : 0,
+    "errorRate" : 0.0,
+    "maxResponseTime" : 150.0,
+    "meanConnectTime" : 3.0,
+    "meanLatency" : 8.0,
+    "meanResponseTime" : 95.97,
+    "medianResponseTime" : 93.0,
+    "minResponseTime" : 50.0,
+    "parentSamplerName" : null,
+    "percentile90" : 138.0,
+    "percentile95" : 145.0,
+    "percentile99" : 150.0,
+    "receivedBytesPerSec" : 1980.7863721897595,
+    "sampleCount" : 100,
+    "samplerName" : "Whole run",
+    "sentBytesPerSec" : 495.1965930474399,
+    "standardDeviation" : 28.828962867227805,
+    "throughput" : 9.903931860948797,
+    "totalReceivedBytes" : 20000.0,
+    "totalSentBytes" : 5000.0,
+    "transactionController" : false
+  },
+  "runId" : "ba09bb5f0979ea1f"
+}

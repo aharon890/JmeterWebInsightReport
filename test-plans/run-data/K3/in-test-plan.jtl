@@ -1,0 +1,43 @@
+timeStamp,elapsed,label,responseCode,responseMessage,threadName,dataType,success,failureMessage,bytes,sentBytes,grpThreads,allThreads,URL,Latency,IdleTime,Connect
+1795365183979,21,Browse Pets,200,OK,k6,text,true,,0,0,1,1,,21,0,3
+1795365184987,13,Browse by Category,200,OK,k6,text,true,,0,0,1,1,,13,0,0
+1795365187982,18,Search Pets,200,OK,k6,text,true,,0,0,2,2,,17,0,0
+1795365188983,17,Browse Pets,200,OK,k6,text,true,,0,0,2,2,,16,0,3
+1795365189984,16,Browse by Category,200,OK,k6,text,true,,0,0,2,2,,16,0,0
+1795365189989,11,View Pet Detail,200,OK,k6,text,true,,0,0,2,2,,11,0,0
+1795365191983,17,Search Pets,200,OK,k6,text,true,,0,0,3,3,,16,0,0
+1795365191965,35,Filter by Price,200,OK,k6,text,true,,0,0,3,3,,34,0,0
+1795365192985,15,Browse Pets,200,OK,k6,text,true,,0,0,3,3,,15,0,2
+1795365194990,10,View Pet Detail,200,OK,k6,text,true,,0,0,3,3,,10,0,0
+1795365194990,10,Get Categories,200,OK,k6,text,true,,0,0,3,3,,10,0,0
+1795365194987,13,Browse by Category,200,OK,k6,text,true,,0,0,3,3,,13,0,0
+1795365196964,36,Filter by Price,200,OK,k6,text,true,,0,0,3,3,,34,0,0
+1795365196981,19,Search Pets,200,OK,k6,text,true,,0,0,3,3,,19,0,0
+1795365196992,8,Check Stock,200,OK,k6,text,true,,0,0,3,3,,8,0,0
+1795365198985,15,Browse Pets,200,OK,k6,text,true,,0,0,3,3,,15,0,3
+1795365198991,9,View Pet Detail,200,OK,k6,text,true,,0,0,3,3,,9,0,0
+1795365199991,9,Get Categories,200,OK,k6,text,true,,0,0,3,3,,9,0,0
+1795365200985,15,Browse by Category,200,OK,k6,text,true,,0,0,3,3,,13,0,0
+1795365200972,28,Filter by Price,200,OK,k6,text,true,,0,0,3,3,,27,0,0
+1795365201992,8,Check Stock,200,OK,k6,text,true,,0,0,3,3,,8,0,0
+1795365201985,15,Search Pets,200,OK,k6,text,true,,0,0,3,3,,15,0,0
+1795365202992,8,Get Categories,200,OK,k6,text,true,,0,0,3,3,,8,0,0
+1795365203985,15,Browse Pets,200,OK,k6,text,true,,0,0,3,3,,15,0,3
+1795365203991,9,View Pet Detail,200,OK,k6,text,true,,0,0,3,3,,9,0,0
+1795365205989,11,Check Stock,200,OK,k6,text,true,,0,0,2,2,,10,0,0
+1795365205987,13,Browse by Category,200,OK,k6,text,true,,0,0,2,2,,13,0,0
+1795365205972,28,Filter by Price,200,OK,k6,text,true,,0,0,2,2,,27,0,0
+1795365207981,19,Browse Pets,200,OK,k6,text,true,,0,0,3,3,,19,0,2
+1795365207990,10,Search Pets,200,OK,k6,text,true,,0,0,3,3,,10,0,0
+1795365208991,9,Get Categories,200,OK,k6,text,true,,0,0,3,3,,9,0,0
+1795365209991,9,Check Stock,200,OK,k6,text,true,,0,0,2,2,,9,0,0
+1795365209987,13,Browse by Category,200,OK,k6,text,true,,0,0,2,2,,13,0,0
+1795365209992,8,View Pet Detail,200,OK,k6,text,true,,0,0,2,2,,8,0,0
+1795365211985,15,Search Pets,200,OK,k6,text,true,,0,0,2,2,,15,0,0
+1795365211967,33,Filter by Price,200,OK,k6,text,true,,0,0,2,2,,31,0,0
+1795365213992,8,View Pet Detail,200,OK,k6,text,true,,0,0,2,2,,8,0,0
+1795365214992,8,Get Categories,200,OK,k6,text,true,,0,0,2,2,,8,0,0
+1795365215977,23,Filter by Price,200,OK,k6,text,true,,0,0,2,2,,22,0,0
+1795365217991,9,Get Categories,200,OK,k6,text,true,,0,0,1,1,,9,0,0
+1795365217992,8,Check Stock,200,OK,k6,text,true,,0,0,1,1,,8,0,0
+1795365219991,9,Check Stock,200,OK,k6,text,true,,0,0,1,1,,9,0,0

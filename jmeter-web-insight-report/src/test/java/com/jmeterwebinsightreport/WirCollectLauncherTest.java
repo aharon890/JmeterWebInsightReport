@@ -224,4 +224,24 @@ class WirCollectLauncherTest {
         String out = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).trim();
         return p.waitFor() == 0 && !out.isEmpty() && !out.contains(" ") && new File(out).isDirectory() ? out : null;
     }
+
+    // -- spec 001: the standalone bundle and build-report (research R6, finding U4) --
+
+    @Test
+    void theBundlesLibBesideTheJarIsFoundWhenItHoldsJackson() throws Exception {
+        Path bundle = Files.createDirectories(dir.resolve("bundle"));
+        File jar = Files.createFile(bundle.resolve("jmeter-web-insight-report-9.9.9.jar")).toFile();
+        assertNull(WirCollectLauncher.bundleLib(jar), "no lib/ beside the JAR: a JMeter install is looked for");
+        Path lib = Files.createDirectories(bundle.resolve("lib"));
+        Files.createFile(lib.resolve("slf4j-api-1.7.36.jar"));
+        assertNull(WirCollectLauncher.bundleLib(jar), "a lib/ without Jackson is not the bundle's");
+        Files.createFile(lib.resolve("jackson-databind-2.16.1.jar"));
+        assertEquals(lib.toFile().getAbsoluteFile(), WirCollectLauncher.bundleLib(jar).getAbsoluteFile());
+    }
+
+    @Test
+    void buildReportIsTheFirstArgumentThatStartsTheReportCommand() {
+        // The collector stays the default, so every existing java -jar line runs as before
+        assertEquals("build-report", WirCollectLauncher.BUILD_REPORT);
+    }
 }

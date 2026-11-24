@@ -242,6 +242,12 @@ public final class ReportArtifacts {
         if (serverDataPath != null && !serverDataPath.trim().isEmpty()) {
             sb.append(". Write it to ").append(serverDataPath.trim());
         }
+        if (jtl != null && com.jmeterwebinsightreport.core.rundata.RunDataFormat.isRunDataFile(new File(jtl))) {
+            // A run of any tool, built with no JMeter (spec 001): the same command rebuilds it
+            sb.append(". Then rebuild: java -jar <the plugin JAR> build-report --run-data ").append(jtl)
+                    .append(" --out <a new folder> --annotations <the annotations file> --servermetrics <the CSV>");
+            return sb.toString();
+        }
         sb.append(guiMode
                 ? ". Then click Rebuild report with server data on the Web Insight Report listener, or rebuild: jmeter -g "
                 : ". Then rebuild: jmeter -g ").append(jtl != null ? jtl : "<the run's JTL>")

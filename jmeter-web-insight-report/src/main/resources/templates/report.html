@@ -16,7 +16,10 @@
                     <span id="reportGeneratedAt"
                           th:data-generated-at="${metadata != null ? metadata.reportGeneratedAtIso : null}"
                           th:text="'Generated: ' + (${metadata != null and metadata.reportGeneratedAt != null} ? ${metadata.reportGeneratedAt} : 'N/A')">Generated: N/A</span>
-                    <span th:if="${metadata != null and metadata.jmeterVersion != null}" th:text="' | JMeter ' + ${metadata.jmeterVersion}"></span>
+                    <!--/* The tool that recorded the run, and its version (FR-007): JMeter's on a JMeter run, as before;
+                         another tool's name on its run, its version when its files give one. */-->
+                    <span th:if="${metadata != null and metadata.toolName == null and metadata.jmeterVersion != null}" th:text="' | ' + ${words['tool']} + ' ' + ${metadata.jmeterVersion}"></span>
+                    <span th:if="${metadata != null and metadata.toolName != null}" th:text="' | ' + ${words['tool']} + (${metadata.toolVersion != null} ? ' ' + ${metadata.toolVersion} : '')"></span>
                     <span th:if="${metadata != null and metadata.durationMillis > 0}"
                           th:text="' | Duration: ' + ${fmt.duration(metadata.durationMillis)}"></span>
                 </p>
@@ -113,7 +116,7 @@
     <nav class="tab-nav" id="tabNav">
         <button class="tab-btn active" data-tab="summary">Summary</button>
         <button class="tab-btn" data-tab="timeline">Timeline</button>
-        <button class="tab-btn" data-tab="samplers">Samplers</button>
+        <button class="tab-btn" data-tab="samplers" th:text="${words['Samplers']}">Samplers</button>
         <button class="tab-btn" data-tab="errors">Errors</button>
         <button class="tab-btn" data-tab="compare" id="compareTabBtn" style="display:none;">Compare</button>
         <!-- After Compare, before Notes: the first four positions are muscle memory for anyone
@@ -126,13 +129,15 @@
                A tab whose pane can always say something honest — including "no server metrics
                were declared" — has no reason to hide, and one fewer way to disappear. */-->
         <button class="tab-btn" data-tab="server" id="serverTabBtn">Server</button>
+        <!--/* The tool's own tab, named after it, on a run another tool recorded (spec 001, decision 10). */-->
+        <button class="tab-btn" data-tab="tool" id="toolTabBtn" th:if="${toolTab != null}" th:text="${toolTab.tool}">tool</button>
         <button class="tab-btn" data-tab="notes">Notes</button>
         <div class="filter-bar-toggle-wrapper">
             <button class="filter-bar-toggle" id="filterBarToggle" onclick="toggleFilterMenu()" title="Show/hide filter rows">Filters &#9662;</button>
             <div class="filter-bar-menu" id="filterBarMenu">
                 <label><input type="checkbox" checked onchange="toggleFilterRowNum(1, this.checked)"/> Palette / Line / Metric</label>
                 <label><input type="checkbox" checked onchange="toggleFilterRowNum(2, this.checked)"/> Time Range / Presets</label>
-                <label><input type="checkbox" checked onchange="toggleFilterRowNum(3, this.checked)"/> Samplers</label>
+                <label><input type="checkbox" checked onchange="toggleFilterRowNum(3, this.checked)"/> <span th:text="${words['Samplers']}">Samplers</span></label>
             </div>
         </div>
     </nav>
@@ -196,15 +201,15 @@
 
         <!-- Row 3: Samplers (bottom, closest to content) -->
         <div class="filter-row collapsible-filter-row" id="filterRow3">
-            <label class="filter-label">Samplers:</label>
+            <label class="filter-label" th:text="${words['Samplers']} + ':'">Samplers:</label>
             <button class="filter-link-btn" onclick="selectAllSamplers(true)">All</button>
             <button class="filter-link-btn" onclick="selectAllSamplers(false)">None</button>
             <!-- One switch for every tab: the chips below, the charts, the Errors tab's sampler filter and
                  the Samplers table all read it. It used to be a button in the Samplers table's toolbar. -->
             <label class="filter-transaction-details" id="transactionChildrenBtn" style="display:none;"
-                   title="Show the requests and nested transactions inside each Transaction Controller: in this list, on the charts, in the Errors tab's sampler filter and in the Samplers table">
+                   th:title="${words['hierarchyTitle']}">
                 <input type="checkbox" id="transactionChildrenCheckbox" autocomplete="off" onchange="toggleTransactionChildrenVisibility(this.checked)">
-                <span>Show transaction details</span>
+                <span th:text="${words['showTransactionDetails']}">Show transaction details</span>
             </label>
             <div class="filter-sampler-list" id="samplerFilterList">
                 <!-- Populated by JS from chartData.samplers -->
@@ -243,13 +248,14 @@
                     </div>
                     <div class="summary-card">
                         <div class="card-value" th:text="${metadata != null} ? ${fmt.number(metadata.totalThreads)} : '0'">0</div>
-                        <div class="card-label">Max Threads</div>
+                        <div class="card-label" th:text="${words['maxThreads']}">Max Threads</div>
                     </div>
                 </div>
                 <!-- Which samples the totals count (B5). JMeter counts a transaction run three ways:
                      a listener in the plan the transactions, the Aggregate Report opened on the file
                      every row, the HTML report the requests. Both paths here count as the listener. -->
-                <p class="wir-window-note wir-population-note" th:if="${countsTransactionsOnce != null and countsTransactionsOnce}">
+                <p class="wir-window-note wir-population-note" th:if="${countsTransactionsOnce != null and countsTransactionsOnce}"
+                   th:text="${words['summaryTransactionNote']}">
                     Each transaction counts once, with its requests inside it, as JMeter's Aggregate Report in the test
                     plan counts them. The Samplers table lists the requests under their transaction.</p>
                 <!-- Extra metric cards row -->
@@ -258,7 +264,7 @@
                         <div class="card-value" th:text="${fmt.millis(avgP95)} + ' ms'">0 ms</div>
                         <!-- "P95, whole run", not "Avg P95": the value is the percentile of every sample
                              together (overall.getP95()), never an average of per-sampler P95s (B10). -->
-                        <div class="card-label" title="The 95th percentile of every sample in the run, all samplers together">P95, whole run
+                        <div class="card-label" th:title="|The 95th percentile of every sample in the run, all ${words['samplers']} together|">P95, whole run
                             <!-- The gate's verdict for this metric, not a comparison re-derived here.
                                  Absent when no rule mentions p95: nothing judged it, so nothing is claimed.
                                  The title says what it is about: the rules may judge single samplers,
@@ -267,19 +273,19 @@
                                   th:if="${metricVerdicts != null and metricVerdicts.containsKey('p95')}"
                                   th:classappend="'assert-badge-' + ${metricVerdicts.get('p95').name().toLowerCase()}"
                                   th:text="${metricVerdicts.get('p95').name()}"
-                                  th:title="'Worst verdict of the rules that judge p95, on any sampler - not a verdict on this whole-run figure'">PASS</span>
+                                  th:title="|Worst verdict of the rules that judge p95, on any ${words['sampler']} - not a verdict on this whole-run figure|">PASS</span>
                         </div>
                     </div>
                     <div class="summary-card">
                         <div class="card-value" th:text="${fmt.millis(avgP99)} + ' ms'">0 ms</div>
-                        <div class="card-label" title="The 99th percentile of every sample in the run, all samplers together">P99, whole run
+                        <div class="card-label" th:title="|The 99th percentile of every sample in the run, all ${words['samplers']} together|">P99, whole run
                             <!-- The gate's verdict for this metric, not a comparison re-derived here.
                                  Absent when no rule mentions p99: nothing judged it, so nothing is claimed. -->
                             <span class="assert-badge-mini assert-badge-inline"
                                   th:if="${metricVerdicts != null and metricVerdicts.containsKey('p99')}"
                                   th:classappend="'assert-badge-' + ${metricVerdicts.get('p99').name().toLowerCase()}"
                                   th:text="${metricVerdicts.get('p99').name()}"
-                                  th:title="'Worst verdict of the rules that judge p99, on any sampler - not a verdict on this whole-run figure'">PASS</span>
+                                  th:title="|Worst verdict of the rules that judge p99, on any ${words['sampler']} - not a verdict on this whole-run figure|">PASS</span>
                         </div>
                     </div>
                     <div class="summary-card">
@@ -311,7 +317,7 @@
             <!-- Top 5 Slowest Samplers -->
             <section class="report-section" th:if="${top5Slowest != null and !top5Slowest.isEmpty()}">
                 <div class="table-section-header">
-                    <h2>Top 5 Slowest Samplers (by P95)</h2>
+                    <h2 th:text="|Top 5 Slowest ${words['Samplers']} (by P95)|">Top 5 Slowest Samplers (by P95)</h2>
                     <button class="table-csv-btn" onclick="exportTop5SlowestCsv()" title="Download as CSV">
                         <svg viewBox="0 0 24 24"><path d="M5 20h14v-2H5v2zm7-18v12.17l3.59-3.58L17 12l-5 5-5-5 1.41-1.41L12 14.17V2z"/></svg>
                     </button>
@@ -459,14 +465,14 @@
         <div id="tab-samplers" class="tab-panel">
             <section class="report-section">
                 <div class="table-section-header">
-                    <h2>Sampler Statistics</h2>
+                    <h2 th:text="|${words['Sampler']} Statistics|">Sampler Statistics</h2>
                     <button class="table-csv-btn" onclick="exportSamplerStatsCsv()" title="Download as CSV">
                         <svg viewBox="0 0 24 24"><path d="M5 20h14v-2H5v2zm7-18v12.17l3.59-3.58L17 12l-5 5-5-5 1.41-1.41L12 14.17V2z"/></svg>
                     </button>
                 </div>
                 <!-- Toolbar: search + column toggle -->
                 <div class="table-toolbar">
-                    <input type="text" id="samplerSearch" class="table-search" placeholder="Filter samplers..." oninput="filterSamplerTable()"/>
+                    <input type="text" id="samplerSearch" class="table-search" th:placeholder="|Filter ${words['samplers']}...|" oninput="filterSamplerTable()"/>
                     <button class="column-toggle-btn" id="showHiddenRowsBtn" onclick="showAllRows()" style="display:none;">Show Hidden Rows</button>
                     <button class="column-toggle-btn" id="showAllColumnsBtn" onclick="showAllColumns()" style="display:none;">Show All Columns</button>
                     <div class="column-toggle-wrapper">
@@ -483,12 +489,12 @@
                     <table class="stats-table" id="samplerTable">
                         <thead>
                             <tr>
-                                <th draggable="true" onclick="sortTable(0, 'text')">Sampler</th>
+                                <th draggable="true" onclick="sortTable(0, 'text')" th:text="${words['Sampler']}">Sampler</th>
                                 <th draggable="true" onclick="sortTable(1, 'num')">Samples</th>
                                 <th draggable="true" onclick="sortTable(2, 'num')">Errors</th>
                                 <th draggable="true" onclick="sortTable(3, 'num')">Error %</th>
                                 <th draggable="true" onclick="sortTable(4, 'num')"
-                                    title="The mean response time, rounded to the nearest ms. JMeter's Aggregate Report shows the same mean with its decimals cut off (4.86 ms reads 4), its HTML report with two decimals (4.86).">Mean (ms)</th>
+                                    th:title="${words['meanTitle']}">Mean (ms)</th>
                                 <th draggable="true" onclick="sortTable(5, 'num')">Median (ms)</th>
                                 <th draggable="true" onclick="sortTable(6, 'num')">P90 (ms)</th>
                                 <th draggable="true" onclick="sortTable(7, 'num')">P95 (ms)</th>
@@ -512,7 +518,7 @@
                                               th:if="${assertResults != null and assertResults.containsKey(stat.samplerName)}"
                                               th:classappend="'assert-badge-' + ${assertResults.get(stat.samplerName).overallStatus.name().toLowerCase()}"
                                               th:text="${assertResults.get(stat.samplerName).overallStatus.name()}">PASS</span>
-                                        <span th:if="${stat.transactionController}" class="tc-icon" title="Transaction Controller">&#9654;</span>
+                                        <span th:if="${stat.transactionController}" class="tc-icon" th:title="${words['transactionController']}">&#9654;</span>
                                         <span class="sampler-name-text" th:text="${stat.samplerName}" th:title="${stat.samplerName}">Sampler</span>
                                         <span class="sampler-note-icon"
                                               th:if="${samplerNotes != null and samplerNotes.containsKey(stat.samplerName)}"
@@ -533,8 +539,8 @@
                                 <td th:text="${fmt.millis(stat.minResponseTime)}">0</td>
                                 <td th:text="${fmt.millis(stat.maxResponseTime)}">0</td>
                                 <td th:text="${fmt.rate(stat.throughput)}">0/s</td>
-                                <td th:text="${fmt.twoDecimals(stat.receivedBytesPerSec / 1024.0)}">0</td>
-                                <td th:text="${fmt.twoDecimals(stat.sentBytesPerSec / 1024.0)}">0</td>
+                                <td th:text="${notMeasured.contains('bytes')} ? ${words['notMeasured']} : ${fmt.twoDecimals(stat.receivedBytesPerSec / 1024.0)}">0</td>
+                                <td th:text="${notMeasured.contains('sentBytes')} ? ${words['notMeasured']} : ${fmt.twoDecimals(stat.sentBytesPerSec / 1024.0)}">0</td>
                                 <td><span class="apdex-badge"
                                           th:text="${fmt.apdex(stat.apdexScore)}"
                                           th:classappend="${stat.apdexScore > 0.94} ? 'apdex-excellent' : (${stat.apdexScore > 0.85} ? 'apdex-good' : (${stat.apdexScore > 0.70} ? 'apdex-fair' : (${stat.apdexScore > 0.50} ? 'apdex-poor' : 'apdex-unacceptable')))">0</span></td>
@@ -550,7 +556,8 @@
             <!-- Which failures the tab counts (E3). JMeter's HTML report leaves a Transaction
                  Controller's own result out of its Errors tables; the Error Rate tile counts it, as
                  the Aggregate Report does, so the two can differ on a run with transactions. -->
-            <p class="wir-window-note wir-population-note" th:if="${errorsLeaveOutTransactions}">
+            <p class="wir-window-note wir-population-note" th:if="${errorsLeaveOutTransactions}"
+               th:text="${words['errorsTransactionNote']}">
                 This tab counts failed requests, as JMeter's HTML report does: a transaction's own result is left out,
                 because its failure is the failure of a request inside it. The Error Rate on the Summary tab counts
                 failed transactions, as JMeter's Aggregate Report does.</p>
@@ -574,7 +581,7 @@
                         <div id="error-by-type-chart" style="width: 100%; height: 300px;"></div>
                     </div>
                     <div>
-                        <h3 style="font-size: 0.9rem; margin-bottom: 8px; color: var(--color-text-secondary);">By Sampler</h3>
+                        <h3 style="font-size: 0.9rem; margin-bottom: 8px; color: var(--color-text-secondary);" th:text="|By ${words['Sampler']}|">By Sampler</h3>
                         <div id="error-by-sampler-chart" style="width: 100%; height: 300px;"></div>
                     </div>
                 </div>
@@ -615,11 +622,11 @@
                     <table class="stats-table error-table" id="errorSummaryTable">
                         <thead>
                             <tr>
-                                <th onclick="sortGenericTable('errorSummaryTable', 0, 'text')">Sampler</th>
+                                <th onclick="sortGenericTable('errorSummaryTable', 0, 'text')" th:text="${words['Sampler']}">Sampler</th>
                                 <th onclick="sortGenericTable('errorSummaryTable', 1, 'text')">Response Code</th>
                                 <!-- JMeter's "Type of error" (E1): code/message, or a failed assertion's message -->
                                 <th onclick="sortGenericTable('errorSummaryTable', 2, 'text')"
-                                    title="As JMeter's HTML report words it: the code and message, or for a failed assertion its message">Type of error</th>
+                                    th:title="${words['errorTypeTitle']}">Type of error</th>
                                 <th onclick="sortGenericTable('errorSummaryTable', 3, 'text')">Class</th>
                                 <th onclick="sortGenericTable('errorSummaryTable', 4, 'num')">Count</th>
                                 <th onclick="sortGenericTable('errorSummaryTable', 5, 'num')">% of Errors</th>
@@ -653,7 +660,7 @@
                         <h2 style="margin-bottom:0;">Error Details</h2>
                         <div class="filter-btn-group" id="errorViewToggle">
                             <button class="filter-toggle-btn active" id="errViewTimeBtn" onclick="setErrorDetailsView('time')" title="Chronological list &mdash; trace failures over time">By time</button>
-                            <button class="filter-toggle-btn" id="errViewGroupBtn" onclick="setErrorDetailsView('group')" title="By sampler and type of error, as JMeter's HTML report groups errors">Grouped</button>
+                            <button class="filter-toggle-btn" id="errViewGroupBtn" onclick="setErrorDetailsView('group')" th:title="${words['errorGroupedTitle']}">Grouped</button>
                         </div>
                     </div>
                     <button class="table-csv-btn" onclick="exportErrorDetailsCsv()" title="Download as CSV">
@@ -675,11 +682,11 @@
                             <thead>
                                 <tr>
                                     <th onclick="sortGenericTable('errorDetailsTable', 0, 'text')">Time</th>
-                                    <th onclick="sortGenericTable('errorDetailsTable', 1, 'text')">Sampler</th>
+                                    <th onclick="sortGenericTable('errorDetailsTable', 1, 'text')" th:text="${words['Sampler']}">Sampler</th>
                                     <th onclick="sortGenericTable('errorDetailsTable', 2, 'text')">Code</th>
                                     <th onclick="sortGenericTable('errorDetailsTable', 3, 'text')">Class</th>
                                     <th onclick="sortGenericTable('errorDetailsTable', 4, 'text')">Message</th>
-                                    <th onclick="sortGenericTable('errorDetailsTable', 5, 'text')">Thread</th>
+                                    <th onclick="sortGenericTable('errorDetailsTable', 5, 'text')" th:text="${words['Thread']}">Thread</th>
                                     <th></th>
                                     <th></th>
                                 </tr>
@@ -720,7 +727,7 @@
                                     <th style="width:28px;"></th>
                                     <th>Count</th>
                                     <th>Code</th>
-                                    <th>Sampler</th>
+                                    <th th:text="${words['Sampler']}">Sampler</th>
                                     <th>Type of error</th>
                                     <th>First seen</th>
                                     <th>Last seen</th>
@@ -770,7 +777,7 @@
             </div>
 
             <section class="report-section" id="comparison-thresholds-section" style="display:none;">
-                <h2>Regression Thresholds <span class="info-icon" title="Configure when a sampler is flagged as REGRESSION in the comparison table.&#10;&#10;Each metric defines a threshold: if the change exceeds it, the sampler is marked REGRESSION.&#10;&#10;P95/P99/Mean: percentage increase vs baseline (e.g., 10 = flag if P95 grew by more than 10%).&#10;Error rate: absolute increase in error percentage (e.g., 2 = flag if errors grew by more than 2%).&#10;Throughput: percentage decrease vs baseline.&#10;&#10;Set to -1 to disable a metric. Click Apply to re-evaluate without regenerating the report.">i</span></h2>
+                <h2>Regression Thresholds <span class="info-icon" th:title="${words['regressionThresholdsTitle']}">i</span></h2>
                 <div class="threshold-controls">
                     <label>P95 increase &gt; <input type="number" id="thP95" step="1" min="-1" style="width:60px;" /> %</label>
                     <label>Error rate increase &gt; <input type="number" id="thErrorRate" step="0.5" min="-1" style="width:60px;" /> %</label>
@@ -784,13 +791,13 @@
 
             <section class="report-section">
                 <div class="table-section-header">
-                    <h2>Sampler Comparison</h2>
+                    <h2 th:text="|${words['Sampler']} Comparison|">Sampler Comparison</h2>
                     <button class="table-csv-btn" onclick="exportComparisonCsv()" title="Download as CSV">
                         <svg viewBox="0 0 24 24"><path d="M5 20h14v-2H5v2zm7-18v12.17l3.59-3.58L17 12l-5 5-5-5 1.41-1.41L12 14.17V2z"/></svg>
                     </button>
                 </div>
                 <div class="table-toolbar">
-                    <input type="text" class="table-search" placeholder="Filter samplers..." oninput="filterGenericTable('comparisonTable', this.value)"/>
+                    <input type="text" class="table-search" th:placeholder="|Filter ${words['samplers']}...|" oninput="filterGenericTable('comparisonTable', this.value)"/>
                     <button class="column-toggle-btn" id="showHiddenBtn-comparisonTable" onclick="showAllTableRows('comparisonTable')" style="display:none;">Show Hidden</button>
                     <button class="column-toggle-btn" id="showAllColsBtn-comparisonTable" onclick="showAllGenericColumns('comparisonTable')" style="display:none;">Show All Columns</button>
                     <div class="column-toggle-wrapper">
@@ -802,7 +809,7 @@
                     <table class="stats-table" id="comparisonTable">
                         <thead>
                             <tr>
-                                <th draggable="true" onclick="sortGenericTable('comparisonTable', 0, 'text')">Sampler</th>
+                                <th draggable="true" onclick="sortGenericTable('comparisonTable', 0, 'text')" th:text="${words['Sampler']}">Sampler</th>
                                 <th draggable="true" onclick="sortGenericTable('comparisonTable', 1, 'text')">Status</th>
                                 <th draggable="true" onclick="sortGenericTable('comparisonTable', 2, 'num')">Samples</th>
                                 <th draggable="true" onclick="sortGenericTable('comparisonTable', 3, 'num')">Errors</th>
@@ -876,6 +883,90 @@
             <div id="serverEditor" class="wir-editor-host"></div>
         </div>
 
+        <!-- ===== TAB: the tool's own measures (spec 001, FR-008) ===== -->
+        <!--/* Drawn here, in the tool's words: k6's thresholds and checks as k6 judged them, its group durations,
+               its six HTTP timing parts and its counters, in k6's summary columns. None of it is a verdict. */-->
+        <div id="tab-tool" class="tab-panel" th:if="${toolTab != null}">
+            <section class="report-section">
+                <h2 th:text="${toolTab.title}">The tool's own measures</h2>
+                <p class="wir-window-note" th:text="${toolTab.note}">note</p>
+                <div class="summary-cards" id="toolCounters" th:unless="${toolTab.counters.isEmpty()}">
+                    <div class="summary-card" th:each="c : ${toolTab.counters}" th:attr="data-counter=${c.key}">
+                        <div class="card-value" th:text="${c.value}">0</div>
+                        <div class="card-label" th:text="${c.label}">counter</div>
+                    </div>
+                </div>
+            </section>
+            <section class="report-section" th:if="${toolTab.k6 or !toolTab.thresholds.isEmpty()}">
+                <h2 th:text="${toolTab.thresholdsTitle}">Thresholds</h2>
+                <p class="wir-empty" th:if="${toolTab.thresholds.isEmpty()}" th:text="${toolTab.noThresholds}">none</p>
+                <div class="table-wrapper" th:unless="${toolTab.thresholds.isEmpty()}">
+                    <table class="data-table" id="toolThresholds">
+                        <thead><tr><th>Metric</th><th>Threshold</th><th>Result</th></tr></thead>
+                        <tbody>
+                            <tr th:each="t : ${toolTab.thresholds}">
+                                <td th:text="${t.metric}">metric</td>
+                                <td><code th:text="${t.expression}">expression</code></td>
+                                <td th:text="${t.result}" th:class="${t.passed} ? 'wir-tool-passed' : 'wir-tool-failed'">passed</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            <section class="report-section" th:if="${toolTab.k6 or !toolTab.checks.isEmpty()}">
+                <h2>Checks</h2>
+                <p class="wir-empty" th:if="${toolTab.checks.isEmpty()}">No checks ran.</p>
+                <div class="table-wrapper" th:unless="${toolTab.checks.isEmpty()}">
+                    <table class="data-table" id="toolChecks">
+                        <thead><tr><th>Group</th><th>Check</th><th>Passes</th><th>Fails</th><th>Pass rate</th></tr></thead>
+                        <tbody>
+                            <tr th:each="c : ${toolTab.checks}" th:attr="data-group=${c.group}">
+                                <td th:text="${c.groupText}">group</td>
+                                <td th:text="${c.name}">check</td>
+                                <td th:text="${c.passes}">0</td>
+                                <td th:text="${c.fails}" th:class="${c.fails > 0} ? 'wir-tool-failed' : ''">0</td>
+                                <td th:text="${c.passRate}">100.00%</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            <section class="report-section" th:if="${toolTab.k6 or !toolTab.groupDurations.isEmpty()}">
+                <h2>Group duration</h2>
+                <p class="wir-hint">Each group's passes on their wall time, think time included (<code>group_duration</code>).</p>
+                <p class="wir-empty" th:if="${toolTab.groupDurations.isEmpty()}">No group passes in this run.</p>
+                <div class="table-wrapper" th:unless="${toolTab.groupDurations.isEmpty()}">
+                    <table class="data-table" id="toolGroupDurations">
+                        <thead><tr><th>Group</th><th>Passes</th><th th:each="col : ${toolTab.columns}" th:text="${col}">avg</th></tr></thead>
+                        <tbody>
+                            <tr th:each="g : ${toolTab.groupDurations}" th:attr="data-group=${g.name}">
+                                <td th:text="${g.name}">group</td>
+                                <td th:text="${g.count}">0</td>
+                                <td th:each="v : ${g.cells}" th:text="${v}">0.00</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            <section class="report-section" th:if="${toolTab.k6 or !toolTab.timings.isEmpty()}">
+                <h2>HTTP timings</h2>
+                <p class="wir-hint">The six parts of each request, over every request and per request.</p>
+                <p class="wir-empty" th:if="${toolTab.timings.isEmpty()}">No request carried its timing parts.</p>
+                <div class="table-wrapper" th:unless="${toolTab.timings.isEmpty()}">
+                    <table class="data-table" id="toolTimings">
+                        <thead><tr><th th:text="${words['Sampler']}">Request</th><th>Metric</th><th th:each="col : ${toolTab.columns}" th:text="${col}">avg</th></tr></thead>
+                        <tbody>
+                            <tr th:each="r : ${toolTab.timings}" th:attr="data-request=${r.name},data-part=${r.part}">
+                                <td th:text="${r.everyRequest} ? 'Every ' + ${words['sampler']} : ${r.name}">request</td>
+                                <td><code th:text="${r.partText}">http_req_waiting</code></td>
+                                <td th:each="v : ${r.cells}" th:text="${v}">0.00</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+
         <!-- ===== TAB: Notes ===== -->
         <div id="tab-notes" class="tab-panel">
             <!-- Test Notes (always editable) -->
@@ -894,6 +985,12 @@
                         <button class="filter-toggle-btn" id="saveAnnotationsBtn" onclick="WIR.document.download()">Save Annotations</button>
                     </div>
                 </div>
+            </section>
+
+            <!--/* About the run's data: a results file with whole-second times (T056) */-->
+            <section class="report-section" id="runDataNotes" th:if="${wholeSeconds}">
+                <h2>About this run's data</h2>
+                <p class="wir-window-note" th:text="${words['wholeSecondsNote']}">whole seconds</p>
             </section>
 
             <!-- Timeline Annotations -->
@@ -931,6 +1028,13 @@
     <script th:unless="${inlineEchartsJs != null and !inlineEchartsJs.isEmpty()}" src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
     <!-- External data (large reports): loaded via <script src> so it works from file:// too -->
     <script th:if="${externalDataMode}" th:src="${externalDataFilename}"></script>
+    <!--/* The page's words and the fields the run's tool does not record (spec 001): report.js reads both. */-->
+    <script th:inline="javascript">
+        /*<![CDATA[*/
+        window.WIR_WORDS = JSON.parse(/*[[${wordsJson}]]*/ '{}');
+        window.WIR_NOT_MEASURED = JSON.parse(/*[[${notMeasuredJson}]]*/ '[]');
+        /*]]>*/
+    </script>
     <script th:utext="${inlineJs}">
     </script>
     <script th:inline="javascript">
@@ -1064,7 +1168,7 @@
                     + '" (run ' + pageRunId + '), but ' + dataFileName + ' contains data from "'
                     + (foreign.runTestName || 'another run') + '" (run '
                     + (foreign.runId || 'unknown') + ').',
-                'The summary, sampler and error tables below are this run’s and are correct. '
+                'The summary, ' + W('sampler') + ' and error tables below are this run’s and are correct. '
                     + 'The charts have been withheld rather than drawn from the wrong run. '
                     + 'Regenerate this report, or give each run its own output directory.'
             ]);

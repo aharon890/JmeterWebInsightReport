@@ -91,6 +91,7 @@ public final class PropertyCheck {
             "webinsight.report.junit",
             "webinsight.report.output",
             "webinsight.report.rampup",
+            "webinsight.report.rundata",
             "webinsight.report.resolved.annotations",
             "webinsight.report.resolved.filename",
             "webinsight.report.resolved.title",

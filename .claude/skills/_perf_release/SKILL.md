@@ -1,6 +1,6 @@
 ---
 name: _perf_release
-description: Cut a release — bump the version, run every release tier, merge through a PR, tag, and publish a GitHub release with the shaded JAR, the wir-collect scripts and the annotations schema attached. Use when asked to release, cut a release, publish a version, or ship a build.
+description: Cut a release — bump the version, run every release tier, merge through a PR, tag, and publish a GitHub release with the shaded JAR, the standalone bundle, the wir-collect scripts and the two JSON schemas attached. Use when asked to release, cut a release, publish a version, or ship a build.
 ---
 
 # Cutting a release
@@ -168,7 +168,7 @@ Never attach `original-jmeter-web-insight-report-*.jar` (pre-shading) or
 JMeter's flat `lib/ext` classpath and which copy wins is non-deterministic. Exactly one
 plugin JAR belongs in `lib/ext`.
 
-Four more assets go beside the JAR, each taken from the tagged tree as it is:
+Six more assets go beside the JAR, each taken from the tagged tree or its build as it is:
 
 | Asset | Why |
 |---|---|
@@ -176,6 +176,8 @@ Four more assets go beside the JAR, each taken from the tagged tree as it is:
 | `scripts/wir-collect.bat` | One `java` line running the JAR's `WirCollectLauncher`, for `cmd.exe` users; no bash. `java -jar <the JAR>` is the documented form on every OS, the two wrappers are conveniences |
 | `server-data-example-X.Y.Z.zip` | `examples/server-data` zipped (`cd examples && zip -r ../server-data-example-X.Y.Z.zip server-data`): plan, annotations, `run.properties`, the stand-in export tool and the `hooks/` (bash, PowerShell) - the two-command flow a user can run before pointing it at their own monitoring. C43 and cross-os.yml run exactly these files |
 | `jmeter-web-insight-report/src/main/resources/static/schema/report-annotations.schema.json` | The annotations file's JSON Schema: associated with an annotations file in an editor, it gives completion and typo squiggles for `assertions` and `serverMetrics`. It is in the JAR too, but nobody points an editor into a JAR |
+| `jmeter-web-insight-report/target/jmeter-web-insight-report-X.Y.Z-standalone.zip` | The report with no JMeter (spec 001): the JAR plus a `lib/` of Jackson, Commons Math 3 and SLF4J, so `java -jar` runs `build-report` (k6 runs, run data) and `wir-collect` on a machine with no JMeter installed. Built by the module's `package` (assembly `standalone.xml`); C44 proves it loads no JMeter class |
+| `jmeter-web-insight-report/src/main/resources/static/schema/run-data.schema.json` | Run data's JSON Schema, one record per line: what another load tool's producer checks its output against (`docs/Tutorial/18-Run-Data.md`). Held to the writer by `RunDataSchemaTest` |
 
 Attach the working-tree copies, never a `git show` of the blobs: the `.bat`'s blob is LF, and
 `.gitattributes` checks it out `eol=crlf` on every OS, which is the copy `cmd.exe` parses; the
@@ -189,12 +191,14 @@ Tag `vX.Y.Z` on the merge commit, push the tag, then:
 gh release create vX.Y.Z <shaded-jar> \
   scripts/wir-collect.sh scripts/wir-collect.bat server-data-example-X.Y.Z.zip \
   jmeter-web-insight-report/src/main/resources/static/schema/report-annotations.schema.json \
+  jmeter-web-insight-report/target/jmeter-web-insight-report-X.Y.Z-standalone.zip \
+  jmeter-web-insight-report/src/main/resources/static/schema/run-data.schema.json \
   --title "vX.Y.Z — <one-line summary>" \
   --notes "<body>"
 ```
 
 Match the existing shape: `v1.1.0` is titled `v1.1.0 — audit bugfix release` with
-`jmeter-web-insight-report-1.1.0.jar` attached; a release now carries step 6's four assets beside
+`jmeter-web-insight-report-1.1.0.jar` attached; a release now carries step 6's six assets beside
 the JAR. Published, not draft, not prerelease
 (v1.0.0 is flagged prerelease; later ones are not).
 

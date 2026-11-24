@@ -1,0 +1,161 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://aharon890.github.io/JmeterWebInsightReport/schema/run-data.schema.json",
+  "title": "JMeter Web Insight Report — run data, version 1.x",
+  "description": "One record of a run data file: JSON Lines, one record per line, UTF-8, gzip when the name ends in .gz. The first line is the run record; the others may come in any order. A producer validates each line against this schema. A reader of 1.x skips a record type or a field it does not know, so a minor version can add them; this schema is the 1.0 producer's, and names every field it writes.",
+  "type": "object",
+  "required": ["type"],
+  "oneOf": [
+    {"$ref": "#/definitions/run"},
+    {"$ref": "#/definitions/sample"},
+    {"$ref": "#/definitions/users"},
+    {"$ref": "#/definitions/check"},
+    {"$ref": "#/definitions/threshold"},
+    {"$ref": "#/definitions/counter"}
+  ],
+  "definitions": {
+    "epochMillis": {
+      "description": "A time in epoch milliseconds: 11 to 15 digits. Seconds (10 digits) and micro- or nanoseconds (16 or more) are refused.",
+      "type": "integer",
+      "minimum": 100000000000,
+      "maximum": 999999999999999
+    },
+    "run": {
+      "description": "The first line, exactly one: who recorded the run, its test name, and what its tool does not record.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "formatVersion", "tool", "testName", "producer"],
+      "properties": {
+        "type": {"const": "run"},
+        "formatVersion": {
+          "description": "The run data version, <major>.<minor>. A reader refuses a major version it does not read, naming both.",
+          "type": "string",
+          "pattern": "^1\\.[0-9]+$"
+        },
+        "tool": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name"],
+          "properties": {
+            "name": {"description": "The tool that recorded the samples, lower case: jmeter, k6. It names the report's tool tab.", "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"},
+            "version": {"description": "The tool's version, as the tool reports it.", "type": "string"}
+          }
+        },
+        "testName": {"description": "The report title. The run's identity (runId) hashes it.", "type": "string", "minLength": 1},
+        "producer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name"],
+          "properties": {
+            "name": {"description": "Who wrote the file: jmeter-web-insight-report for the plugin and its k6 adapter.", "type": "string"},
+            "version": {"type": "string"}
+          }
+        },
+        "timeResolution": {"description": "s when the tool's file had whole-second times; ms by default.", "enum": ["ms", "s"]},
+        "notMeasured": {
+          "description": "Sample fields the tool does not record. Only these read \"not measured\" on the page.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"enum": ["bytes", "sentBytes", "latency", "connect", "user", "iteration"]}
+        }
+      }
+    },
+    "sample": {
+      "description": "One request or transaction. A transaction with no elapsed takes the sum of its direct children's (link transaction), and with no success fails when a child failed, as JMeter's Transaction Controller does.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "name", "start"],
+      "properties": {
+        "type": {"const": "sample"},
+        "id": {"description": "Unique in the file; needed when another sample names it as parent.", "type": "string"},
+        "parent": {"description": "The id of the sample it ran inside.", "type": "string"},
+        "link": {"description": "How it nests under its parent: a transaction's child, or a request's sub-result.", "enum": ["transaction", "subresult"]},
+        "kind": {"description": "transaction: counted as a transaction row (not in the Errors tab's sample count, no response code).", "enum": ["request", "transaction"]},
+        "name": {"description": "The request or transaction name (JMeter's label).", "type": "string", "minLength": 1},
+        "start": {"$ref": "#/definitions/epochMillis"},
+        "elapsed": {"description": "The tool's own duration in ms. Required for a request.", "type": "integer", "minimum": 0},
+        "idle": {"description": "JMeter's IdleTime, ms. Wins over wallTime.", "type": "integer", "minimum": 0},
+        "wallTime": {"description": "A transaction's whole duration in ms, think time included.", "type": "integer", "minimum": 0},
+        "success": {"description": "The tool's own verdict on the sample. Required for a request.", "type": "boolean"},
+        "code": {"description": "Response code, or the tool's error code.", "type": "string"},
+        "message": {"type": "string"},
+        "failureMessage": {"description": "JMeter's first failed assertion's message.", "type": "string"},
+        "user": {"description": "Who ran it: JMeter's thread name, or VU <n> for k6.", "type": "string"},
+        "iteration": {"description": "The pass of that user (k6's iter).", "type": "integer", "minimum": 0},
+        "topLevel": {"description": "Whether a listener in the test plan received it on its own. Default: true when it has no parent.", "type": "boolean"},
+        "samples": {"description": "JMeter's SampleCount; default 1.", "type": "integer", "minimum": 1},
+        "errors": {"description": "JMeter's ErrorCount; default 0, or 1 for a failed sample.", "type": "integer", "minimum": 0},
+        "bytes": {"type": "integer", "minimum": 0},
+        "sentBytes": {"type": "integer", "minimum": 0},
+        "latency": {"type": "integer"},
+        "connect": {"type": "integer"},
+        "threads": {"description": "Active threads when it ended (JMeter's allThreads).", "type": "integer", "minimum": 0},
+        "url": {"type": "string"},
+        "method": {"type": "string"},
+        "timings": {
+          "description": "The tool's timing parts in ms, to the hundredth.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "blocked": {"type": "number", "minimum": 0},
+            "connecting": {"type": "number", "minimum": 0},
+            "tlsHandshaking": {"type": "number", "minimum": 0},
+            "sending": {"type": "number", "minimum": 0},
+            "waiting": {"type": "number", "minimum": 0},
+            "receiving": {"type": "number", "minimum": 0}
+          }
+        },
+        "responseBody": {"description": "A failed sample's response body, as the report carries it: failed samples only, cut at webinsight.error.body.maxsize.", "type": "string"}
+      }
+    },
+    "users": {
+      "description": "The active users at a time: k6's vus. Fed to the engine's active threads.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "time", "active"],
+      "properties": {
+        "type": {"const": "users"},
+        "time": {"$ref": "#/definitions/epochMillis"},
+        "active": {"type": "integer", "minimum": 0}
+      }
+    },
+    "check": {
+      "description": "One check of one pass, as the tool judged it. Shown on the tool's tab; never a verdict.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "time", "name", "passed"],
+      "properties": {
+        "type": {"const": "check"},
+        "time": {"$ref": "#/definitions/epochMillis"},
+        "name": {"type": "string"},
+        "group": {"description": "The group path, ::A::B; empty outside any group.", "type": "string"},
+        "passed": {"type": "boolean"},
+        "user": {"type": "string"},
+        "iteration": {"type": "integer", "minimum": 0}
+      }
+    },
+    "threshold": {
+      "description": "One threshold of the tool's summary, as the tool judged it. Never a verdict.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "metric", "expression", "passed"],
+      "properties": {
+        "type": {"const": "threshold"},
+        "metric": {"description": "The metric with its tag filter: http_req_duration{name:Login}.", "type": "string"},
+        "expression": {"type": "string"},
+        "passed": {"type": "boolean"}
+      }
+    },
+    "counter": {
+      "description": "A counter of the tool's summary: k6's iterations, dropped_iterations, vus_max.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "name", "value"],
+      "properties": {
+        "type": {"const": "counter"},
+        "name": {"type": "string"},
+        "value": {"type": "number"}
+      }
+    }
+  }
+}

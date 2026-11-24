@@ -1,0 +1,10 @@
+timeStamp,elapsed,label,responseCode,responseMessage,threadName,dataType,success,failureMessage,bytes,sentBytes,grpThreads,allThreads,URL,Latency,IdleTime,Connect
+1795456065508,344,Read Stock Before Run (setup),200,OK,setup,text,true,,0,0,1,1,,342,0,2
+1795456065853,2563,Complete Checkout Flow,200,"Number of samples in transaction : 9, number of failing samples : 0",checkout_users 1-2,,true,,0,0,3,3,null,0,10215,3
+1795456070853,123,Complete Checkout Flow,200,"Number of samples in transaction : 9, number of failing samples : 0",checkout_users 1-1,,true,,0,0,3,3,null,0,8375,1
+1795456075853,205,Complete Checkout Flow,200,"Number of samples in transaction : 9, number of failing samples : 0",checkout_users 1-3,,true,,0,0,2,2,null,0,9707,2
+1795456080853,101,Complete Checkout Flow,200,"Number of samples in transaction : 9, number of failing samples : 0",checkout_users 1-2,,true,,0,0,2,2,null,0,8428,1
+1795456085853,98,Complete Checkout Flow,200,"Number of samples in transaction : 9, number of failing samples : 0",checkout_users 1-1,,true,,0,0,2,2,null,0,8254,7
+1795456090852,109,Complete Checkout Flow,200,"Number of samples in transaction : 9, number of failing samples : 0",checkout_users 1-3,,true,,0,0,1,1,null,0,10408,3
+1795456101372,105,Admin Login (cleanup),200,OK,teardown,text,true,,0,0,1,1,,105,0,2
+1795456101477,533,Restore Stock (cleanup),200,OK,teardown,text,true,,0,0,0,0,,533,0,0

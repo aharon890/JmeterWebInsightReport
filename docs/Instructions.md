@@ -20,7 +20,7 @@ with the number of failed stages.
 | Suite | Command | Time | What it covers |
 |-------|---------|------|----------------|
 | Sanity | `./test-plans/scripts/run-sanity.sh` | ~2 min | Build + shade guard, S02 "Unit tests (Java + report.js)" — every `mvn test` plus the `test-plans/js-unit/` suite in node, S03 static checks (shell syntax, fixture-list agreement, script modes, line endings, NUL bytes, the `report.js` source rules, the release tier, the jq idioms, and the self-tests that feed each guard a known defect), a live JMeter run, the whole Playwright suite against existing fixtures |
-| Regression | `./test-plans/scripts/run-regression.sh` | ~2 min, ~5 min when fixtures are stale | Everything above, plus regenerating the report fixtures when they no longer match the source, R06 — the golden artifacts (see [The golden harness](#the-golden-harness-r06)) — and R07, every fixture's counts against JMeter's Aggregate Report (§ 7) |
+| Regression | `./test-plans/scripts/run-regression.sh` | ~2 min, ~5 min when fixtures are stale | Everything above, plus regenerating the report fixtures when they no longer match the source, R06 — the golden artifacts (see [The golden harness](#the-golden-harness-r06)) — R07, every fixture's counts against JMeter's Aggregate Report (§ 7), and R08, every run data producer held to the same referee (§ 7) |
 
 Regression skips fixture regeneration when the provenance stamps show the fixtures
 were built from exactly the source now in the tree — so a change touching no plugin
@@ -448,6 +448,7 @@ jmeter -n -t test-plans/quick-smoke-test.jmx \
 | E26 | Server metrics | no JMX: `-g -o` over `goldens/plain.jtl` + `server-metrics/` (annotations, CSV data, payload), no report title | — (not a timed run) |
 | E27 | Server metrics, catalogue | no JMX: `-g -o` over `goldens/plain.jtl` + `server-catalogue/` (two catalogue components), no report title | — (not a timed run) |
 | E31 | Nested transactions | transaction-alone-and-nested-test — a transaction run on its own and inside another one, plus transactions a timed group leaves open; R07 also rebuilds it with `-g` | ~5s |
+| K1 | A k6 run's report | no JMX, no JMeter run: `build-report --from k6` over the committed k6 shapes run (`test-plans/run-data/K1`) with `k1-annotations.json`; k6's words and the k6 tab (`tool-words.spec.ts`, `tool-tab.spec.ts`) | — (not a timed run) |
 
 The `run_test` lines in `run-all-tests.sh`, and its E20, E26 and E27 blocks, are the list; trust
 them over this table. `./scripts/list-scenarios.sh` (`--text`, `--csv`, `--count`) generates the
@@ -580,6 +581,9 @@ Aggregate Report, computed by JMeter's own classes from the run's own files:
 - **E31** is also rebuilt with `-g` from its own `results.jtl`; totals and `runId` must equal the run
   report's.
 
+- **K1**, a k6 run, against the JMeter-format copy of its samples the research's independent converter wrote
+  (`test-plans/run-data/K1/results.jtl` and `in-test-plan.jtl`).
+
 Every count is compared exactly, but one: a sampler's error count is worked back from the JSON's
 2-decimal `errorRate`, and on a row of more than about 10,000 samples, where two counts round to the
 same rate, the check says UNDECIDED and does not fail. Mean, percentiles and throughput are not part
@@ -601,6 +605,17 @@ table's text with JMeter's table model and renderers (the `shown_*` columns of i
 rounded where JMeter cuts the decimals off (B8), and the rate's unit is `/s` for JMeter's `/sec`; every
 other cell must read as JMeter writes it. Each row's end is its real end, start + elapsed + idle, as a
 listener in the plan sees it (B7). Both comparison fixtures, CMP and CMP31, are held for both their runs.
+A third stated exception is for a run another tool recorded (`--run-data <its run data>`): the columns its
+`notMeasured` names (k6: Recv and Sent KB/s) must read "not measured" where JMeter's table, over a copy with no such
+figure, shows 0.00.
+
+**R08** (`test-plans/scripts/run-run-data.sh`) holds every producer of run data to the same referee: the k6 fixtures
+(K1, K2, K3) through `build-report --from k6`, the hand-written D1 (an imaginary tool) through `build-report
+--run-data`, each with its JMeter-format copy and its CI/CD JSON against `test-plans/run-data/<id>/expected/`; and the
+JMeter plugin as a producer, E02 and E31 through `jmeter -g -Jwebinsight.report.rundata=true` and `build-report` over
+the run data written, whose CI/CD JSON must equal the `-g` report's. `--accept` rewrites `expected/`; commit it with the
+change that moved it. Config scenario **C44** runs `build-report` and `wir-collect` from the standalone bundle with no
+JMeter, and requires that no `org.apache.jmeter` class was loaded.
 
 R07 checks the JSON; `whole-run-totals.spec.ts` (R05) checks what each tab shows against that JSON,
 reading the page as a reader does and knowing nothing of where a number comes from: the Summary

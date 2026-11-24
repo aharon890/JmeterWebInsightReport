@@ -28,6 +28,11 @@ Received/Sent KB/s read as JMeter writes them. Two stated exceptions: Mean is th
 whole ms, where the table cuts the decimals off (B8, the owner's decision, 2026-10), and Throughput's unit
 is written "/s" where JMeter writes "/sec" ("/min" and "/hour" alike).
 
+A third, for a run another tool recorded (spec 001, finding I5): with --run-data, the run's `notMeasured`
+fields name what that tool does not record (k6: bytes and sentBytes, per request). Their columns must read
+"not measured" where JMeter's table, over the JMeter-format copy that has no such figure, shows 0.00: a 0
+there would claim a measure nobody took. Any other text in those cells fails.
+
 The mean's value, throughput's value and the percentiles are not compared as numbers here
 (TEST-COVERAGE-GAPS.md 11.3-11.5); their text is, through --report-html.
 
@@ -41,6 +46,7 @@ and its rows of one thread overlap. Those inputs are committed or generated, and
 Usage:
     python verify-data-integrity.py --fixture E02 --report E02-report.json \
         --every-row rows.csv --in-test-plan in-test-plan.csv [--rebuilt-report g.json] [--output out.csv]
+    python verify-data-integrity.py ... --report-html page.html --run-data run-data.jsonl.gz
     python verify-data-integrity.py --require-no-nesting input.jtl
 
 Exit codes: 0 every check passed (UNDECIDED included), 1 a check failed, 2 an input could not be read.
@@ -48,6 +54,7 @@ Exit codes: 0 every check passed (UNDECIDED included), 1 a check failed, 2 an in
 
 import argparse
 import csv
+import gzip
 import json
 import math
 import re
@@ -167,6 +174,26 @@ TABLE_COLUMNS = [('Samples', 'shown_samples'), ('Mean (ms)', 'mean'), ('Median (
                  ('Sent KB/s', 'shown_sent_kb')]
 
 
+# A Sample field the run's notMeasured can name -> the Samplers column it decides (data-model.md Run.notMeasured)
+NOT_MEASURED_COLUMNS = {'bytes': 'Recv KB/s', 'sentBytes': 'Sent KB/s'}
+NOT_MEASURED = 'not measured'
+
+
+def read_not_measured(path):
+    """The columns the run's tool does not measure, from its run data's first record."""
+    try:
+        opener = gzip.open if path.endswith('.gz') else open
+        with opener(path, 'rt', encoding='utf-8') as f:
+            run = json.loads(f.readline())
+    except (OSError, ValueError) as e:
+        print(f'ERROR: could not read the run record of {path}: {e}', file=sys.stderr)
+        sys.exit(2)
+    if run.get('type') != 'run':
+        print(f'ERROR: the first record of {path} is not the run record', file=sys.stderr)
+        sys.exit(2)
+    return {NOT_MEASURED_COLUMNS[f] for f in run.get('notMeasured') or [] if f in NOT_MEASURED_COLUMNS}
+
+
 def as_jmeter_writes(column, referee_row):
     """The text the page must show for this column, from the referee's row."""
     if column == 'Mean (ms)':
@@ -177,7 +204,7 @@ def as_jmeter_writes(column, referee_row):
     return referee_row[dict(TABLE_COLUMNS)[column]]
 
 
-def compare_table(fixture, titles, page_rows, table):
+def compare_table(fixture, titles, page_rows, table, not_measured=frozenset()):
     results = []
 
     def add(subject, metric, status, ours, jmeter, message):
@@ -195,6 +222,15 @@ def compare_table(fixture, titles, page_rows, table):
             continue
         for column, key in TABLE_COLUMNS:
             want, shown = as_jmeter_writes(column, referee_row), page.get(column)
+            if column in not_measured:
+                # The third stated exception (I5): the tool does not measure it, and the page says so
+                if shown == NOT_MEASURED:
+                    add(name, 'shown ' + column, 'PASS', shown, want,
+                        f"the run's tool does not measure it; the Aggregate Report's table over its copy shows {want}")
+                else:
+                    add(name, 'shown ' + column, 'FAIL', shown, NOT_MEASURED,
+                        f"the run's tool does not measure it, so the page must say \"{NOT_MEASURED}\", not a number")
+                continue
             if shown == want:
                 add(name, 'shown ' + column, 'PASS', shown, want, 'written as the Aggregate Report writes it')
             elif column == 'Mean (ms)':
@@ -320,6 +356,7 @@ def main():
     p.add_argument('--in-test-plan', help="the referee's CSV over the in-test-plan file")
     p.add_argument('--rebuilt-report', help='the -g report of the same results.jtl')
     p.add_argument('--report-html', help="the report's page: its Samplers rows against the Aggregate Report's table")
+    p.add_argument('--run-data', help="the run's run data: its notMeasured columns read \"not measured\" (I5)")
     p.add_argument('--require-no-nesting', metavar='JTL', help='refuse a file with transaction or sub-result rows')
     p.add_argument('--output', '-o', help='write every check to this CSV')
     a = p.parse_args()
@@ -342,7 +379,8 @@ def main():
     results = compare(a.fixture, report, every_row, every_row_total, in_test_plan_total, rebuilt)
     if a.report_html:
         titles, page_rows = read_sampler_table(a.report_html)
-        results += compare_table(a.fixture, titles, page_rows, read_referee_table(a.every_row))
+        not_measured = read_not_measured(a.run_data) if a.run_data else frozenset()
+        results += compare_table(a.fixture, titles, page_rows, read_referee_table(a.every_row), not_measured)
     ok = print_results(a.fixture, results)
     if a.output:
         write_csv(results, a.output)

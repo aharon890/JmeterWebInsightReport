@@ -16,6 +16,7 @@ on:
       - 'scripts/wir-collect.*'
       - 'docs/**'
       - 'examples/**'
+      - 'test-plans/run-data/**'
       - '.github/workflows/cross-os.yml'
   workflow_dispatch:
 
@@ -153,6 +154,20 @@ jobs:
           ./hooks/after-run.ps1 first/web-insight-report.json results.jtl report
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (-not (Select-String -Quiet -Path report/web-insight-report.json -Pattern '"serverStatus" : "FAIL"')) { exit 1 }
+
+      - name: A k6 run's report from the standalone bundle, with no JMeter (spec 001)
+        run: |
+          rm -rf standalone && mkdir standalone
+          unzip -q jmeter-web-insight-report/target/jmeter-web-insight-report-*-standalone.zip -d standalone
+          jar="$(ls standalone/jmeter-web-insight-report-*.jar | head -1)"
+          env -u JMETER_HOME java -jar "$jar" build-report --from k6 \
+            --k6-results test-plans/run-data/K1/results.csv.gz --k6-summary test-plans/run-data/K1/summary.json \
+            --annotations test-plans/run-data/K1/k1-annotations.json \
+            --out run/k6-report --property webinsight.report.title=K1 | tee run/k6-build-report.log
+          test -f run/k6-report/web-insight-report.html
+          grep -q '"name" : "k6"' run/k6-report/web-insight-report.json
+          grep -q '"status" : "PASS"' run/k6-report/web-insight-report.json
+          grep -q 'data-tab="tool"' run/k6-report/web-insight-report.html
 
       - name: Upload the run on failure
         if: failure()

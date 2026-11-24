@@ -334,12 +334,15 @@ class JtlParserTest {
                                 topLevel);
                     }
 
+                    // The overload every path's one feed calls (SampleFeed, spec 001): it says whether the
+                    // failed result is a transaction's own
                     @Override
                     public void recordError(String samplerName, String responseCode,
                                             String responseMessage, String failureMessage,
                                             long timestamp, String threadName,
                                             String requestUrl, String requestHeaders,
-                                            String responseBody, boolean topLevel, long failures) {
+                                            String responseBody, boolean topLevel, long failures,
+                                            boolean transactionRow) {
                         throw new IllegalStateException("engine broke");
                     }
                 };

@@ -660,6 +660,57 @@ if should_run E29; then
 fi
 
 # -----------------------------------------------------------------------------
+#  K1 — a k6 run's report (spec 001, US3)
+#
+#  The report of a k6 run, built by the report's own k6 adapter with no JMeter
+#  run: `build-report --from k6` over the committed k6 shapes run
+#  (test-plans/run-data/K1), with a small annotations file so the Asserts tab is
+#  judged in k6's words too. Every number is a constant. The JAR is lib/ext's,
+#  the one the fixture stamp records. R07 holds it to the Aggregate Report over
+#  its JMeter-format copy, and the run data it writes beside the report tells R07
+#  which columns k6 does not measure.
+# -----------------------------------------------------------------------------
+if should_run K1; then
+    K1_DIR="$RESULTS_DIR/K1"
+    K1_INPUTS="$TEST_PLANS/run-data/K1"
+    k1_status="PASS"; k1_note=""
+    k1_report="$K1_DIR/K1-report.html"
+    k1_jar="$(ls "$JMETER_EXT"/jmeter-web-insight-report-*.jar 2>/dev/null | head -1)"
+
+    rm -rf "$K1_DIR"
+    if _report_survived_rm "$k1_report" "$RESULTS_DIR/K1-build-report.log"; then
+        k1_status="FAIL"; k1_note="could not remove the previous report; not running over it"
+    elif [[ -z "$k1_jar" ]]; then
+        k1_status="FAIL"; k1_note="no plugin JAR in $JMETER_EXT"
+    else
+        echo "[K1] A k6 run's report — build-report --from k6 over the committed shapes run ..."
+        java -jar "$k1_jar" build-report --from k6 --k6-results "$K1_INPUTS/results.csv.gz" \
+            --k6-summary "$K1_INPUTS/summary.json" --annotations "$K1_INPUTS/k1-annotations.json" \
+            --out "$K1_DIR" --write-run-data \
+            --property webinsight.report.title=K1 --property webinsight.report.filename=K1-report.html \
+            > "$RESULTS_DIR/K1-build-report.log" 2>&1
+    fi
+
+    if ! file_exists "$k1_report"; then
+        k1_status="FAIL"; k1_note="$(append_note "$k1_note" "HTML not generated")"
+    fi
+    if ! file_exists "$K1_DIR/K1-report.json"; then
+        k1_status="FAIL"; k1_note="$(append_note "$k1_note" "JSON not generated")"
+    fi
+    if ! file_exists "$K1_DIR/K1-report-run-data.jsonl.gz"; then
+        k1_status="FAIL"; k1_note="$(append_note "$k1_note" "no run data beside the report")"
+    fi
+    if log_has_stacktrace "$RESULTS_DIR/K1-build-report.log"; then
+        k1_status="FAIL"; k1_note="$(append_note "$k1_note" "Stack trace in log")"
+    fi
+
+    [[ "$k1_status" == "PASS" ]] && write_fixture_stamp "$K1_DIR"
+
+    record K1 "A k6 run's report" "$k1_status" "$k1_note"
+    echo "K1,k6 run,run_data,local,results.csv.gz,$k1_status,true,true,$k1_note,$(iso_timestamp)" >> "$CSV_REPORT"
+fi
+
+# -----------------------------------------------------------------------------
 #  E30 — Server data, live, end to end
 #
 #  The operator's two commands on a live run, which no committed fixture can be: a

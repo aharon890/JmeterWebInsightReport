@@ -9,3 +9,7 @@
 # fixed start timestamp, then frozen. Regenerating them is a deliberate act that rewrites every
 # baseline in goldens/expected/.
 !goldens/*.jtl
+
+# ...and the JMeter-format copies of the committed k6 fixtures (spec 001): R07 reads them as its reference for
+# those runs, so they are fixtures too, written once by run-data/tools/k6_to_jtl.py and frozen.
+!run-data/*/*.jtl

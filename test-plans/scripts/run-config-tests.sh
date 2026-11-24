@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  Configuration & Runtime Scenario Tests (C01-C43)
+#  Configuration & Runtime Scenario Tests (C01-C44)
 #  Defaults, paths, JUnit XML, Apdex, ramp-up, timestamp filenames, output logging
 #
 #  C01-C16 are the original configuration cases. C17-C31 cover output paths: every
@@ -2125,6 +2125,60 @@ if [[ -z "$C43_NOTES" ]]; then
         "$C43_WHICH: window from the first report, the stand-in export, jmeter -g - app WARN, db FAIL, exit 0; a failing jmeter's exit passed back"
 else
     record C43 "the example's after-run hooks" FAIL "$C43_NOTES"
+fi
+
+# -----------------------------------------------------------------------------
+# C44: the report with no JMeter (spec 001, FR-015). The standalone bundle, unzipped where no JMeter is:
+#      JMETER_HOME unset and no jmeter on PATH. build-report must write a k6 run's report from run data, and
+#      -verbose:class must show no org.apache.jmeter class loaded, so properties, the generator and the
+#      launcher all run without JMeter. A baseline is given too: the comparison thresholds are read on that
+#      path only (WebInsightReportGenerator), and on a k6 run it must be left out with its sentence.
+# -----------------------------------------------------------------------------
+echo "[C44] build-report with no JMeter..."
+C44_DIR="$RESULTS/C44"
+rm -rf "$C44_DIR"
+mkdir -p "$C44_DIR"
+C44_NOTES=""
+C44_ZIP="$(ls "$PROJECT_DIR"/jmeter-web-insight-report/target/jmeter-web-insight-report-*-standalone.zip 2>/dev/null | head -1)"
+C44_JAVA="$(command -v java)"
+if [[ -z "$C44_ZIP" ]]; then
+    C44_NOTES="no standalone bundle in jmeter-web-insight-report/target - build with mvn package"
+elif [[ -z "$C44_JAVA" ]]; then
+    C44_NOTES="no java on PATH"
+else
+    unzip -q -o "$C44_ZIP" -d "$C44_DIR/bundle"
+    C44_T=1700000000000
+    {
+        echo '{"type":"run","formatVersion":"1.0","tool":{"name":"k6","version":"2.4.0"},"testName":"C44 (k6)","producer":{"name":"jmeter-web-insight-report"},"notMeasured":["bytes"]}'
+        echo "{\"type\":\"sample\",\"id\":\"t1\",\"kind\":\"transaction\",\"name\":\"Checkout\",\"start\":$C44_T,\"wallTime\":900}"
+        echo "{\"type\":\"sample\",\"parent\":\"t1\",\"name\":\"Login\",\"start\":$C44_T,\"elapsed\":40,\"success\":true,\"code\":\"200\"}"
+        echo "{\"type\":\"sample\",\"parent\":\"t1\",\"name\":\"Pay\",\"start\":$((C44_T + 100)),\"elapsed\":120,\"success\":false,\"code\":\"500\"}"
+    } > "$C44_DIR/run-data.jsonl"
+    C44_JAR="$(ls "$C44_DIR"/bundle/jmeter-web-insight-report-*.jar | head -1)"
+    (
+        cd "$C44_DIR" || exit 1
+        env -u JMETER_HOME PATH="/usr/bin:/bin" "$C44_JAVA" -verbose:class -jar "$C44_JAR" build-report \
+            --run-data run-data.jsonl --out report --baseline "$PROJECT_DIR/test-plans/goldens/plain.jtl" \
+            > build-report.log 2>&1
+        echo "$?" > build-report.exit
+    )
+    if [[ "$(cat "$C44_DIR/build-report.exit" 2>/dev/null)" != "0" ]]; then
+        C44_NOTES="build-report exited $(cat "$C44_DIR/build-report.exit" 2>/dev/null) - see $C44_DIR/build-report.log"
+    elif [[ ! -f "$C44_DIR/report/web-insight-report.html" ]]; then
+        C44_NOTES="no report written - see $C44_DIR/build-report.log"
+    elif grep -q 'org\.apache\.jmeter' "$C44_DIR/build-report.log"; then
+        C44_NOTES="a JMeter class was loaded: $(grep -m1 'org\.apache\.jmeter' "$C44_DIR/build-report.log")"
+    elif ! grep -q '"name" *: *"k6"' "$C44_DIR/report/web-insight-report.json"; then
+        C44_NOTES="the CI/CD JSON does not name the tool k6"
+    elif ! grep -q 'Compare baseline plain.jtl is left out' "$C44_DIR/build-report.log"; then
+        C44_NOTES="the baseline on a k6 run was not left out with its sentence"
+    fi
+fi
+if [[ -z "$C44_NOTES" ]]; then
+    record C44 "build-report with no JMeter" PASS \
+        "standalone bundle, JMETER_HOME unset, no jmeter on PATH: report written, no org.apache.jmeter class loaded"
+else
+    record C44 "build-report with no JMeter" FAIL "$C44_NOTES"
 fi
 
 print_summary "CONFIGURATION TEST SUMMARY"

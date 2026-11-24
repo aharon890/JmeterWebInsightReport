@@ -1,0 +1,45 @@
+{
+  "version": "1.0",
+  "testNotes": "## K1, the k6 shapes run\nThe test's own asserts judge it, whatever k6's thresholds said (spec 001, decision 4).",
+  "assertions": [
+    {
+      "id": "login-p95",
+      "description": "Login stays quick",
+      "target": {
+        "sampler": "Login"
+      },
+      "metric": "p95",
+      "fail": {
+        "gt": 500.0
+      }
+    },
+    {
+      "id": "every-request-p95",
+      "description": "Every request under a second",
+      "target": {
+        "match": "*"
+      },
+      "metric": "p95",
+      "warn": {
+        "gt": 800.0
+      },
+      "fail": {
+        "gt": 1000.0
+      }
+    },
+    {
+      "id": "run-error-rate",
+      "description": "The run's error rate",
+      "target": {
+        "scope": "overall"
+      },
+      "metric": "errorRate",
+      "warn": {
+        "gt": 30.0
+      },
+      "fail": {
+        "gt": 50.0
+      }
+    }
+  ]
+}

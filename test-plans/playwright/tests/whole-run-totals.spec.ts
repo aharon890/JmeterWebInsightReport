@@ -11,6 +11,8 @@ import { REQUIRED_FIXTURES } from '../global-setup';
  * whole-run figure read one shared count. These tests read what each tab displays and know nothing
  * of where it comes from, so a tab that one day computes its own number cannot drift unnoticed:
  *
+ * Every column is found by its heading in the page's own words (window.WIR_WORDS): Request on a k6 run (K1).
+ *
  *  - the whole run: the Summary tiles, the Samplers Σ Total row and the Timeline's Σ Total lines
  *    show the CI/CD file's totalSamples, totalErrors and errorRate. R07 holds that file to JMeter's
  *    Aggregate Report (what a listener in the plan received), so between the two a tab that differs
@@ -228,7 +230,7 @@ for (const id of REQUIRED_FIXTURES) {
         // A cell is the current value with the change after it in a <sup>
         const current = (c: HTMLTableCellElement | undefined) => (c && c.childNodes[0] ? c.childNodes[0].textContent || '' : '').trim();
         return Array.from(table.tBodies[0].rows).map(r => ({
-          name: r.cells[heads.indexOf('Sampler')].getAttribute('title') || '',
+          name: r.cells[heads.indexOf((window as any).WIR_WORDS.Sampler)].getAttribute('title') || '',
           samples: current(r.cells[heads.indexOf('Samples')]),
           errors: current(r.cells[heads.indexOf('Errors')]),
           rate: current(r.cells[heads.indexOf('Error %')]),
@@ -272,12 +274,12 @@ for (const id of REQUIRED_FIXTURES) {
         const details = document.getElementById('errorDetailsTable') as HTMLTableElement | null;
         const detailHeads = details ? Array.from(details.tHead!.rows[0].cells).map(c => (c.textContent || '').trim()) : [];
         const records = details ? Array.from(details.tBodies[0].rows).filter(r => r.classList.contains('error-row-main')).map(r => ({
-          sampler: (r.cells[detailHeads.indexOf('Sampler')]?.textContent || '').trim(),
+          sampler: (r.cells[detailHeads.indexOf((window as any).WIR_WORDS.Sampler)]?.textContent || '').trim(),
           message: (r.cells[detailHeads.indexOf('Message')]?.textContent || '').trim(),
         })) : [];
         return {
           rows: all.filter(r => r !== total).map(r => ({ sampler: r.getAttribute('data-sampler') || '', count: cell(r, 'Count') })),
-          total: total ? { label: cell(total, 'Sampler'), count: cell(total, 'Count'), ofSamples: cell(total, '% of All Samples') } : null,
+          total: total ? { label: cell(total, (window as any).WIR_WORDS.Sampler), count: cell(total, 'Count'), ofSamples: cell(total, '% of All Samples') } : null,
           bySampler: bar ? (bar.xAxis[0].data as string[]).map((name, i) => ({ name, value: valueOf(bar.series[0].data[i]) })) : null,
           byCode: pie ? (pie.series[0].data as any[]).map(valueOf) : null,
           records,
@@ -433,7 +435,7 @@ for (const id of ['CMP', 'CMP31']) {
             change: sup ? (sup.textContent || '').trim() : '',
           };
         });
-        return { total: first.classList.contains('comparison-total-row'), name: out['Sampler'] ? out['Sampler'].now : '',
+        return { total: first.classList.contains('comparison-total-row'), name: out[(window as any).WIR_WORDS.Sampler] ? out[(window as any).WIR_WORDS.Sampler].now : '',
           cells: out, status: (first.querySelector('.status-badge')?.textContent || '').trim() };
       });
       expect(row.total, 'with Σ Total on, the Compare table\'s first row is the whole run').toBe(true);

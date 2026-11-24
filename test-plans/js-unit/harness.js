@@ -27,6 +27,21 @@ const vm = require('vm');
 
 const REPORT_JS = path.resolve(__dirname,
     '../../jmeter-web-insight-report/src/main/resources/static/js/report.js');
+const PAGE_WORDS = path.resolve(__dirname,
+    '../../jmeter-web-insight-report/src/main/resources/templates/page-words.json');
+
+/**
+ * The page's words for a run of `tool` (spec 001): what the template hands report.js as window.WIR_WORDS before it
+ * runs. JMeter's by default, as on a JMeter run's page; the same table the renderer reads (PageWords.forTool).
+ */
+function pageWords(tool) {
+    const table = JSON.parse(fs.readFileSync(PAGE_WORDS, 'utf8'));
+    const t = (tool || 'jmeter').toLowerCase();
+    const column = table.columns.indexOf(t) >= 0 ? t : 'other';
+    const words = {};
+    for (const [k, v] of Object.entries(table.words)) words[k] = v[column].split('{tool}').join(t);
+    return words;
+}
 
 /**
  * A DOM stub that is honest about what it is.
@@ -76,7 +91,7 @@ function stubDocument() {
 function loadReportJs(globalChartData, options) {
     const source = fs.readFileSync(REPORT_JS, 'utf8');
     const sandbox = {
-        window: {},
+        window: { WIR_WORDS: pageWords() },
         document: stubDocument(),
         navigator: { userAgent: 'node' },
         console,
@@ -118,7 +133,7 @@ function loadReportJs(globalChartData, options) {
  */
 function loadReportScope() {
     const sandbox = {
-        window: {},
+        window: { WIR_WORDS: pageWords() },
         document: stubDocument(),
         navigator: { userAgent: 'node' },
         console,
@@ -225,7 +240,7 @@ function loadReportPage(chartData, script, options) {
            chart wired up here (the drag handles bind one page-level resize listener;
            asserts-row-keys.test.js attaches a chart) is driven by its own events, not by a window
            that is never resized. */
-        window: { addEventListener() { }, removeEventListener() { } },
+        window: { addEventListener() { }, removeEventListener() { }, WIR_WORDS: pageWords() },
         document: emptyPageDocument(),
         navigator: { userAgent: 'node' },
         console,
@@ -292,4 +307,4 @@ function readReportPage(htmlPath) {
     return { chartData, script };
 }
 
-module.exports = { loadCatalogue, loadReportJs, loadReportPage, loadReportScope, readReportPage, REPORT_JS };
+module.exports = { loadCatalogue, loadReportJs, loadReportPage, loadReportScope, pageWords, readReportPage, REPORT_JS };

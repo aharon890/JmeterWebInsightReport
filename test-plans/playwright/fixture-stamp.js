@@ -52,6 +52,7 @@ const STAMP_ROOTS = [
   'test-plans/server-metrics',
   'test-plans/server-catalogue',
   'test-plans/server-fixtures',
+  'test-plans/run-data',
 ];
 
 const SENTENCE = {

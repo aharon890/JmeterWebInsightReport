@@ -1,0 +1,166 @@
+{
+  "testName": "K2",
+  "tool": {
+    "name": "k6"
+  },
+  "status": "UNKNOWN",
+  "assertsEvaluated": false,
+  "duration": 36502,
+  "window": {
+    "start": "2026-11-23T17:47:45.508Z",
+    "end": "2026-11-23T17:48:22.010Z",
+    "startMillis": 1795456065508,
+    "endMillis": 1795456102010
+  },
+  "totalSamples": 9,
+  "totalErrors": 0,
+  "errorRate": 0.0,
+  "samplers": [
+    {
+      "name": "Add Item to Order",
+      "sampleCount": 6,
+      "mean": 27.83,
+      "p95": 84.0,
+      "p99": 84.0,
+      "errorRate": 0.0,
+      "throughput": 0.26,
+      "apdex": 1.0
+    },
+    {
+      "name": "Admin Login (cleanup)",
+      "sampleCount": 1,
+      "mean": 105.0,
+      "p95": 105.0,
+      "p99": 105.0,
+      "errorRate": 0.0,
+      "throughput": 9.52,
+      "apdex": 1.0
+    },
+    {
+      "name": "Browse Pets",
+      "sampleCount": 6,
+      "mean": 16.17,
+      "p95": 20.0,
+      "p99": 20.0,
+      "errorRate": 0.0,
+      "throughput": 0.25,
+      "apdex": 1.0
+    },
+    {
+      "name": "Check Stock",
+      "sampleCount": 6,
+      "mean": 8.17,
+      "p95": 10.0,
+      "p99": 10.0,
+      "errorRate": 0.0,
+      "throughput": 0.26,
+      "apdex": 1.0
+    },
+    {
+      "name": "Checkout",
+      "sampleCount": 6,
+      "mean": 136.17,
+      "p95": 738.0,
+      "p99": 738.0,
+      "errorRate": 0.0,
+      "throughput": 0.25,
+      "apdex": 0.917
+    },
+    {
+      "name": "Complete Checkout Flow",
+      "sampleCount": 6,
+      "mean": 533.17,
+      "p95": 2563.0,
+      "p99": 2563.0,
+      "errorRate": 0.0,
+      "throughput": 0.17,
+      "apdex": 0.833
+    },
+    {
+      "name": "Complete Order",
+      "sampleCount": 6,
+      "mean": 111.17,
+      "p95": 608.0,
+      "p99": 608.0,
+      "errorRate": 0.0,
+      "throughput": 0.26,
+      "apdex": 0.917
+    },
+    {
+      "name": "Delete Order (cleanup)",
+      "sampleCount": 6,
+      "mean": 11.17,
+      "p95": 16.0,
+      "p99": 16.0,
+      "errorRate": 0.0,
+      "throughput": 0.26,
+      "apdex": 1.0
+    },
+    {
+      "name": "Login",
+      "sampleCount": 6,
+      "mean": 182.83,
+      "p95": 1032.0,
+      "p99": 1032.0,
+      "errorRate": 0.0,
+      "throughput": 0.25,
+      "apdex": 0.917
+    },
+    {
+      "name": "Read Stock Before Run (setup)",
+      "sampleCount": 1,
+      "mean": 344.0,
+      "p95": 344.0,
+      "p99": 344.0,
+      "errorRate": 0.0,
+      "throughput": 2.91,
+      "apdex": 1.0
+    },
+    {
+      "name": "Restore Stock (cleanup)",
+      "sampleCount": 1,
+      "mean": 533.0,
+      "p95": 533.0,
+      "p99": 533.0,
+      "errorRate": 0.0,
+      "throughput": 1.88,
+      "apdex": 0.5
+    },
+    {
+      "name": "Verify Order",
+      "sampleCount": 6,
+      "mean": 30.5,
+      "p95": 97.0,
+      "p99": 97.0,
+      "errorRate": 0.0,
+      "throughput": 0.26,
+      "apdex": 1.0
+    },
+    {
+      "name": "View Pet Detail",
+      "sampleCount": 6,
+      "mean": 9.17,
+      "p95": 14.0,
+      "p99": 14.0,
+      "errorRate": 0.0,
+      "throughput": 0.26,
+      "apdex": 1.0
+    }
+  ],
+  "artifacts": {
+    "outputDirectory": "<outputDir>",
+    "html": {
+      "path": "K2-report.html",
+      "outcome": "WRITTEN"
+    },
+    "json": {
+      "path": "K2-report.json",
+      "outcome": "WRITTEN"
+    },
+    "data": {
+      "path": "K2-report-data.js",
+      "outcome": "SKIPPED",
+      "detail": "inline"
+    }
+  }
+}

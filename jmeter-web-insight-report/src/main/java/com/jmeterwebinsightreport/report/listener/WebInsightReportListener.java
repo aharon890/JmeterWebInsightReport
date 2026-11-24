@@ -1,6 +1,10 @@
 package com.jmeterwebinsightreport.report.listener;
 
 import com.jmeterwebinsightreport.core.model.ReportData;
+import com.jmeterwebinsightreport.core.rundata.RunSample;
+import com.jmeterwebinsightreport.core.rundata.RunHeader;
+import com.jmeterwebinsightreport.core.rundata.RunDataRecorder;
+import com.jmeterwebinsightreport.core.rundata.SampleFeed;
 import com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine;
 import com.jmeterwebinsightreport.report.exporter.WebInsightDataExporter;
 import com.jmeterwebinsightreport.report.gate.GateEvaluation;
@@ -203,6 +207,7 @@ public class WebInsightReportListener extends ResultCollector {
                 annotationsRaw = rawText(ANNOTATIONS_FILE);
                 annotationsResolved = getPropertyAsString(ANNOTATIONS_FILE);
                 configuration = config;
+                runDataRecorder = openRunDataRecorder(config, engine);
                 statsEngine = engine;
             } else {
                 log.info("Web Insight Report Listener: additional host started (host={}), {} now active",
@@ -470,6 +475,28 @@ public class WebInsightReportListener extends ResultCollector {
         }
     }
 
+    /** The run data being recorded ({@code webinsight.report.rundata}, spec 001), or null; set before the engine. */
+    private volatile RunDataRecorder runDataRecorder;
+
+    private RunDataRecorder openRunDataRecorder(ReportConfiguration config, LiveStatisticsEngine engine) {
+        if (!ReportConfiguration.writesRunData(this::getJMeterProperty)) {
+            return null;
+        }
+        try {
+            String version = null;
+            try {
+                version = JMeterUtils.getJMeterVersion();
+            } catch (Exception | LinkageError e) {
+                // no version to name
+            }
+            return RunDataRecorder.open(new RunHeader(RunHeader.TOOL_JMETER, version, config.getReportTitle()),
+                    engine.getMaxResponseBodyLength());
+        } catch (java.io.IOException e) {
+            log.warn("webinsight.report.rundata=true, but the run data cannot be recorded: {}", e.getMessage());
+            return null;
+        }
+    }
+
     /**
      * Process a single SampleResult and recursively process any sub-results.
      * Transaction Controllers with parent=true wrap child samples as sub-results.
@@ -478,75 +505,23 @@ public class WebInsightReportListener extends ResultCollector {
      *        run counts the samples a listener in the plan received, a transaction's requests inside it
      */
     private void processSampleResult(LiveStatisticsEngine statsEngine, SampleResult result, boolean topLevel) {
-        // The sample's start, whatever sampleresult.timestamp.start says: getTimeStamp() is its
-        // END when that property is false, and every sample was then placed and windowed by its
-        // end (S46: duration 3 m 10 s against JMeter's 3 m 4 s, B3). JMeter's Aggregate Report
-        // reads getStartTime() too. A result that never set one keeps its time stamp.
-        long start = result.getStartTime() > 0 ? result.getStartTime() : result.getTimeStamp();
-        // And its real end: a Transaction Controller's parent sample with "include timers" off
-        // counts only its children's time as elapsed and its pauses as idle time, and still ends
-        // after them. Its row's throughput window stopped at start + elapsed (P11: 0.86/s on the
-        // transaction row, 0.76/s on the Summary tile for the same 50 transactions, B7).
-        long end = Math.max(result.getEndTime(), start + Math.max(0, result.getTime()));
-        statsEngine.recordSample(
-                result.getSampleLabel(),
-                result.getTime(),
-                result.isSuccessful(),
-                result.getBytesAsLong(),
-                result.getSentBytes(),
-                start,
-                end,
-                result.getConnectTime(),
-                result.getLatency(),
-                // 1 and 0/1 for every sample but one JMeter aggregated (Statistical mode), which
-                // stands for that many, that many failed (B6)
-                result.getSampleCount(),
-                result.getErrorCount(),
-                topLevel
-        );
+        processSampleResult(statsEngine, result, topLevel, null, false, null);
+    }
 
-        // Track active threads — total across all thread groups, not just this sampler's group.
-        int activeThreads = result.getAllThreads();
-        if (activeThreads <= 0) {
-            activeThreads = result.getGroupThreads();
-        }
-        statsEngine.updateActiveThreads(activeThreads, LiveStatisticsEngine.endOf(start, result.getTime()));
-        if (LiveStatisticsEngine.isTransactionRow(result.getResponseMessage())) {
-            // Left out of the Errors tab, as JMeter's HTML report leaves it out (E3)
-            statsEngine.recordTransactionRow(result.getSampleCount());
-        } else {
-            // and out of the response codes, as its Codes per Second does (T5)
-            statsEngine.recordResponseCode(result.getResponseCode(),
-                    LiveStatisticsEngine.endOf(start, result.getTime()));
-        }
-
-        // Record error details with URL and response body
-        if (!result.isSuccessful()) {
-            String url = null;
-            String responseBody = null;
-            try {
-                url = result.getUrlAsString();
-            } catch (Exception e) { /* ignore */ }
-            try {
-                responseBody = result.getResponseDataAsString();
-            } catch (Exception e) { /* ignore */ }
-            statsEngine.recordError(
-                    result.getSampleLabel(),
-                    result.getResponseCode(),
-                    result.getResponseMessage(),
-                    // what a results file's failureMessage column holds (CSVSaveService), when JMeter would
-                    // type the error by it: the property is on (its default), as the HTML report reads it (E1)
-                    JMeterUtils.getPropDefault("jmeter.save.saveservice.assertion_results_failure_message", true)
-                            ? result.getFirstAssertionFailureMessage() : null,
-                    start,
-                    result.getThreadName(),
-                    url,
-                    null,
-                    responseBody,
-                    topLevel,
-                    // the failures it stands for: 1, or more for a result JMeter aggregated (B6)
-                    result.getErrorCount()
-            );
+    /**
+     * @param parentLabel the label of the result this one is a sub-result of, or null
+     * @param parentIsTransactionController whether that parent came from a Transaction Controller: a sub-result
+     *        always nests so its time is not counted twice, but only a real controller is presented as one
+     */
+    private void processSampleResult(LiveStatisticsEngine statsEngine, SampleResult result, boolean topLevel,
+                                     String parentLabel, boolean parentIsTransactionController, String parentId) {
+        RunSample sample = toRunSample(result, topLevel, parentIsTransactionController);
+        SampleFeed.feed(statsEngine, sample, parentLabel);
+        RunDataRecorder recorder = runDataRecorder;
+        if (recorder != null) {
+            sample.id = recorder.nextId();
+            sample.parent = parentId;
+            recorder.sample(sample);
         }
 
         // Process sub-results (Transaction Controller children / embedded resources / redirect
@@ -560,13 +535,65 @@ public class WebInsightReportListener extends ResultCollector {
         // the report as a Transaction Controller.
         SampleResult[] subResults = result.getSubResults();
         if (subResults != null && subResults.length > 0) {
-            String parentLabel = result.getSampleLabel();
             boolean fromTransactionController = TransactionController.isFromTransactionController(result);
             for (SampleResult sub : subResults) {
-                statsEngine.recordTransaction(parentLabel, sub.getSampleLabel(), fromTransactionController);
-                processSampleResult(statsEngine, sub, false);
+                processSampleResult(statsEngine, sub, false, result.getSampleLabel(), fromTransactionController,
+                        sample.id);
             }
         }
+    }
+
+    /**
+     * A listener's result in the common format's model (spec 001): what the listener handed the engine before there
+     * was one feed, field for field.
+     */
+    static RunSample toRunSample(SampleResult result, boolean topLevel, boolean parentIsTransactionController) {
+        // The sample's start, whatever sampleresult.timestamp.start says: getTimeStamp() is its
+        // END when that property is false, and every sample was then placed and windowed by its
+        // end (S46: duration 3 m 10 s against JMeter's 3 m 4 s, B3). JMeter's Aggregate Report
+        // reads getStartTime() too. A result that never set one keeps its time stamp.
+        long start = result.getStartTime() > 0 ? result.getStartTime() : result.getTimeStamp();
+        // And its real end: a Transaction Controller's parent sample with "include timers" off
+        // counts only its children's time as elapsed and its pauses as idle time, and still ends
+        // after them. Its row's throughput window stopped at start + elapsed (P11: 0.86/s on the
+        // transaction row, 0.76/s on the Summary tile for the same 50 transactions, B7).
+        long end = Math.max(result.getEndTime(), start + Math.max(0, result.getTime()));
+        RunSample s = new RunSample(result.getSampleLabel(), start, result.getTime(), result.isSuccessful());
+        s.end = end;
+        s.idle = Math.max(0, end - start - Math.max(0, result.getTime()));
+        s.bytes = result.getBytesAsLong();
+        s.sentBytes = result.getSentBytes();
+        s.connect = result.getConnectTime();
+        s.latency = result.getLatency();
+        // 1 and 0/1 for every sample but one JMeter aggregated (Statistical mode), which stands for that many, that
+        // many failed (B6)
+        s.samples = result.getSampleCount();
+        s.errors = (long) result.getErrorCount();
+        // Active threads, total across all thread groups, not just this sampler's group
+        int activeThreads = result.getAllThreads();
+        s.threads = activeThreads > 0 ? activeThreads : result.getGroupThreads();
+        s.code = result.getResponseCode();
+        s.message = result.getResponseMessage();
+        s.user = result.getThreadName();
+        // A Transaction Controller's own result is left out of the Errors tab (E3) and the response codes (T5)
+        s.kind = LiveStatisticsEngine.isTransactionRow(result.getResponseMessage())
+                ? RunSample.Kind.TRANSACTION : RunSample.Kind.REQUEST;
+        s.topLevel = topLevel;
+        s.link = parentIsTransactionController ? RunSample.Link.TRANSACTION : RunSample.Link.SUBRESULT;
+        if (!result.isSuccessful()) {
+            // Error details with URL and response body
+            try {
+                s.url = result.getUrlAsString();
+            } catch (Exception e) { /* ignore */ }
+            try {
+                s.responseBody = result.getResponseDataAsString();
+            } catch (Exception e) { /* ignore */ }
+            // what a results file's failureMessage column holds (CSVSaveService), when JMeter would type the error by
+            // it: the property is on (its default), as the HTML report reads it (E1)
+            s.failureMessage = JMeterUtils.getPropDefault("jmeter.save.saveservice.assertion_results_failure_message",
+                    true) ? result.getFirstAssertionFailureMessage() : null;
+        }
+        return s;
     }
 
     @Override
@@ -684,6 +711,7 @@ public class WebInsightReportListener extends ResultCollector {
 
             WebInsightReportGenerator generator = new WebInsightReportGenerator(configuration);
             ReportArtifacts artifacts = generator.generateReport(reportData);
+            publishRunData(artifacts);
 
             // Tell the -g -o exporter what we actually wrote, so a combined
             // `-n -t … -e -o` run does not produce a second, differently-named report of the
@@ -817,6 +845,31 @@ public class WebInsightReportListener extends ResultCollector {
      * rule to be fatal has {@code gate.notJudged.invalidRule} in the CI/CD JSON and can say so
      * itself — which is a decision it makes, rather than one made for it here.
      */
+    /**
+     * The recorded run data beside the report ({@code webinsight.report.rundata}, spec 001). A file that could not be
+     * written is a missing artifact: INCOMPLETE, and a failed run under {@code failonerror}.
+     */
+    private void publishRunData(ReportArtifacts artifacts) {
+        RunDataRecorder recorder = runDataRecorder;
+        runDataRecorder = null;
+        if (recorder == null) {
+            return;
+        }
+        if (artifacts.html() == null) {
+            recorder.discard();
+            return;
+        }
+        try {
+            File written = recorder.publish(artifacts.outputDirectory(), artifacts.html().getName());
+            log.info("Web Insight Report: run data written to {}", written.getAbsolutePath());
+        } catch (java.io.IOException e) {
+            System.err.println("WEB-INSIGHT-REPORT: INCOMPLETE — " + e.getMessage());
+            if (failOnError()) {
+                failTheRun(NonZeroExit.FAIL_ON_ERROR, e);
+            }
+        }
+    }
+
     private void failOnAssertIfAsked(ReportArtifacts artifacts) {
         // The client gate's FAIL, or a FAIL on any server gate that builds (D4): the fold is
         // the artifacts', and the verdict line already names which gate said it.
