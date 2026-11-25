@@ -23,6 +23,12 @@ test.describe('Compare Apply keeps Java\'s regression rule [CMP]', () => {
       const template = diffs.find((d: any) => !d.isNew && !d.removed);
       diffs.push({ name: 'Gone sampler', isNew: false, removed: true, regression: true,
         baseSamples: template.currSamples, baseP95: template.currP95 });
+      // Thresholds no measured change can cross, so the removed sampler is the only regression:
+      // What Changed names the first 3 only, and CMP is a timer-driven run whose own regressions
+      // vary (4 of them on 2026-11-25 pushed this row into "...and 2 more").
+      for (const id of ['thP95', 'thErrorRate', 'thMean', 'thP99', 'thThroughput']) {
+        (document.getElementById(id) as HTMLInputElement).value = '1000000000';
+      }
       w.applyComparisonThresholds();
       const gone = diffs.find((d: any) => d.name === 'Gone sampler');
       return { regression: gone.regression, summary: document.getElementById('whatChangedContent')!.textContent };
