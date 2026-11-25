@@ -23,6 +23,12 @@ public final class RunHeader {
     public String timeResolution = "ms";
     /** Sample fields the tool does not record: only these read "not measured" on the page. */
     public List<String> notMeasured = new ArrayList<>();
+    /**
+     * Since format 1.1 (spec 002): the statistics the tool's summary lists for a trend (k6's
+     * {@code options.summaryTrendStats}), so the page offers p(99) only when the run's summary has it. Null when the
+     * tool did not say.
+     */
+    public List<String> trendStatistics;
 
     public RunHeader() {
     }

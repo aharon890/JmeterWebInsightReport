@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jmeterwebinsightreport.core.rundata.RunDataWriter;
 import com.jmeterwebinsightreport.core.rundata.RunHeader;
 import com.jmeterwebinsightreport.core.rundata.RunSample;
+import com.jmeterwebinsightreport.core.rundata.ThresholdExpression;
 import com.jmeterwebinsightreport.core.rundata.ToolRecords;
 
 import java.io.BufferedReader;
@@ -81,10 +82,15 @@ public final class K6Results {
         if (c.wholeSeconds) {
             header.timeResolution = "s";
         }
+        // read first: the run record, the file's first line, carries the summary's trend statistics (spec 002)
+        JsonNode summaryRoot = summary == null ? null : new ObjectMapper().readTree(summary);
+        if (summaryRoot != null) {
+            header.trendStatistics = trendStatistics(summaryRoot);
+        }
         try (RunDataWriter w = new RunDataWriter(runData, header)) {
             c.write(w);
-            if (summary != null) {
-                writeSummary(summary, w);
+            if (summaryRoot != null) {
+                writeSummary(summaryRoot, w);
             }
         }
         Result r = new Result();
@@ -96,18 +102,39 @@ public final class K6Results {
         return r;
     }
 
-    /** Thresholds and counters from k6's end-of-test summary. Its checks come from the CSV, one per pass. */
-    static void writeSummary(File summary, RunDataWriter w) throws IOException {
-        JsonNode root = new ObjectMapper().readTree(summary);
+    /** k6's {@code options.summaryTrendStats}, or null when the summary does not list them. */
+    static List<String> trendStatistics(JsonNode root) {
+        JsonNode stats = root.path("options").path("summaryTrendStats");
+        if (!stats.isArray()) {
+            return null;
+        }
+        List<String> out = new ArrayList<>();
+        stats.forEach(s -> out.add(s.asText()));
+        return out;
+    }
+
+    /**
+     * Thresholds and counters from k6's end-of-test summary. Its checks come from the CSV, one per pass. Each threshold
+     * carries the value k6 judged it on, {@code metrics[m].values[statistic]}, with the metric's type and what it holds
+     * (spec 002, FR-050): k6's own number, never one worked out again from the samples (research R1).
+     */
+    static void writeSummary(JsonNode root, RunDataWriter w) throws IOException {
         JsonNode metrics = root.path("metrics");
         Iterator<Map.Entry<String, JsonNode>> it = metrics.fields();
         while (it.hasNext()) {
             Map.Entry<String, JsonNode> m = it.next();
-            JsonNode thresholds = m.getValue().path("thresholds");
-            Iterator<Map.Entry<String, JsonNode>> t = thresholds.fields();
+            JsonNode metric = m.getValue();
+            Iterator<Map.Entry<String, JsonNode>> t = metric.path("thresholds").fields();
             while (t.hasNext()) {
                 Map.Entry<String, JsonNode> th = t.next();
-                w.threshold(new ToolRecords.Threshold(m.getKey(), th.getKey(), th.getValue().path("ok").asBoolean()));
+                ToolRecords.Threshold record = new ToolRecords.Threshold(m.getKey(), th.getKey(),
+                        th.getValue().path("ok").asBoolean());
+                record.statistic = ThresholdExpression.parse(th.getKey()).statistic();
+                JsonNode value = record.statistic == null ? null : metric.path("values").get(record.statistic);
+                record.measuredValue = value != null && value.isNumber() ? value.asDouble() : null;
+                record.metricType = textOrNull(metric, "type");
+                record.metricContains = textOrNull(metric, "contains");
+                w.threshold(record);
             }
         }
         counter(w, metrics, "iterations", "count");
@@ -122,6 +149,11 @@ public final class K6Results {
         } else if (metric.equals("dropped_iterations")) {
             w.counter(metric, 0); // k6 leaves the metric out when no iteration was dropped
         }
+    }
+
+    private static String textOrNull(JsonNode node, String field) {
+        JsonNode v = node.get(field);
+        return v == null || !v.isTextual() ? null : v.asText();
     }
 
     /** One request or group pass, with what it needs until it is written. */

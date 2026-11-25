@@ -122,8 +122,8 @@ Every other record comes in any order:
 - **A producer writes samples, never figures.** A transaction that gives no `elapsed` or `success` takes them from its
   children: the sum of their times, and a failure when any of them failed. Every count, percentile, rate and the run's
   identity are the report's own.
-- **Versions.** This release reads `1.x` and writes `1.0`. A later minor version only adds fields or record types,
-  which this one skips. A major version it does not read is refused with a sentence naming both.
+- **Versions.** This release reads `1.x` and writes `1.1` (4.5.x wrote `1.0`; 1.1 adds a threshold's measured
+  value). A later minor version only adds fields or record types, which this one skips. A major version it does not read is refused with a sentence naming both.
 - **Server data** is not in run data: its payload or CSV is paired with the run by `runId`, as for a JMeter run.
 
 **JMeter runs** write their run data beside the report with `-Jwebinsight.report.rundata=true` (off by default), as

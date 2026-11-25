@@ -30,6 +30,16 @@ public final class ToolRecords {
         public String metric;
         public String expression;
         public boolean passed;
+        /**
+         * Since format 1.1 (spec 002, FR-050), each optional: the statistic the expression names ({@code p(95)},
+         * {@code rate}), the value the tool judged it on (k6's summary {@code values}), and the metric's type
+         * ({@code trend}, {@code rate}, {@code counter}, {@code gauge}) and what it holds ({@code time}, {@code data},
+         * {@code default}). Absent when the tool did not say: never 0.
+         */
+        public String statistic;
+        public Double measuredValue;
+        public String metricType;
+        public String metricContains;
 
         public Threshold() {
         }

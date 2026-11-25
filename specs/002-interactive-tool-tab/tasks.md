@@ -36,33 +36,33 @@ from each runner go into the stage's commit and pull request. Every stage holds 
 **Goal**: the threshold record carries k6's measured value; the engine has p(99) and k6's request duration; K2 is a
 fixture.
 
-- [ ] T001 [P] [US1] Red: `core-test/adapter/k6/K6ResultsTest` — K2's Login threshold record carries
+- [X] T001 [P] [US1] Red: `core-test/adapter/k6/K6ResultsTest` — K2's Login threshold record carries
   `statistic` `p(95)`, `measuredValue` 779.71796, `metricType` `trend`, `metricContains` `time`; K1's
   `http_req_failed` `rate<0.01` carries `rate`, k6's rate, `rate`, `default`; a `count>=0` carries `count`; a summary
   metric without `values` (or without that statistic) leaves all four out, never 0. The run record carries K2's
   `options.summaryTrendStats` as `trendStatistics`, and K1's (none) leaves it out.
-- [ ] T002 [P] [US1] Red: the expression parser, `core/rundata/ThresholdExpression` (statistic, operator, limit) in
+- [X] T002 [P] [US1] Red: the expression parser, `core/rundata/ThresholdExpression` (statistic, operator, limit) in
   `core-test/rundata/ThresholdExpressionTest`: every operator k6 accepts (`<`, `<=`, `>`, `>=`, `==`, `===`, `!=`),
   k6's spacing variants (`p(95) < 600`, `p( 95 )<600`), `avg`, `med`, `min`, `max`, `count`, `rate`, `value`,
   `p(99.9)`, and an expression it cannot read (statistic and limit absent, never guessed).
-- [ ] T003 [P] [US1] Red: `RunDataSchemaTest` sets the four threshold fields and `trendStatistics`;
+- [X] T003 [P] [US1] Red: `RunDataSchemaTest` sets the four threshold fields and `trendStatistics`;
   `RunDataReaderTest` reads a 1.0 file (no fields: absent) and a 1.1 file (fields read back exactly); the writer
   writes `"formatVersion": "1.1"`; a 1.0 reader rule (`RunDataFormat.reads`) still reads 1.1.
-- [ ] T004 [P] [US2] Red: `core-test/model/ToolMeasuresTest` — each `Trend` answers p(99) through
+- [X] T004 [P] [US2] Red: `core-test/model/ToolMeasuresTest` — each `Trend` answers p(99) through
   `ResponseTimeDistribution.getPercentile(99)`; a seventh trend, duration, is fed sending + waiting + receiving per
   sample; on K1, K2 and K3 the duration's average equals the sum of the three parts' averages to the hundredth.
-- [ ] T005 [US1] `core/rundata/ToolRecords.Threshold` gains `statistic`, `measuredValue`, `metricType`,
+- [X] T005 [US1] `core/rundata/ToolRecords.Threshold` gains `statistic`, `measuredValue`, `metricType`,
   `metricContains`; `RunHeader` gains `trendStatistics`; `RunDataWriter.threshold` and `header` write them only when
   present; `RunDataReader` reads them; `RunDataFormat.VERSION` = `1.1`.
-- [ ] T006 [US1] `K6Results.toRunData` reads the summary before the header (for `trendStatistics`);
+- [X] T006 [US1] `K6Results.toRunData` reads the summary before the header (for `trendStatistics`);
   `writeSummary` fills the four fields from `metrics[m].type`, `.contains` and `.values[statistic]`.
-- [ ] T007 [P] [US1] Both schema copies, `resources/static/schema/run-data.schema.json` and
+- [X] T007 [P] [US1] Both schema copies, `resources/static/schema/run-data.schema.json` and
   `docs/schema/run-data.schema.json`: the optional fields, identical (`JSU/run-data-schema-published.test.js`).
-- [ ] T008 [US2] `core/model/ToolMeasures`: p99 on every `Trend`, the duration trend. A JMeter run still has no
+- [X] T008 [US2] `core/model/ToolMeasures`: p99 on every `Trend`, the duration trend. A JMeter run still has no
   measures, so nothing moves on JMeter.
-- [ ] T009 K2 becomes a fixture: its `run_test` line in `test-plans/scripts/run-all-tests.sh`, `FIXTURE_IDS` in
+- [X] T009 K2 becomes a fixture: its `run_test` line in `test-plans/scripts/run-all-tests.sh`, `FIXTURE_IDS` in
   `scripts/lib/common.sh`, `REQUIRED_FIXTURES` in `test-plans/playwright/global-setup.ts`, and an R07 case beside K1's.
-- [ ] T010 [P] Docs: the run data page and `specs/001-.../contracts/run-data-format.md` say what 1.1 adds; the
+- [X] T010 [P] Docs: the run data page and `specs/001-.../contracts/run-data-format.md` say what 1.1 adds; the
   `test-plans/run-data/README.md` names K2 as a fixture.
 - [ ] T011 Stage gates, PR, merge.
 

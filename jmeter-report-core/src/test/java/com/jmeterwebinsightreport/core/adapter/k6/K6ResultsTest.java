@@ -134,6 +134,78 @@ class K6ResultsTest {
         assertFalse(k1.result.header.notMeasured.contains("user"), "K1 has vu and iter");
     }
 
+    private static ToolRecords.Threshold threshold(ToolRecords tool, String metric, String expression) {
+        return tool.thresholds().stream().filter(t -> t.metric.equals(metric) && t.expression.equals(expression))
+                .findFirst().orElseThrow(() -> new AssertionError("no threshold " + metric + " " + expression));
+    }
+
+    @Test
+    void eachThresholdCarriesTheValueK6JudgedItOn() throws Exception {
+        // spec 002, FR-050 and SC-006: the number k6 wrote, never one worked out again from the samples
+        ToolRecords k2 = throughTheAdapter("K2", true).result.tool;
+        ToolRecords.Threshold login = threshold(k2, "http_req_duration{name:Login}", "p(95)<=600");
+        assertFalse(login.passed);
+        assertEquals("p(95)", login.statistic);
+        assertEquals(779.71796, login.measuredValue, 0.0);
+        assertEquals("trend", login.metricType);
+        assertEquals("time", login.metricContains);
+
+        ToolRecords.Threshold count = threshold(k2, "http_reqs{name:Login}", "count>=0");
+        assertEquals("count", count.statistic);
+        assertEquals(6.0, count.measuredValue, 0.0);
+        assertEquals("counter", count.metricType);
+        assertEquals("default", count.metricContains);
+
+        ToolRecords.Threshold gauge = threshold(k2, "request_window_ms{name:Login}", "value>=0");
+        assertEquals("gauge", gauge.metricType);
+        assertEquals(1795456091718.0, gauge.measuredValue, 0.0, "a custom gauge's bare number");
+
+        ToolRecords k1 = throughTheAdapter("K1", true).result.tool;
+        ToolRecords.Threshold failed = threshold(k1, "http_req_failed", "rate<0.01");
+        assertEquals("rate", failed.statistic);
+        assertEquals(0.18181818181818182, failed.measuredValue, 0.0);
+        assertEquals("rate", failed.metricType);
+        assertEquals("default", failed.metricContains);
+    }
+
+    @Test
+    void aValueTheSummaryDoesNotHaveIsLeftOutNeverZero(@TempDir Path dir) throws Exception {
+        File summary = dir.resolve("summary.json").toFile();
+        java.nio.file.Files.writeString(summary.toPath(), "{\"metrics\":{"
+                + "\"http_req_duration\":{\"type\":\"trend\",\"contains\":\"time\","
+                + "\"values\":{\"avg\":5,\"p(95)\":9},\"thresholds\":{\"p(99)<300\":{\"ok\":true},\"p( 9 )<1\":{\"ok\":true}}},"
+                + "\"custom\":{\"thresholds\":{\"value<1\":{\"ok\":false}}}}}");
+        File runData = dir.resolve("r.jsonl").toFile();
+        K6Results.toRunData(new File(new File(RUN_DATA_FIXTURES, "K1"), "results.csv.gz"), summary, "x", runData);
+        LiveStatisticsEngine engine = new LiveStatisticsEngine();
+        RunDataReader.Result r = new RunDataReader().read(runData, engine);
+        ToolRecords.Threshold p99 = threshold(r.tool, "http_req_duration", "p(99)<300");
+        assertEquals("p(99)", p99.statistic, "the statistic is the expression's, whatever the summary lists");
+        assertEquals(null, p99.measuredValue, "summaryTrendStats did not list p(99)");
+        assertEquals("trend", p99.metricType);
+        ToolRecords.Threshold unreadable = threshold(r.tool, "http_req_duration", "p( 9 )<1");
+        assertEquals(null, unreadable.statistic, "k6's grammar refuses it, so nothing is guessed");
+        assertEquals(null, unreadable.measuredValue);
+        ToolRecords.Threshold bare = threshold(r.tool, "custom", "value<1");
+        assertEquals("value", bare.statistic);
+        assertEquals(null, bare.measuredValue);
+        assertEquals(null, bare.metricType);
+        assertEquals(null, bare.metricContains);
+        java.util.List<String> lines = java.nio.file.Files.readAllLines(runData.toPath());
+        assertTrue(lines.stream().noneMatch(l -> l.contains("\"measuredValue\":0")), String.join("\n", lines));
+    }
+
+    @Test
+    void theRunRecordListsTheStatisticsK6Summarised() throws Exception {
+        assertEquals(List.of("avg", "min", "med", "max", "p(90)", "p(95)", "p(99)", "count"),
+                throughTheAdapter("K2", true).result.header.trendStatistics);
+        assertEquals(List.of("avg", "min", "med", "max", "p(90)", "p(95)"),
+                throughTheAdapter("K1", true).result.header.trendStatistics, "K1's summary has no p(99)");
+        assertEquals(null, throughTheAdapter("K1", false).result.header.trendStatistics, "no summary, no list");
+        assertEquals(com.jmeterwebinsightreport.core.rundata.RunDataFormat.VERSION,
+                throughTheAdapter("K1", false).result.header.formatVersion);
+    }
+
     @Test
     void anOlderFileGivesRequestRowsOnlyAndSaysWhy() throws Exception {
         // K3: whole seconds and no vu/iter (spec, Edge Cases "Older data"; U2)

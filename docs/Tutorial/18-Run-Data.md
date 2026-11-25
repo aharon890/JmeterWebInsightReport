@@ -54,13 +54,14 @@ run carries a check, a threshold and a counter, adds a `demo` tab after Server. 
 
 | Field | Required | Meaning |
 |---|---|---|
-| `formatVersion` | yes | `"1.0"`. A 1.x reader reads any 1.x file. |
+| `formatVersion` | yes | `"1.1"` from Web Insight Report 4.6.0 (`"1.0"` before). A 1.x reader reads any 1.x file, and skips a field it does not know. |
 | `tool.name` | yes | The tool, lower case: `jmeter`, `k6`, `demo`. It names the tool's tab and decides the page's words. |
 | `tool.version` | no | Shown in the header beside the tool's name. |
 | `testName` | yes | The report title. The run's identity, `runId`, hashes it, so a different `webinsight.report.title` is refused. |
 | `producer.name`, `producer.version` | yes, no | Who wrote the file. |
 | `timeResolution` | no | `s` when the tool's file had whole-second times; the report says so in its Notes. Default `ms`. |
 | `notMeasured` | no | Sample fields the tool does not record: `bytes`, `sentBytes`, `latency`, `connect`, `user`, `iteration`. Only these read "not measured"; a field simply left out of a sample keeps JMeter's default. |
+| `trendStatistics` | no | Since 1.1. The statistics the tool's summary lists for a trend, such as k6's `options.summaryTrendStats`: `["avg", "min", "med", "max", "p(90)", "p(95)", "p(99)"]`. The tool's tab offers p(99) only when it is listed. |
 
 ### `sample`: one request or transaction
 
@@ -88,7 +89,7 @@ run carries a check, a threshold and a counter, adds a `demo` tab after Server. 
 |---|---|---|
 | `users` | `time`, `active` | The active users series and the Max Users (Max VUs) tile. JMeter carries this as `threads` on each sample. |
 | `check` | `time`, `name`, `group`, `passed`, `user`, `iteration` | The tool's tab: passes and fails per group and check. |
-| `threshold` | `metric`, `expression`, `passed` | The tool's tab, as the tool judged it. |
+| `threshold` | `metric`, `expression`, `passed`; since 1.1, optional: `statistic`, `measuredValue`, `metricType`, `metricContains` | The tool's tab, as the tool judged it. `statistic` is the one the expression names (`p(95)`), `measuredValue` the value the tool judged it on (k6's summary), `metricType` `trend`, `rate`, `counter` or `gauge`, and `metricContains` `time`, `data` or `default`. A value the tool did not give is left out, never written as 0. |
 | `counter` | `name`, `value` | The tool's tab. |
 
 None of them is ever a verdict. The report's verdict is the test's asserts, whatever the tool's own checks said.
@@ -105,8 +106,10 @@ None of them is ever a verdict. The report's verdict is the test's asserts, what
 
 ## Versions
 
-This release writes run data `1.0` and reads `1.x`. A minor version (1.1) only adds optional fields or record types,
-which a 1.0 reader skips. A major version (2.0) is refused with a sentence naming the version found and the versions
+This release writes run data `1.1` and reads `1.x`. Web Insight Report 4.5.x wrote `1.0`; 1.1 added a threshold's
+`statistic`, `measuredValue`, `metricType` and `metricContains`, and the run record's `trendStatistics`, all optional.
+A minor version only adds optional fields or record types, which an older 1.x reader skips: 4.5.x reads a 1.1 file and
+shows its thresholds without their measured values. A major version (2.0) is refused with a sentence naming the version found and the versions
 read; no numbers are shown.
 
 ## Reading order and memory

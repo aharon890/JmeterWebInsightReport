@@ -668,54 +668,70 @@ if should_run E29; then
 fi
 
 # -----------------------------------------------------------------------------
-#  K1 — a k6 run's report (spec 001, US3)
+#  K1, K2 — a k6 run's report (spec 001, US3; spec 002)
 #
 #  The report of a k6 run, built by the report's own k6 adapter with no JMeter
-#  run: `build-report --from k6` over the committed k6 shapes run
-#  (test-plans/run-data/K1), with a small annotations file so the Asserts tab is
-#  judged in k6's words too. Every number is a constant. The JAR is lib/ext's,
-#  the one the fixture stamp records. R07 holds it to the Aggregate Report over
-#  its JMeter-format copy, and the run data it writes beside the report tells R07
-#  which columns k6 does not measure.
+#  run: `build-report --from k6` over a committed k6 run (test-plans/run-data/<id>).
+#  K1 is the k6 shapes run, with a small annotations file so the Asserts tab is
+#  judged in k6's words too; K2 is petstore's checkout smoke, with 50 thresholds
+#  (one failed) and the HTTP timing parts per request (spec 002's k6 tab). Every
+#  number is a constant. The JAR is lib/ext's, the one the fixture stamp records.
+#  R07 holds each to the Aggregate Report over its JMeter-format copy, and the run
+#  data it writes beside the report tells R07 which columns k6 does not measure.
 # -----------------------------------------------------------------------------
-if should_run K1; then
-    K1_DIR="$RESULTS_DIR/K1"
-    K1_INPUTS="$TEST_PLANS/run-data/K1"
-    k1_status="PASS"; k1_note=""
-    k1_report="$K1_DIR/K1-report.html"
-    k1_jar="$(ls "$JMETER_EXT"/jmeter-web-insight-report-*.jar 2>/dev/null | head -1)"
+k6_fixture() {
+    local id="$1" description="$2" annotations="$3"
+    local dir="$RESULTS_DIR/$id" inputs="$TEST_PLANS/run-data/$id"
+    local status="PASS" note="" report="$RESULTS_DIR/$id/$id-report.html" log="$RESULTS_DIR/$id-build-report.log"
+    local jar
+    jar="$(ls "$JMETER_EXT"/jmeter-web-insight-report-*.jar 2>/dev/null | head -1)"
 
-    rm -rf "$K1_DIR"
-    if _report_survived_rm "$k1_report" "$RESULTS_DIR/K1-build-report.log"; then
-        k1_status="FAIL"; k1_note="could not remove the previous report; not running over it"
-    elif [[ -z "$k1_jar" ]]; then
-        k1_status="FAIL"; k1_note="no plugin JAR in $JMETER_EXT"
+    rm -rf "$dir"
+    if _report_survived_rm "$report" "$log"; then
+        status="FAIL"; note="could not remove the previous report; not running over it"
+    elif [[ -z "$jar" ]]; then
+        status="FAIL"; note="no plugin JAR in $JMETER_EXT"
     else
-        echo "[K1] A k6 run's report — build-report --from k6 over the committed shapes run ..."
-        java -jar "$k1_jar" build-report --from k6 --k6-results "$K1_INPUTS/results.csv.gz" \
-            --k6-summary "$K1_INPUTS/summary.json" --annotations "$K1_INPUTS/k1-annotations.json" \
-            --out "$K1_DIR" --write-run-data \
-            --property webinsight.report.title=K1 --property webinsight.report.filename=K1-report.html \
-            > "$RESULTS_DIR/K1-build-report.log" 2>&1
+        echo "[$id] $description — build-report --from k6 over the committed run ..."
+        # bash 3.2: no empty-array expansion under set -u, so the annotations option is its own branch
+        if [[ -n "$annotations" ]]; then
+            java -jar "$jar" build-report --from k6 --k6-results "$inputs/results.csv.gz" \
+                --k6-summary "$inputs/summary.json" --annotations "$inputs/$annotations" \
+                --out "$dir" --write-run-data \
+                --property "webinsight.report.title=$id" --property "webinsight.report.filename=$id-report.html" \
+                > "$log" 2>&1
+        else
+            java -jar "$jar" build-report --from k6 --k6-results "$inputs/results.csv.gz" \
+                --k6-summary "$inputs/summary.json" --out "$dir" --write-run-data \
+                --property "webinsight.report.title=$id" --property "webinsight.report.filename=$id-report.html" \
+                > "$log" 2>&1
+        fi
     fi
 
-    if ! file_exists "$k1_report"; then
-        k1_status="FAIL"; k1_note="$(append_note "$k1_note" "HTML not generated")"
+    if ! file_exists "$report"; then
+        status="FAIL"; note="$(append_note "$note" "HTML not generated")"
     fi
-    if ! file_exists "$K1_DIR/K1-report.json"; then
-        k1_status="FAIL"; k1_note="$(append_note "$k1_note" "JSON not generated")"
+    if ! file_exists "$dir/$id-report.json"; then
+        status="FAIL"; note="$(append_note "$note" "JSON not generated")"
     fi
-    if ! file_exists "$K1_DIR/K1-report-run-data.jsonl.gz"; then
-        k1_status="FAIL"; k1_note="$(append_note "$k1_note" "no run data beside the report")"
+    if ! file_exists "$dir/$id-report-run-data.jsonl.gz"; then
+        status="FAIL"; note="$(append_note "$note" "no run data beside the report")"
     fi
-    if log_has_stacktrace "$RESULTS_DIR/K1-build-report.log"; then
-        k1_status="FAIL"; k1_note="$(append_note "$k1_note" "Stack trace in log")"
+    if log_has_stacktrace "$log"; then
+        status="FAIL"; note="$(append_note "$note" "Stack trace in log")"
     fi
 
-    [[ "$k1_status" == "PASS" ]] && write_fixture_stamp "$K1_DIR"
+    [[ "$status" == "PASS" ]] && write_fixture_stamp "$dir"
 
-    record K1 "A k6 run's report" "$k1_status" "$k1_note"
-    echo "K1,k6 run,run_data,local,results.csv.gz,$k1_status,true,true,$k1_note,$(iso_timestamp)" >> "$CSV_REPORT"
+    record "$id" "$description" "$status" "$note"
+    echo "$id,k6 run,run_data,local,results.csv.gz,$status,true,true,$note,$(iso_timestamp)" >> "$CSV_REPORT"
+}
+
+if should_run K1; then
+    k6_fixture K1 "A k6 run's report" k1-annotations.json
+fi
+if should_run K2; then
+    k6_fixture K2 "A k6 run's report: thresholds and timings" ""
 fi
 
 # -----------------------------------------------------------------------------

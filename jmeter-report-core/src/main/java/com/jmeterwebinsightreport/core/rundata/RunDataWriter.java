@@ -72,6 +72,13 @@ public final class RunDataWriter implements Closeable {
             }
             gen.writeEndArray();
         }
+        if (h.trendStatistics != null) {
+            gen.writeArrayFieldStart("trendStatistics");
+            for (String s : h.trendStatistics) {
+                gen.writeString(s);
+            }
+            gen.writeEndArray();
+        }
         end();
     }
 
@@ -161,6 +168,12 @@ public final class RunDataWriter implements Closeable {
         gen.writeStringField("metric", t.metric);
         gen.writeStringField("expression", t.expression);
         gen.writeBooleanField("passed", t.passed);
+        string("statistic", t.statistic);
+        if (t.measuredValue != null && Double.isFinite(t.measuredValue)) {
+            gen.writeNumberField("measuredValue", t.measuredValue);
+        }
+        string("metricType", t.metricType);
+        string("metricContains", t.metricContains);
         end();
     }
 
