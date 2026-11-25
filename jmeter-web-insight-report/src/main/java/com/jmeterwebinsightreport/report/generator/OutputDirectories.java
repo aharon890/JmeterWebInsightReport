@@ -80,24 +80,28 @@ public final class OutputDirectories {
      * Create and delete a file, so "writable" means writable rather than "not flagged
      * read-only".
      *
-     * <p>The probe name carries the process id so two runs probing the same directory at the
-     * same moment cannot delete each other's probe and report a failure that is really the other
-     * process tidying up.
+     * <p>The probe is a new file with a name no other process can be using:
+     * {@code Files.createTempFile} picks a random name and creates it exclusively, retrying on a
+     * clash. It was named by the process id, which is unique on one machine and nowhere else: two
+     * JMeter containers writing into one bind mount each run in their own PID namespace and are
+     * often the same pid, so the second truncated and deleted the first one's live probe, and the
+     * first lost its report to "Output directory is not writable" over a NoSuchFileException
+     * (family G, G02, 2026-11-25). The staging files had already learned this
+     * ({@code AtomicFileWriter}).
      */
     private static void probe(File dir) throws IOException {
-        Path probe = dir.toPath().resolve(".web-insight-probe." + pid() + ".tmp");
+        Path probe;
         try {
-            Files.write(probe, new byte[0]);
+            probe = Files.createTempFile(dir.toPath(), ".web-insight-probe.", ".tmp");
         } catch (IOException e) {
             throw new IOException("Output directory is not writable: " + dir.getAbsolutePath()
                     + " (" + ReportArtifacts.describe(e) + ")", e);
-        } finally {
-            try {
-                Files.deleteIfExists(probe);
-            } catch (IOException ignored) {
-                // Written but not removable is strange and not worth failing the run over — the
-                // thing we needed to know (that a write succeeds here) has already been answered.
-            }
+        }
+        try {
+            Files.deleteIfExists(probe);
+        } catch (IOException ignored) {
+            // Written but not removable is strange and not worth failing the run over — the
+            // thing we needed to know (that a write succeeds here) has already been answered.
         }
     }
 
@@ -215,14 +219,6 @@ public final class OutputDirectories {
         }
         if (seen.add(key)) {
             ordered.add(dir);
-        }
-    }
-
-    private static long pid() {
-        try {
-            return ProcessHandle.current().pid();
-        } catch (RuntimeException e) {
-            return 0L;
         }
     }
 }
