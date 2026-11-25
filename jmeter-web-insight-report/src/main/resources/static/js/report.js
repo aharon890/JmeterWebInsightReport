@@ -1627,6 +1627,9 @@ function initCharts(data) {
     if (window.WIR && WIR.serverKpis) {
         WIR.serverKpis.init(data);
     }
+    if (window.WIR && WIR.toolTab && data && data.tool) {
+        WIR.toolTab.init(data.tool);
+    }
     /* The document lifecycle — the baseline, and any draft an accidental refresh would
        otherwise cost — runs here, after BOTH authors have read their half of the payload, and
        nowhere else. Inside WIR.asserts.init it ran before the server slice knew its collection,
@@ -4519,6 +4522,31 @@ function readCurrentDetailConfig() {
         }
     }
     return getDetailChartConfig();
+}
+
+/* The link from the k6 tab to a request (spec 002, FR-008): the Requests tab, on that request's row, with its
+   detail panel open. A row a search, x or a closed transaction hid is shown first. */
+function openRequestRow(name) {
+    switchTab('samplers');
+    var find = function () {
+        var rows = document.querySelectorAll('#samplerTable tbody tr[data-sampler]');
+        for (var i = 0; i < rows.length; i++) {
+            if (rows[i].getAttribute('data-sampler') === name) return rows[i];
+        }
+        return null;
+    };
+    var row = find();
+    if (!row) return;
+    if (row.offsetParent === null) {
+        var search = document.getElementById('samplerSearch');
+        if (search && search.value) { search.value = ''; filterSamplerTable(); }
+    }
+    if (row.offsetParent === null && isTransactionChild(name) && !showTransactionChildren) {
+        toggleTransactionChildrenVisibility(true);
+    }
+    if (row.offsetParent === null) showAllRows();
+    if (!samplerCompanionRow(row, 'sampler-detail-row')) toggleSamplerDetail(row);
+    row.scrollIntoView({ block: 'center' });
 }
 
 function toggleSamplerDetail(row) {
@@ -8836,9 +8864,11 @@ WIR.table = (function () {
             ' onclick="WIR.table.hide(' + jsArg(id) + ', ' + jsArg(key) + ')">×</button>';
     }
 
-    /** A group's header row: open or close it, and its counts — never a sum or an average (FR-063). */
+    /** A group's header row: open or close it, and its counts — never a sum or an average (FR-063). `noun` is
+        [one, many], so a group of one reads "1 rule". */
     function groupRow(id, row, colspan, noun) {
         var t = tables[id];
+        var word = Array.isArray(noun) ? (row.size === 1 ? noun[0] : noun[1]) : (noun || 'rows');
         var label = t.spec.statusLabel || WIR.status.chipLabel;
         var counts = (t.spec.statusOrder || Object.keys(row.counts)).filter(function (s) { return row.counts[s]; })
             .map(function (s) { return row.counts[s] + ' ' + String(label(s)).toLowerCase(); });
@@ -8847,7 +8877,7 @@ WIR.table = (function () {
             ' aria-expanded="' + !!row.open + '"' +
             ' onclick="WIR.table.setOpen(' + jsArg(id) + ', ' + jsArg(row.key) + ', ' + !row.open + ')">' +
             (row.open ? '▾' : '▸') + ' ' + esc(row.label) + '</button>' +
-            '<span class="wir-group-counts">' + row.size + ' ' + esc(noun || 'rows') +
+            '<span class="wir-group-counts">' + row.size + ' ' + esc(word) +
             (counts.length ? ' · ' + esc(counts.join(' · ')) : '') + '</span></td></tr>';
     }
 
@@ -8955,6 +8985,537 @@ WIR.table = (function () {
         toggleColumnsMenu: toggleColumnsMenu,
         setExtra: setExtra,
         csv: csv
+    };
+}());
+
+/* ============================================================
+ *  WIR.toolTab — the tab of a run another tool recorded (spec 002, US1-US3), drawn from chartData.tool.
+ *
+ *  Four WIR.tables: the thresholds (grouped by metric as k6's summary groups them, by request, condition or
+ *  result; each with the value k6 measured and, when it failed, how far past its limit), the HTTP timings (one
+ *  row per request in the Requests tab's tree, a statistic switch, a bar of the average request, a row that
+ *  opens to every statistic), the checks under their group path, and the group durations. A strip says what
+ *  failed. The counters are the template's tiles. The four searches are one: a name typed in any section narrows
+ *  every section (SC-003). Nothing here is a verdict: k6's thresholds are shown as k6 judged them.
+ * ============================================================ */
+WIR.toolTab = (function () {
+    'use strict';
+
+    var T_THRESHOLDS = 'toolThresholds';
+    var T_TIMINGS = 'toolTimings';
+    var T_CHECKS = 'toolChecks';
+    var T_GROUPS = 'toolGroupDurations';
+    var TABLES = [T_THRESHOLDS, T_TIMINGS, T_CHECKS, T_GROUPS];
+    var PARTS = ['blocked', 'connecting', 'tlsHandshaking', 'sending', 'waiting', 'receiving', 'duration'];
+    var PART_LABEL = { blocked: 'Blocked', connecting: 'Connecting', tlsHandshaking: 'TLS', sending: 'Sending',
+        waiting: 'Waiting', receiving: 'Receiving', duration: 'Duration' };
+    var data = null;
+    var hierarchy = {};
+    var expanded = Object.create(null);
+
+    function esc(s) {
+        return escapeHtml(s);
+    }
+
+    function isNum(v) {
+        return typeof v === 'number' && isFinite(v);
+    }
+
+    /** A number as k6 writes it bare: whole as is, else to two decimals, no thousands separator. */
+    function bare(v) {
+        return Math.round(v) === v ? String(v) : String(Math.round(v * 100) / 100);
+    }
+
+    function bytes(v) {
+        if (Math.abs(v) < 1000) return bare(v) + ' B';
+        if (Math.abs(v) < 1e6) return (v / 1000).toFixed(1) + ' kB';
+        return (v / 1e6).toFixed(1) + ' MB';
+    }
+
+    /**
+     * A value of a threshold's metric in k6's units (FR-002): a time in ms to two decimals, as k6's summary writes
+     * p(95)=779.72ms; a rate metric as a percentage; a counter as its count, or per second for its rate; data in B,
+     * kB or MB; anything else, a custom gauge's timestamp included, the bare number.
+     */
+    function formatIn(v, t) {
+        var perSecond = t.statistic === 'rate' && t.metricType === 'counter';
+        if (t.metricContains === 'time') return v.toFixed(2) + ' ms';
+        if (t.metricType === 'rate') return (v * 100).toFixed(2) + '%';
+        if (t.metricContains === 'data') return bytes(v) + (perSecond ? '/s' : '');
+        if (perSecond) return v.toFixed(2) + '/s';
+        return bare(v);
+    }
+
+    /** The measured value, or "not recorded" when the run data has none (never 0). */
+    function formatMeasured(t) {
+        return isNum(t.measured) ? formatIn(t.measured, t) : W('toolNotRecorded');
+    }
+
+    /**
+     * How far a failed threshold is past its limit: in the metric's unit, and as a share of the limit (none when the
+     * limit is 0). An upper limit (<, <=) is passed "over", a lower one (>, >=) "under", an equality "off".
+     */
+    function distance(t) {
+        if (t.passed || !isNum(t.measured) || !isNum(t.limit) || !t.operator) return null;
+        var past;
+        var word;
+        if (t.operator === '<' || t.operator === '<=') { past = t.measured - t.limit; word = 'over'; }
+        else if (t.operator === '>' || t.operator === '>=') { past = t.limit - t.measured; word = 'under'; }
+        else if (t.operator === '==' || t.operator === '===') { past = Math.abs(t.measured - t.limit); word = 'off'; }
+        else return null;
+        return { past: past, word: word, share: t.limit === 0 ? null : past / Math.abs(t.limit) };
+    }
+
+    function distanceText(t) {
+        var d = distance(t);
+        if (!d) return '';
+        return formatIn(d.past, t) + ' ' + d.word + (d.share === null ? '' : ' (' + Math.round(d.share * 100) + '%)');
+    }
+
+    /** k6's group path as a reader reads it: ::A::B is "A › B". */
+    function groupText(path) {
+        if (!path) return '';
+        return (path.indexOf('::') === 0 ? path.slice(2) : path).split('::').join(' › ');
+    }
+
+    function lastGroup(path) {
+        var parts = String(path || '').split('::').filter(Boolean);
+        return parts.length ? parts[parts.length - 1] : null;
+    }
+
+    function statistic() {
+        var t = WIR.table.table(T_TIMINGS);
+        var s = t && t.state.extra.statistic;
+        return data && data.trendStatistics.indexOf(s) !== -1 ? s : 'avg';
+    }
+
+    function failing(g) {
+        return (g.counts.FAIL || 0) > 0;
+    }
+
+    function failedFirst(a, b) {
+        return (failing(b) ? 1 : 0) - (failing(a) ? 1 : 0) || WIR.table.compareValues(a.label, b.label);
+    }
+
+    function resultStatus(r) {
+        return r.passed ? 'PASS' : 'FAIL';
+    }
+
+    function resultLabel(s) {
+        return s === 'FAIL' ? W('toolFailed') : W('toolPassed');
+    }
+
+    /* Every k6 table's search is one: what is typed in one section narrows every section (SC-003). */
+    function rendered(table) {
+        return function (what) {
+            if (what === 'query') {
+                var q = WIR.table.table(table).state.q;
+                TABLES.forEach(function (id) {
+                    var t = WIR.table.table(id);
+                    if (t) t.state.q = q;
+                });
+                renderAll();
+                return;
+            }
+            render(table);
+        };
+    }
+
+    function thresholdsSpec() {
+        return {
+            key: function (t) { return t.metric + ' ' + t.expression; },
+            columns: [
+                { id: 'result', label: 'Result', hideable: false,
+                  value: function (t) { return t.passed ? 1 : 0; }, text: function (t) { return resultLabel(resultStatus(t)); } },
+                { id: 'metric', label: 'Metric', hideable: false,
+                  value: function (t) { return t.metric; }, text: function (t) { return t.metric; } },
+                { id: 'request', label: W('Sampler'),
+                  value: function (t) { return t.request || ''; }, text: function (t) { return t.request || ''; } },
+                { id: 'expression', label: 'Threshold',
+                  value: function (t) { return t.expression; }, text: function (t) { return t.expression; } },
+                { id: 'measured', label: 'Measured',
+                  value: function (t) { return isNum(t.measured) ? t.measured : null; }, text: formatMeasured },
+                { id: 'distance', label: 'Past the limit', firstDir: 'desc',
+                  value: function (t) { var d = distance(t); return d ? (d.share === null ? d.past : d.share) : null; },
+                  text: distanceText }
+            ],
+            search: function (t) { return t.metric + ' ' + t.expression; },
+            status: resultStatus,
+            statusOrder: ['FAIL', 'PASS'],
+            statusLabel: resultLabel,
+            nameOf: function (t) { return t.request || null; },
+            groupings: {
+                metric: { label: 'Metric', of: function (t) { return t.base; }, open: failing, order: failedFirst },
+                request: { label: W('Sampler'), open: failing,
+                    of: function (t) {
+                        return t.request ? { key: 'r:' + t.request, label: t.request } : { key: '', label: W('toolNotTied') };
+                    },
+                    order: function (a, b) { return (a.key === '' ? 1 : 0) - (b.key === '' ? 1 : 0) || failedFirst(a, b); } },
+                condition: { label: 'Condition', of: function (t) { return t.expression; }, open: failing, order: failedFirst },
+                result: { label: 'Result', of: function (t) { var s = resultStatus(t); return { key: s, label: resultLabel(s) }; },
+                    order: function (a, b) { return a.key === 'FAIL' ? -1 : b.key === 'FAIL' ? 1 : 0; } }
+            },
+            defaultGroup: 'metric',
+            defaultSort: { col: 'result', dir: 'asc' },
+            /* decision 2: what holds for any run, folded one line per group; a failed one never folds */
+            fold: function (t) { return t.alwaysTrue && t.passed; },
+            csvName: data.name + '-thresholds.csv',
+            render: rendered(T_THRESHOLDS)
+        };
+    }
+
+    /* The groups the requests sit under, k6's groups being the transactions: rows of their own, with no parts. */
+    function timingRecords() {
+        var recs = [];
+        if (data.timingsEveryRequest) {
+            recs.push({ every: true, request: W('toolEverySampler'), parts: data.timingsEveryRequest.parts });
+        }
+        var present = Object.create(null);
+        data.timings.forEach(function (t) { present[t.request] = true; recs.push({ request: t.request, parts: t.parts }); });
+        var parentOf = Object.create(null);
+        Object.keys(hierarchy).forEach(function (p) {
+            (hierarchy[p] || []).forEach(function (c) { if (parentOf[c] === undefined) parentOf[c] = p; });
+        });
+        data.timings.forEach(function (t) {
+            for (var p = parentOf[t.request], n = 0; p !== undefined && n < 50; p = parentOf[p], n++) {
+                if (present[p]) continue;
+                present[p] = true;
+                recs.push({ request: p, group: true, parts: null });
+            }
+        });
+        return recs;
+    }
+
+    function partValue(r, part) {
+        var s = r.parts && r.parts[part];
+        return s && isNum(s[statistic()]) ? s[statistic()] : null;
+    }
+
+    function timingsSpec() {
+        return {
+            key: function (r) { return r.every ? '*' : r.request; },
+            columns: [{ id: 'request', label: W('Sampler'), hideable: false,
+                value: function (r) { return r.request; }, text: function (r) { return r.request; } }]
+                .concat(PARTS.map(function (p) {
+                    return { id: p, label: PART_LABEL[p], firstDir: 'desc',
+                        value: function (r) { return partValue(r, p); },
+                        text: function (r) { var v = partValue(r, p); return v === null ? '' : v.toFixed(2); } };
+                }))
+                .concat([{ id: 'bar', label: 'Average request', sortable: false, csv: false,
+                    value: function () { return null; } }]),
+            search: function (r) { return r.request; },
+            nameOf: function (r) { return r.every ? null : r.request; },
+            pinned: function (r) { return r.every ? 'first' : null; },
+            groupings: { transaction: { label: 'Group', tree: true } },
+            tree: { nameOf: function (r) { return r.request; }, childrenOf: hierarchy, open: true },
+            defaultGroup: 'transaction',
+            csvName: data.name + '-http-timings.csv',
+            render: rendered(T_TIMINGS)
+        };
+    }
+
+    function checksSpec() {
+        return {
+            key: function (c) { return c.group + ' ' + c.name; },
+            columns: [
+                { id: 'result', label: 'Result', hideable: false,
+                  value: function (c) { return c.fails > 0 ? 0 : 1; }, text: function (c) { return resultLabel(c.fails > 0 ? 'FAIL' : 'PASS'); } },
+                { id: 'name', label: 'Check', hideable: false,
+                  value: function (c) { return c.name; }, text: function (c) { return c.name; } },
+                { id: 'passes', label: 'Passes', value: function (c) { return c.passes; }, text: function (c) { return String(c.passes); } },
+                { id: 'fails', label: 'Fails', firstDir: 'desc', value: function (c) { return c.fails; }, text: function (c) { return String(c.fails); } },
+                { id: 'rate', label: 'Pass rate', value: passRate,
+                  text: function (c) { var r = passRate(c); return r === null ? '' : (r * 100).toFixed(2) + '%'; } }
+            ],
+            search: function (c) { return groupText(c.group) + ' ' + c.name; },
+            status: function (c) { return c.fails > 0 ? 'FAIL' : 'PASS'; },
+            statusOrder: ['FAIL', 'PASS'],
+            statusLabel: resultLabel,
+            nameOf: function (c) { return lastGroup(c.group); },
+            groupings: { group: { label: 'Group', of: function (c) {
+                return { key: c.group || '', label: groupText(c.group) || '(no group)' };
+            }, order: failedFirst } },
+            defaultGroup: 'group',
+            defaultSort: { col: 'fails', dir: 'desc' },
+            csvName: data.name + '-checks.csv',
+            render: rendered(T_CHECKS)
+        };
+    }
+
+    function passRate(c) {
+        var all = c.passes + c.fails;
+        return all ? c.passes / all : null;
+    }
+
+    function groupsSpec() {
+        return {
+            key: function (g) { return g.name; },
+            columns: [{ id: 'name', label: 'Group', hideable: false,
+                value: function (g) { return g.name; }, text: function (g) { return g.name; } },
+                { id: 'count', label: 'Passes', value: function (g) { return g.count; }, text: function (g) { return String(g.count); } }]
+                .concat(data.trendStatistics.map(function (s) {
+                    return { id: s, label: s, value: function (g) { return g[s]; },
+                        text: function (g) { return isNum(g[s]) ? g[s].toFixed(2) : ''; } };
+                })),
+            search: function (g) { return g.name; },
+            nameOf: function (g) { return g.name; },
+            groupings: { transaction: { label: 'Group', tree: true } },
+            tree: { nameOf: function (g) { return g.name; }, childrenOf: hierarchy, open: true },
+            defaultGroup: 'transaction',
+            csvName: data.name + '-group-duration.csv',
+            render: rendered(T_GROUPS)
+        };
+    }
+
+    /* ---------------------------------------------------------------- what the tab draws */
+
+    function chip(status) {
+        return '<span class="' + WIR.status.chipClass(status) + '">' + esc(resultLabel(status)) + '</span>';
+    }
+
+    function requestLink(name) {
+        if (!name) return '';
+        return '<button type="button" class="wir-link wir-tool-request"' +
+            ' onclick="WIR.toolTab.openRequest(' + jsArg(name) + ')">' +
+            esc(name) + '</button>';
+    }
+
+    function bodyRows(id, v, cols, rowHtml, noun, foldText) {
+        return v.rows.map(function (row) {
+            if (row.kind === 'group') return WIR.table.groupRow(id, row, cols, noun);
+            if (row.kind === 'fold') return WIR.table.foldRow(id, row, cols, foldText(row.count));
+            return rowHtml(row);
+        }).join('');
+    }
+
+    function head(id, cols) {
+        return '<thead><tr>' + cols.map(function (c) { return WIR.table.headCell(id, c); }).join('') + '<th></th></tr></thead>';
+    }
+
+    function thresholdsHtml() {
+        var v = WIR.table.compute(T_THRESHOLDS, data.thresholds);
+        var failed = data.thresholds.filter(function (t) { return !t.passed; }).length;
+        var title = '<h2>' + esc(W('toolThresholds')) + ' (' + (data.thresholds.length - failed) + ' of ' +
+            data.thresholds.length + ' ' + esc(W('toolPassed')) + ')</h2>';
+        if (!data.thresholds.length) return '<h2>' + esc(W('toolThresholds')) + '</h2><p class="wir-empty">' + esc(W('toolNoThresholds')) + '</p>';
+        var cols = WIR.table.shownColumnCount(T_THRESHOLDS) + 1;
+        var at = function (c) { return WIR.table.cellAttrs(T_THRESHOLDS, c); };
+        return title + WIR.table.toolbar(T_THRESHOLDS, { searchId: 'toolSearch-thresholds', label: 'Search the thresholds',
+                placeholder: 'Search metric, tag or threshold…', noun: 'thresholds' }) +
+            '<div class="table-wrapper"><table class="data-table wir-tool-table" id="' + T_THRESHOLDS + '">' +
+            head(T_THRESHOLDS, ['result', 'metric', 'request', 'expression', 'measured', 'distance']) + '<tbody>' +
+            bodyRows(T_THRESHOLDS, v, cols, function (row) {
+                var t = row.record;
+                return '<tr class="wir-tool-row' + (t.passed ? '' : ' wir-tool-row-failed') + '"' +
+                    ' data-metric="' + esc(t.metric) + '" data-expression="' + esc(t.expression) + '">' +
+                    '<td' + at('result') + '>' + chip(resultStatus(t)) + '</td>' +
+                    '<td' + at('metric') + '><code>' + esc(t.base) + '</code>' +
+                    (t.tags ? '<span class="wir-tool-tags">{' + esc(t.tags) + '}</span>' : '') + '</td>' +
+                    '<td' + at('request') + '>' + requestLink(t.request) + '</td>' +
+                    '<td' + at('expression') + '><code>' + esc(t.expression) + '</code></td>' +
+                    '<td class="wir-num"' + at('measured') + '>' +
+                    (isNum(t.measured) ? esc((t.statistic || '') + ' = ' + formatMeasured(t)) : '<span class="wir-muted">' + esc(formatMeasured(t)) + '</span>') + '</td>' +
+                    '<td class="wir-num wir-tool-distance"' + at('distance') + '>' + esc(distanceText(t)) + '</td>' +
+                    '<td>' + WIR.table.hideButton(T_THRESHOLDS, row.key) + '</td></tr>';
+            }, ['threshold', 'thresholds'], function (n) { return n + ' ' + W('toolAlwaysTrue'); }) +
+            '</tbody></table></div>';
+    }
+
+    /* Choice 2 A: the average request from start to end — blocked, with connecting and TLS drawn inside it, then
+       sending, waiting and receiving. It stays on the average: percentiles of the parts do not add up. */
+    function barHtml(r) {
+        var p = r.parts || {};
+        var avg = function (k) { return p[k] && isNum(p[k].avg) ? p[k].avg : 0; };
+        var connecting = avg('connecting');
+        var tls = avg('tlsHandshaking');
+        var blocked = Math.max(avg('blocked'), connecting + tls);
+        var segments = [['connecting', connecting], ['tls', tls], ['blocked', blocked - connecting - tls],
+            ['sending', avg('sending')], ['waiting', avg('waiting')], ['receiving', avg('receiving')]];
+        var total = segments.reduce(function (s, x) { return s + x[1]; }, 0);
+        if (!(total > 0)) return '';
+        var title = 'Average request: blocked ' + blocked.toFixed(2) + ' ms (connecting ' + connecting.toFixed(2) +
+            ', TLS ' + tls.toFixed(2) + '), sending ' + avg('sending').toFixed(2) + ', waiting ' +
+            avg('waiting').toFixed(2) + ', receiving ' + avg('receiving').toFixed(2) + ' ms';
+        return '<span class="wir-tool-bar" title="' + esc(title) + '">' + segments.map(function (s) {
+            var w = s[1] / total * 100;
+            return w > 0 ? '<span class="wir-tool-bar-' + s[0] + '" style="width:' + w.toFixed(2) + '%"></span>' : '';
+        }).join('') + '</span>';
+    }
+
+    function timingDetail(r, cols) {
+        var stats = data.trendStatistics;
+        return '<tr class="wir-tool-detail-row"><td colspan="' + cols + '"><table class="data-table wir-tool-detail">' +
+            '<thead><tr><th>Part</th><th>count</th>' + stats.map(function (s) { return '<th>' + esc(s) + '</th>'; }).join('') +
+            '</tr></thead><tbody>' + PARTS.filter(function (p) { return r.parts && r.parts[p]; }).map(function (p) {
+                var s = r.parts[p];
+                return '<tr><td><code>' + esc(p === 'duration' ? 'http_req_duration' : 'http_req_' +
+                    p.replace(/[A-Z]/g, function (c) { return '_' + c.toLowerCase(); })) + '</code></td><td>' + s.count + '</td>' +
+                    stats.map(function (k) { return '<td class="wir-num">' + (isNum(s[k]) ? s[k].toFixed(2) : '') + '</td>'; }).join('') +
+                    '</tr>';
+            }).join('') + '</tbody></table></td></tr>';
+    }
+
+    function timingsHtml() {
+        var title = '<h2>' + esc(W('toolTimings')) + '</h2>';
+        if (!data.timings.length) return data.k6 ? title + '<p class="wir-empty">' + esc(W('toolNoTimings')) + '</p>' : '';
+        var v = WIR.table.compute(T_TIMINGS, timingRecords());
+        var cols = WIR.table.shownColumnCount(T_TIMINGS) + 1;
+        var at = function (c) { return WIR.table.cellAttrs(T_TIMINGS, c); };
+        var current = statistic();
+        var switcher = '<label class="wir-table-group">' + esc(W('toolStatistic')) +
+            ' <select class="wir-filter-select" id="toolTimings-statistic"' +
+            ' onchange="WIR.table.setExtra(' + jsArg(T_TIMINGS) + ', \'statistic\', this.value)">' +
+            data.trendStatistics.map(function (s) {
+                return '<option value="' + esc(s) + '"' + (s === current ? ' selected' : '') + '>' + esc(s) + '</option>';
+            }).join('') + '</select></label>';
+        return title + '<p class="wir-hint">Each request\'s time in its parts, in ms. Blocked holds connecting and TLS ' +
+            'on a new connection; duration is sending + waiting + receiving, as k6 counts it.</p>' +
+            WIR.table.toolbar(T_TIMINGS, { searchId: 'toolSearch-timings', label: 'Search the timings',
+                placeholder: 'Search ' + W('samplers') + '…', noun: W('samplers'), extra: switcher }) +
+            '<div class="table-wrapper"><table class="data-table wir-tool-table" id="' + T_TIMINGS + '">' +
+            head(T_TIMINGS, ['request'].concat(PARTS, ['bar'])) + '<tbody>' +
+            v.rows.map(function (row) {
+                var r = row.record;
+                var toggle = row.parent ? '<button type="button" class="wir-group-toggle" aria-expanded="' + !!row.open + '"' +
+                    ' onclick="WIR.table.setOpen(' + jsArg(T_TIMINGS) + ', ' + jsArg(row.key) + ', ' + !row.open + ')">' +
+                    (row.open ? '▾' : '▸') + '</button> ' : '';
+                var open = !!expanded[row.key];
+                var more = r.parts ? '<button type="button" class="wir-link wir-tool-more" aria-expanded="' + open + '"' +
+                    ' title="Every statistic of every part"' +
+                    ' onclick="WIR.toolTab.toggleTiming(' + jsArg(row.key) + ')">' + (open ? '▴' : '▾') + '</button>' : '';
+                var name = r.every ? '<strong>' + esc(r.request) + '</strong>' : r.group ? esc(r.request) : requestLink(r.request);
+                var html = '<tr class="wir-tool-row' + (r.group ? ' wir-tool-group' : '') + (r.every ? ' wir-tool-every' : '') + '"' +
+                    ' data-request="' + esc(r.every ? '*' : r.request) + '">' +
+                    '<td class="wir-tool-name"' + at('request') + ' style="--wir-depth:' + (row.depth || 0) + '">' + toggle + name + ' ' + more + '</td>' +
+                    PARTS.map(function (p) {
+                        var x = partValue(r, p);
+                        return '<td class="wir-num"' + at(p) + '>' + (x === null ? '' : x.toFixed(2)) + '</td>';
+                    }).join('') +
+                    '<td' + at('bar') + '>' + barHtml(r) + '</td>' +
+                    '<td>' + (r.every ? '' : WIR.table.hideButton(T_TIMINGS, row.key)) + '</td></tr>';
+                return html + (open && r.parts ? timingDetail(r, cols) : '');
+            }).join('') + '</tbody></table></div>';
+    }
+
+    function checksHtml() {
+        var title = '<h2>' + esc(W('toolChecks')) + '</h2>';
+        if (!data.checks.length) return data.k6 ? title + '<p class="wir-empty">' + esc(W('toolNoChecks')) + '</p>' : '';
+        var v = WIR.table.compute(T_CHECKS, data.checks);
+        var cols = WIR.table.shownColumnCount(T_CHECKS) + 1;
+        var at = function (c) { return WIR.table.cellAttrs(T_CHECKS, c); };
+        return title + WIR.table.toolbar(T_CHECKS, { searchId: 'toolSearch-checks', label: 'Search the checks',
+                placeholder: 'Search check or group…', noun: 'checks' }) +
+            '<div class="table-wrapper"><table class="data-table wir-tool-table" id="' + T_CHECKS + '">' +
+            head(T_CHECKS, ['result', 'name', 'passes', 'fails', 'rate']) + '<tbody>' +
+            bodyRows(T_CHECKS, v, cols, function (row) {
+                var c = row.record;
+                var rate = passRate(c);
+                return '<tr class="wir-tool-row" data-group="' + esc(c.group) + '" data-check="' + esc(c.name) + '">' +
+                    '<td' + at('result') + '>' + chip(c.fails > 0 ? 'FAIL' : 'PASS') + '</td>' +
+                    '<td' + at('name') + '>' + esc(c.name) + '</td>' +
+                    '<td class="wir-num"' + at('passes') + '>' + c.passes + '</td>' +
+                    '<td class="wir-num' + (c.fails > 0 ? ' wir-tool-failed' : '') + '"' + at('fails') + '>' + c.fails + '</td>' +
+                    '<td' + at('rate') + '>' + (rate === null ? '' : '<span class="wir-tool-rate">' + (rate * 100).toFixed(2) + '%</span>' +
+                        '<span class="wir-budget-bar"><span class="wir-budget-fill ' + (rate < 1 ? 'wir-budget-over' : 'wir-budget-ok') +
+                        '" style="width:' + (rate * 100).toFixed(2) + '%"></span></span>') + '</td>' +
+                    '<td>' + WIR.table.hideButton(T_CHECKS, row.key) + '</td></tr>';
+            }, ['check', 'checks']) + '</tbody></table></div>';
+    }
+
+    function groupsHtml() {
+        var title = '<h2>' + esc(W('toolGroupDuration')) + '</h2>';
+        if (!data.groupDurations.length) return data.k6 ? title + '<p class="wir-empty">' + esc(W('toolNoGroups')) + '</p>' : '';
+        var v = WIR.table.compute(T_GROUPS, data.groupDurations);
+        var at = function (c) { return WIR.table.cellAttrs(T_GROUPS, c); };
+        var cols = ['name', 'count'].concat(data.trendStatistics);
+        return title + '<p class="wir-hint">Each group\'s passes on their wall time, think time included (<code>group_duration</code>).</p>' +
+            WIR.table.toolbar(T_GROUPS, { searchId: 'toolSearch-groups', label: 'Search the groups',
+                placeholder: 'Search group…', noun: 'groups' }) +
+            '<div class="table-wrapper"><table class="data-table wir-tool-table" id="' + T_GROUPS + '">' +
+            head(T_GROUPS, cols) + '<tbody>' + v.rows.map(function (row) {
+                var g = row.record;
+                return '<tr class="wir-tool-row" data-group="' + esc(g.name) + '">' +
+                    '<td class="wir-tool-name"' + at('name') + ' style="--wir-depth:' + (row.depth || 0) + '">' + esc(g.name) + '</td>' +
+                    '<td class="wir-num"' + at('count') + '>' + g.count + '</td>' +
+                    data.trendStatistics.map(function (s) {
+                        return '<td class="wir-num"' + at(s) + '>' + (isNum(g[s]) ? g[s].toFixed(2) : '') + '</td>';
+                    }).join('') + '<td>' + WIR.table.hideButton(T_GROUPS, row.key) + '</td></tr>';
+            }).join('') + '</tbody></table></div>';
+    }
+
+    /** FR-023: the first screen answers "did k6 see a problem". */
+    function stripHtml() {
+        var parts = [];
+        var failed = data.thresholds.filter(function (t) { return !t.passed; });
+        if (data.thresholds.length) {
+            parts.push(esc(W('toolThresholds')) + ': ' + failed.length + ' of ' + data.thresholds.length + ' ' + esc(W('toolFailed')) +
+                (failed.length ? ': ' + failed.slice(0, 3).map(function (t) {
+                    return '<code>' + esc((t.request || t.base) + ' ' + t.expression) + '</code>';
+                }).join(', ') + (failed.length > 3 ? ' and ' + (failed.length - 3) + ' more' : '') : ''));
+        }
+        var checksFailed = data.checks.filter(function (c) { return c.fails > 0; });
+        if (data.checks.length) {
+            parts.push(esc(W('toolChecks')) + ': ' + checksFailed.length + ' of ' + data.checks.length + ' ' + esc(W('toolFailed')) +
+                (checksFailed.length ? ': ' + checksFailed.slice(0, 3).map(function (c) {
+                    return '<code>' + esc(c.name) + '</code>';
+                }).join(', ') : ''));
+        } else if (data.k6) {
+            parts.push(esc(W('toolChecks')) + ': none ran');
+        }
+        if (!parts.length) return '';
+        return '<div class="wir-tool-strip' + (failed.length || checksFailed.length ? ' wir-tool-strip-failed' : '') + '"' +
+            ' id="toolStrip">' + parts.join(' · ') + '</div>';
+    }
+
+    var HOSTS = {};
+    HOSTS[T_THRESHOLDS] = thresholdsHtml;
+    HOSTS[T_TIMINGS] = timingsHtml;
+    HOSTS[T_CHECKS] = checksHtml;
+    HOSTS[T_GROUPS] = groupsHtml;
+
+    function render(table) {
+        var host = document.getElementById(table + 'Host');
+        if (!host) return;
+        fillKeepingFocus(host, HOSTS[table]());
+    }
+
+    function renderAll() {
+        TABLES.forEach(render);
+    }
+
+    function init(block) {
+        var mount = document.getElementById('toolTabMount');
+        if (!mount || !block) return;
+        data = block;
+        data.thresholds = data.thresholds || [];
+        data.timings = data.timings || [];
+        data.checks = data.checks || [];
+        data.groupDurations = data.groupDurations || [];
+        data.trendStatistics = data.trendStatistics && data.trendStatistics.length ? data.trendStatistics : ['avg'];
+        hierarchy = (typeof globalChartData !== 'undefined' && globalChartData && globalChartData.transactionHierarchy) || {};
+        WIR.table.register(T_THRESHOLDS, thresholdsSpec());
+        WIR.table.register(T_TIMINGS, timingsSpec());
+        WIR.table.register(T_CHECKS, checksSpec());
+        WIR.table.register(T_GROUPS, groupsSpec());
+        mount.innerHTML = stripHtml() + TABLES.map(function (id) {
+            return '<section class="report-section" id="' + id + 'Host"></section>';
+        }).join('');
+        renderAll();
+    }
+
+    function toggleTiming(key) {
+        if (expanded[key]) delete expanded[key];
+        else expanded[key] = true;
+        render(T_TIMINGS);
+    }
+
+    return {
+        init: init,
+        toggleTiming: toggleTiming,
+        openRequest: function (name) { openRequestRow(name); },
+        formatMeasured: formatMeasured,
+        distanceText: distanceText,
+        groupText: groupText
     };
 }());
 
@@ -12399,7 +12960,7 @@ WIR.asserts = (function () {
             '<th></th>' +
             '</tr></thead><tbody>' +
             v.rows.map(function (row) {
-                return row.kind === 'group' ? WIR.table.groupRow(TABLE, row, cols, 'rules') : ruleRow(row.record);
+                return row.kind === 'group' ? WIR.table.groupRow(TABLE, row, cols, ['rule', 'rules']) : ruleRow(row.record);
             }).join('') +
             '</tbody></table></div>';
     }

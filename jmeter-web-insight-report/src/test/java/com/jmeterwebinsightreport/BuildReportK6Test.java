@@ -15,6 +15,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -42,6 +43,12 @@ class BuildReportK6Test {
         return errBytes.toString(StandardCharsets.UTF_8) + outBytes.toString(StandardCharsets.UTF_8);
     }
 
+    /** The page's chart data, from the sidecar a report built with externaldata=true loads. */
+    private static JsonNode chartData(File out) throws Exception {
+        String js = Files.readString(new File(out, "web-insight-data.js").toPath(), StandardCharsets.UTF_8);
+        return JSON.readTree(js.substring(js.indexOf('{'), js.lastIndexOf('}') + 1));
+    }
+
     private static String html(File out) throws Exception {
         return Files.readString(new File(out, "web-insight-report.html").toPath(), StandardCharsets.UTF_8);
     }
@@ -66,18 +73,25 @@ class BuildReportK6Test {
         File out = tmp.resolve("k1-asserts").toFile();
         assertEquals(0, run("--from", "k6", "--k6-results", new File(K1, "results.csv.gz").getPath(),
                 "--k6-summary", new File(K1, "summary.json").getPath(), "--out", out.getPath(),
-                "--annotations", new File(K1, "k1-annotations.json").getPath()), err());
+                "--annotations", new File(K1, "k1-annotations.json").getPath(),
+                "--property", "webinsight.report.externaldata=true"), err());
         JsonNode j = JSON.readTree(new File(out, "web-insight-report.json"));
         assertEquals("PASS", j.path("status").asText(), "the asserts pass");
         String page = html(out);
-        assertTrue(page.contains("id=\"toolThresholds\""), "the k6 tab lists the thresholds");
-        assertTrue(page.contains("Thresholds (2 of 3 passed)"), "and says one failed");
-        assertTrue(page.contains("class=\"wir-tool-failed\">failed</td>"), "marking it failed");
-        // A run can declare dozens of thresholds (perf hub's K2 has 50): the failed ones come first
-        int table = page.indexOf("id=\"toolThresholds\"");
-        int firstRow = page.indexOf("<tr>", page.indexOf("<tbody>", table));
-        assertTrue(page.indexOf("http_req_failed", firstRow) < page.indexOf("</tr>", firstRow),
-                "the first row is K1's failed threshold, http_req_failed rate<0.01");
+        assertTrue(page.contains("id=\"toolTabMount\""), "the k6 tab, which report.js draws from chartData.tool");
+        // spec 002: the tab's thresholds are the page's data, each with what k6 measured
+        JsonNode thresholds = chartData(out).path("tool").path("thresholds");
+        assertEquals(3, thresholds.size(), "K1 declares three");
+        JsonNode failed = null;
+        for (JsonNode t : thresholds) {
+            if (!t.path("passed").asBoolean()) {
+                assertNull(failed, "one failed");
+                failed = t;
+            }
+        }
+        assertEquals("http_req_failed", failed.path("metric").asText());
+        assertEquals("rate<0.01", failed.path("expression").asText());
+        assertEquals(0.18181818181818182, failed.path("measured").asDouble(), 0.0, "k6's own rate");
         assertTrue(page.contains("ASSERTS PASS"), "while the header's verdict is the asserts'");
     }
 

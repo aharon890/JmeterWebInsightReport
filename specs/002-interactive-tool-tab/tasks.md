@@ -100,34 +100,34 @@ fixture.
 
 ## Stage 4: The k6 tab (US1, US2, US3, FR-001 to FR-013, FR-020 to FR-023, FR-031 to FR-034)
 
-- [ ] T040 [US1] Read k6's tracer source for blocked, connecting and TLS; record in research.md R5 whether blocked
+- [X] T040 [US1] Read k6's tracer source for blocked, connecting and TLS; record in research.md R5 whether blocked
   contains connecting and TLS on a new connection. The bar (choice 2 A) is built only if it holds; otherwise the parts
   are drawn side by side.
-- [ ] T041 [P] [US1] Red: `JSU/tool-tab.test.js` — the page's reading of an expression equals Java's (the same cases as
+- [X] T041 [P] [US1] Red: `JSU/tool-tab.test.js` — the page's reading of an expression equals Java's (the same cases as
   T002), always-true (`<statistic> >= 0` that passed; a failed one never), the distance past the limit in the unit
   and as a share (none when the limit is 0), k6's units (ms to two decimals, a rate as a percentage, a counter as a
   count or `/s`, data as B, kB or MB, a custom gauge as the bare number).
-- [ ] T042 [P] [US1] Red: `plugin-test/.../BuildReportK6Test` and `BuildReportOtherToolTest` read the `chartData.tool`
+- [X] T042 [P] [US1] Red: `plugin-test/.../BuildReportK6Test` and `BuildReportOtherToolTest` read the `chartData.tool`
   block (thresholds with request, statistic, operator, limit, measured, unit, passed, alwaysTrue; timings with
   duration and p99; checks with group paths; group durations; counters; trendStatistics), not table ids in the HTML.
-- [ ] T043 [US1] Red: `PW/tool-tab.spec.ts` on K1 and K2 — US1 scenarios 1-6 (K2: "1 failed · 49 passed",
+- [X] T043 [US1] Red: `PW/tool-tab.spec.ts` on K1 and K2 — US1 scenarios 1-6 (K2: "1 failed · 49 passed",
   `http_req_duration` open and every other group closed, Login's `p(95) = 779.72 ms` and "179.72 ms over (30%)" on the
   first screen, Group by Request, the failed chip, search, the link to the Requests row with its detail panel); US2
   scenarios 1-5 (13 rows under their groups, the statistic switch, sort by waiting, a row's expansion); US3 scenarios
   1-3 (K1's checks under "Complete Checkout Flow", failed first; the tiles; the strip). Dropped iterations read "0".
-- [ ] T044 [US1] `plugin/report/template/ToolTab` writes `chartData.tool` (data-model.md); the hard-coded English
+- [X] T044 [US1] `plugin/report/template/ToolTab` writes `chartData.tool` (data-model.md); the hard-coded English
   moves into `resources/templates/page-words.json`, jmeter, k6 and other columns (`PageWordsTest`).
-- [ ] T045 [US1] `WIR.toolTab` on the toolkit's state adapter: thresholds (groupings Metric, Request, Condition,
+- [X] T045 [US1] `WIR.toolTab` on the toolkit's state adapter: thresholds (groupings Metric, Request, Condition,
   Result; the fold; chips; search; sort; ×; Columns; CSV), timings (statistic switch, tree order, the bar, the
   expansion), checks, group durations, tiles, strip; `#tab-tool` keeps a mount point. The tab's choices join its
   remembered view (FR-032).
-- [ ] T046 [US1] `openRequestRow(name)` (FR-008): switch to Requests, show the row, open its detail, scroll to it.
-- [ ] T047 [P] `PW/every-reader-same-page.spec.ts`: `'tool'` in `TABS`, the k6 CSVs in its CSV map, the grouped
+- [X] T046 [US1] `openRequestRow(name)` (FR-008): switch to Requests, show the row, open its detail, scroll to it.
+- [X] T047 [P] `PW/every-reader-same-page.spec.ts`: `'tool'` in `TABS`, the k6 CSVs in its CSV map, the grouped
   states opened.
-- [ ] T048 [P] `PW/tool-words.spec.ts` covers the new words on K1 and K2.
-- [ ] T049 `verify_report_js_rules`: rule 1 matches `WIR.toolTab`; rule 3 lists the k6 tables.
-- [ ] T050 [P] Spec text corrected (plan "Spec text corrected"): US3's dropped iterations, SC-002, SC-006.
-- [ ] T051 [P] Docs: the k6 page, with screenshots of K2's tab.
+- [X] T048 [P] `PW/tool-words.spec.ts` covers the new words on K1 and K2.
+- [X] T049 `verify_report_js_rules`: rule 1 matches `WIR.toolTab`; rule 3 lists the k6 tables.
+- [X] T050 [P] Spec text corrected (plan "Spec text corrected"): US3's dropped iterations, SC-002, SC-006.
+- [X] T051 [P] Docs: the k6 page, with screenshots of K2's tab.
 - [ ] T052 Pull request 1 (stages 1-4): the full regression within 15 minutes, push, PR, merge.
 
 ## Stage 5: Compare and the Errors tables (US6, FR-060 to FR-066, FR-071 defects 2-5)

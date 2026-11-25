@@ -77,19 +77,26 @@ Transaction). The header names k6, and its version when k6's files give one. Two
 product's own name, and the sentence saying the numbers follow JMeter's Aggregate Report rules. A JMeter run's report
 reads exactly as before.
 
-**The k6 tab** comes after Server, on k6 runs only. It shows what k6's own end-of-test summary shows:
+**The k6 tab** comes after Server, on k6 runs only. It shows what k6's own end-of-test summary shows, organised so the
+first screen answers "did k6 see a problem, and where":
 
 | Section | What it holds |
 |---|---|
-| Counters | `iterations`, `dropped_iterations` and `vus_max` (the VUs k6 allocated) from `summary.json`; "not measured" without it. Max VUs on the Summary tab is the most VUs active at once, k6's `vus`. |
-| Thresholds | Every threshold, with its metric and expression, as k6 judged it: the failed ones first, then by metric. |
-| Checks | Passes, fails and pass rate per group and check. |
-| Group duration | Each group's passes on their wall time, think time included (`group_duration`). |
-| HTTP timings | The six parts (`http_req_blocked`, `_connecting`, `_tls_handshaking`, `_sending`, `_waiting`, `_receiving`) over every request and per request, to the hundredth of a millisecond. |
+| Strip | One line: how many thresholds and checks failed out of how many, naming the failed ones (`Thresholds: 1 of 50 failed: Login p(95)<=600`). |
+| Counters | `iterations`, `dropped_iterations` (0 when k6 dropped none: k6 writes it only when it drops one) and `vus_max` (the VUs k6 allocated) from `summary.json`; "not measured" without it. Max VUs on the Summary tab is the most VUs active at once, k6's `vus`. |
+| Thresholds | Every threshold as k6 judged it, grouped by metric as k6's summary groups them (or by request, condition or result). Each row gives the metric with its tags, the expression, the value k6 measured for the statistic the expression names, in k6's units (`p(95) = 779.72 ms`, a rate as a percentage), and, when it failed, how far past its limit (`179.72 ms over (30%)`). A group holding a failure opens; the others show their counts. Thresholds that hold for any run (`max>=0`, `count>=0`, `rate>=0`, `value>=0`, which some tests add only so that k6 keeps a request's numbers) fold into one line per group, still counted; a failed one never folds. A request's name opens its row on the Requests tab, with its detail panel. |
+| HTTP timings | One row per request, under its group as on the Requests tab, with an "every request" row first: the six parts (blocked, connecting, TLS, sending, waiting, receiving) and k6's request duration (sending + waiting + receiving), at the statistic chosen (avg by default; min, med, max, p(90), p(95), and p(99) when the run's summary lists it), and a bar of the average request from start to end: blocked, with connecting and TLS inside it on a new connection, then sending, waiting and receiving. A row opens to every statistic of every part. |
+| Checks | Under their group path, failed first, with passes, fails and a pass-rate bar. |
+| Group duration | Each group's passes on their wall time, think time included (`group_duration`), under its parent group. |
 
-Its columns are k6's: avg, min, med, max, p(90), p(95). A percentile is computed the Aggregate Report's way, the value
-some request really had, where k6's own summary interpolates between two values, so the two can differ by less than one
-step. An older k6 file with whole-second times is said in the Notes tab.
+Every section is a table with the report's one toolbar (search, status chips, Group by, Expand all and Collapse all,
+Columns, × and "Show N hidden", CSV), as every table of the report has. One search narrows every section at once. The
+grouping, the statistic and the rest of the view are remembered for the report in this browser.
+
+A percentile is computed the Aggregate Report's way, the value some request really had, where k6's own summary
+interpolates between two values, so the two can differ by less than one step. A threshold's measured value is k6's own,
+from its summary (run data 1.1). Run data written by 4.5.x has none, and the cell reads "not recorded". An older k6 file
+with whole-second times is said in the Notes tab.
 
 ## Server data for any tool
 

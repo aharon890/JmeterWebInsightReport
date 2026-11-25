@@ -897,74 +897,9 @@
                     </div>
                 </div>
             </section>
-            <section class="report-section" th:if="${toolTab.k6 or !toolTab.thresholds.isEmpty()}">
-                <h2 th:text="${toolTab.thresholdsTitle}">Thresholds</h2>
-                <p class="wir-empty" th:if="${toolTab.thresholds.isEmpty()}" th:text="${toolTab.noThresholds}">none</p>
-                <div class="table-wrapper" th:unless="${toolTab.thresholds.isEmpty()}">
-                    <table class="data-table" id="toolThresholds">
-                        <thead><tr><th>Metric</th><th>Threshold</th><th>Result</th></tr></thead>
-                        <tbody>
-                            <tr th:each="t : ${toolTab.thresholds}">
-                                <td th:text="${t.metric}">metric</td>
-                                <td><code th:text="${t.expression}">expression</code></td>
-                                <td th:text="${t.result}" th:class="${t.passed} ? 'wir-tool-passed' : 'wir-tool-failed'">passed</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-            <section class="report-section" th:if="${toolTab.k6 or !toolTab.checks.isEmpty()}">
-                <h2>Checks</h2>
-                <p class="wir-empty" th:if="${toolTab.checks.isEmpty()}">No checks ran.</p>
-                <div class="table-wrapper" th:unless="${toolTab.checks.isEmpty()}">
-                    <table class="data-table" id="toolChecks">
-                        <thead><tr><th>Group</th><th>Check</th><th>Passes</th><th>Fails</th><th>Pass rate</th></tr></thead>
-                        <tbody>
-                            <tr th:each="c : ${toolTab.checks}" th:attr="data-group=${c.group}">
-                                <td th:text="${c.groupText}">group</td>
-                                <td th:text="${c.name}">check</td>
-                                <td th:text="${c.passes}">0</td>
-                                <td th:text="${c.fails}" th:class="${c.fails > 0} ? 'wir-tool-failed' : ''">0</td>
-                                <td th:text="${c.passRate}">100.00%</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-            <section class="report-section" th:if="${toolTab.k6 or !toolTab.groupDurations.isEmpty()}">
-                <h2>Group duration</h2>
-                <p class="wir-hint">Each group's passes on their wall time, think time included (<code>group_duration</code>).</p>
-                <p class="wir-empty" th:if="${toolTab.groupDurations.isEmpty()}">No group passes in this run.</p>
-                <div class="table-wrapper" th:unless="${toolTab.groupDurations.isEmpty()}">
-                    <table class="data-table" id="toolGroupDurations">
-                        <thead><tr><th>Group</th><th>Passes</th><th th:each="col : ${toolTab.columns}" th:text="${col}">avg</th></tr></thead>
-                        <tbody>
-                            <tr th:each="g : ${toolTab.groupDurations}" th:attr="data-group=${g.name}">
-                                <td th:text="${g.name}">group</td>
-                                <td th:text="${g.count}">0</td>
-                                <td th:each="v : ${g.cells}" th:text="${v}">0.00</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-            <section class="report-section" th:if="${toolTab.k6 or !toolTab.timings.isEmpty()}">
-                <h2>HTTP timings</h2>
-                <p class="wir-hint">The six parts of each request, over every request and per request.</p>
-                <p class="wir-empty" th:if="${toolTab.timings.isEmpty()}">No request carried its timing parts.</p>
-                <div class="table-wrapper" th:unless="${toolTab.timings.isEmpty()}">
-                    <table class="data-table" id="toolTimings">
-                        <thead><tr><th th:text="${words['Sampler']}">Request</th><th>Metric</th><th th:each="col : ${toolTab.columns}" th:text="${col}">avg</th></tr></thead>
-                        <tbody>
-                            <tr th:each="r : ${toolTab.timings}" th:attr="data-request=${r.name},data-part=${r.part}">
-                                <td th:text="${r.everyRequest} ? 'Every ' + ${words['sampler']} : ${r.name}">request</td>
-                                <td><code th:text="${r.partText}">http_req_waiting</code></td>
-                                <td th:each="v : ${r.cells}" th:text="${v}">0.00</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </section>
+            <!-- Thresholds, HTTP timings, checks and group duration: WIR.toolTab draws them from chartData.tool
+                 (spec 002), so each can be grouped, filtered, sorted and narrowed like every table of the report. -->
+            <div id="toolTabMount" class="wir-tool-mount"></div>
         </div>
 
         <!-- ===== TAB: Notes ===== -->

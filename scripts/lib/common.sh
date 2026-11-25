@@ -1832,8 +1832,9 @@ verify_report_js_rules() {
     #    these two: render() rebuilds them, so a display filter would be erased by the next
     #    render and would orphan the detail rows belonging to the row above them. Both ids are
     #    spelled here EXACTLY as the DOM spells them -- this is a literal match, so a renamed
-    #    table id silently drops out of the guard.
-    hits=$(grep -an "\(filterGenericTable\|sortGenericTable\)([^)]*\(assertsTable\|serverKpiTable\)" "$js" || true)
+    #    table id silently drops out of the guard. The k6 tab's four tables (spec 002) are rebuilt
+    #    by WIR.toolTab the same way.
+    hits=$(grep -an "\(filterGenericTable\|sortGenericTable\)([^)]*\(assertsTable\|serverKpiTable\|toolThresholds\|toolTimings\|toolChecks\|toolGroupDurations\)" "$js" || true)
     if [[ -n "$hits" ]]; then
         echo "[JSRULES] a re-rendered table was passed to a generic table helper:" >&2
         echo "$hits" >&2

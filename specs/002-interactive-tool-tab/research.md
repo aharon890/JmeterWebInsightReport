@@ -40,6 +40,11 @@ The facts, with line references: `tmp/002-interactive-tool-tab/plan-facts-2026-1
   percentiles do not. A browser's network panel draws a request this way.
 - **To check in stage 3**: that k6's blocked contains connecting and TLS for a new connection. K2 agrees: Login's
   average blocked is 3.11 ms against 3.01 ms of connecting, and the setup request's is 2.15 ms against 1.72 ms.
+- **Checked 2026-11-25 against k6's source** (`lib/netext/httpext/tracer.go`): blocked is GetConn to GotConn
+  (`trail.Blocked = gotConn - getConn`), and on a new connection ConnectStart, ConnectDone and the TLS handshake all
+  happen between the two, so blocked contains connecting and TLS; on a reused connection both are 0. Duration is
+  `trail.Sending + trail.Waiting + trail.Receiving` exactly. The bar is built as chosen: connecting and TLS inside
+  blocked, then sending, waiting and receiving.
 
 ## R6. The filter bar
 

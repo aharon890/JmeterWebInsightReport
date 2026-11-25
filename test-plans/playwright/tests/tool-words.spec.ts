@@ -64,8 +64,9 @@ async function readerText(page: Page): Promise<string> {
 }
 
 test.describe('A k6 run uses k6\'s words', () => {
-  test('no JMeter word on any tab of K1, outside the two exceptions', async ({ page }) => {
-    await loadClean(page, 'K1');
+  for (const id of ['K1', 'K2']) test(`no JMeter word on any tab of ${id}, outside the two exceptions`, async ({ page }) => {
+    // K2 (spec 002): the k6 tab's thresholds, timings, toolbars and groups are in k6's words too
+    await loadClean(page, id);
     const tabs = await page.$$eval('.tab-btn', (bs) => bs.filter((b) => (b as HTMLElement).offsetParent !== null)
       .map((b) => b.getAttribute('data-tab') as string));
     expect(tabs).toContain('samplers');

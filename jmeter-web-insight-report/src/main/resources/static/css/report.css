@@ -4418,6 +4418,61 @@ body.dark-mode .wir-gate-badge {
     margin: 4px 0;
 }
 
-/* The tool's own tab (spec 001): k6's own pass and fail, in its words, never a verdict badge */
-.wir-tool-passed { color: var(--color-success, #16a34a); }
+/* The tool's own tab (specs 001 and 002): k6's own pass and fail, in its words, never a verdict badge */
 .wir-tool-failed { color: var(--color-error, #dc2626); font-weight: 600; }
+
+.wir-tool-strip {
+    margin: 0 0 12px;
+    padding: 8px 12px;
+    border-left: 4px solid var(--color-success, #16a34a);
+    background: var(--color-surface);
+    font-size: 0.88rem;
+}
+
+.wir-tool-strip-failed { border-left-color: var(--color-error, #dc2626); }
+
+.wir-tool-tags {
+    margin-left: 2px;
+    font-family: var(--font-mono, monospace);
+    font-size: 0.82em;
+    color: var(--color-text-secondary);
+}
+
+.wir-tool-row-failed td { background: rgba(220, 38, 38, 0.06); }
+
+.wir-tool-distance { color: var(--color-error, #dc2626); white-space: nowrap; }
+
+.wir-tool-name {
+    padding-left: calc(8px + 16px * var(--wir-depth, 0)) !important;
+    white-space: nowrap;
+}
+
+.wir-tool-group td { font-weight: 600; }
+
+.wir-tool-every td { background: var(--color-bg-thead-hover); }
+
+.wir-tool-more, .wir-tool-request { font: inherit; }
+
+.wir-tool-bar {
+    display: inline-flex;
+    width: 160px;
+    height: 10px;
+    border-radius: 2px;
+    overflow: hidden;
+    vertical-align: middle;
+    background: var(--color-bg-thead-hover);
+}
+
+.wir-tool-bar > span { display: block; height: 100%; }
+.wir-tool-bar-connecting { background: #f59e0b; }
+.wir-tool-bar-tls { background: #a855f7; }
+.wir-tool-bar-blocked { background: #94a3b8; }
+.wir-tool-bar-sending { background: #22c55e; }
+.wir-tool-bar-waiting { background: #3b82f6; }
+.wir-tool-bar-receiving { background: #06b6d4; }
+
+.wir-tool-detail-row > td { padding: 4px 8px 10px 32px; }
+
+.wir-tool-detail { font-size: 0.8rem; }
+
+.wir-tool-rate { margin-right: 6px; }

@@ -1,12 +1,11 @@
 package com.jmeterwebinsightreport.report.template;
 
 import com.jmeterwebinsightreport.core.model.ToolMeasures;
+import com.jmeterwebinsightreport.core.rundata.ThresholdExpression;
 import com.jmeterwebinsightreport.core.rundata.ToolRecords;
 import com.jmeterwebinsightreport.core.util.FormatUtil;
 
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -17,68 +16,6 @@ import java.util.Map;
  * verdict: thresholds and checks are shown as the tool judged them, and the report's verdict is the test's asserts.
  */
 public final class ToolTab {
-
-    /** k6's summary columns, in its order. */
-    public static final List<String> TREND_COLUMNS = Collections.unmodifiableList(
-            Arrays.asList("avg", "min", "med", "max", "p(90)", "p(95)"));
-
-    public static final class ThresholdRow {
-        public final String metric;
-        public final String expression;
-        public final boolean passed;
-
-        ThresholdRow(ToolRecords.Threshold t) {
-            this.metric = t.metric;
-            this.expression = t.expression;
-            this.passed = t.passed;
-        }
-
-        public String getResult() {
-            return passed ? "passed" : "failed";
-        }
-    }
-
-    public static final class CheckRow {
-        /** k6's group path, {@code ::A::B}; empty outside any group. */
-        public final String group;
-        public final String groupText;
-        public final String name;
-        public final long passes;
-        public final long fails;
-        public final String passRate;
-
-        CheckRow(ToolRecords.CheckCount c) {
-            this.group = c.group;
-            this.groupText = groupText(c.group);
-            this.name = c.name;
-            this.passes = c.passes;
-            this.fails = c.fails;
-            long all = c.passes + c.fails;
-            this.passRate = all == 0 ? "" : FormatUtil.formatTwoDecimals(100.0 * c.passes / all) + "%";
-        }
-    }
-
-    /** One distribution: its name (a group, or a request and a timing part) and k6's summary columns. */
-    public static final class TrendRow {
-        public final String name;
-        /** For a timing part: the part's key ({@code blocked}) and k6's metric name ({@code http_req_blocked}). */
-        public final String part;
-        public final String partText;
-        public final long count;
-        public final List<String> cells;
-        /** A timing part over every request, not one request's. */
-        public final boolean everyRequest;
-
-        TrendRow(String name, String part, ToolMeasures.Trend t) {
-            this.name = name;
-            this.everyRequest = EVERY_REQUEST.equals(name) && part != null;
-            this.part = part;
-            this.partText = part == null ? null : k6Metric(part);
-            this.count = t.count();
-            this.cells = Collections.unmodifiableList(Arrays.asList(two(t.avg()), two(t.min()), two(t.med()),
-                    two(t.max()), two(t.p90()), two(t.p95())));
-        }
-    }
 
     public static final class Counter {
         public final String key;
@@ -92,62 +29,27 @@ public final class ToolTab {
         }
     }
 
-    /** The name the timing rows use for "every request". */
-    public static final String EVERY_REQUEST = "*";
-
     public final String tool;
     /**
-     * k6's tab shows every section k6's summary has, saying "none" or "not measured" where the run has nothing. Another
-     * tool's shows only what its run carries, and its counters under their own names (US4).
+     * k6's tab shows every section k6's summary has, saying "none" where the run has nothing. Another tool's shows
+     * only what its run carries, and its counters under their own names (US4).
      */
     public final boolean k6;
-    public final List<ThresholdRow> thresholds = new ArrayList<>();
-    public final List<CheckRow> checks = new ArrayList<>();
-    public final List<TrendRow> groupDurations = new ArrayList<>();
-    public final List<TrendRow> timings = new ArrayList<>();
+    /** The tiles at the top of the tab; the thresholds, timings, checks and group durations are {@link #block}'s. */
     public final List<Counter> counters = new ArrayList<>();
-    public final long thresholdsFailed;
-    /** k6's summary columns, for the template's column heads. */
-    public final List<String> columns = TREND_COLUMNS;
     public final String title;
     public final String note;
-    public final String thresholdsTitle;
-    public final String noThresholds;
 
     private ToolTab(String tool, ToolMeasures m, String notMeasured) {
         this.tool = tool;
         this.k6 = "k6".equals(tool);
-        for (ToolRecords.Threshold t : m.records().thresholds()) {
-            thresholds.add(new ThresholdRow(t));
-        }
-        // The failed ones first, then by metric, as k6's own summary groups them: a run can declare dozens (perf
-        // hub's petstore-checkout declares 50), and the one that failed must not be hunted for
-        thresholds.sort(java.util.Comparator.comparing((ThresholdRow t) -> t.passed)
-                .thenComparing(t -> String.valueOf(t.metric)).thenComparing(t -> String.valueOf(t.expression)));
-        thresholdsFailed = thresholds.stream().filter(t -> !t.passed).count();
         title = tool + "'s own measures";
         // decision 4: shown as the tool judged them, and never the report's verdict
         note = tool + "'s thresholds and checks as " + tool + " judged them. They do not decide this report's verdict:"
                 + " the test's asserts do (the Asserts tab), and " + tool + "'s exit code is its own. Times are in ms,"
                 + " to the hundredth. A percentile here is the Aggregate Report's, a time some request really took,"
-                + " where " + tool + "'s own summary interpolates between two.";
-        thresholdsTitle = "Thresholds (" + (thresholds.size() - thresholdsFailed) + " of " + thresholds.size()
-                + " passed)";
-        noThresholds = "No thresholds: " + tool + "'s summary declared none, or it was not given.";
-        for (ToolRecords.CheckCount c : m.records().checks()) {
-            checks.add(new CheckRow(c));
-        }
-        for (Map.Entry<String, ToolMeasures.Trend> g : m.groupDurations().entrySet()) {
-            groupDurations.add(new TrendRow(g.getKey(), null, g.getValue()));
-        }
-        for (Map.Entry<String, ToolMeasures.Trend> p : m.timingsOverAll().entrySet()) {
-            timings.add(new TrendRow(EVERY_REQUEST, p.getKey(), p.getValue()));
-        }
-        for (Map.Entry<String, Map<String, ToolMeasures.Trend>> r : m.timingsByRequest().entrySet()) {
-            for (Map.Entry<String, ToolMeasures.Trend> p : r.getValue().entrySet()) {
-                timings.add(new TrendRow(r.getKey(), p.getKey(), p.getValue()));
-            }
-        }
+                + " where " + tool + "'s own summary interpolates between two; a threshold's measured value is "
+                + tool + "'s own.";
         if (k6) {
             counters.add(counter(m, "iterations", "Iterations", notMeasured));
             counters.add(counter(m, "dropped_iterations", "Dropped iterations", notMeasured));
@@ -167,34 +69,144 @@ public final class ToolTab {
         return new ToolTab(tool, measures, words.get("notMeasured"));
     }
 
-    /** k6's group path as a reader reads it: {@code ::A::B} is "A › B", and no group is empty. */
-    static String groupText(String path) {
-        if (path == null || path.isEmpty()) {
-            return "";
-        }
-        String p = path.startsWith("::") ? path.substring(2) : path;
-        return p.replace("::", " › ");
-    }
+    /** The statistics the tab's switch can offer, in k6's order; p(99) only when the run's summary lists it. */
+    static final List<String> STATISTICS = List.of("avg", "min", "med", "max", "p(90)", "p(95)", "p(99)");
 
-    /** k6's own metric name for a timing part: {@code tlsHandshaking} is {@code http_req_tls_handshaking}. */
-    static String k6Metric(String part) {
-        StringBuilder b = new StringBuilder("http_req_");
-        for (char c : part.toCharArray()) {
-            if (Character.isUpperCase(c)) {
-                b.append('_').append(Character.toLowerCase(c));
-            } else {
-                b.append(c);
+    /**
+     * The tab's data for report.js, {@code chartData.tool} (spec 002, data-model.md): the thresholds with what k6
+     * measured, the timing parts per request with k6's request duration, the checks, the group durations and the
+     * counters. Each figure is written once here; the page groups, filters, sorts and formats them. A threshold's
+     * expression is read once, here, by k6's own grammar ({@link ThresholdExpression}).
+     */
+    public static Map<String, Object> block(String tool, String version, ToolMeasures m) {
+        Map<String, Object> b = new java.util.LinkedHashMap<>();
+        b.put("name", tool);
+        if (version != null) {
+            b.put("version", version);
+        }
+        b.put("k6", "k6".equals(tool));
+        List<String> listed = m.records().trendStatistics();
+        List<String> offered = new ArrayList<>();
+        for (String s : STATISTICS) {
+            // with no list (no summary, or run data 1.0), k6's default columns: avg to p(95)
+            if (listed == null ? !"p(99)".equals(s) : listed.contains(s)) {
+                offered.add(s);
             }
         }
-        return b.toString();
+        b.put("trendStatistics", offered);
+
+        List<Map<String, Object>> thresholds = new ArrayList<>();
+        for (ToolRecords.Threshold t : m.records().thresholds()) {
+            thresholds.add(threshold(t));
+        }
+        b.put("thresholds", thresholds);
+
+        List<Map<String, Object>> timings = new ArrayList<>();
+        Map<String, ToolMeasures.Trend> durations = m.durationsByRequest();
+        for (Map.Entry<String, Map<String, ToolMeasures.Trend>> r : m.timingsByRequest().entrySet()) {
+            Map<String, Object> row = new java.util.LinkedHashMap<>();
+            row.put("request", r.getKey());
+            row.put("parts", parts(r.getValue(), durations.get(r.getKey())));
+            timings.add(row);
+        }
+        b.put("timings", timings);
+        if (!timings.isEmpty()) {
+            Map<String, Object> every = new java.util.LinkedHashMap<>();
+            every.put("parts", parts(m.timingsOverAll(), m.durationOverAll()));
+            b.put("timingsEveryRequest", every);
+        }
+
+        List<Map<String, Object>> checks = new ArrayList<>();
+        for (ToolRecords.CheckCount c : m.records().checks()) {
+            Map<String, Object> row = new java.util.LinkedHashMap<>();
+            row.put("group", c.group);
+            row.put("name", c.name);
+            row.put("passes", c.passes);
+            row.put("fails", c.fails);
+            checks.add(row);
+        }
+        b.put("checks", checks);
+
+        List<Map<String, Object>> groups = new ArrayList<>();
+        for (Map.Entry<String, ToolMeasures.Trend> g : m.groupDurations().entrySet()) {
+            Map<String, Object> row = statistics(g.getValue());
+            row.put("name", g.getKey());
+            groups.add(row);
+        }
+        b.put("groupDurations", groups);
+        b.put("counters", m.records().counters());
+        return b;
+    }
+
+    private static Map<String, Object> threshold(ToolRecords.Threshold t) {
+        Map<String, Object> row = new java.util.LinkedHashMap<>();
+        String metric = t.metric == null ? "" : t.metric;
+        int brace = metric.indexOf('{');
+        String tags = brace >= 0 && metric.endsWith("}") ? metric.substring(brace + 1, metric.length() - 1) : "";
+        ThresholdExpression e = ThresholdExpression.parse(t.expression);
+        row.put("metric", metric);
+        row.put("base", brace >= 0 ? metric.substring(0, brace) : metric);
+        row.put("tags", tags);
+        row.put("request", tagValue(tags, "name"));
+        row.put("expression", t.expression);
+        row.put("statistic", t.statistic != null ? t.statistic : e.statistic());
+        row.put("operator", e.operator());
+        row.put("limit", e.limit());
+        row.put("measured", t.measuredValue);
+        row.put("metricType", t.metricType);
+        row.put("metricContains", t.metricContains);
+        row.put("passed", t.passed);
+        row.put("alwaysTrue", e.alwaysTrue());
+        return row;
+    }
+
+    /**
+     * A tag's value in k6's tag filter, {@code name:Login,group:::Checkout}: each tag is a key, a colon and the rest up
+     * to the next comma, so a group path's own colons stay in its value. Null when the filter does not name it.
+     */
+    static String tagValue(String tags, String key) {
+        if (tags == null || tags.isEmpty()) {
+            return null;
+        }
+        for (String tag : tags.split(",")) {
+            int colon = tag.indexOf(':');
+            if (colon > 0 && tag.substring(0, colon).trim().equals(key)) {
+                return tag.substring(colon + 1);
+            }
+        }
+        return null;
+    }
+
+    private static Map<String, Object> parts(Map<String, ToolMeasures.Trend> six, ToolMeasures.Trend duration) {
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        for (String part : ToolMeasures.TIMING_PARTS) {
+            ToolMeasures.Trend t = six.get(part);
+            if (t != null) {
+                out.put(part, statistics(t));
+            }
+        }
+        if (duration != null && duration.count() > 0) {
+            out.put("duration", statistics(duration));
+        }
+        return out;
+    }
+
+    /** One trend in k6's statistic names, in ms; every percentile the Aggregate Report's rank. */
+    private static Map<String, Object> statistics(ToolMeasures.Trend t) {
+        Map<String, Object> s = new java.util.LinkedHashMap<>();
+        s.put("count", t.count());
+        s.put("avg", t.avg());
+        s.put("min", t.min());
+        s.put("med", t.med());
+        s.put("max", t.max());
+        s.put("p(90)", t.p90());
+        s.put("p(95)", t.p95());
+        s.put("p(99)", t.p99());
+        return s;
     }
 
     private static Counter counter(ToolMeasures m, String key, String label, String notMeasured) {
         Double v = m.counter(key);
         return new Counter(key, label, v == null ? notMeasured : FormatUtil.formatNumber(v));
-    }
-
-    private static String two(double v) {
-        return FormatUtil.formatTwoDecimals(v);
     }
 }

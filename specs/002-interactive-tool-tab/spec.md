@@ -406,8 +406,9 @@ the largest piece and can be cut to a later phase without losing US1-US4.
 
 - **SC-001**: On K2, the failed threshold, its measured value, its limit and the distance between them are on the
   first screen of the k6 tab, with no click and no scrolling.
-- **SC-002**: On K2, the HTTP timings take 13 rows instead of 78, and one click (a sort) puts the request with the
-  longest server wait first.
+- **SC-002**: On K2, the HTTP timings take 14 rows instead of 78 (12 requests, the "every request" row and the
+  group the checkout requests sit under; corrected 2026-11-25), and one click (a sort) puts the request with the
+  longest server wait first among its siblings.
 - **SC-003**: Typing a request name narrows every section of the tab in one step, on K2 and on the 134,406-request run
   of spec 001's T067.
 - **SC-004**: On that 134,406-request run, the k6 tab opens and every control answers in under half a second on the

@@ -21,11 +21,15 @@ const READERS = [
   { who: 'an English reader in Jerusalem', locale: 'en-US', timezoneId: 'Asia/Jerusalem' },
   { who: 'a German reader in New York', locale: 'de-DE', timezoneId: 'America/New_York' },
 ] as const;
-const TABS = ['summary', 'timeline', 'samplers', 'errors', 'compare', 'asserts', 'server', 'notes'];
+// 'tool': the tab of a run another tool recorded (spec 002, FR-034), on K1 and K2
+const TABS = ['summary', 'timeline', 'samplers', 'errors', 'compare', 'asserts', 'server', 'tool', 'notes'];
 const CSV: Record<string, string[]> = {
   samplers: ['exportSamplerStatsCsv'],
   errors: ['exportErrorSummaryCsv', 'exportErrorDetailsCsv'],
   compare: ['exportComparisonCsv'],
+  // a table of the toolkit (spec 002) downloads what it shows: table:<its id>
+  asserts: ['table:assertsTable'],
+  tool: ['table:toolThresholds', 'table:toolTimings', 'table:toolChecks', 'table:toolGroupDurations'],
 };
 
 type Seen = Record<string, string[]>;
@@ -173,11 +177,13 @@ async function whatTheReaderSees(browser: Browser, id: string, reader: typeof RE
         seen['Copy Summary / Copy Verdict'] = await page.evaluate(() => (window as any).__clip.flatMap((t: string) => t.split('\n')));
       }
       for (const fn of CSV[tab] || []) {
-        if (!(await page.evaluate((f) => typeof (window as any)[f] === 'function', fn))) continue;
+        const exists = await page.evaluate((f) => f.startsWith('table:')
+          ? !!document.getElementById(f.slice(6)) : typeof (window as any)[f] === 'function', fn);
+        if (!exists) continue;
         try {
           const [download] = await Promise.all([
             page.waitForEvent('download', { timeout: 4000 }),
-            page.evaluate((f) => (window as any)[f](), fn),
+            page.evaluate((f) => f.startsWith('table:') ? (window as any).WIR.table.csv(f.slice(6)) : (window as any)[f](), fn),
           ]);
           seen[`${tab}: ${fn} download`] = fs.readFileSync((await download.path())!, 'utf8').split('\n');
         } catch (e) {

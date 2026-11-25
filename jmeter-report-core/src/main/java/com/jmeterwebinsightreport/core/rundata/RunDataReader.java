@@ -102,6 +102,7 @@ public final class RunDataReader {
                 throw new IOException("Empty run data file: " + file);
             }
             result.header = header(line, file);
+            result.tool.setTrendStatistics(result.header.trendStatistics);
             long lineNo = 1;
             while ((line = reader.readLine()) != null) {
                 lineNo++;

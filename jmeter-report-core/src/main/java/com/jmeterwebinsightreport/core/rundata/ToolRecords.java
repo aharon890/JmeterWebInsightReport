@@ -67,6 +67,7 @@ public final class ToolRecords {
     private final Map<String, CheckCount> checks = new LinkedHashMap<>();
     private final List<Threshold> thresholds = new ArrayList<>();
     private final Map<String, Double> counters = new LinkedHashMap<>();
+    private List<String> trendStatistics;
 
     public void addCheck(Check c) {
         String group = c.group == null ? "" : c.group;
@@ -96,6 +97,15 @@ public final class ToolRecords {
 
     public Map<String, Double> counters() {
         return new LinkedHashMap<>(counters);
+    }
+
+    /** The statistics the tool's summary lists for a trend (run data 1.1's trendStatistics), or null. */
+    public List<String> trendStatistics() {
+        return trendStatistics;
+    }
+
+    public void setTrendStatistics(List<String> statistics) {
+        this.trendStatistics = statistics == null ? null : new ArrayList<>(statistics);
     }
 
     public boolean isEmpty() {

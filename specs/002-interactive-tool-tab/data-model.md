@@ -46,7 +46,8 @@ tool: {
 `request` is the `name` tag, or null for a threshold tied to no single request. `operator` and `limit` are parsed
 once in Java from the expression. The page's js-unit tests hold its own reading of an expression to the same results.
 
-## Page state (`WIR.toolTab`, remembered per run id)
+## Page state (`WIR.toolTab` through `WIR.table`, remembered per run id)
 
-grouping · statistic · open groups · hidden rows · sort column and direction · hidden columns · chips selected · search
-text (not remembered, as the Asserts tab's filters are not)
+Remembered (FR-068): grouping · statistic · open groups · hidden rows · sort column and direction · hidden columns.
+Not remembered, as the Asserts tab's filters never were: the chips and the search text (analysis finding A2,
+corrected 2026-11-25).

@@ -775,6 +775,14 @@ public class ReportDataSerializer {
             chartData.put("transactionHierarchy", reportData.getTransactionHierarchy());
         }
 
+        // The tool's own tab (spec 002): a run another tool recorded that carries its own measures. A JMeter run
+        // names no tool and carries none, so its chart data does not move.
+        com.jmeterwebinsightreport.core.model.TestMetadata toolMeta = reportData.getMetadata();
+        com.jmeterwebinsightreport.core.model.ToolMeasures toolMeasures = reportData.getToolMeasures();
+        if (toolMeta != null && toolMeta.getToolName() != null && toolMeasures != null && !toolMeasures.isEmpty()) {
+            chartData.put("tool", ToolTab.block(toolMeta.getToolName(), toolMeta.getToolVersion(), toolMeasures));
+        }
+
         // Ramp-up end timestamp
         if (reportData.getMetadata() != null && reportData.getMetadata().getRampUpDurationMillis() > 0
                 && reportData.getMetadata().getStartTime() != null) {

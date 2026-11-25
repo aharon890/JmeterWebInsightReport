@@ -438,7 +438,7 @@ test.describe('Assertion Rules — the shared table toolbar [E25]', () => {
     const groups = page.locator('#assertsTable tr.wir-group-row');
     await expect(groups).toHaveCount(6);
     await expect(groups.first()).toContainText('FAIL');
-    await expect(groups.first().locator('.wir-group-counts')).toHaveText('1 rules · 1 fail');
+    await expect(groups.first().locator('.wir-group-counts')).toHaveText('1 rule · 1 fail');
     // a group closes and opens
     await groups.first().locator('.wir-group-toggle').click();
     await expect(page.locator('#assertsTable tr.wir-rule-row[data-rule-id="slow-api-p95"]')).toHaveCount(0);

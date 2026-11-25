@@ -2,11 +2,12 @@ import { test, expect, Page } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as zlib from 'zlib';
-import { loadClean, switchTab } from './helpers';
+import { loadClean, loadDirty, switchTab } from './helpers';
 import { REQUIRED_FIXTURES } from '../global-setup';
 
 /**
- * The tool's own tab (spec 001, decision 10, FR-008, task T053), on K1: a k6 run built by `build-report --from k6`.
+ * The tool's own tab (spec 001, decision 10, FR-008; spec 002, US1-US3), on K1 (the k6 shapes run) and K2 (petstore's
+ * checkout smoke, 50 thresholds, one failed): k6 runs built by `build-report --from k6`.
  *
  * Its numbers are held to sources the page does not compute:
  *   - thresholds, checks, iterations, dropped iterations and vus_max to k6's own summary.json;
@@ -50,21 +51,30 @@ function trend(hundredths: number[]): Trend {
   };
 }
 
+const K2_INPUTS = path.join(ROOT, 'test-plans', 'run-data', 'K2');
+const k2Summary = () => JSON.parse(fs.readFileSync(path.join(K2_INPUTS, 'summary.json'), 'utf-8'));
+
+/** Every row of a k6 table, the cells' text and the attributes asked for. */
 async function rows(page: Page, table: string, attrs: string[]) {
-  return page.$$eval(`${table} tbody tr`, (trs, a) => trs.map((tr) => ({
+  return page.$$eval(`${table} tbody tr.wir-tool-row`, (trs, a) => trs.map((tr) => ({
     attrs: (a as string[]).map((x) => tr.getAttribute(x)),
-    cells: Array.from(tr.querySelectorAll('td')).map((td) => (td as HTMLElement).textContent!.trim()),
+    cells: Array.from(tr.querySelectorAll(':scope > td')).map((td) => (td as HTMLElement).textContent!.trim()),
   })), attrs);
 }
 
-function checkTrend(where: string, row: { cells: string[] }, want: Trend, firstStat: number) {
-  const shown = row.cells.slice(firstStat);
-  expect(Math.abs(Number(shown[0]) - want.avg), `${where}: avg ${shown[0]} is the mean ${want.avg}, to two decimals`)
-    .toBeLessThanOrEqual(0.005 + 1e-9);
-  expect(shown.slice(1), `${where}: min, med, max, p(90), p(95)`).toEqual(want.cells);
+/** The thresholds table with no grouping and nothing folded: every threshold a row. */
+async function everyThreshold(page: Page) {
+  await page.selectOption('#toolThresholds-group', '');
+  for (let fold = page.locator('#toolThresholds .wir-fold-show'); await fold.count(); ) await fold.first().click();
 }
 
-test.describe('The tool\'s tab: k6\'s own measures', () => {
+function checkTrend(where: string, cells: string[], want: Trend) {
+  expect(Math.abs(Number(cells[0]) - want.avg), `${where}: avg ${cells[0]} is the mean ${want.avg}, to two decimals`)
+    .toBeLessThanOrEqual(0.005 + 1e-9);
+  expect(cells.slice(1), `${where}: min, med, max, p(90), p(95)`).toEqual(want.cells);
+}
+
+test.describe('The tool\'s tab: k6\'s own measures [K1]', () => {
   test.beforeEach(async ({ page }) => {
     await loadClean(page, 'K1');
   });
@@ -79,18 +89,19 @@ test.describe('The tool\'s tab: k6\'s own measures', () => {
 
   test('thresholds are summary.json\'s, each with its own result, and never the verdict', async ({ page }) => {
     await switchTab(page, 'tool');
+    await everyThreshold(page);
     const want: string[] = [];
     for (const [metric, m] of Object.entries<any>(summary().metrics)) {
       for (const [expr, t] of Object.entries<any>(m.thresholds || {})) want.push(`${metric} | ${expr} | ${t.ok ? 'passed' : 'failed'}`);
     }
-    const got = (await rows(page, '#toolThresholds', [])).map((r) => r.cells.join(' | '));
+    const got = (await rows(page, '#toolThresholds', ['data-metric', 'data-expression']))
+      .map((r) => `${r.attrs[0]} | ${r.attrs[1]} | ${r.cells[0]}`);
     expect(got.sort()).toEqual(want.sort());
-    expect(got.some((r) => r.endsWith('failed')), 'K1 fails one threshold on purpose').toBe(true);
     // decision 4: the report's verdict is the test's asserts; a failed threshold does not make it FAIL
     await expect(page.locator('header .wir-asserts-chip')).toHaveText('ASSERTS PASS');
   });
 
-  test('checks are summary.json\'s passes and fails, per group and name', async ({ page }) => {
+  test('checks are summary.json\'s passes and fails, under their group, failed first', async ({ page }) => {
     await switchTab(page, 'tool');
     const want: string[] = [];
     const walk = (g: any) => {
@@ -101,8 +112,13 @@ test.describe('The tool\'s tab: k6\'s own measures', () => {
       for (const sub of g.groups || []) walk(sub);
     };
     walk(summary().root_group);
-    const got = (await rows(page, '#toolChecks', ['data-group'])).map((r) => `${r.attrs[0]} | ${r.cells[1]} | ${r.cells[2]} | ${r.cells[3]}`);
-    expect(got.sort()).toEqual(want.sort());
+    const got = await rows(page, '#toolChecks', ['data-group', 'data-check']);
+    expect(got.map((r) => `${r.attrs[0]} | ${r.attrs[1]} | ${r.cells[2]} | ${r.cells[3]}`).sort()).toEqual(want.sort());
+    // US3: the check that always fails leads its group, and the failed chip leaves only it
+    await expect(page.locator('#toolChecks tr.wir-group-row').first()).toContainText('Complete Checkout Flow');
+    expect(got[0].attrs[1]).toBe('server error is 200');
+    await page.click('.wir-table-toolbar[data-table="toolChecks"] .wir-status-chip[data-status="FAIL"]');
+    await expect(page.locator('#toolChecks tr.wir-tool-row')).toHaveCount(1);
   });
 
   test('group durations are each group\'s passes on their wall time, in k6\'s columns', async ({ page }) => {
@@ -117,16 +133,16 @@ test.describe('The tool\'s tab: k6\'s own measures', () => {
     expect(byGroup.size).toBeGreaterThan(1);
     const shown = await rows(page, '#toolGroupDurations', ['data-group']);
     expect(shown.map((r) => r.attrs[0]).sort()).toEqual([...byGroup.keys()].sort());
-    const heads = await page.$$eval('#toolGroupDurations thead th', (ths) => ths.map((t) => (t as HTMLElement).innerText.trim()));
-    expect(heads.slice(2)).toEqual(['avg', 'min', 'med', 'max', 'p(90)', 'p(95)']);
+    const cols = await page.$$eval('#toolGroupDurations thead th[data-col-id]', (ths) => ths.map((t) => t.getAttribute('data-col-id')));
+    expect(cols.slice(2)).toEqual(['avg', 'min', 'med', 'max', 'p(90)', 'p(95)']);
     for (const r of shown) {
       const want = trend(byGroup.get(r.attrs[0]!)!);
       expect(r.cells[1], `${r.attrs[0]}: its passes`).toBe(String(want.count));
-      checkTrend(r.attrs[0]!, r, want, 2);
+      checkTrend(r.attrs[0]!, r.cells.slice(2, 2 + 6), want);
     }
   });
 
-  test('the six timing parts, over every request and per request, in k6\'s columns', async ({ page }) => {
+  test('the timing parts, one row per request at the chosen statistic, and every statistic on its row', async ({ page }) => {
     await switchTab(page, 'tool');
     const byRequest = new Map<string, Map<string, number[]>>();
     const all = new Map<string, number[]>();
@@ -144,23 +160,33 @@ test.describe('The tool\'s tab: k6\'s own measures', () => {
       }
     }
     expect(all.get('waiting')!.length).toBe(summary().metrics.http_reqs.values.count);
-    const shown = await rows(page, '#toolTimings', ['data-request', 'data-part']);
-    const key = (req: string | null, part: string | null) => `${req} ${part}`;
-    const got = new Map(shown.map((r) => [key(r.attrs[0], r.attrs[1]), r]));
-    for (const p of PARTS) {
-      const row = got.get(key('*', p));
-      expect(row, `every request's ${p}`).toBeDefined();
-      expect(row!.cells[1]).toBe(K6_PART(p));
-      checkTrend(`every request's ${p}`, row!, trend(all.get(p)!), 2);
-    }
+    const cellsOf = async () => new Map((await rows(page, '#toolTimings', ['data-request']))
+      .map((r) => [r.attrs[0], r.cells.slice(1, 1 + PARTS.length)]));
+    // avg, the default: each part's mean to the hundredth, over every request and per request
+    let shown = await cellsOf();
+    PARTS.forEach((p, i) => {
+      expect(Math.abs(Number(shown.get('*')![i]) - trend(all.get(p)!).avg), `every request's ${p}`).toBeLessThanOrEqual(0.005 + 1e-9);
+    });
     for (const [name, parts] of byRequest) {
-      for (const [p, values] of parts) {
-        const row = got.get(key(name, p));
-        expect(row, `${name}'s ${p}`).toBeDefined();
-        checkTrend(`${name}'s ${p}`, row!, trend(values), 2);
-      }
+      expect(shown.has(name), `a row for ${name}`).toBe(true);
+      PARTS.forEach((p, i) => {
+        if (parts.has(p)) expect(Math.abs(Number(shown.get(name)![i]) - trend(parts.get(p)!).avg), `${name}'s ${p}`).toBeLessThanOrEqual(0.005 + 1e-9);
+      });
     }
-    expect(shown.length).toBe(PARTS.length * (byRequest.size + 1));
+    // the switch: every cell at p(95), the Aggregate Report's rank
+    await page.selectOption('#toolTimings-statistic', 'p(95)');
+    shown = await cellsOf();
+    for (const [name, parts] of byRequest) {
+      PARTS.forEach((p, i) => { if (parts.has(p)) expect(shown.get(name)![i], `${name}'s ${p} p(95)`).toBe(trend(parts.get(p)!).cells[4]); });
+    }
+    // a row opens to every statistic of every part, k6's names
+    const login = page.locator('#toolTimings tr.wir-tool-row[data-request="Login"]');
+    await login.locator('.wir-tool-more').click();
+    const detail = page.locator('#toolTimings .wir-tool-detail-row');
+    await expect(detail).toHaveCount(1);
+    await expect(detail.locator('tbody tr')).toHaveCount(PARTS.length + 1);
+    await expect(detail).toContainText('http_req_tls_handshaking');
+    await expect(detail).toContainText('http_req_duration');
   });
 
   test('iterations, dropped iterations and vus_max are summary.json\'s; Max VUs is the most VUs active', async ({ page }) => {
@@ -185,6 +211,104 @@ test.describe('The tool\'s tab: k6\'s own measures', () => {
     }), [recv, sent]);
     expect(cells.length).toBeGreaterThan(5);
     for (const c of cells) expect(c).toEqual(['not measured', 'not measured']);
+  });
+});
+
+/**
+ * Spec 002's scenarios on K2: the first screen says which threshold failed and by how much (US1, SC-001); the
+ * thresholds regroup and narrow; the timings are one row per request (US2, SC-002); one search narrows every section
+ * (SC-003); a request's name opens its row on the Requests tab (FR-008).
+ */
+test.describe('The k6 tab, organised and interactive [K2]', () => {
+  test.beforeEach(async ({ page }) => {
+    await loadClean(page, 'K2');
+    await switchTab(page, 'tool');
+  });
+
+  test('the first screen names the failed threshold, what k6 measured and how far past its limit', async ({ page }) => {
+    await expect(page.locator('#toolStrip')).toHaveText('Thresholds: 1 of 50 failed: Login p(95)<=600 · Checks: none ran');
+    await expect(page.locator('#toolThresholdsHost h2')).toHaveText('Thresholds (49 of 50 passed)');
+    const chips = page.locator('.wir-table-toolbar[data-table="toolThresholds"] .wir-status-chip');
+    await expect(chips).toHaveText(['failed 1', 'passed 49']);
+    // the one open group holds the failure, every other is closed and shows its own counts
+    const groups = page.locator('#toolThresholds tr.wir-group-row');
+    await expect(groups.first()).toContainText('http_req_duration');
+    await expect(groups.first().locator('.wir-group-toggle')).toHaveAttribute('aria-expanded', 'true');
+    const closed = await groups.locator('.wir-group-toggle[aria-expanded="false"]').count();
+    expect(closed).toBe((await groups.count()) - 1);
+    const login = page.locator('#toolThresholds tr.wir-tool-row').first();
+    await expect(login).toHaveAttribute('data-metric', 'http_req_duration{name:Login}');
+    await expect(login).toContainText('p(95)<=600');
+    await expect(login).toContainText('p(95) = 779.72 ms');
+    await expect(login).toContainText('179.72 ms over (30%)');
+    // SC-001: no scrolling
+    const box = await login.boundingBox();
+    expect(box!.y + box!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+    // what k6 measured is k6's own number (SC-006)
+    expect(k2Summary().metrics['http_req_duration{name:Login}'].values['p(95)'].toFixed(2)).toBe('779.72');
+  });
+
+  test('the always-true thresholds fold into one line, and are counted', async ({ page }) => {
+    await page.selectOption('#toolThresholds-group', '');
+    await expect(page.locator('#toolThresholds .wir-fold-row')).toHaveText(/41 always-true thresholds/);
+    await expect(page.locator('#toolThresholds tr.wir-tool-row')).toHaveCount(9);
+    await page.locator('#toolThresholds .wir-fold-show').click();
+    await expect(page.locator('#toolThresholds tr.wir-tool-row')).toHaveCount(50);
+  });
+
+  test('grouped by request, Login\'s thresholds sit together; the rest are tied to no one request', async ({ page }) => {
+    await page.selectOption('#toolThresholds-group', 'request');
+    const loginGroup = page.locator('#toolThresholds tr.wir-group-row', { hasText: 'Login' }).first();
+    await expect(loginGroup.locator('.wir-group-counts')).toHaveText('4 thresholds · 1 failed · 3 passed');
+    await expect(page.locator('#toolThresholds tr.wir-group-row').last()).toContainText('Not tied to one request');
+  });
+
+  test('the failed chip leaves the failed threshold; the search narrows by metric, tag or threshold', async ({ page }) => {
+    await page.click('.wir-table-toolbar[data-table="toolThresholds"] .wir-status-chip[data-status="FAIL"]');
+    await expect(page.locator('#toolThresholds tr.wir-tool-row')).toHaveCount(1);
+    await page.click('.wir-table-toolbar[data-table="toolThresholds"] .wir-status-chip[data-status="FAIL"]');
+    await page.selectOption('#toolThresholds-group', '');
+    await page.locator('#toolThresholds .wir-fold-show').click();
+    await page.fill('#toolSearch-thresholds', 'Checkout');
+    const metrics = await page.$$eval('#toolThresholds tr.wir-tool-row', (trs) => trs.map((tr) => tr.getAttribute('data-metric')!));
+    expect(metrics.length).toBeGreaterThan(0);
+    for (const m of metrics) expect(m).toContain('Checkout');
+  });
+
+  test('one search narrows every section, the timings too (SC-003)', async ({ page }) => {
+    await page.fill('#toolSearch-thresholds', 'Login');
+    await expect(page.locator('#toolSearch-timings')).toHaveValue('Login');
+    const requests = await page.$$eval('#toolTimings tr.wir-tool-row', (trs) => trs.map((tr) => tr.getAttribute('data-request')));
+    // every request stays (it is the whole run); each match, with the group above it as context
+    expect(requests).toEqual(['*', 'Admin Login (cleanup)', 'Complete Checkout Flow', 'Login']);
+  });
+
+  test('the timings: one row per request under its group, sorted by waiting in one click (SC-002)', async ({ page }) => {
+    const all = await page.$$eval('#toolTimings tr.wir-tool-row', (trs) => trs.map((tr) => tr.getAttribute('data-request')));
+    expect(all[0]).toBe('*');
+    expect(all).toHaveLength(14);   // 12 requests, every request, and the group they sit under
+    await page.click('#toolTimings-sort-waiting');
+    const sorted = await page.$$eval('#toolTimings tr.wir-tool-row', (trs) => trs.map((tr) => tr.getAttribute('data-request')));
+    // a sort orders siblings: the cleanup that waited longest leads the top level, Login leads the checkout flow
+    expect(sorted[1]).toBe('Restore Stock (cleanup)');
+    expect(sorted[sorted.indexOf('Complete Checkout Flow') + 1]).toBe('Login');
+  });
+
+  test('a request\'s name opens its row on the Requests tab, with its detail panel', async ({ page }) => {
+    await page.locator('#toolThresholds tr.wir-tool-row').first().locator('.wir-tool-request').click();
+    await expect(page.locator('.tab-btn[data-tab="samplers"]')).toHaveClass(/active/);
+    const row = page.locator('#samplerTable tbody tr[data-sampler="Login"]');
+    await expect(row).toBeVisible();
+    await expect(page.locator('#samplerTable .sampler-detail-row')).toHaveCount(1);
+  });
+
+  test('the grouping and the statistic are remembered for this report', async ({ page }) => {
+    await page.selectOption('#toolThresholds-group', 'condition');
+    await page.selectOption('#toolTimings-statistic', 'p(99)');
+    await loadDirty(page, 'K2');
+    await switchTab(page, 'tool');
+    await expect(page.locator('#toolThresholds-group')).toHaveValue('condition');
+    await expect(page.locator('#toolTimings-statistic')).toHaveValue('p(99)');
   });
 });
 
