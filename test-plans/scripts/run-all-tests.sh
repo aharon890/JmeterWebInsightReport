@@ -8,6 +8,9 @@
 #    --suite fixtures   the 11 scenarios Playwright opens         (~2.5 min)
 #    --suite smoke      one 5s scenario, just proves JMeter loads (~20 s)
 #    --suite full       all 19, incl. E20 external-data           (~4.5 min)  [default]
+#    --suite release    full minus what run-regression.sh produces: no fixture and no live
+#                       smoke (E24, E30). run-release.sh runs it beside the regression, so
+#                       the two never write one scenario's directory at once.
 #
 #  fixtures is FIXTURE_IDS minus CMP and CMP31, which no scenario here produces —
 #  generate-cmp-fixture.sh owns them. Do not "fix" the count by adding them.
@@ -60,7 +63,7 @@ while [[ $# -gt 0 ]]; do
         --suite=*) SUITE="${1#*=}"; shift ;;
         --only) needs_value "$1" $#; ONLY_IDS="$2"; ONLY_GIVEN=1; shift 2 ;;
         --only=*) ONLY_IDS="${1#*=}"; ONLY_GIVEN=1; shift ;;
-        -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
         *) echo "Unknown argument: $1" >&2; exit 2 ;;
     esac
 done
@@ -71,8 +74,8 @@ if [[ $ONLY_GIVEN -eq 1 && -z "${ONLY_IDS//[ ,]/}" ]]; then
 fi
 
 case "$SUITE" in
-    fixtures|smoke|full) ;;
-    *) echo "ERROR: --suite must be one of: fixtures, smoke, full (got '$SUITE')" >&2; exit 2 ;;
+    fixtures|smoke|full|release) ;;
+    *) echo "ERROR: --suite must be one of: fixtures, smoke, full, release (got '$SUITE')" >&2; exit 2 ;;
 esac
 
 # Which scenario IDs each suite runs. FIXTURE_IDS comes from common.sh and also
@@ -84,6 +87,7 @@ in_suite() {
         full)     return 0 ;;
         fixtures) [[ " $FIXTURE_IDS " == *" $1 "* ]] ;;
         smoke)    [[ " $SMOKE_IDS "   == *" $1 "* ]] ;;
+        release)  [[ " $FIXTURE_IDS $SMOKE_IDS " != *" $1 "* ]] ;;
     esac
 }
 
@@ -110,6 +114,9 @@ if ! [[ "$WIR_JOBS" =~ ^[1-9][0-9]*$ ]]; then
 fi
 
 CSV_REPORT="$RESULTS_DIR/test-execution-report.csv"
+# The release suite runs while the regression may regenerate the fixtures through this same
+# script, so it keeps its own CSV and markers: neither run empties the other's.
+[[ "$SUITE" == "release" ]] && CSV_REPORT="$RESULTS_DIR/test-execution-report-release.csv"
 
 # One marker file per finished scenario (<id>.done). Used only to throttle launches — the
 # results themselves are re-derived from disk by validate_results in the parent. Deriving
@@ -123,6 +130,7 @@ CSV_REPORT="$RESULTS_DIR/test-execution-report.csv"
 # problem) is bash 4.3+, while this project still uses bash-3.2-safe idioms elsewhere —
 # see the ${RESULTS[@]+"${RESULTS[@]}"} expansion in common.sh.
 STATUS_DIR="$RESULTS_DIR/.scenario-status"
+[[ "$SUITE" == "release" ]] && STATUS_DIR="$RESULTS_DIR/.scenario-status-release"
 
 print_banner "Web Insight Report — Test Execution Suite (--suite $SUITE)"
 

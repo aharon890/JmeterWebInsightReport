@@ -16,8 +16,8 @@ description: Cut a release — bump the version, run every release tier, merge t
 see step 2. A blind patch default would have cut the 39-merge v1.2.0 as v1.1.1.
 
 Runs to completion without stopping: bumps, tests, merges, tags, **publishes live**.
-There is no confirmation step, so the only window to intervene is during the ~20
-minutes of tests — which is why step 2 prints the derived level and the evidence
+There is no confirmation step, so the only window to intervene is during the
+tests (about 15 minutes) — which is why step 2 prints the derived level and the evidence
 behind it *before* that window opens rather than after.
 
 Stop on the **first** failing tier. Never release around a red suite, and never
@@ -32,7 +32,7 @@ Stop on the **first** failing tier. Never release around a red suite, and never
 - `gh auth status` succeeds.
 - `git config user.email` is the GitHub **noreply** address. With the yahoo address
   the push is rejected at the very end with `GH007: Your push would publish a private
-  email address` — after the 20 minutes of tests have already been spent.
+  email address` — after the tests have already been spent.
 
 ### 2. Read the current version and **derive** the bump level from the history
 
@@ -101,47 +101,53 @@ Write the file back preserving line endings (`newline=''` in Python, or an in-pl
 Edit). Every text blob is LF since the renormalization, and `verify_line_endings` in
 S03/R03 will fail the build if a CRLF blob reappears.
 
-### 4. Run every runner, in order, in the background
+### 4. Run the release tier, side by side, in the background
 
 ```bash
-./test-plans/scripts/run-regression.sh          # mandatory pre-push gate: 11 fixtures + CMP
-./test-plans/scripts/run-all-tests.sh           # the 19 E-scenarios — see below
-./test-plans/scripts/run-config-tests.sh        # C-stages
-./test-plans/scripts/run-error-tests.sh         # N-stages
-./test-plans/scripts/run-docker-tests.sh        # containerised JMeter
-./test-plans/scripts/run-title-junit-tests.sh   # T-stages
-./test-plans/scripts/run-family-ab-tests.sh     # A/B — output artifacts
-./test-plans/scripts/run-family-cd-tests.sh     # C/D — includes the -n -t -e -o handshake
-./test-plans/scripts/run-family-e-tests.sh
-./test-plans/scripts/run-family-fh-tests.sh
-./test-plans/scripts/run-family-g-tests.sh
-./test-plans/scripts/run-family-ij-extra-tests.sh
+./test-plans/scripts/run-release.sh       # every runner below, in two phases; about 15 minutes
 ```
+
+It builds and deploys the JAR once. Phase 1 runs these lanes at the same time (a lane's runners
+one after another); phase 2 runs the browser tests alone, because beside the lanes some of them
+time out. It prints one line per runner with its count and time:
+
+| Phase, lane | Runners |
+|---|---|
+| 1, lane 1 | `run-regression.sh --no-browser-tests`: the mandatory pre-push gate without R05 — unit tests, static checks, fixtures, goldens, both referees |
+| 1, lane 2 | `run-config-tests.sh --stages C01-C23` (C14 waits a minute on purpose) |
+| 1, lane 3 | `run-config-tests.sh --stages C24-C44` |
+| 1, lane 4 | `run-family-g-tests.sh` (Docker), the longest runner in phase 1 |
+| 1, lane 5 | `run-family-ab-tests.sh` |
+| 1, lane 6 | `run-family-e-tests.sh` (concurrency, iterations 4 at a time), `run-error-tests.sh` |
+| 1, lane 7 | `run-title-junit-tests.sh`, `run-family-ij-extra-tests.sh` |
+| 1, lane 8 | `run-docker-tests.sh` (Docker), `run-family-fh-tests.sh` |
+| 1, lane 9 | `run-all-tests.sh --suite release` (the E-scenarios the regression does not produce), `run-family-cd-tests.sh` (the `-n -t -e -o` handshake) |
+| 2 | `run-regression.sh --browser-tests-only`: R05, Playwright, alone |
+
+`LANES` and `BROWSER_PHASE` in `run-release.sh` are the list, and `verify_release_tier` (R03) fails
+when a runner in `test-plans/scripts/` is in no lane, when the lanes leave out the browser tests and
+no phase 2 runs them, or when this skill stops naming `run-release.sh`.
 
 **Ranges are deliberately not written here.** `./scripts/list-scenarios.sh` generates them from
 the runners' own `record` calls (`--text`, `--csv`, `--count`), and every hand-kept copy of that
 in this repo has been wrong within a month. Each runner also prints its own total.
 
-**Everything below `run-docker-tests.sh` used to be missing from this list, and two of them are
-load-bearing.** `run-family-ab-tests.sh` carries **B12**, which CLAUDE.md cites by name as one of
-the two deliberate exit-0 exemptions — an exemption defended only by a stage no documented
-workflow ran is not defended. `run-family-cd-tests.sh` D01–D06 is the **only** coverage of the
-combined `-n -t -e -o` handshake, which is exactly where the listener and the exporter were
-found emitting two artifact sets that disagreed about the gate.
+**Every runner is load-bearing.** `run-family-ab-tests.sh` carries **B12**, which CLAUDE.md cites
+by name as one of the two deliberate exit-0 exemptions — an exemption defended only by a stage no
+documented workflow ran is not defended. `run-family-cd-tests.sh` D01–D06 is the **only** coverage
+of the combined `-n -t -e -o` handshake, which is exactly where the listener and the exporter were
+found emitting two artifact sets that disagreed about the gate. `run-all-tests.sh` covers E01, E03,
+E04, E13, E15, E20 and E22, which the regression never runs; E20 is the one stage that proves the
+external-data payload is written and referenced at that size.
 
-**`run-all-tests.sh` is not optional either, and it too was once missing.** Regression covers
-only the fixture tier, so E01, E03, E04, E13, E15, E20 and E22 never executed for a release at
-all (E24 ran only as regression's live smoke). E20 is the one stage that proves the external-data
-payload is written and referenced at that size.
-
-Chain them in one backgrounded command and read the summaries; each exits with its failure
-count. Budget ~40 minutes for the full set — the config tier alone is ~13½ of that, serially,
-mostly JVM start-up.
+Run it in the background and read its summary; it exits with the number of failed runners, and
+each runner's log is `test-results/release/<runner>.log`. One after another the runners took about
+75 minutes (2026-11-24); in two phases, about the slowest lane plus the browser tests alone.
 
 Do **not** wait with `pgrep` — Git Bash here has no `pgrep`, so `until ! pgrep …` exits
 on the first iteration and reports a still-running suite as finished.
 
-On any failure: report the failing stage with its actual output, leave the branch in
+On any failure: report the failing runner with its actual output, leave the branch in
 place for inspection, and stop. Do not push, tag or release.
 
 ### 5. Merge through a PR — never push to `main`

@@ -8,10 +8,40 @@
 #  invisible to this suite. C30 asserts the logging that makes the rest assertable.
 #
 #  Assumes the plugin is already deployed (run ./scripts/build-and-deploy.sh).
+#
+#  --stages C01-C23: run only the stages numbered in that range (C17b is 17). The
+#  stages write their own folders, so two ranges can run at once: run-release.sh
+#  runs C01-C23 beside C24-C44, halving the longest runner it has. Keep C01-C11 in
+#  one range: C02-C04 and C11 read C01's report, C06 reads C05's.
 # =============================================================================
 set -uo pipefail
 
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../scripts/lib/common.sh"
+
+STAGE_FIRST=0
+STAGE_LAST=99999
+case "${1:-}" in
+    --stages)
+        if [[ "${2:-}" =~ ^C([0-9]+)-C([0-9]+)$ ]]; then
+            STAGE_FIRST=$((10#${BASH_REMATCH[1]}))
+            STAGE_LAST=$((10#${BASH_REMATCH[2]}))
+        else
+            echo "--stages takes a range like C01-C23 (got '${2:-}')" >&2
+            exit 2
+        fi
+        ;;
+    -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
+    "") ;;
+    *) echo "Unknown argument: $1" >&2; exit 2 ;;
+esac
+
+# stage_on <id> -- is this stage in the range? Every stage below is wrapped in it; the helper
+# functions between stages are not, so a stage can use one another stage defined.
+stage_on() {
+    local n="${1#C}"
+    n="${n%%[!0-9]*}"
+    (( 10#$n >= STAGE_FIRST && 10#$n <= STAGE_LAST ))
+}
 
 require_jmeter
 
@@ -26,6 +56,7 @@ print_banner "Configuration & Runtime Scenario Tests"
 
 mkdir -p "$RESULTS"
 
+if stage_on C01; then
 # -----------------------------------------------------------------------------
 # C01: Default output dir (no -Jwebinsight.report.output)
 #      Report must land in the working directory JMeter was launched from.
@@ -45,7 +76,9 @@ if file_exists "$C01_DIR/web-insight-report.html"; then
 else
     record C01 "Default output directory" FAIL "web-insight-report.html not found in working dir"
 fi
+fi
 
+if stage_on C02; then
 # -----------------------------------------------------------------------------
 # C02: Default filename — asserts over C01's output
 # -----------------------------------------------------------------------------
@@ -55,7 +88,9 @@ if file_exists "$C01_DIR/web-insight-report.html"; then
 else
     record C02 "Default filename" FAIL "no report"
 fi
+fi
 
+if stage_on C03; then
 # -----------------------------------------------------------------------------
 # C03: Default title present in HTML — asserts over C01's output
 # -----------------------------------------------------------------------------
@@ -67,7 +102,9 @@ elif assert_contains "$C01_DIR/web-insight-report.html" "JMeter Web Insight Repo
 else
     record C03 "Default title" FAIL "default title not found"
 fi
+fi
 
+if stage_on C04; then
 # -----------------------------------------------------------------------------
 # C04: Default JSON alongside HTML — asserts over C01's output
 # -----------------------------------------------------------------------------
@@ -77,7 +114,9 @@ if file_exists "$C01_DIR/web-insight-report.json"; then
 else
     record C04 "Default JSON generated" FAIL "web-insight-report.json missing"
 fi
+fi
 
+if stage_on C05; then
 # -----------------------------------------------------------------------------
 # C05: Custom filename with ${timestamp} placeholder
 # -----------------------------------------------------------------------------
@@ -94,7 +133,9 @@ if [[ "$(count_glob "$C05_DIR"/ts-report_*.html)" -ge 1 ]]; then
 else
     record C05 "Timestamp filename" FAIL "no timestamped file"
 fi
+fi
 
+if stage_on C06; then
 # -----------------------------------------------------------------------------
 # C06: JSON filename derived from HTML filename — asserts over C05's output
 # -----------------------------------------------------------------------------
@@ -104,7 +145,9 @@ if [[ "$(count_glob "$C05_DIR"/ts-report_*.json)" -ge 1 ]]; then
 else
     record C06 "JSON filename matches HTML" FAIL "no matching JSON"
 fi
+fi
 
+if stage_on C07; then
 # -----------------------------------------------------------------------------
 # C07: Relative output path resolves against cwd
 # -----------------------------------------------------------------------------
@@ -123,7 +166,9 @@ if file_exists "$C07_DIR/subdir/C07-report.html"; then
 else
     record C07 "Relative output path" FAIL "report not at subdir/C07-report.html"
 fi
+fi
 
+if stage_on C08; then
 # -----------------------------------------------------------------------------
 # C08: Output dir auto-created when missing
 # -----------------------------------------------------------------------------
@@ -142,7 +187,9 @@ if file_exists "$C08_DIR/C08-report.html"; then
 else
     record C08 "Auto-create output dir" FAIL "report not generated"
 fi
+fi
 
+if stage_on C09; then
 # -----------------------------------------------------------------------------
 # C09: Title with special characters
 # -----------------------------------------------------------------------------
@@ -160,7 +207,9 @@ if file_exists "$C09_DIR/C09-report.html"; then
 else
     record C09 "Special chars in title" FAIL "report not generated"
 fi
+fi
 
+if stage_on C10; then
 # -----------------------------------------------------------------------------
 # C10: JUnit XML enabled
 # -----------------------------------------------------------------------------
@@ -179,7 +228,9 @@ if file_exists "$C10_DIR/C10-report.xml"; then
 else
     record C10 "JUnit XML enabled" FAIL "no XML"
 fi
+fi
 
+if stage_on C11; then
 # -----------------------------------------------------------------------------
 # C11: JUnit XML NOT generated by default — asserts over C01's output
 # -----------------------------------------------------------------------------
@@ -189,7 +240,9 @@ if ! file_exists "$C01_DIR/web-insight-report.xml"; then
 else
     record C11 "No JUnit XML by default" FAIL "XML generated without flag"
 fi
+fi
 
+if stage_on C12; then
 # -----------------------------------------------------------------------------
 # C12: Custom Apdex threshold
 # -----------------------------------------------------------------------------
@@ -207,7 +260,9 @@ if file_exists "$C12_DIR/C12-report.html"; then
 else
     record C12 "Custom Apdex threshold" FAIL "report not generated"
 fi
+fi
 
+if stage_on C13; then
 # -----------------------------------------------------------------------------
 # C13: Ramp-up marking
 # -----------------------------------------------------------------------------
@@ -227,7 +282,9 @@ elif assert_contains "$C13_DIR/C13-report.html" "rampUp"; then
 else
     record C13 "Ramp-up marking" PASS "report generated (ramp-up marking visual only)"
 fi
+fi
 
+if stage_on C14; then
 # -----------------------------------------------------------------------------
 # C14: Two consecutive timestamped runs produce unique filenames
 # -----------------------------------------------------------------------------
@@ -252,7 +309,9 @@ if [[ "$HTML_COUNT" -ge 2 ]]; then
 else
     record C14 "Unique timestamped filenames" FAIL "only $HTML_COUNT file(s)"
 fi
+fi
 
+if stage_on C15; then
 # -----------------------------------------------------------------------------
 # C15: Zero/minimal samples edge case
 # -----------------------------------------------------------------------------
@@ -269,7 +328,9 @@ if file_exists "$C15_DIR/C15-report.html"; then
 else
     record C15 "Minimal data" FAIL "report not generated"
 fi
+fi
 
+if stage_on C16; then
 # -----------------------------------------------------------------------------
 # C16: Listener honours -Jwebinsight.report.{rampup,annotations,baseline}
 #      These were previously read only by the -g -o exporter, so in listener mode
@@ -325,7 +386,9 @@ fi
 #  Every scenario here corresponds to a finding that was reproduced against a real
 #  JMeter run and was invisible to this suite. They are cheap: one 5-second run each.
 # =============================================================================
+fi
 
+if stage_on C17; then
 # -----------------------------------------------------------------------------
 # C17: Two external-data reports in ONE directory keep their own payloads.
 #
@@ -395,7 +458,9 @@ else
         record C17 "Two external reports, one dir" FAIL "$C17_NOTES"
     fi
 fi
+fi
 
+if stage_on C17b; then
 # -----------------------------------------------------------------------------
 # C17b: A run that FAILS must not corrupt the previous run's payload.
 #
@@ -442,7 +507,9 @@ else
         record C17b "Failed run keeps old payload" FAIL "$C17B_NOTES"
     fi
 fi
+fi
 
+if stage_on C18; then
 # -----------------------------------------------------------------------------
 # C18: A filename set on the listener ELEMENT is visible to the -e -o exporter.
 #
@@ -468,7 +535,9 @@ else
     record C18 "GUI filename seen by exporter" FAIL \
         "$C18_COUNT Web Insight HTML file(s) — expected exactly gui-name.html"
 fi
+fi
 
+if stage_on C19; then
 # -----------------------------------------------------------------------------
 # C19: An unwritable output directory fails loudly, names the DIRECTORY, and now
 #      FAILS THE RUN.
@@ -526,7 +595,9 @@ if [[ -z "$C19_NOTES" ]]; then
 else
     record C19 "Unwritable output dir" FAIL "$C19_NOTES"
 fi
+fi
 
+if stage_on C20; then
 # -----------------------------------------------------------------------------
 # C20: Two ${timestamp} runs back to back, with NO sleep, produce two files.
 #
@@ -550,7 +621,9 @@ if [[ "$C20_COUNT" -ge 2 ]]; then
 else
     record C20 "Timestamp granularity" FAIL "only $C20_COUNT file(s) — seconds granularity missing?"
 fi
+fi
 
+if stage_on C21; then
 # -----------------------------------------------------------------------------
 # C21: A filename containing ':' is rejected, and a report is STILL produced.
 #
@@ -587,7 +660,9 @@ if [[ -z "$C21_NOTES" ]]; then
 else
     record C21 "Colon in filename" FAIL "$C21_NOTES"
 fi
+fi
 
+if stage_on C22; then
 # -----------------------------------------------------------------------------
 # C22: A configured-but-missing annotations file is reported, not silent.
 #
@@ -631,7 +706,9 @@ if [[ -z "$C22_NOTES" ]]; then
 else
     record C22 "Missing annotations file" FAIL "$C22_NOTES"
 fi
+fi
 
+if stage_on C23; then
 # -----------------------------------------------------------------------------
 # C23: '${timestamp}' as the WHOLE filename still produces a report under -g -o.
 #
@@ -657,7 +734,9 @@ else
     record C23 "Whole-name timestamp glob" FAIL \
         "only $(count_glob "$C23_DIR"/dash/*.html) html file(s) — the glob suppressed the report"
 fi
+fi
 
+if stage_on C24; then
 # -----------------------------------------------------------------------------
 # C24: Extension handling is case-insensitive and does not stack.
 #
@@ -670,6 +749,7 @@ echo "[C24] Extension handling..."
 C24_DIR="$RESULTS/C24"
 rm -rf "$C24_DIR"; mkdir -p "$C24_DIR"
 C24_NOTES=""
+fi
 c24_case() {   # <configured> <expected-html>
     local dir="$C24_DIR/$2"
     mkdir -p "$dir"
@@ -683,6 +763,7 @@ c24_case() {   # <configured> <expected-html>
     file_absent "$dir/$1.html" \
         || C24_NOTES="$(append_note "$C24_NOTES" "'$1' also produced the stacked $1.html")"
 }
+if stage_on C24; then
 c24_case "MyReport.HTML" "MyReport.html"
 c24_case "report.htm"    "report.html"
 c24_case "report.json"   "report.html"
@@ -700,7 +781,9 @@ if [[ -z "$C24_NOTES" ]]; then
 else
     record C24 "Extension handling" FAIL "$C24_NOTES"
 fi
+fi
 
+if stage_on C25; then
 # -----------------------------------------------------------------------------
 # C25: The external-data threshold is configurable, and a bad value is refused.
 #
@@ -737,7 +820,9 @@ if [[ -z "$C25_NOTES" ]]; then
 else
     record C25 "External data threshold" FAIL "$C25_NOTES"
 fi
+fi
 
+if stage_on C26; then
 # -----------------------------------------------------------------------------
 # C26: Two listeners in one plan are noticed.
 #
@@ -762,7 +847,9 @@ elif ! file_exists "$C26_DIR/C26-report.html"; then
 else
     record C26 "Duplicate listener write" FAIL "two listeners wrote the same path with no warning"
 fi
+fi
 
+if stage_on C27; then
 # -----------------------------------------------------------------------------
 # C27: A .json that cannot be written is an ERROR and is shown on the terminal.
 #
@@ -805,7 +892,9 @@ if [[ -z "$C27_NOTES" ]]; then
 else
     record C27 "JSON write failure is visible" FAIL "$C27_NOTES"
 fi
+fi
 
+if stage_on C28; then
 # -----------------------------------------------------------------------------
 # C28: A disabled listener produces no report — documents matrix row A.
 # -----------------------------------------------------------------------------
@@ -827,7 +916,9 @@ if file_absent "$C28_DIR/web-insight-report.html"; then
 else
     record C28 "Listener disabled" FAIL "a disabled listener still produced a report"
 fi
+fi
 
+if stage_on C29; then
 # -----------------------------------------------------------------------------
 # C29: A plan with NO listener element still gets a report under -e -o.
 #
@@ -848,7 +939,9 @@ if file_exists "$C29_DIR/dash/web-insight-report.html"; then
 else
     record C29 "No listener element" FAIL "no report from the exporter"
 fi
+fi
 
+if stage_on C31; then
 # -----------------------------------------------------------------------------
 # C31: A report cannot overwrite JMeter's OWN dashboard files.
 #
@@ -875,6 +968,7 @@ C31_INDEX_MD5="$(file_md5 "$C31_DIR/ctl/index.html")"
 C31_STATS_MD5="$(file_md5 "$C31_DIR/ctl/statistics.json")"
 
 C31_NOTES=""
+fi
 c31_case() {   # <configured name> <subdir>
     local dir="$C31_DIR/$2"
     WIR_RUNTIME_LOG="$C31_DIR/$2-runtime.log" \
@@ -890,6 +984,7 @@ c31_case() {   # <configured name> <subdir>
     assert_log_contains "$C31_DIR/$2-runtime.log" "JMeter's own HTML dashboard" \
         || C31_NOTES="$(append_note "$C31_NOTES" "'$1' was not reported as a reserved name")"
 }
+if stage_on C31; then
 if [[ "$C31_INDEX_MD5" == "none" ]]; then
     record C31 "Reserved dashboard filenames" FAIL "the control run produced no dashboard to compare against"
 else
@@ -901,7 +996,9 @@ else
         record C31 "Reserved dashboard filenames" FAIL "$C31_NOTES"
     fi
 fi
+fi
 
+if stage_on C30; then
 # -----------------------------------------------------------------------------
 # C30: The plugin says where it is writing, on a channel someone reads.
 #
@@ -973,7 +1070,9 @@ else
         record C30 "Output paths announced" FAIL "$C30_NOTES"
     fi
 fi
+fi
 
+if stage_on C32; then
 # -----------------------------------------------------------------------------
 # C32: -Jwebinsight.report.failonassert turns a FAIL verdict into a non-zero exit,
 #      and DOES NOT unless asked.
@@ -1031,7 +1130,9 @@ if [[ -z "$C32_NOTES" ]]; then
 else
     record C32 "failonassert is opt-in" FAIL "$C32_NOTES"
 fi
+fi
 
+if stage_on C33; then
 # -----------------------------------------------------------------------------
 # C33: a gate that could not be BUILT fails the run; a gate that FAILED does not.
 #
@@ -1138,7 +1239,9 @@ if [[ -z "$C33_NOTES" ]]; then
 else
     record C33 "Config errors fail, verdicts do not" FAIL "$C33_NOTES"
 fi
+fi
 
+if stage_on C34; then
 # -----------------------------------------------------------------------------
 # C34: the -Jwebinsight.compare.* thresholds actually reach the verdict.
 #
@@ -1179,6 +1282,7 @@ timeStamp,elapsed,label,responseCode,responseMessage,threadName,dataType,success
 JTLEOF
 sed 's/,100,GET/,200,GET/' "$C34_DIR/baseline.jtl" > "$C34_DIR/current.jtl"
 
+fi
 c34_generate() {   # <subdir> <extra -J args...>
     local sub="$1"; shift
     WIR_RUNTIME_LOG="$C34_DIR/$sub-runtime.log" \
@@ -1186,6 +1290,7 @@ c34_generate() {   # <subdir> <extra -J args...>
         -Jwebinsight.report.baseline="$C34_DIR/baseline.jtl" \
         "$@" > "$C34_DIR/$sub.log" 2>&1
 }
+if stage_on C34; then
 
 c34_generate relaxed -Jwebinsight.compare.p95.threshold=500
 c34_generate mean -Jwebinsight.compare.p95.threshold=500 -Jwebinsight.compare.mean.threshold=5
@@ -1220,7 +1325,9 @@ else
         record C34 "Comparison threshold properties" FAIL "$C34_NOTES"
     fi
 fi
+fi
 
+if stage_on C35; then
 # -----------------------------------------------------------------------------
 # C35: -Jwebinsight.report.servermetrics reaches the report through a real JMeter process,
 #      and the three-step choreography holds end to end with a recorded source (--recording).
@@ -1290,6 +1397,7 @@ assert_contains "$C35_DIR/collect.log" "wir-collect: OK app/up coverage=" \
 C35_COLLECTION="$(grep -o '"collectionId" *: *"[0-9a-f]*"' "$C35_DIR/server-metrics.json" 2>/dev/null | grep -o '[0-9a-f]\{16\}')"
 [[ -n "$C35_COLLECTION" ]] || C35_NOTES="$(append_note "$C35_NOTES" "no collectionId in the payload")"
 
+fi
 c35_generate() {   # <subdir> <payload> [annotations] [extra -J...]
     local sub="$1" payload="$2" ann="${3:-$C35_DIR/annotations.json}"
     if (( $# >= 3 )); then shift 3; else shift $#; fi
@@ -1299,6 +1407,7 @@ c35_generate() {   # <subdir> <payload> [annotations] [extra -J...]
         -Jwebinsight.report.servermetrics="$payload" "$@" > "$C35_DIR/$sub.log" 2>&1
     echo $? > "$C35_DIR/$sub.exit"
 }
+if stage_on C35; then
 
 c35_generate mine "$C35_DIR/server-metrics.json"
 # Another run's payload: the same file with its runId rewritten.
@@ -1363,6 +1472,7 @@ fi
 # so max = 5), exactly as C35 builds them, plus the collector run that binds the payload to the
 # JTL's runId. Each stage owns its own copy.
 # -----------------------------------------------------------------------------
+fi
 write_server_gate_inputs() {   # <dir>
     local d="$1"
     mkdir -p "$d/rec"
@@ -1388,6 +1498,7 @@ JTLEOF
 PROMEOF
 }
 
+if stage_on C36; then
 # -----------------------------------------------------------------------------
 # C36: a server component's FAIL reaches the exit code through failonassert. The fold, through a
 #      real process:
@@ -1425,6 +1536,7 @@ assert_contains "$C36_DIR/collect.log" "wir-collect: OK kafka/up coverage=" \
 assert_contains "$C36_DIR/server-metrics.json" '"type" : "csv"' \
     || C36_NOTES="$(append_note "$C36_NOTES" "the payload does not name the csv source")"
 
+fi
 c36_generate() {   # <subdir> <annotations> [extra -J args...]
     local sub="$1" ann="$2"; shift 2
     WIR_RUNTIME_LOG="$C36_DIR/$sub-runtime.log" \
@@ -1434,6 +1546,7 @@ c36_generate() {   # <subdir> <annotations> [extra -J args...]
         -Jwebinsight.report.junit=true "$@" > "$C36_DIR/$sub.log" 2>&1
     echo $? > "$C36_DIR/$sub.exit"
 }
+if stage_on C36; then
 
 c36_generate verdict "$C36_DIR/building.json"
 assert_exit_code "$(cat "$C36_DIR/verdict.exit")" 0 \
@@ -1463,7 +1576,9 @@ if [[ -z "$C36_NOTES" ]]; then
 else
     record C36 "Server gates in the exit fold" FAIL "$C36_NOTES"
 fi
+fi
 
+if stage_on C37; then
 # -----------------------------------------------------------------------------
 # C37: a source that never answered is a config error -- fatal under the default failonerror,
 #      marked, and rendered as a JUnit <failure>. The source is --prometheus-url on a port
@@ -1504,6 +1619,7 @@ assert_contains "$C37_DIR/server-metrics.json" '"status" : "FAILED"' \
 assert_contains "$C37_DIR/collect.log" "wir-collect: FAILED kafka/up" \
     || C37_NOTES="$(append_note "$C37_NOTES" "the collector's console does not name the failed series")"
 
+fi
 c37_generate() {   # <subdir> <annotations> [extra -J...]
     local sub="$1" ann="$2"
     shift 2
@@ -1514,6 +1630,7 @@ c37_generate() {   # <subdir> <annotations> [extra -J...]
         -Jwebinsight.report.junit=true "$@" > "$C37_DIR/$sub.log" 2>&1
     echo $? > "$C37_DIR/$sub.exit"
 }
+if stage_on C37; then
 
 # Decision B: by default a dead source is said (SERVER NOT JUDGED) and never changes the exit code;
 # under webinsight.report.server.failonerror=true it is the 4.0.x CONFIG ERROR, exit 1.
@@ -1611,7 +1728,9 @@ if [[ -z "$C37_NOTES" ]]; then
 else
     record C37 "A source that never answered" FAIL "$C37_NOTES"
 fi
+fi
 
+if stage_on C38; then
 # -----------------------------------------------------------------------------
 # C38: the document the page saves gates the next jmeter -g exactly as the page showed it (the M6
 #      gate: "download -> jmeter -g with the same payload -> same verdicts").
@@ -1649,6 +1768,7 @@ C38_SCRIPT="$TEST_PLANS/scripts/save-from-page.js"
 rm -rf "$C38_DIR"; mkdir -p "$C38_DIR"
 C38_NOTES=""
 
+fi
 c38_generate() {   # <subdir> <annotations>
     local sub="$1" ann="$2"
     WIR_RUNTIME_LOG="$C38_DIR/$sub-runtime.log" \
@@ -1658,6 +1778,7 @@ c38_generate() {   # <subdir> <annotations>
         -Jwebinsight.report.failonerror=false > "$C38_DIR/$sub.log" 2>&1
     echo $? > "$C38_DIR/$sub.exit"
 }
+if stage_on C38; then
 
 if ! command -v node >/dev/null 2>&1; then
     C38_NOTES="node is not on PATH -- the page's half of this stage runs report.js in node"
@@ -1713,7 +1834,9 @@ if [[ -z "$C38_NOTES" ]]; then
 else
     record C38 "A saved document gates the next run as the page showed" FAIL "$C38_NOTES"
 fi
+fi
 
+if stage_on C39; then
 # -----------------------------------------------------------------------------
 # C39: a Grafana export collected as it is downloaded -- wir-collect --csv FILE --layout wide.
 #
@@ -1743,6 +1866,7 @@ C39_NOTES=""
 # The committed file is LF, as every text blob is (verify_line_endings); Grafana writes CRLF.
 awk '{ printf "%s\r\n", $0 }' "$C39_INPUTS/e27-grafana.csv" > "$C39_DIR/e27-grafana.csv"
 
+fi
 c39_collect() {   # <name> <step>
     local name="$1" step="$2"
     "$PROJECT_DIR/scripts/wir-collect.sh" --jtl "$TEST_PLANS/goldens/plain.jtl" \
@@ -1751,6 +1875,7 @@ c39_collect() {   # <name> <step>
             --step "$step" --out "$C39_DIR/$name.json" --no-wait > "$C39_DIR/$name.log" 2>&1
     echo $? > "$C39_DIR/$name.exit"
 }
+if stage_on C39; then
 
 c39_collect matched 1s
 assert_exit_code "$(cat "$C39_DIR/matched.exit")" 0 \
@@ -1821,7 +1946,9 @@ if [[ -z "$C39_NOTES" ]]; then
 else
     record C39 "A Grafana wide export" FAIL "$C39_NOTES"
 fi
+fi
 
+if stage_on C40; then
 # -----------------------------------------------------------------------------
 # C40: an InfluxDB 2 export collected as it comes -- wir-collect --csv FILE --csv-columns SPEC
 #      --component ID.
@@ -1920,7 +2047,9 @@ if [[ -z "$C40_NOTES" ]]; then
 else
     record C40 "An InfluxDB 2 annotated export" FAIL "$C40_NOTES"
 fi
+fi
 
+if stage_on C41; then
 # -----------------------------------------------------------------------------
 # C41: a Datadog export read by Datadog's names -- wir-collect --csv FILE --from datadog.
 #
@@ -2028,7 +2157,9 @@ if [[ -z "$C41_NOTES" ]]; then
 else
     record C41 "A Datadog export read by Datadog's names" FAIL "$C41_NOTES"
 fi
+fi
 
+if stage_on C42; then
 # -----------------------------------------------------------------------------
 # C42: jmeter -g reads a CSV itself (P4). Two commands, no wir-collect: the server data and the
 #      annotations are named in a -q properties file - relative names, found beside the JTL - so no
@@ -2073,7 +2204,9 @@ if [[ -z "$C42_NOTES" ]]; then
 else
     record C42 "jmeter -g reads the server CSV itself" FAIL "$C42_NOTES"
 fi
+fi
 
+if stage_on C43; then
 # -----------------------------------------------------------------------------
 # C43: the example's hooks (examples/server-data/hooks) against the stand-in export tool. A copy of
 #      the example over plain.jtl: the first report's .json gives the window, the hook calls
@@ -2091,11 +2224,13 @@ cp "$TEST_PLANS/goldens/plain.jtl" "$C43_DIR/ex/results.jtl"
 C43_NOTES=""
 ( cd "$C43_DIR/ex" && run_jmeter -g results.jtl -o first \
       -Jwebinsight.report.annotations=report-annotations.json ) > "$C43_DIR/first.log" 2>&1
+fi
 c43_verdicts() {   # "<app status> <db status>" from a report's .json
     local f=$1
     command -v cygpath >/dev/null 2>&1 && f=$(cygpath -w "$f")
     node -e "const j=require(process.argv[1]);const s={};for(const c of j.serverComponents||[])s[c.id]=c.status;console.log((s.app||'-')+' '+(s.db||'-'))" "$f" 2>/dev/null
 }
+if stage_on C43; then
 ( cd "$C43_DIR/ex" && JMETER="$JMETER" bash hooks/after-run.sh first/web-insight-report.json results.jtl report ) \
     > "$C43_DIR/hook-sh.log" 2>&1
 C43_RC=$?
@@ -2126,7 +2261,9 @@ if [[ -z "$C43_NOTES" ]]; then
 else
     record C43 "the example's after-run hooks" FAIL "$C43_NOTES"
 fi
+fi
 
+if stage_on C44; then
 # -----------------------------------------------------------------------------
 # C44: the report with no JMeter (spec 001, FR-015). The standalone bundle, unzipped where no JMeter is:
 #      JMETER_HOME unset and no jmeter on PATH. build-report must write a k6 run's report from run data, and
@@ -2179,6 +2316,7 @@ if [[ -z "$C44_NOTES" ]]; then
         "standalone bundle, JMETER_HOME unset, no jmeter on PATH: report written, no org.apache.jmeter class loaded"
 else
     record C44 "build-report with no JMeter" FAIL "$C44_NOTES"
+fi
 fi
 
 print_summary "CONFIGURATION TEST SUMMARY"

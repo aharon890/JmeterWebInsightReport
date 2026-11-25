@@ -142,7 +142,19 @@ async function whatTheReaderSees(browser: Browser, id: string, reader: typeof RE
         if (opened) {
           await page.waitForTimeout(1200);
           seen['samplers: first sampler\'s detail charts'] = await chartsUnder(page, '#tab-samplers .sampler-detail-row');
-          seen['samplers: text with the detail open'] = lines(await page.evaluate(() => (document.getElementById('tab-samplers') as HTMLElement).innerText));
+          // Without the charts' hover tooltips: opening the panel scrolls the page, and a chart drawn
+          // under the resting mouse pointer may show one, depending on timing and the pointer rather
+          // than on the reader (seen 2026-11-24: "200-500" and "0" from the distribution chart's
+          // tooltip, for one reader only). The tooltips are compared on purpose by chartsUnder above.
+          seen['samplers: text with the detail open'] = lines(await page.evaluate(() => {
+            const tips = Array.from(document.querySelectorAll('#tab-samplers div')).filter((d) =>
+              !d.querySelector('canvas, svg') && /z-index:\s*9999999/.test(d.getAttribute('style') || '')) as HTMLElement[];
+            const shown = tips.map((t) => t.style.display);
+            tips.forEach((t) => { t.style.display = 'none'; });
+            const text = (document.getElementById('tab-samplers') as HTMLElement).innerText;
+            tips.forEach((t, i) => { t.style.display = shown[i]; });
+            return text;
+          }));
         }
       }
       if (tab === 'errors' && await page.evaluate(() => !!document.getElementById('errViewGroupBtn'))) {

@@ -731,7 +731,20 @@ nothing and demands that `--accept` refuse it.
 
 ## Run Everything
 
-To run all tests in sequence:
+The release tier, every runner below, in two phases (about 15 minutes on a 24-thread PC when the
+fixtures are current, where one after another took about 75):
+
+```bash
+./test-plans/scripts/run-release.sh
+```
+
+It builds and deploys once, runs every runner except the browser tests in nine lanes at the same
+time, then the browser tests alone (they use most of the CPU on their own, and time out beside
+the other runners). It writes each runner's log to `test-results/release/<runner>.log` and prints
+one line per runner with its count and time, and each phase's time. It exits with the number of
+failed runners. Only one release run at a time: a second one refuses while the first is running.
+
+To run all tests in sequence, one runner at a time:
 
 ```bash
 # 1. Build + deploy
@@ -769,7 +782,8 @@ CMP_ID=CMP31 ./test-plans/scripts/generate-cmp-fixture.sh
 ```
 
 The config, error, title/JUnit and family runners do not build or deploy: they run against the
-plugin step 1 put in `lib/ext`. The Docker runners build the JAR they mount.
+plugin step 1 put in `lib/ext`. The Docker runners build the JAR they mount, unless `SKIP_BUILD=1`
+(which `run-release.sh` sets: another runner may be using `target/` at the same time).
 
 ## Cleaning Test Data
 
