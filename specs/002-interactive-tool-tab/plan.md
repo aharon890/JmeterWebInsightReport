@@ -2,7 +2,8 @@
 
 **Branch**: `feat/002-interactive-tool-tab` | **Date**: 2026-11-25 (revised the same day) | **Spec**: [spec.md](spec.md)
 
-**Status**: Revised for the owner's widening. Waiting for the owner's go-ahead on this revision (Principle I).
+**Status**: Revised for the owner's widening and approved on 2026-11-25 ("Yes, after perf hub 010"): building
+starts after perf hub spec 010 (Principle I).
 
 **Input**:
 - the spec (revised), constitution 2.0.0;
