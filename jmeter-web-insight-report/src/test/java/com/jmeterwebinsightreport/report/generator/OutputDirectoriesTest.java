@@ -69,6 +69,28 @@ class OutputDirectoriesTest {
     }
 
     @Test
+    void aProbeOfAnotherProcessWithOurPidIsNeitherOverwrittenNorDeleted() throws IOException {
+        // Two JMeter containers writing into one bind mount each run in their own PID namespace,
+        // so both are often the same pid (family G, G02, 2026-11-25: both 211). The probe was named
+        // by the pid alone, so the second container truncated and deleted the first one's live
+        // probe, and the first then failed "Output directory is not writable" with a
+        // NoSuchFileException and lost its report. A pid names a process only inside one namespace.
+        long pid = ProcessHandle.current().pid();
+        Path theirs = dir.resolve(".web-insight-probe." + pid + ".tmp");
+        Files.write(theirs, "another container's probe".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        OutputDirectories.requireWritable(dir.toFile());
+
+        assertTrue(Files.exists(theirs), "our probe deleted another process's file of the same name");
+        assertEquals("another container's probe",
+                new String(Files.readAllBytes(theirs), java.nio.charset.StandardCharsets.UTF_8),
+                "our probe overwrote another process's file of the same name");
+        try (java.util.stream.Stream<Path> entries = Files.list(dir)) {
+            assertEquals(1, entries.count(), "and ours must still leave nothing of its own behind");
+        }
+    }
+
+    @Test
     void aNullDirectoryIsTheWorkingDirectoryAndIsAlwaysFine() {
         assertDoesNotThrow(() -> OutputDirectories.requireWritable(null));
         assertFalse(OutputDirectories.isUsable(null),
