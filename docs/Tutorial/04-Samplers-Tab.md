@@ -92,29 +92,41 @@ When sampler notes are configured in annotations:
 
 ## Table Interactions
 
+**Controls:** the toolbar every table of the report has (spec 002): search, Group by, Expand all /
+Collapse all, Columns, "Show N hidden" and CSV, with the table's own Reset Widths and + Add Chart on
+the same line.
+
 ### Sorting
 
-- Click any **column header** to sort ascending
-- Click the **same header again** to sort descending
-- Visual indicator (▲/▼) appears on the sorted column
+- A **column header** is a button: click it, or press Enter on it, to sort ascending; again for
+  descending. The arrow beside the name (▲/▼) shows the sort, ↕ an unsorted column
+- Every column sorts by the run's own number, never by the text in the cell, so 20.7/min sorts
+  below 8.3/s
+- The sort orders each transaction's rows among themselves: a request never leaves its
+  transaction. The sort, the grouping, the open transactions and the hidden rows and columns are
+  remembered for this report; the search is not
 
 ### Search / Filter
 
 ![Search Input](images/10c-search-input.png)
 
-- A **text input** above the table filters rows by sampler name
-- Matching is case-insensitive
-- Non-matching rows are hidden (not removed)
-- Clear the input to restore all rows
+- A **text input** in the toolbar filters rows by sampler name, case-insensitive
+- A matching request is shown with its transaction above it; a transaction that is closed stands
+  for its request, so open it (▸) or tick Expand all to see the request itself
+- The Σ Total row is the whole run's: it shows while the search names it or is empty
+
+### Group by
+
+- **Transaction** (the default): the table is a tree, each transaction's requests under it
+- **Assert status**: FAIL, WARN, PASS, then the rows no rule judges
+- **Apdex rating**: Excellent down to Unacceptable, then the rows with no rating
+- A group's header counts its rows; it never sums or averages their numbers
 
 ### Column Visibility
 
-- Click the **"Columns"** button to open a dropdown
-- All 14 columns listed with checkboxes (all checked by default)
-- **Uncheck** a column → it disappears from the header and all data rows
-- **Re-check** → column reappears where it was
-- Multiple columns can be hidden simultaneously; a **"Show N Hidden Columns"** button brings them
-  all back
+- Click **Columns** to open the list of the 14 columns, all ticked by default
+- **Untick** a column: it disappears from the header and every row; tick it again to bring it back
+  where it was
 
 ### Column Order and Width
 
@@ -126,18 +138,18 @@ When sampler notes are configured in annotations:
 ### Row Hiding
 
 - Each data row has an **× (hide) button** at the right of the Sampler cell, shown on hover
-- Click × → the row and anything open under it disappear from the table
-- A **"Show N Hidden Rows"** button appears above the table
-- Click it → all hidden rows restored; a Transaction Controller child comes back into view
-  while **Show transaction details** is ticked, and with the other children when it is next ticked
-- Hiding a transaction hides the rows inside it too, and they stay hidden until "Show N Hidden
-  Rows", whatever the switch and the search do
+- Click × → the row and anything open under it (its chart panel, the rules judging it) leave the table
+- **"Show N hidden"** in the toolbar brings back what × hid and nothing else; the search keeps its
+  rows. A request comes back under its transaction, closed or open as that transaction is
+- Hiding a transaction hides the rows inside it too, and they stay hidden until "Show N hidden",
+  whatever Expand all, the switch and the search do
 
 ### CSV Export
 
-- Click the **↓ icon** to download the table as `sampler-statistics.csv`
-- Exports **every sampler**, hidden rows and columns included, plus columns the table does not
-  show (Std Dev, Sent B/s, Avg Connect, Avg Latency)
+- **CSV** in the toolbar downloads `sampler-statistics.csv` with the rows and columns shown, in the
+  order shown (FR-066): what the search, × and Columns left, the numbers as the table writes them.
+  Until 4.6.0 it exported every sampler and four columns the table does not show (Std Dev, Sent B/s,
+  Avg Connect, Avg Latency); the CI/CD JSON still carries every sampler's numbers
 
 ## Click-to-Expand Detail View
 
@@ -198,6 +210,9 @@ When the test has Transaction Controllers (parent/child sampler hierarchy):
 - A **"Show transaction details"** checkbox appears in the filter bar's Samplers row, after All /
   None, when the run has transactions. It is the one switch for every tab: the charts, the chips and
   the Errors tab's sampler filter follow it too
+- The table's **Expand all** and **Collapse all** are the same switch: they open or close every
+  transaction and tick or untick the checkbox. A transaction's own **▸** opens that one transaction in
+  the table only, leaving the switch, the chips and the charts as they are
 - **Default:** OFF (children hidden); the choice is remembered in localStorage
 - **Ticked:**
   - Child samplers appear under their own transaction, a level deeper each time, in the order the

@@ -94,7 +94,7 @@ test.describe('Errors Tab — Error Summary table', () => {
   test('search filters rows and clear restores them', async ({ page }) => {
     await goErrors(page);
 
-    const searchInput = page.locator('#tab-errors .table-toolbar input.table-search').first();
+    const searchInput = page.locator('#errorSummaryTable-search');
     await expect(searchInput).toBeVisible();
 
     const allRows = page.locator('#errorSummaryTable tbody tr');
@@ -123,15 +123,15 @@ test.describe('Errors Tab — Error Summary table', () => {
   test('hide row shows counter, show hidden restores', async ({ page }) => {
     await goErrors(page);
 
-    const showHiddenBtn = page.locator('#showHiddenBtn-errorSummaryTable');
+    const showHiddenBtn = page.locator('#errorSummaryTable-show-hidden');
     await expect(showHiddenBtn).toBeHidden();
 
     // Hide the first row
     const firstRow = page.locator('#errorSummaryTable tbody tr').first();
-    await firstRow.locator('.row-hide-btn').click({ force: true });
+    await firstRow.locator('.wir-row-hide').click({ force: true });
     await page.waitForTimeout(200);
     await expect(showHiddenBtn).toBeVisible();
-    await expect(showHiddenBtn).toHaveText(/Show.*Hidden/);
+    await expect(showHiddenBtn).toHaveText(/Show [0-9]+ hidden/);
 
     // Restore
     await showHiddenBtn.click();
@@ -144,7 +144,7 @@ test.describe('Errors Tab — Error Summary table', () => {
     await goErrors(page);
 
     // The CSV button is in the Error Summary section header
-    const csvBtn = page.locator('#tab-errors section').filter({ hasText: 'Error Summary' }).locator('.table-csv-btn');
+    const csvBtn = page.locator('#errorSummaryTable-csv');
     await expect(csvBtn).toBeVisible();
 
     await expectNoJsErrors(page, async () => {
@@ -282,7 +282,7 @@ test.describe('Errors Tab — Error Summary Total row (B2)', () => {
 
   test('[E02] the search never hides the Total, and the Total follows it', async ({ page }) => {
     await goErrors(page);
-    const search = page.locator('#tab-errors .table-toolbar input.table-search').first();
+    const search = page.locator('#errorSummaryTable-search');
 
     await search.fill('pricing');
     const some = await readErrorTotal(page);
@@ -305,13 +305,13 @@ test.describe('Errors Tab — Error Summary Total row (B2)', () => {
     const before = await readErrorTotal(page);
 
     const first = page.locator('#errorSummaryTable tbody tr:not(.error-summary-total)').first();
-    await first.locator('.row-hide-btn').click({ force: true });
+    await first.locator('.wir-row-hide').click({ force: true });
     const hidden = await readErrorTotal(page);
     expect(hidden.shown).toBe(before.shown - 1);
     expectTotalOfShown(hidden, 'one row hidden with ×');
 
     // Show Hidden used to clear every row's display, bringing back rows nobody had unhidden.
-    await page.click('#showHiddenBtn-errorSummaryTable');
+    await page.click('#errorSummaryTable-show-hidden');
     const back = await readErrorTotal(page);
     expect(back.shown, 'Show Hidden revealed rows nobody hid').toBe(before.shown);
     expect(back.cells).toEqual(before.cells);
@@ -319,15 +319,15 @@ test.describe('Errors Tab — Error Summary Total row (B2)', () => {
 
   test('[E02] Show Hidden keeps the search: it brings back what × hid, not what the search hides', async ({ page }) => {
     await goErrors(page);
-    const search = page.locator('#tab-errors .table-toolbar input.table-search').first();
+    const search = page.locator('#errorSummaryTable-search');
     await search.fill('pricing');
     const searched = await readErrorTotal(page);
 
     await page.locator('#errorSummaryTable tbody tr:not(.error-summary-total)')
-      .filter({ hasText: 'pricing' }).first().locator('.row-hide-btn').click({ force: true });
+      .filter({ hasText: 'pricing' }).first().locator('.wir-row-hide').click({ force: true });
     expectTotalOfShown(await readErrorTotal(page), 'searching, one match hidden with ×');
 
-    await page.click('#showHiddenBtn-errorSummaryTable');
+    await page.click('#errorSummaryTable-show-hidden');
     const back = await readErrorTotal(page);
     expect(back.shown, 'Show Hidden undid the search').toBe(searched.shown);
     expectTotalOfShown(back, 'searching, after Show Hidden');
@@ -342,7 +342,7 @@ test.describe('Errors Tab — Error Summary Total row (B2)', () => {
     };
 
     // The search first: expanding the transactions changes nothing on the error tables (E3).
-    const search = page.locator('#tab-errors .table-toolbar input.table-search').first();
+    const search = page.locator('#errorSummaryTable-search');
     await search.fill('pricing');
     const searched = await readErrorTotal(page);
     await toggleChildren();
@@ -352,16 +352,21 @@ test.describe('Errors Tab — Error Summary Total row (B2)', () => {
 
     // A child hidden with × stays hidden through a collapse and an expand.
     await search.fill('');
-    const child = page.locator('#errorSummaryTable tbody tr:not(.error-summary-total)')
+    // pinned by its own attributes: × moves the row below the ones shown, and a locator by text alone
+    // would then name the next row carrying the same sampler
+    const first = page.locator('#errorSummaryTable tbody tr:not(.error-summary-total)')
       .filter({ hasText: 'GET /api/search' }).first();
-    await child.locator('.row-hide-btn').click({ force: true });
+    const pin = await first.evaluate((r: HTMLElement) => ['data-sampler', 'data-error-class', 'data-response-code', 'data-error-type']
+      .map(a => r.hasAttribute(a) ? `[${a}="${CSS.escape(r.getAttribute(a)!)}"]` : '').join(''));
+    const child = page.locator(`#errorSummaryTable tbody tr${pin}`);
+    await child.locator('.wir-row-hide').click({ force: true });
     const hidden = await readErrorTotal(page);
     await toggleChildren();
     await toggleChildren();
     const again = await readErrorTotal(page);
     expect(again.shown, 'expanding the children brought back a row hidden with ×').toBe(hidden.shown);
     await expect(child).toBeHidden();
-    await expect(page.locator('#showHiddenBtn-errorSummaryTable')).toHaveText('Show 1 Hidden Row');
+    await expect(page.locator('#errorSummaryTable-show-hidden')).toHaveText('Show 1 hidden');
     expectTotalOfShown(again, 'one child hidden with ×, collapsed and expanded again');
   });
 });
@@ -416,7 +421,7 @@ test.describe('Errors Tab — Error Details table', () => {
     await goErrors(page);
 
     // The search input for the error details table (the Grouped view has its own — scope to By time)
-    const searchInput = page.locator('#errViewTime input.table-search');
+    const searchInput = page.locator('#errorDetailsTable-search');
     await expect(searchInput).toBeVisible();
 
     // Get a sampler name from the first row
@@ -441,7 +446,7 @@ test.describe('Errors Tab — Error Details table', () => {
   test('CSV button click produces no JS error', async ({ page }) => {
     await goErrors(page);
 
-    const csvBtn = page.locator('#tab-errors section').filter({ hasText: 'Error Details' }).locator('.table-csv-btn');
+    const csvBtn = page.locator('#errorDetailsTable-csv');
     await expect(csvBtn).toBeVisible();
 
     await expectNoJsErrors(page, async () => {
@@ -609,58 +614,35 @@ test.describe('Error classes on the client surfaces', () => {
     }
   });
 
-  test('the summary CSV carries the class and drops the meaningless message',
-      async ({ page }) => {
-    await withClassifiedErrors(page);
-    const csv = await page.evaluate(() => {
-      let captured = '';
-      const w = window as any;
-      const real = w.downloadCsvFile;
-      w.downloadCsvFile = (_n: string, c: string) => { captured = c; };
-      w.exportErrorSummaryCsv();
-      w.downloadCsvFile = real;
-      return captured;
+  /* The CSV holds what each table shows (spec 002, FR-066), so a cell the page writes is the cell it exports: the
+     error class as its label, and for a failed 2xx the type of error the template writes in place of its "OK". */
+  for (const [table, header] of [['errorSummaryTable', 'Class'], ['errorDetailsTable', 'Class']] as const) {
+    test(`the ${table} CSV is the table as shown, the class label included [E02]`, async ({ page }) => {
+      await goErrors(page);
+      const shown = await page.$$eval(`#${table} tbody tr`, (trs, id) => trs
+        .filter((tr) => (tr as HTMLElement).style.display !== 'none' && tr.querySelector('td[data-col-id], td')
+          && !tr.classList.contains('error-summary-total') && !tr.classList.contains('error-detail-row'))
+        .map((tr) => {
+          const ids = Array.from((tr.closest('table') as HTMLTableElement).tHead!.rows[0].cells).map((th) => th.getAttribute('data-col-id'));
+          const known = new Set((window as any).WIR.table.table(id).spec.columns.map((c: any) => c.id));
+          return Array.from((tr as HTMLTableRowElement).cells).filter((_, i) => known.has(ids[i])).map((td) => {
+            const copy = td.cloneNode(true) as HTMLElement;
+            copy.querySelectorAll('button').forEach((x) => x.remove());
+            return copy.textContent!.trim();
+          });
+        }), table);
+      const csv = await page.evaluate((id) => {
+        let captured = '';
+        const w = window as any;
+        const real = w.downloadCsvFile;
+        w.downloadCsvFile = (_n: string, c: string) => { captured = c; };
+        w.WIR.table.csv(id);
+        w.downloadCsvFile = real;
+        return captured;
+      }, table);
+      const rows = csv.trim().split(/\r?\n/).map((l) => l.split('","').map((c) => c.replace(/^"|"$/g, '')));
+      expect(rows[0]).toContain(header);
+      expect(rows.slice(1)).toEqual(shown);
     });
-
-    expect(csv).toContain('Error Class');
-    expect(csv).toContain('Non-protocol failure');
-    // "OK" exported as a failure message is the same untruth as printing it.
-    // Matched on the code rather than the sampler: the fixture supplies the name.
-    const nonProtocolRow = csv.split('\n').find(l => l.includes('","200",'));
-    expect(nonProtocolRow, csv).toBeTruthy();
-    expect(nonProtocolRow!.includes('OK'), `exported "OK" as a failure message: ${nonProtocolRow}`)
-      .toBe(false);
-  });
-
-  test('the details CSV carries the class too', async ({ page }) => {
-    await withClassifiedErrors(page);
-    const csv = await page.evaluate(() => {
-      let captured = '';
-      const w = window as any;
-      const real = w.downloadCsvFile;
-      w.downloadCsvFile = (_n: string, c: string) => { captured = c; };
-      w.exportErrorDetailsCsv();
-      w.downloadCsvFile = real;
-      return captured;
-    });
-
-    expect(csv).toContain('Error Class');
-    expect(csv).toContain('Non-protocol failure');
-  });
-
-  test('a real failure message is never suppressed', async ({ page }) => {
-    // Only the 2xx reason phrase goes. A 500's message, and an exception on a transport
-    // failure, are the most useful things on the row.
-    await withClassifiedErrors(page);
-    const csv = await page.evaluate(() => {
-      let captured = '';
-      const w = window as any;
-      const real = w.downloadCsvFile;
-      w.downloadCsvFile = (_n: string, c: string) => { captured = c; };
-      w.exportErrorSummaryCsv();
-      w.downloadCsvFile = real;
-      return captured;
-    });
-    expect(csv).toContain('Internal Server Error');
-  });
+  }
 });

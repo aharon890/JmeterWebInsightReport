@@ -49,7 +49,7 @@ test.describe('The judging row belongs to its sampler [E25]', () => {
   test('a sort in either direction keeps it directly under its sampler', async ({ page }) => {
     await openJudgingRow(page);
     for (const _ of [1, 2]) {
-      await page.evaluate(() => (window as any).sortTable(0, 'text'));
+      await page.evaluate(() => (window as any).WIR.table.sortBy('samplerTable', '0'));
       expect(await companionsOfSlow(page)).toEqual(['judging']);
       expect((await bodyRows(page)).filter((r) => r === 'judging')).toHaveLength(1);
     }
@@ -61,7 +61,7 @@ test.describe('The judging row belongs to its sampler [E25]', () => {
     await expect(page.locator('#samplerTable tbody tr.sampler-detail-row')).toHaveCount(1);
     const before = await companionsOfSlow(page);
     expect(before.sort()).toEqual(['detail', 'judging']);
-    await page.evaluate(() => (window as any).sortTable(7, 'num'));   // P95
+    await page.evaluate(() => (window as any).WIR.table.sortBy('samplerTable', '7'));   // P95
     expect((await companionsOfSlow(page)).sort()).toEqual(['detail', 'judging']);
   });
 
@@ -87,8 +87,8 @@ test.describe('The judging row belongs to its sampler [E25]', () => {
 
   test('hiding the Sampler column keeps the rule list on screen', async ({ page }) => {
     await openJudgingRow(page);
-    await page.locator('#columnMenuBtn').click();
-    await page.locator('#columnMenu label', { hasText: 'Sampler' }).locator('input').uncheck();
+    await page.locator('#samplerTable-columns').click();
+    await page.locator('#samplerTable-columns-menu label', { hasText: 'Sampler' }).locator('input').uncheck();
     await expect(page.locator('#samplerTable thead th').first()).toBeHidden();   // precondition
     await expect(page.locator('.wir-judging-row td')).toBeVisible();
     await expect(page.locator('.wir-judging-row')).toContainText('slow-api-p95');
@@ -98,9 +98,10 @@ test.describe('The judging row belongs to its sampler [E25]', () => {
     await openJudgingRow(page);
     await page.locator(`${SLOW} .sampler-name-text`).click();
     await expect(page.locator('#samplerTable tbody tr.sampler-detail-row')).toHaveCount(1);
-    await page.locator(`${SLOW} .row-hide-btn`).click();
-    await expect(page.locator('.wir-judging-row')).toHaveCount(0);
-    await expect(page.locator('#samplerTable tbody tr.sampler-detail-row')).toHaveCount(0);
+    await page.locator(`${SLOW} .wir-row-hide`).click();
+    // hidden with it, and back with it on "Show N hidden" (spec 002: WIR.table moves a row's companions)
+    await expect(page.locator('.wir-judging-row')).toBeHidden();
+    await expect(page.locator('#samplerTable tbody tr.sampler-detail-row')).toBeHidden();
   });
 });
 
@@ -169,21 +170,22 @@ test.describe('Transaction Details takes a child\'s rows with it [E02]', () => {
     // under a child stayed on screen under nothing once the children were collapsed.
     await loadClean(page, 'E02');
     await switchTab(page, 'samplers');
-    const toggle = page.locator('#transactionChildrenBtn');
+    const expand = page.locator('#samplerTable-expand-all');     // the old switch, on (spec 002)
+    const collapse = page.locator('#samplerTable-collapse-all');
     const child = page.locator('#samplerTable tbody tr.transaction-child').first();
     const panels = page.locator('#samplerTable tbody tr.sampler-detail-row');
 
-    await toggle.click();                                    // children shown
+    await expand.click();                                    // children shown
     await expect(child).toBeVisible();
     await child.locator('.sampler-name-text').click();       // its chart panel, directly below
     await expect(panels).toHaveCount(1);
     await expect(panels.first()).toBeVisible();
 
-    await toggle.click();                                    // children collapsed
+    await collapse.click();                                  // children collapsed
     await expect(child).toBeHidden();
     await expect(panels.first()).toBeHidden();
 
-    await toggle.click();                                    // and shown again
+    await expand.click();                                    // and shown again
     await expect(child).toBeVisible();
     await expect(panels.first()).toBeVisible();
   });

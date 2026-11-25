@@ -132,44 +132,59 @@ fixture.
 
 ## Stage 5: Compare and the Errors tables (US6, FR-060 to FR-066, FR-071 defects 2-5)
 
-- [ ] T060 [US6] Red, one test per defect: Compare's Apply keeps the search, hidden rows and sort (2); a saved Compare
+- [X] T060 [US6] Red, one test per defect: Compare's Apply keeps the search, hidden rows and sort (2); a saved Compare
   column order keeps each cell under its header (3); after a column drag, Columns hides the column it names (4); an
   open Error Details row leaves with a search that hides its row (5).
-- [ ] T061 [US6] Red: `PW/table-toolbar.spec.ts` for Error Summary, Error Details and Compare: chips (Compare's
+- [X] T061 [US6] Red: `PW/table-toolbar.spec.ts` for Error Summary, Error Details and Compare: chips (Compare's
   REGRESSION / NEW / REMOVED / OK), Group by (Errors: none, sampler + type of error, error class, response code;
   Compare: status), CSV as shown.
-- [ ] T062 [US6] Error Summary and Error Details on the DOM adapter (rows stay in the HTML, FR-070; the Total stays
+- [X] T062 [US6] Error Summary and Error Details on the DOM adapter (rows stay in the HTML, FR-070; the Total stays
   last over the rows shown); the Errors groups become Group by on Error Details; Compare on the state adapter (Σ Total
   first).
-- [ ] T063 [US6] Delete `filterGenericTable`, `sortGenericTable`, `hideTableRow`, `showAllTableRows`,
+- [X] T063 [US6] Delete `filterGenericTable`, `sortGenericTable`, `hideTableRow`, `showAllTableRows`,
   `toggleGenericColumnMenu`, `applyGenericColumnVisibility`, `filterErrorGroups` and the "By time / Grouped" switch.
-- [ ] T064 Rule 3 rewritten: no `style.display` on a table row outside `WIR.table`.
-- [ ] T065 [P] `PW/csv-export.spec.ts`, `errors-tab.spec.ts`, `error-details-grouping.spec.ts`, `compare-tab.spec.ts`
+- [X] T064 Rule 3 rewritten: no `style.display` on a table row outside `WIR.table` (with stage 6: the Requests walkers still set it until they move).
+- [X] T065 [P] `PW/csv-export.spec.ts`, `errors-tab.spec.ts`, `error-details-grouping.spec.ts`, `compare-tab.spec.ts`
   move with the controls; `whole-run-totals.spec.ts` skips `tr.wir-group-row`.
-- [ ] T066 [P] Docs: `05-Errors-Tab.md`, `06-Compare-Tab.md`.
+- [X] T066 [P] Docs: `05-Errors-Tab.md`, `06-Compare-Tab.md`.
 - [ ] T067 Commit; the gate is pull request 2's, after stage 7.
 
 ## Stage 6: Requests (US6, FR-064, FR-069, FR-070, FR-071 defect 1)
 
-- [ ] T070 [US6] Red: Throughput sorts by value (defect 1); each transaction has a ▸ that opens and closes its
+- [X] T070 [US6] Red: Throughput sorts by value (defect 1); each transaction has a ▸ that opens and closes its
   requests; Expand all / Collapse all replace "Show transaction details"; Group by none, transaction, assert status,
   Apdex rating; chips; × and "Show N hidden"; CSV as shown; the view remembered per report.
-- [ ] T071 [US6] Requests on the DOM adapter; companion rows (`.sampler-detail-row`, `.wir-judging-row`) travel with
+- [X] T071 [US6] Requests on the DOM adapter; companion rows (`.sampler-detail-row`, `.wir-judging-row`) travel with
   their row; Σ Total first; `WIR.asserts` decorations kept.
-- [ ] T072 [US6] Delete `sortTable`, `arrangeSamplerRows`, `applySamplerRowVisibility`, `hideRow`, `showAllRows`,
+- [X] T072 [US6] Delete `sortTable`, `arrangeSamplerRows`, `applySamplerRowVisibility`, `hideRow`, `showAllRows`,
   `initColumnMenu`, `applyColumnVisibility` and the transaction switch.
-- [ ] T073 [P] The Requests specs move (`samplers-tab`, `sampler-table-walkers`, `sampler-tree`,
+  Done but for the switch (2026-11-26): Expand all / Collapse all **are** the switch now, one state
+  (`showTransactionChildren`) with two controls, and the filter bar keeps its checkbox. It is the only control the
+  Timeline and Errors tabs have for a transaction's requests (4.2.35 moved it there for that reason), so deleting it
+  would bring back the bug that fix closed. A transaction's ▸ opens that one in the table only. Also deleted:
+  `filterSamplerTable`, `isSamplerRowSuppressed`, `samplerRowNamed`, `toggleColumnMenu`, `showAllColumns`,
+  `updateHiddenRowsBtn`, `exportSamplerStatsCsv`, `syncSamplerCompanionRows`, `parseNumericCell`, `findHeaderByColId`,
+  `measuredOr`, `COLUMN_NAMES`, `hiddenColumns`, `hiddenRowCount` and their styles. The CSV now holds what is shown
+  (FR-066), so it no longer carries Std Dev, Avg Connect and Avg Latency; said in `04-Samplers-Tab.md`.
+- [X] T073 [P] The Requests specs move (`samplers-tab`, `sampler-table-walkers`, `sampler-tree`,
   `transaction-details-switch`, `table-sort-and-toast`, `ui-interactions`, `csv-export`); R07 unchanged.
-- [ ] T074 [P] Docs: `04-Samplers-Tab.md`.
-- [ ] T075 Commit; the gate is pull request 2's, after stage 7.
+- [X] T074 [P] Docs: `04-Samplers-Tab.md`; CLAUDE.md's sampler-table paragraphs.
+- [X] T075 Commit; the gate is pull request 2's, after stage 7.
 
 ## Stage 7: The Server board (US6, FR-062, FR-063)
 
-- [ ] T080 [US6] Red: the board's chips work as every other table's (several at once, counts over every row);
+- [X] T080 [US6] Red: the board's chips work as every other table's (several at once, counts over every row);
   Group by component (the default) or status; sort by header.
-- [ ] T081 [US6] The board on the state adapter; its one-at-a-time chips (`filterChipsHtml`) deleted; open charts
+- [X] T081 [US6] The board on the state adapter; its one-at-a-time chips (`filterChipsHtml`) deleted; open charts
   kept across a re-render; rule 4 holds (the search reports through the delegated listener).
-- [ ] T082 [P] `PW/server-board.spec.ts` SF40 and SF41 move; docs `13-Server-Tab.md`.
+  Done 2026-11-26: every toolbar's search and Group by now report through one listener of WIR.table's on the
+  document (`data-wir-table-search`, `data-wir-table-group`), so no toolbar carries `oninput`/`onchange` and the
+  Server tab keeps its one handler shape; its sweeps take the toolkit's literal-only calls (`TOOLKIT_CALL`), as the
+  Asserts sweep did. A card is its component's group (▾, Expand all / Collapse all); Status and None draw one
+  table. The component badge stays the board's own filter on top (`spec.filter`). The chips count every row
+  (FR-062), which retires U6's "the counts follow the other filters" and the "All N" chip.
+- [X] T082 [P] `PW/server-board.spec.ts` SF40 and SF41 move (and server-tab, server-identity, keyboard-focus,
+  client-fixes, xss-escaping, asserts-filter-sort, whose chips are scoped to their tab now); docs `13-Server-Tab.md`.
 - [ ] T083 Pull request 2 (stages 5-7): the full regression, push, PR, merge.
 
 ## Stage 8: The filter bar's ticks on every table (US4, FR-030, FR-067)

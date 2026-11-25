@@ -126,7 +126,7 @@ test.describe('Sampler table — resizing', () => {
     // the click that ends the drag.
     await dragDivider(page, 0, 60);
     const sort = await page.evaluate(() =>
-      document.getElementById('samplerTable')!.tHead!.rows[0].cells[0].getAttribute('data-sort'));
+      document.getElementById('samplerTable')!.tHead!.rows[0].cells[0].getAttribute('aria-sort'));
     expect(sort).toBeNull();
   });
 
@@ -139,8 +139,8 @@ test.describe('Sampler table — resizing', () => {
     await page.waitForTimeout(200);
 
     const sort = await page.evaluate(() =>
-      document.getElementById('samplerTable')!.tHead!.rows[0].cells[1].getAttribute('data-sort'));
-    expect(['asc', 'desc']).toContain(sort);
+      document.getElementById('samplerTable')!.tHead!.rows[0].cells[1].getAttribute('aria-sort'));
+    expect(['ascending', 'descending']).toContain(sort);
   });
 
   test('[U] a column cannot be dragged below its minimum width', async ({ page }) => {
@@ -237,10 +237,7 @@ test.describe('Sampler table — width persistence', () => {
       };
     });
 
-    await page.evaluate(() => {
-      (window as any).hiddenColumns[13] = true;
-      (window as any).applyColumnVisibility();
-    });
+    await page.evaluate(() => (window as any).setSamplerHiddenColumns({ 13: true }));
     await page.waitForTimeout(200);
 
     const after = await page.evaluate(() =>

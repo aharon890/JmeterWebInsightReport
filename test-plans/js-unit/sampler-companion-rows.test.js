@@ -88,35 +88,6 @@ test('the open chart panel is found past the judging row, so a toggle closes it 
     assert.strictEqual(scope.samplerCompanionRow(lone, 'sampler-detail-row'), null);
 });
 
-test('every companion takes its owner\'s display — a judging row is never searched by its own text', () => {
-    const scope = loadReportScope();
-    const a = row('sampler', 'A');
-    const b = row('sampler', 'B');
-    const aJudging = row('judging');
-    const aDetail = row('detail');
-    const bJudging = row('judging');
-    const body = tbody([a, aJudging, aDetail, b, bJudging]);
-    // The search hid A and showed B; the companions are as they were left.
-    a.style.display = 'none';
-    bJudging.style.display = 'none';
-    scope.syncSamplerCompanionRows(body);
-    assert.deepStrictEqual([aJudging, aDetail, bJudging].map((r) => r.style.display), ['none', 'none', '']);
-});
-
-test('the sync says when a chart panel came back into view, so its charts are resized', () => {
-    const scope = loadReportScope();
-    const a = row('sampler', 'A');
-    const detail = row('detail');
-    const body = tbody([a, row('judging'), detail]);
-    detail.style.display = 'none';
-    a.style.display = 'none';
-    assert.strictEqual(scope.syncSamplerCompanionRows(body), false, 'still hidden: nothing to resize');
-    a.style.display = '';
-    assert.strictEqual(scope.syncSamplerCompanionRows(body), true, 'shown again: ECharts sized at 0 must resize');
-    assert.strictEqual(detail.style.display, '');
-    assert.strictEqual(scope.syncSamplerCompanionRows(body), false, 'already on screen');
-});
-
 /*
  * NIT-4: the column tools walked the companion rows as if they were sampler rows. autoFitColumn
  * measured every row's cell at the column's index, so an open chart panel's or judging row's one

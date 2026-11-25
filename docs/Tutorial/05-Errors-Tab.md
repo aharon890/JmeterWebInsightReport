@@ -120,13 +120,14 @@ first cell says how many are — `Total (12 of 17 rows)`. The search never hides
 rows are the requests, and no transaction row stands for them. While it is off, the sampler filter
 shows a request's errors in the charts when the transaction it is inside is ticked.
 
-**Controls:**
+**Controls:** the toolbar every table of the report has (spec 002):
 - **Search** — filter rows by text
-- **Sort** — click a column header
-- **Column toggle** — show/hide columns; drag a header's right edge to resize a column
-- **Row hide** — X button per row; "Show N Hidden Rows" brings back what X hid and nothing else —
-  the search keeps its rows
-- **CSV download** — exports as `error-summary.csv`, every row, with the response message
+- **Group by** — error class, or response code; a group's header counts its rows
+- **Sort** — a header is a button: click it or press Enter on it; the sort is by the column's value
+- **Columns** — show/hide columns by name; drag a header's right edge to resize a column
+- **Row hide** — × on a row; "Show N hidden" brings back what × hid and nothing else — the search keeps
+  its rows
+- **CSV** — downloads `error-summary.csv` with the rows and columns shown
 - **⊕ on the Class cell** — opens the assert editor on the Asserts tab with a rule for that
   sampler's error rate in that class (`errorRate:class=transport`, for example), seeded from the
   observed rate
@@ -136,11 +137,11 @@ shows a request's errors in the charts when the transaction it is inside is tick
 Individual error records with request-level detail — the first 500 failed samples (see
 [the first 500 errors](#error-timeline-scatter-plot)).
 
-A **By time / Grouped** switch beside the heading picks the view, and the choice is remembered.
-
-### By time
-
-One row per error, in the order they happened.
+One row per error, in the order they happened. **Group by** in the toolbar regroups them: by the sampler
+and type of error (most frequent first, what the old Grouped view showed), by error class, or by response
+code. A group's header counts its errors and opens or closes them; **Expand all** and **Collapse all** do
+every group. The counts are the errors kept in detail (the first 500); the Error Summary and the charts
+count every error.
 
 | Column | Description |
 |--------|-------------|
@@ -151,18 +152,11 @@ One row per error, in the order they happened.
 | **Message** | Response message text; for a failed 2xx, the type of error (the assertion's message) |
 | **Thread** | JMeter thread name |
 
-### Grouped
-
-One row per sampler and type of error, most frequent first: **Count**, **Code** (with its class),
-**Sampler**, **Type of error**, **First seen** and **Last seen**. Click a group to list each occurrence's
-time and thread; **Expand All** and **Collapse All** open or close every group, and the search box
-filters the groups.
-
 ### Expandable Error Rows
 
 ![Error Detail Expanded](images/12d-error-detail-expanded.png)
 
-In the By time view, click any row to expand it. The panel shows what was captured for that sample:
+Click any row to expand it. The panel shows what was captured for that sample:
 - **URL** — the URL that failed, when the sample has one (a sampler that is not HTTP has none)
 - **Response Body** — the error response body with JSON auto-formatting and syntax highlighting,
   and **Copy**, **Wrap** (word wrap) and **Raw** (the body as received, unformatted). A body cut at
@@ -184,9 +178,9 @@ response code, message, thread and URL but no body. The **URL is available in bo
 mode reads it from the sample, and JTL mode reads a `URL` column when the file has one, which
 JMeter writes under `jmeter.save.saveservice.url=true`.
 
-**Controls:** Same as Error Summary (search, sort, column toggle, row hide), and a CSV download as
-`error-details.csv` holding every kept record with its URL and response body, whichever view is
-showing.
+**Controls:** the toolbar every table of the report has: search, Group by, Columns, × on a row and
+**Show N hidden**, and **CSV**, which downloads `error-details.csv` with the rows and columns shown, every
+group open. A row's expanded detail goes with its row when the search or a closed group hides it.
 
 ## Sampler Filter Integration
 

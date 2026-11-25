@@ -391,15 +391,25 @@ When every seed would be stood down by a run-level `requiresLoad` that did not h
 replaced by a sentence saying so. Under the actions, a line can say what happened to a draft when
 the page was loaded (see [Drafts and saving](#drafts-and-saving)).
 
-Then one filter row:
+Then one filter row, the toolbar every table of the report has (spec 002):
 
 - **Filter server asserts…** finds a row by its id, its catalogue metric's label or id, its
   description or its component.
-- **Status chips** with counts, worded as the Asserts tab's: `All 12`, `FAIL 1`, `WARN 1` and so on,
-  one per status on the board. Every reason a server assert was not judged is a chip of its own, as
-  on the Asserts tab. The counts follow the other filters, the text you are typing included, so the
-  chips always add up to what `All` says. A screen reader hears which chip is on.
+- **Status chips** with counts, worded and working as the Asserts tab's: `FAIL 1`, `WARN 1` and so on,
+  one per status on the board. Press several to see those statuses together; press one again to let it
+  go. Every chip counts every row, whatever the search, the other chips or a component's badge select,
+  so the chips add up to the whole board. Every reason a server assert was not judged is a chip of its
+  own, as on the Asserts tab. A screen reader hears which chip is on.
+- **Group by**: **Component**, the default, is the cards below; **Status** is one table with a header
+  row per status; **None** is one table. A card, or a status header, opens and closes with its ▾, and
+  **Expand all** / **Collapse all** do every one. (**Expand all rows**, among the actions above, opens
+  every row's charts.)
+- **Sort**: every column header is a button. Press it, or Enter on it, to sort by the column's value
+  within each card, ascending then descending. The default order is the worst status first.
 - **Clear filters**, shown when any filter is on, as soon as you type.
+
+The board remembers its sort, its grouping and which cards are open for this report, as every
+table does; the search and the chips start empty on each visit.
 - **Line colour**, at the end of the row: the colour of the first line on every server chart, and
   of the metric picker's chart. Click the dot to open the colour picker the samplers' dots open in
   the filter bar (which is hidden on this tab). The other instances keep the palette's next colours,

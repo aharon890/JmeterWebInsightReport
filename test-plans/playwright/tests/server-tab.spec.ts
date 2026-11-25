@@ -191,7 +191,7 @@ test.describe('Server tab — the board', () => {
     // A filter down to nothing, and the editor both new and editing.
     // kafka has no WARN — E26's only WARN is on db.
     await page.locator('.wir-component-card[data-component="kafka"] .wir-gate-badge').click();
-    await page.locator('.wir-server-search').fill('no such server assert');
+    await page.locator('#serverSearch').fill('no such server assert');
     await expect(page.locator('#serverBoard')).toContainText('No server assert matches these filters.');
     await sweep('filtered to nothing');
     await page.click('.wir-server-actions .wir-btn-primary');
@@ -604,7 +604,7 @@ test.describe('Server tab — the board', () => {
     const all = await page.locator('#serverKpiTable tbody tr.wir-kpi-row').count();
     expect(all).toBe(12);
 
-    await page.click('.wir-filter-chip:text-is("FAIL 1")');
+    await page.click('#tab-server .wir-table-toolbar[data-table="serverKpiTable"] .wir-status-chip[data-status="FAIL"]');
     await expect(page.locator('#serverKpiTable tbody tr.wir-kpi-row')).toHaveCount(1);
 
     // A filtered-out row is GONE, not display:none — a display filter would be erased by the
@@ -614,7 +614,7 @@ test.describe('Server tab — the board', () => {
         .filter((r) => (r as HTMLElement).style.display === 'none').length);
     expect(hidden).toBe(0);
 
-    await page.click('.wir-filter-chip:text-is("FAIL 1")');   // toggles off
+    await page.click('#tab-server .wir-table-toolbar[data-table="serverKpiTable"] .wir-status-chip[data-status="FAIL"]');   // toggles off
     await expect(page.locator('#serverKpiTable tbody tr.wir-kpi-row')).toHaveCount(all);
   });
 
@@ -632,7 +632,7 @@ test.describe('Server tab — the board', () => {
         })));
       const ids = async () => (await shown()).map((r) => r.id).sort();
       const badge = (id: string) => page.locator(`.wir-component-card[data-component="${id}"] .wir-gate-badge`);
-      const warn = page.locator('.wir-server-filters .wir-filter-chip', { hasText: /^WARN \d+$/ });
+      const warn = page.locator('#tab-server .wir-table-toolbar[data-table="serverKpiTable"] .wir-status-chip[data-status="WARN"]');
       await expect(page.locator('.wir-filter-label:text-is("Source")')).toHaveCount(0);
       await expect(page.locator('.wir-filter-label:text-is("Gate")')).toHaveCount(0);
 
@@ -642,8 +642,9 @@ test.describe('Server tab — the board', () => {
       expect((await shown()).every((r) => r.component === 'kafka')).toBe(true);
       await expect(page.locator('.wir-component-card')).toHaveCount(1);
 
-      // Two filters compose, and the chips count what the OTHER filters left (U6): kafka has no WARN.
-      await expect(warn).toHaveCount(0);
+      // Two filters compose. The chips count every row (FR-062, spec 002: U6 had them count what the OTHER
+      // filters left), so WARN stays offered under kafka's badge, though kafka has none.
+      await expect(warn).toHaveText('WARN 1');
       await badge('kafka').click();
       await warn.click();
       expect(await shown()).toEqual([{ id: 'lag-p50-warns', component: 'db' }]);
@@ -652,7 +653,7 @@ test.describe('Server tab — the board', () => {
 
       // The text box finds a row by its id, description or component, across cards, and keeps its
       // focus while the cards redraw under it.
-      const box = page.locator('.wir-server-search');
+      const box = page.locator('#serverSearch');
       await box.fill('lag');
       expect(await ids()).toEqual(['lag-p50-warns', 'lag-spike', 'lag-sustained']);
       await expect(box).toBeFocused();
@@ -663,32 +664,29 @@ test.describe('Server tab — the board', () => {
       // Clear filters puts every row back, the box included.
       await page.locator('#serverKpiTable .wir-link:text-is("Clear filters")').click();
       await expect(page.locator('#serverKpiTable tbody tr.wir-kpi-row')).toHaveCount(12);
-      await expect(page.locator('.wir-server-search')).toHaveValue('');
+      await expect(page.locator('#serverSearch')).toHaveValue('');
     });
 
-  test('[R] the status chips sum to All n, and each selects its count (R3-18)', async ({ page }) => {
+  test('[R] the status chips sum to every row, and each selects its count (R3-18)', async ({ page }) => {
     await loadClean(page, 'E26');
     await switchTab(page, 'server');
     // "FAIL 1", the Asserts tab's wording, since SF41 — it read "FAIL (1)". The parse moved with it,
     // on purpose.
-    const chips = await page.evaluate(() => {
-      const status = Array.from(document.querySelectorAll('.wir-server-filters .wir-filter-chip'))
+    const chips = await page.evaluate((bar) => {
+      const status = Array.from(document.querySelectorAll(bar + ' .wir-status-chip'))
         .map((b) => b.textContent!.trim())
         .filter((t) => / \d+$/.test(t));
       return status.map((t) => {
         const m = /^(.*) (\d+)$/.exec(t)!;
         return { label: m[1], n: Number(m[2]) };
       });
-    });
-    const all = chips.find((c) => c.label === 'All')!;
-    const rest = chips.filter((c) => c.label !== 'All');
-    expect(all.n).toBe(12);
-    expect(rest.reduce((n, c) => n + c.n, 0), 'a row counted by All and selectable by no chip').toBe(all.n);
-    for (const c of rest) {
-      await page.locator(`.wir-filter-chip:text-is("${c.label} ${c.n}")`).click();
+    }, '#tab-server .wir-table-toolbar[data-table="serverKpiTable"]');
+    expect(chips.reduce((n, c) => n + c.n, 0), 'a row on the board selectable by no chip').toBe(12);
+    for (const c of chips) {
+      await page.locator(`#tab-server .wir-table-toolbar[data-table="serverKpiTable"] .wir-status-chip:text-is("${c.label} ${c.n}")`).click();
       await expect(page.locator('#serverKpiTable tbody tr.wir-kpi-row'), c.label).toHaveCount(c.n);
       await expect(page.locator('#serverKpiTable tbody tr.wir-kpi-row .wir-chip').first()).toHaveText(c.label);
-      await page.locator(`.wir-filter-chip:text-is("${c.label} ${c.n}")`).click();
+      await page.locator(`#tab-server .wir-table-toolbar[data-table="serverKpiTable"] .wir-status-chip:text-is("${c.label} ${c.n}")`).click();
     }
   });
 
@@ -1805,8 +1803,8 @@ test.describe('Server tab — charts that agree with the board (M7c E)', () => {
         const W = (window as any).WIR.serverKpis;
         const start = W._mirrorRuns();
         W.toggle(W._keyOf('lag-spike'));
-        W.filterStatus('FAIL');
-        W.filterStatus('FAIL');
+        (window as any).WIR.table.toggleStatus('serverKpiTable', 'FAIL');
+        (window as any).WIR.table.toggleStatus('serverKpiTable', 'FAIL');
         W.toggle(W._keyOf('lag-spike'));
         const afterViews = W._mirrorRuns();
         W.toggleEnabled(W._keyOf('lag-spike'));
@@ -1874,7 +1872,7 @@ test.describe('Server tab — the honest empty states', () => {
       await expect(board).toContainText('nothing collected yet');
       // The status filter chip for those rows reads as the row's chip does, never the raw token
       // (review:C) — NOT_EVALUATED is a value appended past the fixed order on this report.
-      const statusChips = await page.locator('.wir-server-filters .wir-filter-chip[onclick*="filterStatus"]')
+      const statusChips = await page.locator('#tab-server .wir-table-toolbar[data-table="serverKpiTable"] .wir-status-chip')
         .allTextContents();
       expect(statusChips.some((c) => /^NOT EVALUATED \d+$/.test(c)), statusChips.join(' | ')).toBe(true);
       expect(statusChips.some((c) => c.indexOf('_') >= 0), 'a raw token on a chip: ' + statusChips.join(' | '))

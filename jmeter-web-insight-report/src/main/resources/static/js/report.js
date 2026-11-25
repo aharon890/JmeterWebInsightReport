@@ -526,7 +526,6 @@ var LS_PRESETS = 'wir_filterPresets';
 var LS_COL_ORDER = 'wir_columnOrder';
 var LS_FILTER_ROWS = 'wir_filterRowsState';
 var LS_COL_WIDTHS = 'wir_columnWidths';
-var LS_ERR_VIEW = 'wir_errDetailsView';
 
 /* Column order for drag-and-drop reorder */
 var columnOrder = null; // null means default order
@@ -1459,7 +1458,7 @@ function formatApdex(score) {
 }
 
 function updateTotalRow() {
-    updateComparisonTotalRow();
+    renderComparison();
     var table = document.querySelector('#tab-samplers table');
     if (!table || !globalChartData) return;
     var tbody = table.tBodies[0];
@@ -1514,9 +1513,18 @@ function updateTotalRow() {
     tbody.insertBefore(tr, tbody.firstChild);
     /* The search holds for this row too, whoever rebuilds it: the switch, and every chart refresh
        after it, rebuilt it shown over a search that hides it (review, 2026-11-05) */
-    var search = document.getElementById('samplerSearch');
-    var filter = search ? search.value.toLowerCase() : '';
-    if (filter && samplerRowText(tr).indexOf(filter) < 0) tr.style.display = 'none';
+    samplerTotalRowSearch();
+}
+
+/* The Σ Total row is the whole run's, no record of the Requests table, so WIR.table never moves it: a search that does
+   not name it hides it. Called after every pass of the table and whenever the row is rebuilt. The one row display
+   verify_report_js_rules (rule 3) allows outside WIR.table. */
+function samplerTotalRowSearch() {
+    var total = document.querySelector('#samplerTable tr.total-sampler-row');
+    if (!total) return;
+    var requests = WIR.table.table('samplerTable');   /* not yet registered during the first draw */
+    var q = String(requests ? requests.state.q || '' : '').trim().toLowerCase();
+    total.style.display = !q || samplerRowText(total).indexOf(q) >= 0 ? '' : 'none';
 }
 
 function getVisibleSamplerNames() {
@@ -1582,9 +1590,8 @@ function initCharts(data) {
     pendingChartInits.push({ tab: 'errors', fn: function () { initErrorBreakdownCharts(data); } });
 
     // Error Details grouped view (DOM-only — the error tables are parsed before this script runs)
-    buildErrorGroups(data.errorRecords, requestErrorSummaries(data));
+    initErrorTables();
     noteKeptErrorRecords(data);
-    restoreErrorDetailsView();
 
     // Comparison tab
     initComparisonTab(data);
@@ -2999,7 +3006,7 @@ function initErrorBreakdownCharts(data) {
  * says 100.00% of errors only when every row is in it. A Total of every row would sit under rows
  * that add up to less whenever one is hidden, with nothing on screen to say why. So when not every
  * row is counted, its first cell says how many are.
- * Rebuilt by whatever changes what is shown (refreshTableTotal); the search never hides it.
+ * Rebuilt after every pass of the table toolkit over the rows (WIR.table.applyRows); the search never hides it.
  */
 function buildErrorSummaryTotalRow() {
     var table = document.getElementById('errorSummaryTable');
@@ -3012,12 +3019,12 @@ function buildErrorSummaryTotalRow() {
 
     var col = {};
     var headers = table.tHead.rows[0].cells;
-    for (var h = 0; h < headers.length; h++) col[headers[h].textContent.trim()] = h;
-    var countCol = col['Count'];
+    for (var h = 0; h < headers.length; h++) col[headers[h].getAttribute('data-col-id')] = h;
+    var countCol = col.count;
     if (countCol === undefined) return;
 
     var rows = Array.prototype.filter.call(tbody.rows, function (r) {
-        return !r.classList.contains('error-detail-row');
+        return r.hasAttribute('data-sampler');
     });
     if (rows.length === 0) return;
     var countOf = function (r) {
@@ -3035,7 +3042,7 @@ function buildErrorSummaryTotalRow() {
     var errors = (globalChartData && globalChartData.requestErrorCount) || every;
     var samples = (globalChartData && globalChartData.requestSampleCount) || 0;
     var share = function (of) { return of > 0 ? (count * 100.0 / of).toFixed(2) + '%' : ''; };
-    var labelCol = col[W('Sampler')] !== undefined ? col[W('Sampler')] : 0;
+    var labelCol = col.sampler !== undefined ? col.sampler : 0;
 
     var tr = document.createElement('tr');
     tr.className = 'error-summary-total';
@@ -3048,18 +3055,16 @@ function buildErrorSummaryTotalRow() {
                 ? 'Total' : 'Total (' + shown.length + ' of ' + rows.length + ' rows)';
             td.title = 'The sum of the rows shown: % of Errors is their share of all '
                 + errors + ' errors, % of All Samples their share of all '
-                + samples + ' samples. Rows the search or a × hides '
+                + samples + ' samples. Rows the search, a closed group or a × hides '
                 + 'are not in it.';
         }
         else if (c === countCol) td.textContent = String(count);
-        else if (c === col['% of Errors']) td.textContent = share(errors);
-        else if (c === col['% of All Samples']) td.textContent = share(samples);
+        else if (c === col.pctErrors) td.textContent = share(errors);
+        else if (c === col.pctSamples) td.textContent = share(samples);
         tr.appendChild(td);
     }
     tbody.appendChild(tr);
 
-    /* Apply current column visibility */
-    applyGenericColumnVisibility('errorSummaryTable');
 }
 
 /* Fixed color map for HTTP error codes */
@@ -3605,17 +3610,6 @@ function responseTimeYAxis(maxMs, name) {
  *  Table sorting
  * ============================================================ */
 
-/* Resolve a header cell by its stable logical column id (data-col-id), falling back to physical
- * index. This keeps sorting correct after columns are drag-reordered (C16). */
-function findHeaderByColId(table, colId) {
-    if (!table || !table.tHead) return null;
-    var cells = table.tHead.rows[0].cells;
-    for (var i = 0; i < cells.length; i++) {
-        var cid = cells[i].getAttribute('data-col-id');
-        if (cid != null && parseInt(cid, 10) === colId) return cells[i];
-    }
-    return cells[colId] || null;
-}
 
 /* Tag each header cell with a stable data-col-id (its initial position) so later reordering does
  * not confuse index-based sorting. Idempotent. */
@@ -3626,114 +3620,15 @@ function tagColumnIds(table) {
         if (cells[i].getAttribute('data-col-id') == null) {
             cells[i].setAttribute('data-col-id', i);
         }
+        /* the column's place in the template: what a saved order lists, whatever its id is (Compare's are
+           names since spec 002) */
+        if (cells[i].getAttribute('data-col-index') == null) {
+            cells[i].setAttribute('data-col-index', i);
+        }
     }
 }
 
-/* Read the number out of a formatted cell: thousands separators, a percent sign, a "/s"
- * rate suffix or a unit separated by whitespace ("120 ms"). */
-function parseNumericCell(text) {
-    var n = parseFloat(text.replace(/,/g, '').replace(/[%\s]/g, '').replace(/\/s$/, ''));
-    return isNaN(n) ? 0 : n;
-}
 
-function sortTable(colId, type) {
-    var table = document.getElementById('samplerTable');
-    if (!table) return;
-    var tbody = table.tBodies[0];
-    var header = findHeaderByColId(table, colId);
-    if (!header) return;
-    var effectiveCol = header.cellIndex; /* current physical position, robust to drag reorder */
-
-    var rows = Array.from(tbody.rows);
-    var asc = header.getAttribute('data-sort') !== 'asc';
-    Array.from(table.tHead.rows[0].cells).forEach(function (th) { th.removeAttribute('data-sort'); });
-    header.setAttribute('data-sort', asc ? 'asc' : 'desc');
-
-    /* Sort data rows only, each carrying the rows that belong to it — its chart panel and its
-       judging-rules row — and keep the Σ Total row pinned (C17). The companions are captured
-       before anything moves. A judging row used to be sorted as a data row of its own: one cell,
-       so it compared equal to everything and landed wherever the sort left it, away from its
-       sampler (NEW-judging-row-blind). */
-    var totalGroup = null;
-    var groups = [];
-    var orphans = [];
-    var owner = null;
-    rows.forEach(function (r) {
-        if (isSamplerCompanionRow(r)) {
-            if (owner) owner.companions.push(r); else orphans.push(r);
-            return;
-        }
-        owner = { row: r, companions: [] };
-        if (r.classList.contains('total-sampler-row')) totalGroup = owner; else groups.push(owner);
-    });
-
-    var valueOf = function (row) {
-        var cell = row.cells[effectiveCol];
-        if (!cell) return null;
-        var nameEl = cell.querySelector('.sampler-name-text');
-        /* Sort text columns on the raw label. The old normalizer ran
-         * .replace(/[,%/s]/g, '') on EVERY column — a character class that strips the
-         * literal letter "s" and "/" as well as "," and "%", so "signup" compared as
-         * "ignup" and "GET /users" as "GET uer". Unit stripping belongs to numeric
-         * columns only. */
-        var v = (nameEl ? nameEl.textContent : cell.textContent).trim();
-        return type === 'num' ? parseNumericCell(v) : v;
-    };
-    var byName = Object.create(null);
-    groups.forEach(function (g) { byName[g.row.getAttribute('data-sampler')] = valueOf(g.row); });
-    var compare = function (a, b) {
-        var va = byName[a], vb = byName[b];
-        if (va === null || vb === null || va === undefined || vb === undefined) return 0;
-        if (va < vb) return asc ? -1 : 1;
-        if (va > vb) return asc ? 1 : -1;
-        return 0;
-    };
-
-    arrangeSamplerRows(tbody, compare);
-}
-
-/* The Samplers table's rows in tree order (samplerTreeOrder), each with its companions, the Σ Total row
- * first (C17), a row's depth on it for the indent (--wir-depth). compare: optional sibling order. */
-function arrangeSamplerRows(tbody, compare) {
-    var hierarchy = (globalChartData && globalChartData.transactionHierarchy) || {};
-    var totalGroup = null;
-    var groups = [];
-    var orphans = [];
-    var owner = null;
-    var byName = Object.create(null);
-    Array.from(tbody.rows).forEach(function (r) {
-        if (isSamplerCompanionRow(r)) {
-            if (owner) owner.companions.push(r); else orphans.push(r);
-            return;
-        }
-        owner = { row: r, companions: [] };
-        if (r.classList.contains('total-sampler-row')) { totalGroup = owner; return; }
-        groups.push(owner);
-        var name = r.getAttribute('data-sampler');
-        if (name !== null && byName[name] === undefined) byName[name] = owner;
-    });
-    var appendGroup = function (g) {
-        tbody.appendChild(g.row);
-        g.companions.forEach(function (c) { tbody.appendChild(c); });
-    };
-    if (totalGroup) appendGroup(totalGroup);
-    var names = groups.map(function (g) { return g.row.getAttribute('data-sampler'); })
-        .filter(function (n) { return n !== null; });
-    var arranged = Object.create(null);
-    samplerTreeOrder(names, hierarchy, compare).forEach(function (entry) {
-        var g = byName[entry.name];
-        if (!g) return;
-        arranged[entry.name] = true;
-        g.row.style.setProperty('--wir-depth', String(entry.depth));
-        appendGroup(g);
-    });
-    /* a row with no name, or a second row of one name, keeps its place after them */
-    groups.forEach(function (g) {
-        var name = g.row.getAttribute('data-sampler');
-        if (name === null || byName[name] !== g) appendGroup(g);
-    });
-    orphans.forEach(function (c) { tbody.appendChild(c); });
-}
 
 /* ============================================================
  *  Rows that belong to a sampler row
@@ -3772,26 +3667,6 @@ function samplerCompanionRow(row, className) {
     return found;
 }
 
-/**
- * Every companion row takes its owner's display: a filter or a "show all" decides about the
- * sampler row, and what belongs to it goes with it. Returns whether a chart panel came back into
- * view, so the caller can resize its charts (ECharts sized while hidden draws at zero).
- */
-function syncSamplerCompanionRows(tbody) {
-    var revealedChart = false;
-    var ownerDisplay = '';
-    Array.prototype.forEach.call(tbody.rows, function (r) {
-        if (!isSamplerCompanionRow(r)) {
-            ownerDisplay = r.style.display;
-            return;
-        }
-        if (r.classList.contains('sampler-detail-row') && r.style.display === 'none' && ownerDisplay !== 'none') {
-            revealedChart = true;
-        }
-        r.style.display = ownerDisplay === 'none' ? 'none' : '';
-    });
-    return revealedChart;
-}
 
 /* ============================================================
  *  Cross-chart sync
@@ -4204,169 +4079,146 @@ function getChartTheme() {
  *  Sampler table: search, column toggle
  * ============================================================ */
 
-/* The Aggregate Report's columns (StatGraphVisualizer), Sent KB/s included (B8), plus Apdex. */
-var COLUMN_NAMES = [W('Sampler'), 'Samples', 'Errors', 'Error %', 'Mean (ms)',
-    'Median (ms)', 'P90 (ms)', 'P95 (ms)', 'P99 (ms)', 'Min (ms)', 'Max (ms)',
-    'Throughput', 'Recv KB/s', 'Sent KB/s', 'Apdex'];
-
-var hiddenColumns = {};
-
-/* A row is suppressed independently of the search box: explicitly hidden via ×, or a collapsed
- * transaction child. The search filter must not override these (C18). */
-/* Whether a Samplers row is kept out of sight whatever the search: the reader hid it, or a transaction
- * it is inside, with ×; or it is inside a transaction while Transaction Details is off. */
-function isSamplerRowSuppressed(row, rowByName) {
-    if (row.classList.contains('user-hidden')) return true;
-    if (row.classList.contains('transaction-child') && !showTransactionChildren) return true;
-    var name = row.getAttribute('data-sampler');
-    if (name === null || !row.parentNode) return false;
-    var seen = Object.create(null);
-    for (var p = transactionChildNames[name]; p !== undefined && !seen[p]; p = transactionChildNames[p]) {
-        seen[p] = true;
-        var parentRow = rowByName ? rowByName[p] : samplerRowNamed(row.parentNode, p);
-        if (parentRow && parentRow.classList.contains('user-hidden')) return true;
-    }
-    return false;
+/* ============================================================
+ *  The Requests table on the table toolkit (spec 002, stage 6)
+ *
+ *  Its rows stay the template's, with their text, because R07 holds each cell to JMeter's Aggregate Report
+ *  (FR-070). WIR.table moves them: the transaction tree (samplerTreeOrder), a ▸ on every transaction, the
+ *  search keeping a match's transactions above it, × taking a transaction's rows with it, and the rows that
+ *  belong to a row (its chart panel, the rules judging it) going with it. Every column sorts by the run's own
+ *  number for it (chartData.samplers), never by its text, so 20.7/min no longer sorts above 8.3/s (defect 1).
+ *  Expand all and Collapse all are what "Show transaction details" was: they open or close every transaction
+ *  and set which requests the filter bar's chips and the charts show.
+ * ============================================================ */
+/* A filter preset's hidden columns, as presets have always stored them: {columnId: true} */
+function samplerHiddenColumns() {
+    var t = WIR.table.table('samplerTable');
+    var out = {};
+    (t ? t.state.hiddenCols : []).forEach(function (c) { out[c] = true; });
+    return out;
 }
 
-function samplerRowNamed(tbody, name) {
-    for (var i = 0; i < tbody.rows.length; i++) {
-        if (tbody.rows[i].getAttribute('data-sampler') === name) return tbody.rows[i];
-    }
-    return null;
+function setSamplerHiddenColumns(map) {
+    var t = WIR.table.table('samplerTable');
+    if (!t) return;
+    t.state.hiddenCols = Object.keys(map || {}).filter(function (c) { return map[c]; });
+    WIR.table.applyRows('samplerTable');
 }
+
+function initSamplerTable(data) {
+    if (!document.getElementById('samplerTable')) return;
+    var stats = Object.create(null);
+    (data.samplers || []).forEach(function (s) { stats[s.name] = s; });
+    var name = function (tr) { return tr.getAttribute('data-sampler'); };
+    var figure = function (field) {
+        return function (tr) {
+            var s = stats[name(tr)];
+            var v = s ? s[field] : null;
+            return typeof v === 'number' && isFinite(v) ? v : null;
+        };
+    };
+    var column = function (id, label, field) {
+        /* ascending first, as the table always sorted and JMeter's dashboard sorts */
+        return { id: String(id), label: label, value: figure(field),
+            text: function (tr) { return cellText(tr, String(id)); } };
+    };
+    var verdict = function (tr) {
+        var badge = tr.querySelector('.assert-badge-mini');
+        return badge ? badge.textContent.trim() : null;
+    };
+    var APDEX = [['apdex-excellent', 'Excellent'], ['apdex-good', 'Good'], ['apdex-fair', 'Fair'], ['apdex-poor', 'Poor'],
+        ['apdex-unacceptable', 'Unacceptable']];
+    var rating = function (tr) {
+        var badge = tr.querySelector('.apdex-badge');
+        for (var i = 0; badge && i < APDEX.length; i++) {
+            if (badge.classList.contains(APDEX[i][0])) return { key: String(i), label: APDEX[i][1] };
+        }
+        return { key: '9', label: 'No rating' };
+    };
+    WIR.table.mountRows('samplerTable', {
+        rows: function (table) {
+            return Array.prototype.filter.call(table.tBodies[0].rows, function (r) {
+                return r.hasAttribute('data-sampler') && !r.classList.contains('total-sampler-row');
+            });
+        },
+        key: name,
+        companions: samplerCompanionRows,
+        columns: [{ id: '0', label: W('Sampler'), value: name, text: name },
+            column(1, 'Samples', 'count'), column(2, 'Errors', 'errorCount'), column(3, 'Error %', 'errorRate'),
+            column(4, 'Mean (ms)', 'mean'), column(5, 'Median (ms)', 'median'), column(6, 'P90 (ms)', 'p90'),
+            column(7, 'P95 (ms)', 'p95'), column(8, 'P99 (ms)', 'p99'), column(9, 'Min (ms)', 'min'),
+            column(10, 'Max (ms)', 'max'), column(11, 'Throughput', 'throughput'),
+            column(12, 'Recv KB/s', 'receivedBytesPerSec'), column(13, 'Sent KB/s', 'sentBytesPerSec'),
+            column(14, 'Apdex', 'apdex')],
+        search: function (tr) { return samplerRowText(tr); },
+        status: verdict,
+        statusOrder: ['FAIL', 'WARN', 'PASS'],
+        nameOf: name,
+        groupings: {
+            transaction: { label: W('Transaction'), tree: true },
+            status: { label: 'Assert status', of: function (tr) { return verdict(tr) || 'No assert'; },
+                order: function (a, b) {
+                    var rank = { FAIL: 0, WARN: 1, PASS: 2 };
+                    return (rank[a.key] !== undefined ? rank[a.key] : 3) - (rank[b.key] !== undefined ? rank[b.key] : 3);
+                } },
+            apdex: { label: 'Apdex rating', of: rating, order: function (a, b) { return Number(a.key) - Number(b.key); } }
+        },
+        /* a search keeps a match's transactions above it, and a closed one stands for its request, as the switch
+           always had it */
+        tree: { nameOf: name, childrenOf: data.transactionHierarchy || {}, searchOpens: false, noun: W('transaction'),
+            open: function () { return showTransactionChildren; } },
+        toggleHost: function (tr) { return tr.querySelector('.sampler-name-cell'); },
+        defaultGroup: 'transaction',
+        noun: [W('sampler'), W('samplers')],
+        csvName: W('sampler') + '-statistics.csv',
+        toolbar: { searchId: 'samplerSearch', placeholder: 'Filter ' + W('samplers') + '…', label: 'Filter ' + W('samplers'),
+            noun: W('samplers') },
+        /* Expand all and Collapse all: the old switch, for the chips and the charts too */
+        onExpandAll: function (open) { toggleTransactionChildrenVisibility(open); },
+        /* A chart panel that came back into view is resized: drawn while hidden, it had no size */
+        /* pinned widths are per column: a hidden column shrinks a frozen table by exactly its width */
+        columnsApplied: function (table) {
+            if (table.classList.contains('cols-frozen')) syncTableWidth(table);
+        },
+        after: function () {
+            samplerTotalRowSearch();
+            if (document.querySelector('#samplerTable .sampler-detail-row:not([style*="none"])')) {
+                setTimeout(resizeDetailCharts, 0);
+            }
+        }
+    });
+    WIR.table.applyRows('samplerTable');
+}
+
+/* The rows a reader hid, or hid under a closed transaction, made visible again with their transactions: the k6
+   tab's link to a request (FR-008). */
+function revealSamplerRow(name) {
+    var t = WIR.table.table('samplerTable');
+    if (!t) return;
+    var ancestors = [];
+    for (var p = transactionChildNames[name], n = 0; p !== undefined && n < 50; p = transactionChildNames[p], n++) {
+        ancestors.push(p);
+    }
+    t.state.q = '';
+    t.state.hidden = t.state.hidden.filter(function (k) { return k !== name && ancestors.indexOf(k) === -1; });
+    ancestors.forEach(function (a) { t.state.open[a] = true; });
+    WIR.table.applyRows('samplerTable');
+}
+
+
+
+
 
 function samplerRowText(row) {
     var nameEl = row.querySelector('.sampler-name-text');
     return (nameEl ? nameEl.textContent : row.cells[0].textContent).toLowerCase();
 }
 
-/* The one rule for which Samplers rows show, used by the search, the ×, "Show all", the Transaction
- * Details switch and the first render. A row shows unless suppressed (isSamplerRowSuppressed), and,
- * with a search typed, when it or a row inside it matches: a matching request keeps its transactions
- * above it, so it is never shown under a stranger. Each switch used to set rows on its own, so the
- * switch showed every child whatever × and the search said (E02: a hidden row came back while "Show 1
- * Hidden Row" was still offered). Returns whether a chart panel came back into view. */
-function applySamplerRowVisibility() {
-    var table = document.getElementById('samplerTable');
-    if (!table || !table.tBodies[0]) return false;
-    var tbody = table.tBodies[0];
-    var input = document.getElementById('samplerSearch');
-    var filter = input ? input.value.toLowerCase() : '';
-    var rows = Array.from(tbody.rows).filter(function (r) { return !isSamplerCompanionRow(r); });
-    /* One name -> row map per pass: each row's ancestors are looked up in it, not by a scan */
-    var rowByName = Object.create(null);
-    rows.forEach(function (r) {
-        var name = r.getAttribute('data-sampler');
-        if (name !== null && rowByName[name] === undefined) rowByName[name] = r;
-    });
-    var matches = Object.create(null);   /* by name: a match, or a transaction holding one */
-    if (filter) {
-        rows.forEach(function (r) {
-            var name = r.getAttribute('data-sampler');
-            if (name === null || samplerRowText(r).indexOf(filter) < 0) return;
-            matches[name] = true;
-            var seen = Object.create(null);
-            for (var p = transactionChildNames[name]; p !== undefined && !seen[p]; p = transactionChildNames[p]) {
-                seen[p] = true;
-                matches[p] = true;
-            }
-        });
-    }
-    rows.forEach(function (r) {
-        var name = r.getAttribute('data-sampler');
-        var searched = !filter || (name !== null ? matches[name] === true : samplerRowText(r).indexOf(filter) >= 0);
-        r.style.display = (searched && !isSamplerRowSuppressed(r, rowByName)) ? '' : 'none';
-    });
-    return syncSamplerCompanionRows(tbody);
-}
 
-function filterSamplerTable() {
-    /* A companion row is not a sampler: it was searched by its own text (a judging row's rule list),
-       so it hid under a sampler that matched and showed under one that did not. It goes with its
-       owner (applySamplerRowVisibility). */
-    if (applySamplerRowVisibility()) setTimeout(resizeDetailCharts, 0);
-}
 
-function initColumnMenu() {
-    var menu = document.getElementById('columnMenu');
-    if (!menu) return;
-    menu.innerHTML = '';
 
-    COLUMN_NAMES.forEach(function (name, idx) {
-        var label = document.createElement('label');
-        var cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.checked = !hiddenColumns[idx];
-        cb.addEventListener('change', function () {
-            if (cb.checked) {
-                delete hiddenColumns[idx];
-            } else {
-                hiddenColumns[idx] = true;
-            }
-            applyColumnVisibility();
-        });
-        label.appendChild(cb);
-        label.appendChild(document.createTextNode(' ' + name));
-        menu.appendChild(label);
-    });
-}
 
-function toggleColumnMenu() {
-    var menu = document.getElementById('columnMenu');
-    if (menu) menu.classList.toggle('open');
-}
 
-function applyColumnVisibility() {
-    var table = document.getElementById('samplerTable');
-    if (!table) return;
-
-    /* hiddenColumns is keyed by the column's logical id — its COLUMN_NAMES index, which is the
-       data-col-id a header keeps when it is dragged elsewhere — and a cell is hidden by where
-       that column is now. Keyed by physical position, the Columns menu hid whichever column had
-       been dragged into the unchecked one's place. */
-    var headerCells = table.tHead.rows[0].cells;
-    var hiddenAt = [];
-    for (var i = 0; i < headerCells.length; i++) {
-        var cid = headerCells[i].getAttribute('data-col-id');
-        hiddenAt[i] = !!hiddenColumns[cid == null ? i : cid];
-        headerCells[i].style.display = hiddenAt[i] ? 'none' : '';
-    }
-    // Body
-    var rows = table.tBodies[0].rows;
-    for (var r = 0; r < rows.length; r++) {
-        /* A companion row is one cell spanning the table: hiding "column 0" of a judging row hid
-           its only cell, and the rule list vanished with the Sampler column. */
-        if (isSamplerCompanionRow(rows[r])) continue;
-        var cells = rows[r].cells;
-        for (var c = 0; c < cells.length; c++) {
-            cells[c].style.display = hiddenAt[c] ? 'none' : '';
-        }
-    }
-    /* Pinned widths are per-column, so hiding one has to shrink the table by
-     * exactly that column's width rather than leave a gap at the right. */
-    syncTableWidth(table);
-
-    // Visual indicator + "Show All Columns" button
-    var count = Object.keys(hiddenColumns).length;
-    var menuBtn = document.getElementById('columnMenuBtn');
-    if (menuBtn) menuBtn.classList.toggle('has-hidden', count > 0);
-    var colBtn = document.getElementById('showAllColumnsBtn');
-    if (colBtn) {
-        if (count > 0) {
-            colBtn.style.display = '';
-            colBtn.textContent = 'Show ' + count + ' Hidden Column' + (count > 1 ? 's' : '');
-        } else {
-            colBtn.style.display = 'none';
-        }
-    }
-}
-
-function showAllColumns() {
-    hiddenColumns = {};
-    applyColumnVisibility();
-    initColumnMenu();
-}
 
 /* ============================================================
  *  Transaction Controller Hierarchy
@@ -4384,12 +4236,13 @@ function initTransactionHierarchy(data) {
 
     /* Show the switch, in the filter bar's Samplers row, when there are transactions */
     var toggleBtn = document.getElementById('transactionChildrenBtn');
-    if (toggleBtn && Object.keys(hierarchy).length > 0) {
+    if (toggleBtn && hasHierarchy) {
         toggleBtn.style.display = '';
         toggleBtn.classList.toggle('active', showTransactionChildren);
         var toggleBox = document.getElementById('transactionChildrenCheckbox');
         if (toggleBox) toggleBox.checked = showTransactionChildren;
     }
+
 
     /* Build a set of child sampler names */
     var childOf = Object.create(null);
@@ -4435,10 +4288,7 @@ function initTransactionHierarchy(data) {
             addTitle(row, 'Also contains: ' + elsewhere[samplerName].join(', ') + ' (listed elsewhere in this table)');
         }
     });
-    if (hasHierarchy) {
-        arrangeSamplerRows(tbody, null);
-        applySamplerRowVisibility();
-    }
+    initSamplerTable(data);
 }
 
 /* on: the checkbox's own state when it calls (a click on it, or on its label); absent, a flip. Taking
@@ -4459,12 +4309,17 @@ function toggleTransactionChildrenVisibility(on) {
     var box = document.getElementById('transactionChildrenCheckbox');
     if (box) box.checked = showTransactionChildren;
 
+    /* Every transaction in the Requests table opens or closes with it: one choice, the ▸ per row aside */
+    var requests = WIR.table.table('samplerTable');
+    if (requests) requests.state.open = {};
+
+
     /* The Σ Total row first, rebuilt as it always was, then every row by the one rule, so × and the
        search still hold, the Σ row's included (it came back after a flip, review 2026-11-05). What
        belongs to a child goes with it: a chart panel or judging row open under a child stayed on
        screen under nothing once the children were collapsed. */
     updateTotalRow();
-    if (applySamplerRowVisibility()) setTimeout(resizeDetailCharts, 0);
+    WIR.table.applyRows('samplerTable');
 
     /* Show/hide child checkboxes in filter bar */
     var filterLabels = document.querySelectorAll('.transaction-child-filter');
@@ -4537,14 +4392,7 @@ function openRequestRow(name) {
     };
     var row = find();
     if (!row) return;
-    if (row.offsetParent === null) {
-        var search = document.getElementById('samplerSearch');
-        if (search && search.value) { search.value = ''; filterSamplerTable(); }
-    }
-    if (row.offsetParent === null && isTransactionChild(name) && !showTransactionChildren) {
-        toggleTransactionChildrenVisibility(true);
-    }
-    if (row.offsetParent === null) showAllRows();
+    if (row.offsetParent === null) revealSamplerRow(name);
     if (!samplerCompanionRow(row, 'sampler-detail-row')) toggleSamplerDetail(row);
     row.scrollIntoView({ block: 'center' });
 }
@@ -5058,162 +4906,232 @@ function toggleErrorDetail(row) {
 
 /* ---- Error Details: "By time" / "Grouped" view ---- */
 
-function setErrorDetailsView(mode) {
-    var timeView = document.getElementById('errViewTime');
-    var groupView = document.getElementById('errViewGroup');
-    if (!timeView || !groupView) return; /* no errors in this report */
 
-    var want = mode === 'group' ? 'group' : 'time';
-    timeView.style.display = want === 'time' ? '' : 'none';
-    groupView.style.display = want === 'group' ? '' : 'none';
 
-    var timeBtn = document.getElementById('errViewTimeBtn');
-    var groupBtn = document.getElementById('errViewGroupBtn');
-    if (timeBtn) timeBtn.classList.toggle('active', want === 'time');
-    if (groupBtn) groupBtn.classList.toggle('active', want === 'group');
 
-    try { localStorage.setItem(LS_ERR_VIEW, want); } catch (e) { /* ignore */ }
-}
 
-function restoreErrorDetailsView() {
-    var saved = null;
-    try { saved = localStorage.getItem(LS_ERR_VIEW); } catch (e) { /* ignore */ }
-    setErrorDetailsView(saved === 'group' ? 'group' : 'time');
-}
-
-/* HH:mm:ss.SSS — formatTime() gives HH:mm:ss, millis appended for ordering within the same second. */
-function formatErrorClock(ts) {
-    if (ts == null) return '';
-    var d = new Date(ts);
-    if (isNaN(d.getTime())) return '';
-    var t = d.getTime();
-    var ms = ((t % 1000) + 1000) % 1000;
-    return formatTime(d) + '.' + (ms < 10 ? '00' : ms < 100 ? '0' : '') + ms;
-}
-
-/* Group error records by sampler + response code, sorted by count desc. Each group renders a head
- * row plus a hidden body row holding one line per occurrence. Field names are the serializer's
- * short keys (sampler/code/message/thread), not the Thymeleaf model's long ones. */
-/* The grouped view's groups, one per sampler + response code (E2).
- *
- * Each group's count and its first and last seen come from the error summaries, which count every
- * error; the occurrences listed under it are the detail records the report kept, the first 500
- * errors. It used to build everything from those records, so past 500 errors the counts and the
- * last seen were the first 500's and said nothing about it (S38: 3,559 errors, its groups added up
- * to 500; 21 of its 108 groups were missing). A payload with no summaries (no errors, or an older
- * one) still groups the records. */
-/* The Errors tab's groups: the failed requests. The payload's errorSummaries also holds a transaction's own
-   failures (transactionRow), which the asserts count, as Java does, and the tab does not (E3). */
-function requestErrorSummaries(data) {
-    return ((data && data.errorSummaries) || []).filter(function (e) { return !e.transactionRow; });
-}
-
-function errorGroupsFrom(records, summaries) {
-    /* Null-prototype map so sampler names like "constructor" can't collide with Object.prototype. */
-    var byKey = Object.create(null);
-    var groups = [];
-    /* Per sampler and JMeter's type of error, the group the engine counted (E1); a payload without
-       one groups by code. */
-    function groupFor(sampler, code, from) {
-        var type = from.errorType || code || '';
-        var key = (sampler || '') + '||' + type;
-        var g = byKey[key];
-        if (!g) {
-            g = { key: key, sampler: sampler || '', code: code || '', errorType: type,
-                  message: from.message || from.responseMessage || '',
-                  /* Carried through from the payload so the grouped view says the same thing as
-                     the server-rendered table it replaces. */
-                  errorClass: from.errorClass || '', errorClassLabel: from.errorClassLabel || '',
-                  messageMeaningless: !!from.messageMeaningless,
-                  count: 0, first: null, last: null, occurrences: [] };
-            byKey[key] = g;
-            groups.push(g);
-        }
-        return g;
-    }
-    var counted = !!(summaries && summaries.length);
-    (counted ? summaries : []).forEach(function (es) {
-        var g = groupFor(es.samplerName, es.responseCode, es);
-        g.count = es.occurrenceCount || 0;
-        if (es.firstTimestamp) g.first = es.firstTimestamp;
-        if (es.lastTimestamp) g.last = es.lastTimestamp;
-    });
-    (records || []).forEach(function (er) {
-        var g = groupFor(er.sampler, er.code, er);
-        g.occurrences.push(er);
-        if (!counted) g.count++;
-        var ts = er.timestamp;
-        if (ts != null && (!counted || g.first == null)) {
-            if (g.first == null || ts < g.first) g.first = ts;
-            if (g.last == null || ts > g.last) g.last = ts;
-        }
-    });
-    groups.sort(function (a, b) { return b.count - a.count; });
-    return groups;
-}
-
-function buildErrorGroups(records, summaries) {
-    var table = document.getElementById('errorGroupsTable');
-    if (!table || !table.tBodies[0]) return;
-    var tbody = table.tBodies[0];
-    tbody.innerHTML = '';
-    var groups = errorGroupsFrom(records, summaries);
-    if (!groups.length) return;
-
-    groups.forEach(function (g) {
-        var head = document.createElement('tr');
-        head.setAttribute('data-group-head', g.key);
-        head.style.cursor = 'pointer';
-        head.innerHTML =
-            '<td style="text-align:center;color:var(--color-text-secondary);font-size:0.7rem;">&#9654;</td>' +
-            '<td><strong>' + g.count + '&times;</strong></td>' +
-            '<td><span class="error-code">' + escapeHtml(String(g.code)) + '</span>' +
-                (g.errorClassLabel
-                    ? '<span class="error-class error-class-' + escapeHtml(g.errorClass) + '">' +
-                      escapeHtml(g.errorClassLabel) + '</span>'
-                    : '') + '</td>' +
-            '<td title="' + escapeHtml(String(g.sampler)) + '" style="max-width:380px;overflow:hidden;' +
-                'text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(String(g.sampler)) + '</td>' +
-            /* JMeter's type of error, the group's key: code/message, or a failed assertion's message
-               where the HTTP reason phrase of a 2xx ("OK") says nothing (E1). */
-            '<td title="' + escapeHtml(String(g.errorType)) + '">' + escapeHtml(String(g.errorType)) + '</td>' +
-            '<td>' + formatErrorClock(g.first) + '</td>' +
-            '<td>' + formatErrorClock(g.last) + '</td>';
-        /* Listener rather than an inline onclick: sampler names may contain quotes. */
-        head.addEventListener('click', function () { toggleErrorGroup(head); });
-        tbody.appendChild(head);
-
-        var body = document.createElement('tr');
-        body.setAttribute('data-group-body', g.key);
-        body.setAttribute('data-open', '0');
-        body.style.display = 'none';
-        body.innerHTML =
-            '<td style="border-bottom:1px solid var(--color-border);"></td>' +
-            '<td colspan="6" style="padding:0 8px 10px;border-bottom:1px solid var(--color-border);">' +
-            '<div style="display:flex;flex-direction:column;gap:2px;padding-top:6px;">' +
-            (g.occurrences.length < g.count
-                ? '<div class="truncation-note" style="font-size:0.72rem;color:var(--color-text-secondary,#64748b);padding:0 8px 4px;">' +
-                  (g.occurrences.length
-                      ? 'The ' + g.occurrences.length + ' of these ' + g.count + ' among the first 500 errors the report keeps in detail.'
-                      : 'None of these ' + g.count + ' is among the first 500 errors the report keeps in detail.') +
-                  '</div>'
-                : '') +
-            g.occurrences.map(function (er) {
-                return '<div style="display:flex;align-items:baseline;gap:12px;font-size:0.76rem;' +
-                    'padding:2px 8px;border-left:2px solid var(--color-border);">' +
-                    '<span style="font-family:monospace;color:var(--color-text);white-space:nowrap;">' +
-                        formatErrorClock(er.timestamp) + '</span>' +
-                    '<span style="color:var(--color-text-secondary);white-space:nowrap;overflow:hidden;' +
-                        'text-overflow:ellipsis;">' + escapeHtml(String(er.thread || '')) + '</span>' +
-                    '</div>';
-            }).join('') +
-            '</div></td>';
-        tbody.appendChild(body);
-    });
-}
 
 /* The By-time list is the detail records, the first 500 errors: say so over it when there were more (E2).
    The codes chart and the error timeline carried that note; the list and the grouped view did not. */
+/* ---- The Errors tab's tables and Compare on the table toolkit (spec 002, stage 5) ---- */
+
+/* A row's cell under the column the header names `col`, wherever a drag has put it. */
+function cellOf(tr, col) {
+    var table = tr.closest('table');
+    var th = table && table.tHead ? table.tHead.querySelector('th[data-col-id="' + col + '"]') : null;
+    return th ? tr.cells[th.cellIndex] : null;
+}
+
+/* A cell's text as a reader reads it: the controls the page adds to a cell (the Asserts tab's ⊕) are not part of it. */
+function cellText(tr, col) {
+    var c = cellOf(tr, col);
+    if (!c) return '';
+    var copy = c.cloneNode(true);
+    Array.prototype.forEach.call(copy.querySelectorAll('button'), function (b) { b.parentNode.removeChild(b); });
+    return copy.textContent.trim();
+}
+
+/* A cell's number as the table wrote it: a percent, a unit or no digits at all is not part of it. */
+function cellNumber(tr, col) {
+    var n = parseFloat(cellText(tr, col).replace(/[%\s]/g, ''));
+    return isNaN(n) ? null : n;
+}
+
+function textColumn(id, label, extra) {
+    return Object.assign({ id: id, label: label,
+        value: function (tr) { return cellText(tr, id); }, text: function (tr) { return cellText(tr, id); } }, extra || {});
+}
+
+function numberColumn(id, label) {
+    return { id: id, label: label, firstDir: 'desc',
+        value: function (tr) { return cellNumber(tr, id); }, text: function (tr) { return cellText(tr, id); } };
+}
+
+/* Error Summary and Error Details keep the template's rows (R07 reads the page's rows, FR-070). "By time / Grouped"
+   is Error Details' Group by now: the sampler and type of error (the old Grouped view), the error class, or the code. */
+function initErrorTables() {
+    if (document.getElementById('errorSummaryTable')) {
+        WIR.table.mountRows('errorSummaryTable', {
+            rows: function (table) {
+                return Array.prototype.filter.call(table.tBodies[0].rows, function (r) { return r.hasAttribute('data-sampler'); });
+            },
+            key: function (tr) {
+                return [tr.getAttribute('data-sampler'), tr.getAttribute('data-response-code'),
+                    tr.getAttribute('data-error-type')].join(' ');
+            },
+            columns: [textColumn('sampler', W('Sampler'), { hideable: false }), textColumn('code', 'Response Code'),
+                textColumn('type', 'Type of error'), textColumn('class', 'Class'), numberColumn('count', 'Count'),
+                numberColumn('pctErrors', '% of Errors'), numberColumn('pctSamples', '% of All Samples')],
+            search: function (tr) { return tr.textContent; },
+            nameOf: function (tr) { return tr.getAttribute('data-sampler'); },
+            groupings: {
+                class: { label: 'Error class', of: function (tr) { return cellText(tr, 'class'); } },
+                code: { label: 'Response code', of: function (tr) { return cellText(tr, 'code'); } }
+            },
+            noun: ['row', 'rows'],
+            csvName: 'error-summary.csv',
+            toolbar: { searchId: 'errorSummaryTable-search', placeholder: 'Filter errors…', label: 'Filter the error summary' },
+            /* The Total covers the rows shown and stays last (B2) */
+            after: function () { buildErrorSummaryTotalRow(); }
+        });
+        WIR.table.applyRows('errorSummaryTable');
+    }
+    if (document.getElementById('errorDetailsTable')) {
+        var errorOf = function (tr) {
+            var s = tr.getAttribute('data-sampler');
+            var m = cellText(tr, 'message');
+            return { key: s + ' ' + m, label: s + ' · ' + m };
+        };
+        WIR.table.mountRows('errorDetailsTable', {
+            rows: function (table) {
+                return Array.prototype.filter.call(table.tBodies[0].rows, function (r) { return r.classList.contains('error-row-main'); });
+            },
+            key: function (tr) { return tr.getAttribute('data-error-idx'); },
+            companions: function (tr) {
+                var out = [];
+                for (var n = tr.nextElementSibling; n && n.classList.contains('error-detail-row'); n = n.nextElementSibling) out.push(n);
+                return out;
+            },
+            columns: [textColumn('time', 'Time', { value: function (tr) { return Number(tr.getAttribute('data-time')); } }),
+                textColumn('sampler', W('Sampler')), textColumn('code', 'Code'), textColumn('class', 'Class'),
+                textColumn('message', 'Message'), textColumn('thread', W('Thread'))],
+            search: function (tr) { return tr.textContent; },
+            nameOf: function (tr) { return tr.getAttribute('data-sampler'); },
+            groupings: {
+                error: { label: W('Sampler') + ' and type of error', of: errorOf,
+                    order: function (a, b) { return b.size - a.size || WIR.table.compareValues(a.label, b.label); } },
+                class: { label: 'Error class', of: function (tr) { return cellText(tr, 'class'); } },
+                code: { label: 'Response code', of: function (tr) { return cellText(tr, 'code'); } }
+            },
+            noun: ['error', 'errors'],
+            csvName: 'error-details.csv',
+            toolbar: { searchId: 'errorDetailsTable-search', placeholder: 'Filter errors…', label: 'Filter the error details' }
+        });
+        WIR.table.applyRows('errorDetailsTable');
+    }
+}
+
+/* ---- Compare: its rows are drawn from the comparison, so Apply, a column drag and the Σ Total chip keep the view ---- */
+
+function comparisonStatus(d) {
+    return d.removed ? 'REMOVED' : d.isNew ? 'NEW' : d.regression ? 'REGRESSION' : 'OK';
+}
+
+function comparisonRecords(data) {
+    var recs = (data.comparisonDiffs || []).slice();
+    var total = data.comparisonTotal;
+    if (total && isTotalVisible()) {
+        recs.unshift(Object.assign({}, total, { total: true, name: TOTAL_SAMPLER_NAME }));
+    }
+    return recs;
+}
+
+var CMP_FIGURES = ['samples', 'errors', 'errorPct', 'mean', 'median', 'p90', 'p95', 'p99', 'min', 'max', 'throughput', 'recv'];
+
+/* A compared row's figures, as the Samplers table writes them (the Aggregate Report's patterns), by column id. */
+function comparisonFigures(d) {
+    if (d.total) {
+        var texts = sigmaTotalCellTexts(totalRowFigures(globalChartData, isTransactionChild)).slice(0, 12);
+        var out = {};
+        CMP_FIGURES.forEach(function (c, i) { out[c] = texts[i]; });
+        return out;
+    }
+    if (d.removed) return {};
+    return {
+        samples: d.currSamples ? wholeNumberText(d.currSamples) : '—',
+        errors: wholeNumberText(d.currErrors || 0),
+        errorPct: twoDecimalsText(d.currSamples > 0 ? (d.currErrors || 0) * 100 / d.currSamples : 0) + '%',
+        mean: wholeNumberText(d.currMean), median: wholeNumberText(d.currMedian), p90: wholeNumberText(d.currP90),
+        p95: wholeNumberText(d.currP95), p99: wholeNumberText(d.currP99), min: wholeNumberText(d.currMin),
+        max: wholeNumberText(d.currMax),
+        throughput: d.currThroughput != null ? formatRate(d.currThroughput) : '—',
+        recv: d.currRecvKBs != null ? twoDecimalsText(d.currRecvKBs) : '—'
+    };
+}
+
+var CMP_VALUE = {
+    samples: 'currSamples', errors: 'currErrors', mean: 'currMean', median: 'currMedian', p90: 'currP90', p95: 'currP95',
+    p99: 'currP99', min: 'currMin', max: 'currMax', throughput: 'currThroughput', recv: 'currRecvKBs'
+};
+
+function comparisonColumns() {
+    var labels = { samples: 'Samples', errors: 'Errors', errorPct: 'Error %', mean: 'Mean (ms)', median: 'Median (ms)',
+        p90: 'P90 (ms)', p95: 'P95 (ms)', p99: 'P99 (ms)', min: 'Min (ms)', max: 'Max (ms)', throughput: 'Throughput',
+        recv: 'Recv KB/s' };
+    return [{ id: 'name', label: W('Sampler'), hideable: false, value: function (d) { return d.name; }, text: function (d) { return d.name; } },
+        { id: 'status', label: 'Status', value: function (d) { return comparisonStatus(d); }, text: comparisonStatus }]
+        .concat(CMP_FIGURES.map(function (c) {
+            return { id: c, label: labels[c], firstDir: 'desc',
+                value: function (d) {
+                    if (d.removed) return null;
+                    if (c === 'errorPct') return d.currSamples > 0 ? (d.currErrors || 0) / d.currSamples : null;
+                    var v = d[CMP_VALUE[c]];
+                    return typeof v === 'number' ? v : null;
+                },
+                text: function (d) { var f = comparisonFigures(d)[c]; return f === undefined ? '—' : f; } };
+        }));
+}
+
+function initComparisonTable() {
+    WIR.table.mountRows('comparisonTable', {
+        key: function (d) { return d.total ? 'Σ' : d.name; },
+        columns: comparisonColumns(),
+        search: function (d) { return d.name; },
+        status: comparisonStatus,
+        statusOrder: ['REGRESSION', 'NEW', 'REMOVED', 'OK'],
+        nameOf: function (d) { return d.total ? null : d.name; },
+        pinned: function (d) { return d.total ? 'first' : null; },
+        groupings: { status: { label: 'Status', of: comparisonStatus,
+            order: function (a, b) { return ['REGRESSION', 'NEW', 'REMOVED', 'OK'].indexOf(a.key) - ['REGRESSION', 'NEW', 'REMOVED', 'OK'].indexOf(b.key); } } },
+        csvName: 'comparison.csv',
+        toolbar: { searchId: 'comparisonTable-search', placeholder: 'Filter ' + W('samplers') + '…', label: 'Filter the comparison',
+            noun: W('samplers') },
+        render: renderComparison
+    });
+    renderComparison();
+}
+
+function comparisonRowHtml(d, order) {
+    var status = comparisonStatus(d);
+    var figures = comparisonFigures(d);
+    var deltas = { samples: [d.deltaSamples, '', 'neutral'], errors: [d.deltaErrors, ''], errorPct: [d.deltaErrorRate, '%'],
+        mean: [d.deltaMean, ' ms'], median: [d.deltaMedian, ' ms'], p90: [d.deltaP90, ' ms'], p95: [d.deltaP95, ' ms'],
+        p99: [d.deltaP99, ' ms'], min: [d.deltaMin, ' ms'], max: [d.deltaMax, ' ms'],
+        throughput: [d.deltaThroughput, '/s', true], recv: [d.deltaRecvKBs, '', true] };
+    var cells = {
+        name: '<td data-col-id="name" title="' + escapeHtml(d.name) + '">' + escapeHtml(d.name) + '</td>',
+        status: '<td data-col-id="status"><span class="status-badge cmp-' + status.toLowerCase() +
+            '" style="font-size:0.65rem;padding:2px 8px;">' + status + '</span></td>'
+    };
+    CMP_FIGURES.forEach(function (c) {
+        cells[c] = d.removed ? '<td data-col-id="' + c + '">—</td>'
+            : '<td data-col-id="' + c + '">' + escapeHtml(figures[c]) + inlineDelta(deltas[c][0], deltas[c][1], deltas[c][2]) + '</td>';
+    });
+    var key = d.total ? 'Σ' : d.name;
+    /* A removed sampler ran in the baseline but not in this run, so it has no current-side figures: dashes. */
+    return '<tr data-key="' + escapeHtml(key) + '"' + (d.total ? ' class="comparison-total-row" style="font-weight:700"' : '') +
+        (d.removed ? ' title="Present in the baseline, absent from this run"' : '') + '>' +
+        order.map(function (c) { return c === null ? '' : cells[c] || ''; }).join('') +
+        '<td>' + (d.total ? '' : '<button type="button" class="wir-row-hide" title="Hide this row" aria-label="Hide this row">&times;</button>') +
+        '</td></tr>';
+}
+
+/* The Compare body, drawn from the comparison under the table's view: Apply, the Σ Total chip and a column drag all
+   come here, so none of them loses the search, the hidden rows or the sort (defect 2), and each cell is drawn under
+   its own header, wherever a drag or a saved order put it (defect 3). */
+function renderComparison() {
+    var tbody = document.getElementById('comparisonTableBody');
+    if (!tbody || !globalChartData || !globalChartData.comparisonDiffs || !WIR.table.table('comparisonTable')) return;
+    var v = WIR.table.compute('comparisonTable', comparisonRecords(globalChartData));
+    var order = WIR.table.headerOrder('comparisonTable').filter(function (c) { return c !== null; });
+    var span = order.length + 1;
+    tbody.innerHTML = v.rows.map(function (row) {
+        return row.kind === 'group' ? WIR.table.groupRow('comparisonTable', row, span, [W('sampler'), W('samplers')])
+            : comparisonRowHtml(row.record, order);
+    }).join('');
+    WIR.table.finish('comparisonTable');
+}
+
 function noteKeptErrorRecords(data) {
     var table = document.getElementById('errorDetailsTable');
     if (!table || !data || !data.errorRecordsTruncated) return;
@@ -5228,54 +5146,15 @@ function noteKeptErrorRecords(data) {
 
 function keptErrorsNote(kept, total) {
     return 'The first ' + kept + ' of ' + (total != null ? total : 'more') + ' errors, kept in detail. ' +
-        'The Error Summary, the charts and the Grouped counts include every error.';
+        'The Error Summary and the charts include every error; Group by counts the errors kept here.';
 }
 
-/* Open state lives on the body row (data-open) so search can re-hide a group without losing it. */
-function setErrorGroupOpen(head, open) {
-    var body = head.nextElementSibling;
-    if (!body || !body.hasAttribute('data-group-body')) return;
-    body.setAttribute('data-open', open ? '1' : '0');
-    /* A group filtered out by search stays collapsed on screen but keeps its open state. */
-    body.style.display = (open && head.style.display !== 'none') ? '' : 'none';
-    var arrow = head.cells[0];
-    if (arrow) arrow.innerHTML = open ? '&#9660;' : '&#9654;';
-}
 
-function isErrorGroupOpen(head) {
-    var body = head.nextElementSibling;
-    return !!body && body.getAttribute('data-open') === '1';
-}
 
-function toggleErrorGroup(head) {
-    if (!head) return;
-    setErrorGroupOpen(head, !isErrorGroupOpen(head));
-}
 
-function setAllErrorGroups(open) {
-    var table = document.getElementById('errorGroupsTable');
-    if (!table || !table.tBodies[0]) return;
-    var heads = table.tBodies[0].querySelectorAll('[data-group-head]');
-    for (var i = 0; i < heads.length; i++) setErrorGroupOpen(heads[i], open);
-}
 
-function expandAllErrorGroups() { setAllErrorGroups(true); }
 
-function collapseAllErrorGroups() { setAllErrorGroups(false); }
 
-function filterErrorGroups(filterText) {
-    var table = document.getElementById('errorGroupsTable');
-    if (!table || !table.tBodies[0]) return;
-    var filter = (filterText || '').toLowerCase();
-    var heads = table.tBodies[0].querySelectorAll('[data-group-head]');
-    for (var i = 0; i < heads.length; i++) {
-        var head = heads[i];
-        head.style.display = head.textContent.toLowerCase().indexOf(filter) >= 0 ? '' : 'none';
-        /* Re-apply open state so a filtered-out group's body hides with its head, and a
-         * matching group that was open re-opens when it comes back. */
-        setErrorGroupOpen(head, isErrorGroupOpen(head));
-    }
-}
 
 /* ---- Response Body Viewer helpers ---- */
 
@@ -5415,7 +5294,7 @@ function saveFilterPreset() {
         currentMetric: currentMetric,
         currentPalette: currentPalette,
         lineThickness: lineThickness,
-        hiddenColumns: JSON.parse(JSON.stringify(hiddenColumns))
+        hiddenColumns: samplerHiddenColumns()
     };
 
     var presets = getPresets();
@@ -5473,9 +5352,7 @@ function resetToDefaults() {
     }
 
     /* Reset column visibility */
-    hiddenColumns = {};
-    applyColumnVisibility();
-    initColumnMenu();
+    setSamplerHiddenColumns({});
 
     saveSettings();
     if (globalChartData) initFilterBar(globalChartData);
@@ -5533,9 +5410,7 @@ function loadFilterPreset(name) {
 
     /* Apply hidden columns */
     if (preset.hiddenColumns) {
-        hiddenColumns = JSON.parse(JSON.stringify(preset.hiddenColumns));
-        applyColumnVisibility();
-        initColumnMenu(); // refresh checkboxes
+        setSamplerHiddenColumns(preset.hiddenColumns);
     }
 
     saveSettings();
@@ -7025,8 +6900,11 @@ function applyColumnOrder(table, order) {
              * a `_origIdx` property that was never assigned anywhere, so it always fell
              * through to positional matching and could mis-map a saved order once columns
              * had already been moved. */
-            var colId = currentCells[s].getAttribute('data-col-id');
-            var matches = colId != null ? parseInt(colId, 10) === order[pos] : s === order[pos];
+            /* its place in the template, else a numeric id tagColumnIds gave it, else where it is */
+            var place = currentCells[s].getAttribute('data-col-index');
+            if (place == null) place = currentCells[s].getAttribute('data-col-id');
+            var n = place != null ? parseInt(place, 10) : NaN;
+            var matches = !isNaN(n) ? n === order[pos] : s === order[pos];
             if (matches) {
                 sourceIdx = s;
                 break;
@@ -7069,7 +6947,7 @@ function initComparisonTab(data) {
     pendingChartInits.push({ tab: 'compare', fn: function () {
         initCompareRTChart(data);
         initCompareTPChart(data);
-        populateComparisonTable(data);
+        initComparisonTable();
     }});
 }
 
@@ -7132,7 +7010,7 @@ function applyComparisonThresholds() {
     });
 
     /* Re-render comparison table and What Changed summary */
-    populateComparisonTable(globalChartData);
+    renderComparison();
     initWhatChanged(globalChartData);
 }
 
@@ -7315,101 +7193,7 @@ function initCompareTPChart(data) {
     });
 }
 
-function populateComparisonTable(data) {
-    var tbody = document.getElementById('comparisonTableBody');
-    if (!tbody || !data.comparisonDiffs) return;
 
-    tbody.innerHTML = '';
-    data.comparisonDiffs.forEach(function (diff) {
-        var tr = document.createElement('tr');
-
-        /* cmp-* rather than badge-fail / badge-pass.
-         *
-         * A comparison verdict is a COMPUTED OBSERVATION — this sampler is slower than the
-         * baseline — and an assert verdict is a DECLARED JUDGEMENT: you set a limit and it was
-         * crossed. Both are bad news and both are red-ish, but sharing the class meant a change
-         * to assert styling silently restyled the Compare tab and vice versa, and a reader had
-         * no way to tell which kind of red they were looking at. The cmp palette is outlined
-         * rather than filled, the same device .wir-chip-invalid uses to say "related, not the
-         * same thing". */
-        var statusClass = diff.removed ? 'cmp-removed'
-            : (diff.isNew ? 'cmp-new' : (diff.regression ? 'cmp-regression' : 'cmp-ok'));
-        var statusText = diff.removed ? 'REMOVED'
-            : (diff.isNew ? 'NEW' : (diff.regression ? 'REGRESSION' : 'OK'));
-
-        var escapedName = escapeHtml(diff.name);
-
-        /* A removed sampler ran in the baseline but not in this run, so it has no current-side
-         * figures at all. Render the row with em dashes rather than "undefined%" across it. */
-        if (diff.removed) {
-            var dash = '<td>—</td>';
-            tr.innerHTML =
-                '<td title="' + escapedName + '">' + escapedName + '</td>' +
-                '<td><span class="status-badge ' + statusClass + '" style="font-size:0.65rem;padding:2px 8px;">' + statusText + '</span></td>' +
-                dash + dash + dash + dash + dash + dash + dash + dash + dash + dash + dash + dash +
-                '<td><button class="row-hide-btn" onclick="hideTableRow(this, \'comparisonTable\'); event.stopPropagation();" title="Hide row">&times;</button></td>';
-            tr.title = 'Present in the baseline, absent from this run';
-            tbody.appendChild(tr);
-            return;
-        }
-
-        tr.innerHTML =
-            '<td title="' + escapedName + '">' + escapedName + '</td>' +
-            '<td><span class="status-badge ' + statusClass + '" style="font-size:0.65rem;padding:2px 8px;">' + statusText + '</span></td>' +
-            comparedCells(diff, [
-                diff.currSamples ? wholeNumberText(diff.currSamples) : '\u2014',
-                wholeNumberText(diff.currErrors || 0),
-                twoDecimalsText(diff.currSamples > 0 ? (diff.currErrors || 0) * 100 / diff.currSamples : 0) + '%',
-                wholeNumberText(diff.currMean), wholeNumberText(diff.currMedian), wholeNumberText(diff.currP90),
-                wholeNumberText(diff.currP95), wholeNumberText(diff.currP99), wholeNumberText(diff.currMin),
-                wholeNumberText(diff.currMax),
-                diff.currThroughput != null ? formatRate(diff.currThroughput) : '\u2014',
-                diff.currRecvKBs != null ? twoDecimalsText(diff.currRecvKBs) : '\u2014'
-            ]) +
-            '<td><button class="row-hide-btn" onclick="hideTableRow(this, \'comparisonTable\'); event.stopPropagation();" title="Hide row">&times;</button></td>';
-
-        tbody.appendChild(tr);
-    });
-    updateComparisonTotalRow();
-}
-
-/* A compared row's figure cells: each of this run's figures (written as the Samplers table writes it,
-   the Aggregate Report's patterns) with the change from the baseline beside it. */
-function comparedCells(diff, texts) {
-    var deltas = [[diff.deltaSamples, '', 'neutral'], [diff.deltaErrors, ''], [diff.deltaErrorRate, '%'],
-        [diff.deltaMean, ' ms'], [diff.deltaMedian, ' ms'], [diff.deltaP90, ' ms'], [diff.deltaP95, ' ms'],
-        [diff.deltaP99, ' ms'], [diff.deltaMin, ' ms'], [diff.deltaMax, ' ms'],
-        [diff.deltaThroughput, '/s', true], [diff.deltaRecvKBs, '', true]];
-    return texts.map(function (text, i) {
-        return '<td>' + escapeHtml(text) + inlineDelta(deltas[i][0], deltas[i][1], deltas[i][2]) + '</td>';
-    }).join('');
-}
-
-/* The Compare table's Σ Total row: this run's whole run against the baseline's, as a JMeter user reads
-   two Aggregate Reports' TOTAL rows side by side (plan v2 item 3). It shows with the Σ Total chip and
-   stays first, as the Samplers tab's does; its figures are that row's own (sigmaTotalCellTexts over the
-   same totalRowFigures), so the two read the same; the change beside each, and its OK or REGRESSION, are
-   the comparison's (chartData.comparisonTotal: the two runs' OverallMetrics, judged as every row is). */
-function updateComparisonTotalRow() {
-    var tbody = document.getElementById('comparisonTableBody');
-    if (!tbody) return;
-    var existing = tbody.querySelector('tr.comparison-total-row');
-    if (existing) existing.remove();
-    var total = globalChartData && globalChartData.comparisonTotal;
-    if (!total || !isTotalVisible()) return;
-    var tr = document.createElement('tr');
-    tr.className = 'comparison-total-row';
-    tr.style.fontWeight = '700';
-    tr.innerHTML = '<td title="' + escapeHtml(TOTAL_SAMPLER_NAME) + '">' + escapeHtml(TOTAL_SAMPLER_NAME) + '</td>' +
-        '<td><span class="status-badge ' + (total.regression ? 'cmp-regression' : 'cmp-ok') +
-        '" style="font-size:0.65rem;padding:2px 8px;">' + (total.regression ? 'REGRESSION' : 'OK') + '</span></td>' +
-        comparedCells(total, sigmaTotalCellTexts(totalRowFigures(globalChartData, isTransactionChild)).slice(0, 12)) +
-        '<td></td>';
-    tbody.insertBefore(tr, tbody.firstChild);
-    applyGenericColumnVisibility('comparisonTable');
-    var filter = (getTableState('comparisonTable').filterText || '').toLowerCase();
-    if (filter && (tr.textContent || '').toLowerCase().indexOf(filter) < 0) tr.style.display = 'none';
-}
 
 function inlineDelta(val, suffix, invertColor) {
     if (val == null || val === 0) return '';
@@ -7625,55 +7409,9 @@ function toggleNotesPreview() {
  *  Row hide/show
  * ============================================================ */
 
-var hiddenRowCount = 0;
 
-function hideRow(btn) {
-    var row = btn.closest('tr');
-    if (!row) return;
-    /* Close what belongs to the row first — its chart panel and its judging-rules row, which
-       follow it in either order. Only a detail row directly below was closed, so an open judging
-       row stayed behind under a row that was gone. */
-    samplerCompanionRows(row).forEach(function (c) {
-        if (c.classList.contains('sampler-detail-row')) disposeDetailRowCharts(c);
-        c.remove();
-    });
-    row.classList.remove('sampler-expanded');
-    row.classList.add('user-hidden');
-    row.style.display = 'none';
-    /* the rows inside a hidden transaction go with it; the count is of the rows the reader hid */
-    applySamplerRowVisibility();
-    hiddenRowCount++;
-    updateHiddenRowsBtn();
-    updateDetailChartToolbarButtons();
-}
 
-function showAllRows() {
-    var table = document.getElementById('samplerTable');
-    if (!table) return;
-    var rows = table.tBodies[0].rows;
-    for (var i = 0; i < rows.length; i++) {
-        if (isSamplerCompanionRow(rows[i])) continue;
-        /* Every × is undone, and a transaction child shows only while Transaction Details is on.
-           This asked the parent's .tc-icon for data-expanded="true", which nothing ever sets, so a
-           child hidden with × stayed hidden while the count — and the button — reset to 0. */
-        rows[i].classList.remove('user-hidden');
-    }
-    /* and the search still holds, as the one rule says */
-    if (applySamplerRowVisibility()) setTimeout(resizeDetailCharts, 0);
-    hiddenRowCount = 0;
-    updateHiddenRowsBtn();
-}
 
-function updateHiddenRowsBtn() {
-    var btn = document.getElementById('showHiddenRowsBtn');
-    if (!btn) return;
-    if (hiddenRowCount > 0) {
-        btn.style.display = '';
-        btn.textContent = 'Show ' + hiddenRowCount + ' Hidden Row' + (hiddenRowCount > 1 ? 's' : '');
-    } else {
-        btn.style.display = 'none';
-    }
-}
 
 /* ============================================================
  *  Generic Table Column Toggle, Row Hide & Filter
@@ -7681,235 +7419,15 @@ function updateHiddenRowsBtn() {
 
 var genericTableState = {};
 
-function getTableState(tableId) {
-    if (!genericTableState[tableId]) {
-        genericTableState[tableId] = { hiddenCols: {}, hiddenRowCount: 0 };
-    }
-    return genericTableState[tableId];
-}
 
-function toggleGenericColumnMenu(btn) {
-    var wrapper = btn.parentElement;
-    var menu = wrapper.querySelector('.column-menu');
-    if (!menu) return;
 
-    var isOpen = menu.classList.contains('open');
 
-    /* Close all open generic column menus first */
-    document.querySelectorAll('.column-menu.open').forEach(function (m) { m.classList.remove('open'); });
 
-    if (isOpen) return;
 
-    /* Find the associated table */
-    var section = wrapper.closest('.report-section');
-    if (!section) return;
-    var table = section.querySelector('table.stats-table');
-    if (!table) return;
-    var tableId = table.id;
-    var state = getTableState(tableId);
 
-    /* Build menu from header cells (skip last action column(s)) */
-    menu.innerHTML = '';
-    var headerCells = table.tHead.rows[0].cells;
-    for (var i = 0; i < headerCells.length; i++) {
-        var text = headerCells[i].textContent.trim();
-        if (!text) continue; /* skip action columns */
-        (function (colIdx, colText) {
-            var label = document.createElement('label');
-            var cb = document.createElement('input');
-            cb.type = 'checkbox';
-            cb.checked = !state.hiddenCols[colIdx];
-            cb.addEventListener('change', function () {
-                if (cb.checked) {
-                    delete state.hiddenCols[colIdx];
-                } else {
-                    state.hiddenCols[colIdx] = true;
-                }
-                applyGenericColumnVisibility(tableId);
-            });
-            label.appendChild(cb);
-            label.appendChild(document.createTextNode(' ' + colText));
-            menu.appendChild(label);
-        })(i, text);
-    }
 
-    menu.classList.add('open');
-}
 
-function applyGenericColumnVisibility(tableId) {
-    var table = document.getElementById(tableId);
-    if (!table) return;
-    var state = getTableState(tableId);
 
-    var headerCells = table.tHead.rows[0].cells;
-    for (var i = 0; i < headerCells.length; i++) {
-        headerCells[i].style.display = state.hiddenCols[i] ? 'none' : '';
-    }
-    var rows = table.tBodies[0].rows;
-    for (var r = 0; r < rows.length; r++) {
-        if (rows[r].classList.contains('error-detail-row')) continue;
-        var cells = rows[r].cells;
-        for (var c = 0; c < cells.length; c++) {
-            cells[c].style.display = state.hiddenCols[c] ? 'none' : '';
-        }
-    }
-    // Visual indicator + "Show All Columns" button
-    var count = Object.keys(state.hiddenCols).length;
-    var section = table.closest('.report-section');
-    if (section) {
-        var menuBtn = section.querySelector('.column-toggle-wrapper .column-toggle-btn');
-        if (menuBtn) menuBtn.classList.toggle('has-hidden', count > 0);
-        var colBtn = document.getElementById('showAllColsBtn-' + tableId);
-        if (colBtn) {
-            if (count > 0) {
-                colBtn.style.display = '';
-                colBtn.textContent = 'Show ' + count + ' Hidden Column' + (count > 1 ? 's' : '');
-            } else {
-                colBtn.style.display = 'none';
-            }
-        }
-    }
-}
-
-function showAllGenericColumns(tableId) {
-    var state = getTableState(tableId);
-    state.hiddenCols = {};
-    applyGenericColumnVisibility(tableId);
-    /* Re-check all checkboxes in the open menu */
-    var table = document.getElementById(tableId);
-    if (!table) return;
-    var section = table.closest('.report-section');
-    if (section) {
-        section.querySelectorAll('.column-menu input[type="checkbox"]').forEach(function (cb) { cb.checked = true; });
-    }
-}
-
-/** Sort any table by column index. type: 'text' or 'num'. Skips error-detail-row. */
-function sortGenericTable(tableId, colId, type) {
-    var table = document.getElementById(tableId);
-    if (!table || !table.tBodies[0]) return;
-    var tbody = table.tBodies[0];
-
-    var th = findHeaderByColId(table, colId);
-    if (!th) return;
-    var effectiveCol = th.cellIndex; /* robust to drag reorder (C16) */
-    var asc = th.getAttribute('data-sort') !== 'asc';
-
-    var headers = table.tHead.rows[0].cells;
-    for (var i = 0; i < headers.length; i++) {
-        headers[i].removeAttribute('data-sort');
-    }
-    th.setAttribute('data-sort', asc ? 'asc' : 'desc');
-
-    /* Close any expanded detail rows before sorting so they are not orphaned from their parent (C19). */
-    Array.from(tbody.querySelectorAll('tr.error-detail-row')).forEach(function (dr) { dr.remove(); });
-
-    var rows = Array.from(tbody.rows);
-    var dataRows = rows.filter(function (r) {
-        return !r.classList.contains('error-summary-total') && !r.classList.contains('comparison-total-row');
-    });
-    var totalRow = rows.filter(function (r) { return r.classList.contains('error-summary-total'); });
-    var firstRow = rows.filter(function (r) { return r.classList.contains('comparison-total-row'); });
-
-    dataRows.sort(function (a, b) {
-        var va = a.cells[effectiveCol] ? a.cells[effectiveCol].textContent.trim() : '';
-        var vb = b.cells[effectiveCol] ? b.cells[effectiveCol].textContent.trim() : '';
-        if (type === 'num') {
-            va = parseFloat(va.replace(/[,%]/g, '')) || 0;
-            vb = parseFloat(vb.replace(/[,%]/g, '')) || 0;
-        }
-        if (va < vb) return asc ? -1 : 1;
-        if (va > vb) return asc ? 1 : -1;
-        return 0;
-    });
-
-    dataRows.forEach(function (row) { tbody.appendChild(row); });
-    /* Keep total row pinned at the bottom, and the Compare tab's Σ Total row at the top */
-    totalRow.forEach(function (tr) { tbody.appendChild(tr); });
-    firstRow.forEach(function (tr) { tbody.insertBefore(tr, tbody.firstChild); });
-}
-
-/**
- * Whether each row of a generic table shows: it matches the search, and no × (user-hidden) hides
- * it. The one place that decides it — Show Hidden re-applies it with the search's last text rather
- * than clearing every row's display, which brought back rows nobody had unhidden and undid a search
- * whose box still showed the text (B2).
- */
-function filterGenericTable(tableId, filterText) {
-    var table = document.getElementById(tableId);
-    if (!table) return;
-    var state = getTableState(tableId);
-    state.filterText = filterText;
-    var filter = filterText.toLowerCase();
-    var rows = table.tBodies[0].rows;
-    for (var i = 0; i < rows.length; i++) {
-        if (rows[i].classList.contains('error-detail-row')) continue;
-        /* The Total sums the rows shown; it is not a row the search can hide (B2). */
-        if (rows[i].classList.contains('error-summary-total')) continue;
-        var matches = rows[i].textContent.toLowerCase().indexOf(filter) >= 0;
-        /* Don't un-hide rows the user explicitly hid. */
-        var suppressed = rows[i].classList.contains('user-hidden');
-        rows[i].style.display = (matches && !suppressed) ? '' : 'none';
-    }
-    refreshTableTotal(tableId);
-}
-
-/** Every row's display again, as filterGenericTable decides it under the search's current text. */
-function reapplyGenericRowDisplay(tableId) {
-    filterGenericTable(tableId, getTableState(tableId).filterText || '');
-}
-
-/* The Error Summary's Total covers the rows shown, so whatever changes them rebuilds it — once it
-   exists: the Errors tab builds it when it is first drawn (initErrorBreakdownCharts). */
-function refreshTableTotal(tableId) {
-    if (tableId !== 'errorSummaryTable') return;
-    var table = document.getElementById(tableId);
-    if (table && table.querySelector('tr.error-summary-total')) buildErrorSummaryTotalRow();
-}
-
-function hideTableRow(btn, tableId) {
-    var row = btn.closest('tr');
-    if (!row) return;
-    /* Close any expanded detail row */
-    var next = row.nextElementSibling;
-    if (next && next.classList.contains('error-detail-row')) {
-        next.remove();
-    }
-    row.classList.add('user-hidden');
-    row.style.display = 'none';
-    var state = getTableState(tableId);
-    state.hiddenRowCount++;
-    updateGenericHiddenBtn(tableId);
-    refreshTableTotal(tableId);
-}
-
-/* Brings back what × hid, and only that: the search and the collapsed children keep theirs. */
-function showAllTableRows(tableId) {
-    var table = document.getElementById(tableId);
-    if (!table) return;
-    var rows = table.tBodies[0].rows;
-    for (var i = 0; i < rows.length; i++) {
-        if (!rows[i].classList.contains('error-detail-row')) {
-            rows[i].classList.remove('user-hidden');
-        }
-    }
-    var state = getTableState(tableId);
-    state.hiddenRowCount = 0;
-    updateGenericHiddenBtn(tableId);
-    reapplyGenericRowDisplay(tableId);
-}
-
-function updateGenericHiddenBtn(tableId) {
-    var btn = document.getElementById('showHiddenBtn-' + tableId);
-    if (!btn) return;
-    var state = getTableState(tableId);
-    if (state.hiddenRowCount > 0) {
-        btn.style.display = '';
-        btn.textContent = 'Show ' + state.hiddenRowCount + ' Hidden Row' + (state.hiddenRowCount > 1 ? 's' : '');
-    } else {
-        btn.style.display = 'none';
-    }
-}
 
 /* ============================================================
  *  CSV Export for Tables
@@ -7955,26 +7473,6 @@ function fmtNum(v, decimals) {
     return decimals != null ? Number(v).toFixed(decimals) : String(v);
 }
 
-/* A CSV cell for a sample field: "not measured" where the run's tool does not record it (FR-008). */
-function measuredOr(field, text) {
-    return isNotMeasured(field) ? W('notMeasured') : text;
-}
-
-function exportSamplerStatsCsv() {
-    if (!globalChartData || !globalChartData.samplers) return;
-    var headers = [W('Sampler'), 'Samples', 'Errors', 'Error %', 'Mean (ms)', 'Median (ms)',
-        'P90 (ms)', 'P95 (ms)', 'P99 (ms)', 'Min (ms)', 'Max (ms)', 'Std Dev',
-        'Throughput (/s)', 'Received B/s', 'Sent B/s', 'Avg Connect (ms)', 'Avg Latency (ms)', 'Apdex'];
-    var rows = globalChartData.samplers.map(function (s) {
-        return [s.name, s.count, s.errorCount, fmtNum(s.errorRate, 2),
-            fmtNum(s.mean, 2), fmtNum(s.median, 2), fmtNum(s.p90, 2), fmtNum(s.p95, 2),
-            fmtNum(s.p99, 2), fmtNum(s.min, 2), fmtNum(s.max, 2), fmtNum(s.stdDev, 2),
-            fmtNum(s.throughput, 2), measuredOr('bytes', fmtNum(s.receivedBytesPerSec, 2)),
-            measuredOr('sentBytes', fmtNum(s.sentBytesPerSec, 2)), measuredOr('connect', fmtNum(s.meanConnectTime, 2)),
-            measuredOr('latency', fmtNum(s.meanLatency, 2)), fmtNum(s.apdex, 2)];
-    });
-    downloadCsvFile(W('sampler') + '-statistics.csv', buildCsvFromArrays(headers, rows));
-}
 
 function exportTop5SlowestCsv() {
     if (!globalChartData || !globalChartData.samplers) return;
@@ -7988,61 +7486,8 @@ function exportTop5SlowestCsv() {
     downloadCsvFile('top5-slowest-' + W('samplers') + '.csv', buildCsvFromArrays(headers, rows));
 }
 
-function exportErrorSummaryCsv() {
-    if (!globalChartData) return;
-    var records = globalChartData.errorSummaries ? requestErrorSummaries(globalChartData) : (globalChartData.errorsByType || []);
-    var headers = [W('Sampler'), 'Response Code', 'Type of Error', 'Error Class', 'Response Message', 'Count',
-        '% of Errors', '% of All Samples'];
-    var rows = records.map(function (e) {
-        return [e.samplerName || e.sampler || '', e.responseCode || e.code || '', e.errorType || '',
-            errorClassLabelOf(e),
-            /* Blank rather than "OK": exporting the HTML reason phrase of a 2xx as a failure
-               message is the same untruth as printing it. */
-            e.messageMeaningless ? '' : (e.responseMessage || e.message || ''),
-            e.occurrenceCount || e.count || 0,
-            fmtNum(e.percentageOfErrors, 2), fmtNum(e.percentageOfAllSamples, 2)];
-    });
-    downloadCsvFile('error-summary.csv', buildCsvFromArrays(headers, rows));
-}
 
-function exportErrorDetailsCsv() {
-    if (!globalChartData || !globalChartData.errorRecords) return;
-    var headers = ['Timestamp', W('Sampler'), 'Response Code', 'Type of Error', 'Error Class', 'Response Message',
-        W('Thread'), 'URL', 'Request Headers', 'Response Body'];
-    var rows = globalChartData.errorRecords.map(function (e) {
-        var ts = e.timestamp ? new Date(e.timestamp).toISOString() : '';
-        return [ts, e.samplerName || e.sampler || '', e.responseCode || e.code || '', e.errorType || '',
-            errorClassLabelOf(e),
-            e.messageMeaningless ? '' : (e.responseMessage || e.message || ''),
-            e.threadName || e.thread || '',
-            e.requestUrl || e.url || '', e.headers || '', e.body || ''];
-    });
-    downloadCsvFile('error-details.csv', buildCsvFromArrays(headers, rows));
-}
 
-function exportComparisonCsv() {
-    if (!globalChartData || !globalChartData.comparisonDiffs) return;
-    var headers = ['Sampler', 'Status', 'Samples', 'Delta Samples', 'Errors', 'Delta Errors',
-        'Error %', 'Delta Error %', 'Mean (ms)', 'Delta Mean', 'Median (ms)', 'Delta Median',
-        'P90 (ms)', 'Delta P90', 'P95 (ms)', 'Delta P95', 'P99 (ms)', 'Delta P99',
-        'Min (ms)', 'Delta Min', 'Max (ms)', 'Delta Max', 'Throughput', 'Delta Throughput',
-        'Recv KB/s', 'Delta Recv KB/s'];
-    var rows = globalChartData.comparisonDiffs.map(function (d) {
-        var status = d.removed ? 'REMOVED' : (d.isNew ? 'NEW' : (d.regression ? 'REGRESSION' : 'OK'));
-        return [d.name, status, d.currSamples, d.deltaSamples, d.currErrors, d.deltaErrors,
-            fmtNum(d.currErrorRate, 2), fmtNum(d.deltaErrorRate, 2),
-            fmtNum(d.currMean, 2), fmtNum(d.deltaMean, 2),
-            fmtNum(d.currMedian, 2), fmtNum(d.deltaMedian, 2),
-            fmtNum(d.currP90, 2), fmtNum(d.deltaP90, 2),
-            fmtNum(d.currP95, 2), fmtNum(d.deltaP95, 2),
-            fmtNum(d.currP99, 2), fmtNum(d.deltaP99, 2),
-            fmtNum(d.currMin, 2), fmtNum(d.deltaMin, 2),
-            fmtNum(d.currMax, 2), fmtNum(d.deltaMax, 2),
-            fmtNum(d.currThroughput, 2), fmtNum(d.deltaThroughput, 2),
-            fmtNum(d.currRecvKBs, 2), fmtNum(d.deltaRecvKBs, 2)];
-    });
-    downloadCsvFile('comparison.csv', buildCsvFromArrays(headers, rows));
-}
 
 /* ============================================================
  *  Bootstrap — run when DOM is ready
@@ -8056,7 +7501,6 @@ document.addEventListener('DOMContentLoaded', function () {
     initPaletteToggle();
     initLineThicknessToggle();
     initPercentileToggle();
-    initColumnMenu();
     initColumnDragDrop();
     /* After initColumnDragDrop, so a saved column order is already applied and
      * the restored widths land on the columns they were measured from. */
@@ -8064,20 +7508,8 @@ document.addEventListener('DOMContentLoaded', function () {
     initChartDragDrop();
     restoreChartLayout();
 
-    // Close column menus on outside click
+    // Close the filter bar's menu on an outside click (a table's Columns menu closes itself, WIR.table)
     document.addEventListener('click', function (e) {
-        var menu = document.getElementById('columnMenu');
-        var btn = document.getElementById('columnMenuBtn');
-        if (menu && !menu.contains(e.target) && e.target !== btn) {
-            menu.classList.remove('open');
-        }
-        /* Close generic column menus */
-        document.querySelectorAll('.column-menu.open').forEach(function (m) {
-            var wrapper = m.closest('.column-toggle-wrapper');
-            if (wrapper && !wrapper.contains(e.target)) {
-                m.classList.remove('open');
-            }
-        });
         /* Close filter bar menu */
         var fbMenu = document.getElementById('filterBarMenu');
         var fbWrapper = fbMenu ? fbMenu.closest('.filter-bar-toggle-wrapper') : null;
@@ -8549,6 +7981,7 @@ WIR.table = (function () {
         Object.keys(kids).forEach(function (n) { result.groups.push(n); });
         result.groups.sort(function (a, b) { return allNames.indexOf(a) - allNames.indexOf(b); });
         var closedAbove = [];
+        var defaultOpen = typeof tree.open === 'function' ? !!tree.open() : tree.open !== false;
         ordered.forEach(function (o) {
             if (!shown[o.name]) return;
             var it = byName[o.name];
@@ -8557,7 +7990,7 @@ WIR.table = (function () {
             var hidden = closedAbove.some(function (c) { return c; });
             var hasKids = !!kids[o.name];
             var isOpen = open[o.name] !== undefined ? !!open[o.name]
-                : (filterActive && hasKids) ? true : tree.open !== false;
+                : (filterActive && hasKids && tree.searchOpens !== false) ? true : defaultOpen;
             closedAbove[o.depth] = hasKids && !isOpen;
             if (hidden) return;
             var row = { kind: 'row', key: it.key, record: it.record, depth: o.depth, group: parentOf[o.name] || null,
@@ -8634,7 +8067,7 @@ WIR.table = (function () {
         }
         var t = { id: id, spec: spec, state: s, last: null, menu: false };
         tables[id] = t;
-        bindMenuDismiss();
+        bindDocument();
         return t;
     }
 
@@ -8716,6 +8149,7 @@ WIR.table = (function () {
         var t = tables[id];
         if (!t || !t.last) return;
         t.last.groups.forEach(function (k) { t.state.open[k] = !!open; });
+        if (t.spec.onExpandAll) t.spec.onExpandAll(!!open);
         changed(t, 'open');
     }
 
@@ -8802,9 +8236,22 @@ WIR.table = (function () {
 
     /* A Columns menu closes on a click outside it and on Escape, as a menu does. */
     var menuDismissBound = false;
-    function bindMenuDismiss() {
+    /* The document's listeners, bound once: a Columns menu closes on a click outside it or on Escape, and a toolbar's
+       search box and Group by report here, by the table their data attribute names. No toolbar carries an oninput
+       or onchange attribute: the Server tab allows its handlers one shape only, a call of literals (R3-17). */
+    function bindDocument() {
         if (menuDismissBound || typeof document === 'undefined' || !document.addEventListener) return;
         menuDismissBound = true;
+        document.addEventListener('input', function (e) {
+            var el = e.target;
+            var id = el && el.getAttribute ? el.getAttribute('data-wir-table-search') : null;
+            if (id !== null && tables[id]) setQuery(id, el.value);
+        });
+        document.addEventListener('change', function (e) {
+            var el = e.target;
+            var id = el && el.getAttribute ? el.getAttribute('data-wir-table-group') : null;
+            if (id !== null && tables[id]) setGroup(id, el.value);
+        });
         var closeAll = function (except) {
             Object.keys(tables).forEach(function (id) {
                 var t = tables[id];
@@ -8834,19 +8281,21 @@ WIR.table = (function () {
         opts = opts || {};
         var sorted = !!(t.state.sort && t.state.sort.col === col);
         var dir = sorted ? t.state.sort.dir : null;
-        var attrs = ' data-col-id="' + esc(col) + '"' + (columnHidden(id, col) ? ' style="display:none"' : '');
+        var attrs = ' data-col-id="' + esc(col) + '"' + (columnHidden(id, col) ? ' style="display:none"' : '') +
+            (opts.thTitle ? ' title="' + esc(opts.thTitle) + '"' : '');
         if (c.sortable === false) {
             return '<th' + (opts.cls ? ' class="' + opts.cls + '"' : '') + attrs + '>' + esc(c.label) +
                 (opts.extra || '') + '</th>';
         }
         return '<th class="wir-th-sortable' + (opts.cls ? ' ' + opts.cls : '') + '" data-sort-col="' + esc(col) + '"' +
             attrs + (sorted ? ' aria-sort="' + (dir === 'desc' ? 'descending' : 'ascending') + '"' : '') + '>' +
-            '<button type="button" class="wir-sort-btn" id="' + esc(id + '-sort-' + col) + '"' +
+            /* opts.idSuffix: a table that draws several header rows (the Server board's cards) */
+            '<button type="button" class="wir-sort-btn" id="' + esc(id + '-sort-' + col + (opts.idSuffix || '')) + '"' +
             ' title="' + esc(opts.title || 'Sort by ' + c.label) + '"' +
             ' onclick="WIR.table.sortBy(' + jsArg(id) + ', ' + jsArg(col) + ')">' +
             esc(c.label) +
-            '<span class="wir-sort-glyph' + (sorted ? ' wir-sort-on' : '') + '">' +
-            (sorted ? (dir === 'desc' ? '▼' : '▲') : '↕') + '</span></button>' + (opts.extra || '') + '</th>';
+            /* the glyph is the stylesheet's, from aria-sort: a header's text stays its label */
+            '<span class="wir-sort-glyph" aria-hidden="true"></span></button>' + (opts.extra || '') + '</th>';
     }
 
     /** A body cell's attributes: its column, and hidden while the column is. */
@@ -8902,8 +8351,7 @@ WIR.table = (function () {
         if (spec.search) {
             h += '<input type="text" class="wir-rules-search wir-table-search" id="' + esc(opts.searchId || id + '-search') + '"' +
                 ' placeholder="' + esc(opts.placeholder || 'Search…') + '" aria-label="' + esc(opts.label || 'Search') + '"' +
-                ' value="' + esc(s.q) + '"' +
-                ' oninput="WIR.table.setQuery(' + jsArg(id) + ', this.value)"/>';
+                ' value="' + esc(s.q) + '" data-wir-table-search="' + esc(id) + '"/>';
         }
         if (spec.status && t.last) {
             h += WIR.status.chipsHtml({
@@ -8915,7 +8363,7 @@ WIR.table = (function () {
         var groups = Object.keys(spec.groupings || {});
         if (groups.length) {
             h += '<label class="wir-table-group">Group by <select class="wir-filter-select" id="' + esc(id + '-group') + '"' +
-                ' onchange="WIR.table.setGroup(' + jsArg(id) + ', this.value)">' +
+                ' data-wir-table-group="' + esc(id) + '">' +
                 (spec.noGrouping === false ? '' : '<option value=""' + (s.group ? '' : ' selected') + '>None</option>') +
                 groups.map(function (g) {
                     return '<option value="' + esc(g) + '"' + (s.group === g ? ' selected' : '') + '>' +
@@ -8956,6 +8404,183 @@ WIR.table = (function () {
         return h + '</span></div>';
     }
 
+    /* ---------------------------------------------------------------- rows the page's HTML writes
+     *
+     * Requests and the Errors tables keep their rows in the page's HTML, with their cell text: R07 reads the page's
+     * rows and holds each cell to JMeter's Aggregate Report (FR-070). For them the toolkit never renders a row: it
+     * moves the <tr>s the template wrote, each with the rows that belong to it (spec.companions), sets their display,
+     * and inserts its group rows as tr.wir-group-row, removed again before each pass. The rows it hides go after the
+     * rows it shows, so the body's first rows are the ones on screen; a row the table keeps last (the Errors Total)
+     * is put back last by spec.after, and one it keeps first (the Σ Total) is never moved. The headers become sort
+     * buttons, and a column is hidden by its data-col-id wherever a drag has put it (FR-065, defect 4). A row's x is
+     * read by one listener, in the capture phase so the row's own click (Error Details opens a detail) does not run.
+     * Compare renders its body from state into the same kind of table: it uses the header, x and columns half.
+     */
+    function mountRows(id, spec) {
+        var table = document.getElementById(id);
+        if (!table || !table.tHead || !table.tBodies[0]) return null;
+        if (!spec.render) spec.render = function () { applyRows(id); };
+        var t = register(id, spec);
+        decorateHead(id, table);
+        table.tBodies[0].addEventListener('click', function (e) {
+            var toggle = e.target && e.target.closest ? e.target.closest('button.wir-tree-toggle') : null;
+            if (toggle && spec.tree) {
+                e.stopPropagation();
+                setOpen(id, spec.tree.nameOf(toggle.closest('tr')), toggle.getAttribute('aria-expanded') !== 'true');
+                return;
+            }
+            var btn = e.target && e.target.closest ? e.target.closest('button.wir-row-hide') : null;
+            if (!btn) return;
+            e.stopPropagation();
+            var tr = btn.closest('tr');
+            if (tr) hide(id, tr.hasAttribute('data-key') ? tr.getAttribute('data-key') : spec.key(tr));
+        }, true);
+        return t;
+    }
+
+    function decorateHead(id, table) {
+        var t = tables[id];
+        Array.prototype.forEach.call(table.tHead.rows[0].cells, function (th) {
+            var col = th.getAttribute('data-col-id');
+            var c = col && columnOf(t.spec, col);
+            if (!c || c.sortable === false || th.querySelector('.wir-sort-btn')) return;
+            th.classList.add('wir-th-sortable');
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'wir-sort-btn';
+            btn.id = id + '-sort-' + col;
+            btn.title = 'Sort by ' + c.label;
+            /* the header's content moves into the button; a column-resize handle stays the header's own */
+            Array.prototype.slice.call(th.childNodes).forEach(function (n) {
+                if (!(n.classList && n.classList.contains('col-resize-handle'))) btn.appendChild(n);
+            });
+            var glyph = document.createElement('span');
+            glyph.className = 'wir-sort-glyph';
+            glyph.setAttribute('aria-hidden', 'true');
+            btn.appendChild(glyph);
+            th.insertBefore(btn, th.firstChild);
+            btn.addEventListener('click', function () { sortBy(id, col); });
+        });
+    }
+
+    /** aria-sort on the sorted column only, and the glyphs (WAI-ARIA's sortable table). */
+    function updateHead(id, table) {
+        var s = tables[id].state.sort;
+        Array.prototype.forEach.call(table.tHead.rows[0].cells, function (th) {
+            var glyph = th.querySelector('.wir-sort-glyph');
+            if (!glyph) return;
+            var sorted = !!(s && s.col === th.getAttribute('data-col-id'));
+            if (sorted) th.setAttribute('aria-sort', s.dir === 'desc' ? 'descending' : 'ascending');
+            else th.removeAttribute('aria-sort');
+        });
+    }
+
+    /** Hides a column by its identity: its header and the cell under it in every row that has one per column. */
+    function applyDomColumns(id, table) {
+        var t = tables[id];
+        var heads = table.tHead.rows[0].cells;
+        var n = heads.length;
+        var hiddenAt = [];
+        for (var i = 0; i < n; i++) {
+            var col = heads[i].getAttribute('data-col-id');
+            hiddenAt[i] = !!col && t.state.hiddenCols.indexOf(col) !== -1;
+            heads[i].style.display = hiddenAt[i] ? 'none' : '';
+        }
+        Array.prototype.forEach.call(table.tBodies[0].rows, function (tr) {
+            if (tr.cells.length !== n) return;   /* a detail row or a group row: one cell across */
+            for (var c = 0; c < n; c++) tr.cells[c].style.display = hiddenAt[c] ? 'none' : '';
+        });
+        if (t.spec.columnsApplied) t.spec.columnsApplied(table);
+    }
+
+    /** The column ids in the order the header shows them now (a drag moves them). */
+    function headerOrder(id) {
+        var table = document.getElementById(id);
+        if (!table || !table.tHead) return [];
+        return Array.prototype.map.call(table.tHead.rows[0].cells, function (th) { return th.getAttribute('data-col-id'); });
+    }
+
+    function renderToolbar(id) {
+        var host = document.getElementById(id + '-toolbar');
+        if (host) fillKeepingFocus(host, toolbar(id, tables[id].spec.toolbar));
+    }
+
+    /** After a body was drawn from state: hidden columns, the sort marks and the toolbar. */
+    function finish(id) {
+        var table = document.getElementById(id);
+        if (!table) return;
+        applyDomColumns(id, table);
+        updateHead(id, table);
+        renderToolbar(id);
+    }
+
+    /** A transaction's ▸ in the row's own cell (spec.toggleHost): it opens and closes the rows inside it. */
+    function treeToggle(t, tr, parent, open) {
+        var host = t.spec.toggleHost ? t.spec.toggleHost(tr) : null;
+        if (!host) return;
+        var toggle = host.querySelector('.wir-tree-toggle');
+        if (!parent) {
+            if (toggle) toggle.parentNode.removeChild(toggle);
+            return;
+        }
+        if (!toggle) {
+            toggle = document.createElement('button');
+            toggle.type = 'button';
+            toggle.className = 'wir-tree-toggle';
+            host.insertBefore(toggle, host.firstChild);
+        }
+        toggle.setAttribute('aria-expanded', String(!!open));
+        var noun = t.spec.tree.noun || 'group';
+        toggle.title = (open ? 'Close this ' : 'Open this ') + noun;
+        toggle.textContent = open ? '▾' : '▸';
+    }
+
+    function applyRows(id) {
+        var t = tables[id];
+        var table = document.getElementById(id);
+        if (!t || !table) return null;
+        var tbody = table.tBodies[0];
+        Array.prototype.slice.call(tbody.querySelectorAll('tr.wir-group-row, tr.wir-fold-row'))
+            .forEach(function (r) { r.parentNode.removeChild(r); });
+        var records = t.spec.rows(table);
+        var companions = new Map();
+        records.forEach(function (r) { companions.set(r, t.spec.companions ? t.spec.companions(r) : []); });
+        var v = compute(id, records);
+        var shown = new Set();
+        v.rows.forEach(function (row) { if (row.kind === 'row') shown.add(row.record); });
+        var hidden = document.createDocumentFragment();
+        var frag = document.createDocumentFragment();
+        records.forEach(function (r) {
+            if (shown.has(r)) return;
+            r.style.display = 'none';
+            hidden.appendChild(r);
+            companions.get(r).forEach(function (c) { c.style.display = 'none'; hidden.appendChild(c); });
+        });
+        var span = table.tHead.rows[0].cells.length;
+        var grouping = t.state.group && t.spec.groupings ? t.spec.groupings[t.state.group] : null;
+        var treeMode = !!(grouping && grouping.tree);
+        v.rows.forEach(function (row) {
+            if (row.kind !== 'row') {
+                var holder = document.createElement('tbody');
+                holder.innerHTML = row.kind === 'group' ? groupRow(id, row, span, t.spec.noun)
+                    : foldRow(id, row, span, row.count + ' more');
+                frag.appendChild(holder.firstChild);
+                return;
+            }
+            var tr = row.record;
+            tr.style.display = '';
+            if (t.spec.tree) tr.style.setProperty('--wir-depth', treeMode ? row.depth || 0 : 0);
+            treeToggle(t, tr, treeMode && row.parent, row.open);
+            frag.appendChild(tr);
+            companions.get(tr).forEach(function (c) { c.style.display = ''; frag.appendChild(c); });
+        });
+        tbody.appendChild(frag);
+        tbody.appendChild(hidden);
+        if (t.spec.after) t.spec.after(v);
+        finish(id);
+        return v;
+    }
+
     return {
         view: view,
         compareValues: compareValues,
@@ -8984,7 +8609,11 @@ WIR.table = (function () {
         toggleColumn: toggleColumn,
         toggleColumnsMenu: toggleColumnsMenu,
         setExtra: setExtra,
-        csv: csv
+        csv: csv,
+        mountRows: mountRows,
+        applyRows: applyRows,
+        headerOrder: headerOrder,
+        finish: finish
     };
 }());
 
@@ -12009,8 +11638,8 @@ WIR.asserts = (function () {
     /* ============================================================
      *  Filtering and sorting the rules table
      *
-     *  On the DATA, not the DOM. The report's generic helpers — filterGenericTable,
-     *  sortGenericTable — walk `tbody tr` and set style.display, which is right for
+     *  On the DATA, not the DOM. The generic helpers this tab once sat beside (filterGenericTable,
+     *  sortGenericTable, gone with spec 002) walked `tbody tr` and set style.display, which is right for
      *  the Thymeleaf-rendered samplers and errors tables because those rows are
      *  static. These are not: renderTable() rebuilds the whole table on every edit,
      *  toggle, duplicate, delete, drag-retune and wizard apply, and it emits two
@@ -18464,7 +18093,7 @@ WIR.serverKpis = (function () {
         excludeRampUp: true,
         unavailable: null,
         open: {},
-        filters: { gate: '', status: '', text: '' },
+        filters: { gate: '' },
         /* Value over time's bucket, in ms; 0 is the collection's own step (SF39/SF42). */
         granularity: 0,
         /* The component whose card's ⋯ actions are showing, or null (SF44). */
@@ -18568,7 +18197,8 @@ WIR.serverKpis = (function () {
         state.block = block;
         state.declaredKpis = assignKeys(kpis);
         state.config = configFromJson(block && !blockShapeProblem(block) ? block : null);
-        state.filters = { gate: '', status: '', text: '' };
+        state.filters = { gate: '' };
+        if (WIR.table.table(BOARD)) WIR.table.resetFilters(BOARD);
         state.componentMenu = null;
         editor = null;
     }
@@ -19248,38 +18878,131 @@ WIR.serverKpis = (function () {
         return seedsCache;
     }
 
-    function visibleRows() {
-        return boardRows().filter(function (row) {
-            return passesFilters(row, false);
-        }).sort(function (a, b) {
-            var ra = rowRank(a);
-            var rb = rowRank(b);
-            if (ra !== rb) return ra - rb;
-            /* Then id, then the key — two KPIs may share an id, and the order must not flip. */
-            var byId = String(a.kpi.id).localeCompare(String(b.kpi.id));
-            if (byId !== 0) return byId;
-            return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
-        });
+    /* ---- the board on the table toolkit (spec 002, stage 7) ------------------------------
+     *
+     * The board is WIR.table's state adapter, as the Asserts tab is: the search and the status chips are the toolkit's
+     * (several chips at once, each counting every row, FR-062), and so are Group by — component, the cards and the
+     * default, status or none (FR-063) — the sort by any header, and the open and closed groups, all remembered for
+     * this report. A card is the component's group, and opens and closes as one. The component badge on a card is the
+     * board's own filter on top (spec.filter), and a row's charts stay the board's: state.open, redrawn by
+     * reinitOpenCharts after every pass, so a chart open in a row survives the search.
+     */
+    var BOARD = 'serverKpiTable';
+    var BOARD_STATUS_ORDER = [NEEDS_RECOLLECTION, NOT_REJUDGED].concat(S.STATUS_ORDER);
+    /* The group key of the asserts that name no component the file declares: ServerGateEvaluation's "(no gate)" */
+    var ORPHAN_GROUP = '';
+    /* The cards' order: the components the document declares, then those only the build judged */
+    var boardIds = [];
+
+    function boardView() {
+        /* registered at init; a render before it (the external-data path) registers it here */
+        if (!WIR.table.table(BOARD)) WIR.table.register(BOARD, boardSpec());
+        boardIds = componentIdsDeclared().slice();
+        gateStrip().forEach(function (e) { if (boardIds.indexOf(e.id) < 0) boardIds.push(e.id); });
+        return WIR.table.compute(BOARD, boardRows());
     }
 
-    /* Kept for the M5 specs and the read-only path: the judged entries as the payload had
-       them, filtered and sorted the same way. */
-    function visibleKpis() {
-        var f = state.filters;
-        return state.kpis.filter(function (k) {
-            /* The wire's "component" (C7); "gate" in a page generated before it. */
-            var component = k.component !== undefined ? k.component : k.gate;
-            if (f.gate && (component || '') !== f.gate) return false;
-            if (f.source && k.source !== f.source) return false;
-            if (f.status && S.displayStatus(k) !== f.status) return false;
-            return true;
-        }).slice().sort(function (a, b) {
-            var ra = S.SORT_RANK[S.displayStatus(a)];
-            var rb = S.SORT_RANK[S.displayStatus(b)];
-            if (ra !== undefined && rb !== undefined && ra !== rb) return ra - rb;
-            return String(a.id).localeCompare(String(b.id));
-        });
+    function componentGroupOf(row) {
+        var id = row.kpi.gate;
+        return id && boardIds.indexOf(id) >= 0 ? id : ORPHAN_GROUP;
     }
+
+    function boardRank(list, key) {
+        var i = list.indexOf(key);
+        return i < 0 ? list.length : i;
+    }
+
+    function finiteOrNull(v) {
+        return typeof v === 'number' && isFinite(v) ? v : null;
+    }
+
+    function boardSpec() {
+        var name = function (row) { return assertNaming(row.kpi.gate, row.kpi.metric, row.kpi.id).name; };
+        var verdictField = function (field) {
+            return function (row) { return row.verdict ? finiteOrNull(row.verdict[field]) : null; };
+        };
+        return {
+            key: function (row) { return row.key; },
+            columns: [
+                { id: 'status', label: 'Status', hideable: false, value: rowRank,
+                  text: function (row) { return S.chipLabel(rowDisplay(row)); } },
+                { id: 'name', label: 'Server assert', hideable: false, value: name, text: name },
+                { id: 'actual', label: 'Actual', hideable: false, firstDir: 'desc', value: verdictField('actual') },
+                { id: 'criteria', label: 'Criteria', hideable: false,
+                  value: function (row) {
+                      var band = row.kpi.fail || row.kpi.warn;
+                      return band ? finiteOrNull(band.value) : null;
+                  } },
+                { id: 'coverage', label: 'Coverage', hideable: false, value: verdictField('coverage') },
+                { id: 'instances', label: 'Instances', hideable: false, firstDir: 'desc', value: verdictField('instances') }
+            ],
+            /* then id, then the key: two asserts may share an id, and the order must not flip */
+            tie: function (a, b) {
+                var byId = WIR.table.compareValues(String(a.kpi.id), String(b.kpi.id));
+                return byId || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+            },
+            search: rowSearchText,
+            filter: function (row) { return !state.filters.gate || (row.kpi.gate || '') === state.filters.gate; },
+            status: rowDisplay,
+            statusOrder: BOARD_STATUS_ORDER,
+            groupings: {
+                component: { label: 'Component',
+                    of: function (row) {
+                        var id = componentGroupOf(row);
+                        return { key: id, label: id === ORPHAN_GROUP ? NO_COMPONENT_LABEL : id };
+                    },
+                    order: function (a, b) { return boardRank(boardIds, a.key) - boardRank(boardIds, b.key); } },
+                status: { label: 'Status',
+                    of: function (row) {
+                        var d = rowDisplay(row);
+                        return { key: d, label: S.chipLabel(d) };
+                    },
+                    order: function (a, b) {
+                        return boardRank(BOARD_STATUS_ORDER, a.key) - boardRank(BOARD_STATUS_ORDER, b.key);
+                    } }
+            },
+            defaultGroup: 'component',
+            defaultSort: { col: 'status', dir: 'asc' },
+            csvName: false,
+            /* A keystroke redraws the cards and the toolbar beside the box, never the box: it keeps its focus. Every
+               other change draws the board again from the rows the last render decided (R3-13). */
+            render: function (what) {
+                if (what === 'query') {
+                    renderCards();
+                    var bar = document.getElementById('serverBoardToolbar');
+                    if (bar) fillKeepingFocus(bar, boardToolbarHtml());
+                } else {
+                    rerender(true);
+                }
+            }
+        };
+    }
+
+    /* The toolbar: search, the status chips, Group by, Expand all / Collapse all, and Clear filters while any filter
+       is on (the badge's included). */
+    function boardToolbarHtml() {
+        boardView();
+        var clear = state.filters.gate || WIR.table.filtersActive(BOARD)
+            ? '<button type="button" class="wir-link wir-clear-filters"'
+                + '\n                    onclick="WIR.serverKpis.clearFilters()">Clear filters</button>'
+            : '';
+        return WIR.table.toolbar(BOARD, { searchId: 'serverSearch', placeholder: 'Filter server asserts…',
+            label: 'Filter server asserts', noun: 'server asserts', extra: clear });
+    }
+
+    /* One card's header row, its sort buttons' ids its own (a suffix per card) */
+    function boardHeadCells(suffix) {
+        var cell = function (col, cls, thTitle) {
+            return WIR.table.headCell(BOARD, col, { cls: cls, idSuffix: suffix, thTitle: thTitle });
+        };
+        /* D28 says it in every place coverage is shown; a header has no room, so its title */
+        return cell('status') + cell('name') + cell('actual', 'num') + cell('criteria')
+            + cell('coverage', 'num', 'Coverage of the collected window') + cell('instances', 'num');
+    }
+
+    var BOARD_COLGROUP = '<colgroup><col class="wir-col-status"><col><col class="wir-col-actual">'
+        + '<col class="wir-col-criteria"><col class="wir-col-cov"><col class="wir-col-inst">'
+        + '<col class="wir-col-actions"></colgroup>';
 
     /* ---- rendering ---------------------------------------------------------- */
 
@@ -19746,7 +19469,8 @@ WIR.serverKpis = (function () {
                 : '')
             + '</div>';
         html += restoredDraftHtml() + droppedDraftHtml();
-        html += '<div class="wir-server-filters">' + filterRowHtml() + lineColorHtml() + '</div>';
+        html += '<div class="wir-server-filters"><span class="wir-server-board-toolbar" id="serverBoardToolbar">'
+            + boardToolbarHtml() + '</span>' + lineColorHtml() + '</div>';
         return html + '</div>';
     }
 
@@ -19974,84 +19698,12 @@ WIR.serverKpis = (function () {
         return S.chipLabel(entry.would);
     }
 
-    /* One filter row, shaped like the Asserts tab's (design §3, U6): a text filter and the status
-       chips. Chips are onclick, not a <select> with onchange, and that is deliberate: a select's
-       onchange would have to carry the chosen value into the handler, where the chips carry one
-       literal each. Every one of these is one WIR.serverKpis.x(literal) call (D20); the text box
-       reports through one delegated listener (bindFilterInput), because this module carries no
-       other event attribute (verify_report_js_rules). The component filter is the badge on each
-       card; the source chips went with C8 — a collection has one source. */
-    function filterRowHtml() {
-        var f = state.filters;
-        return '<input type="search" class="wir-server-search" data-wir-server-filter="text"'
-            + ' placeholder="Filter server asserts…" aria-label="Filter server asserts"'
-            + ' value="' + esc(f.text || '') + '">'
-            /* The chips and Clear filters in a span of their own, so typing redraws them and never
-               the box being typed in (SF40, bindFilterInput). */
-            + '<span class="wir-server-chips" id="serverFilterChips">' + filterChipsHtml() + '</span>';
-    }
-
-    /* The status chips, worded as the Asserts tab's are — "FAIL 1", not "FAIL (1)" — and each
-       says whether it is on (aria-pressed), as the Asserts tab's do (SF41, Q12). Every
-       NOT_JUDGED reason stays a chip of its own: the design's "Not judged ▾" contradicted its own
-       "shaped like the Asserts tab", which has no ▾ either, so neither tab folds them. */
-    function filterChipsHtml() {
-        var f = state.filters;
-        /* The counts follow the OTHER filters (U6): a status chip that counted the whole board
-           beside a card filter read "FAIL 1" over a board showing none. The text filter is one of
-           them, while it is typed too (SF40). */
-        var rows = boardRows().filter(function (row) { return passesFilters(row, true); });
-        var counts = {};
-        rows.forEach(function (r) {
-            var d = rowDisplay(r);
-            counts[d] = (counts[d] || 0) + 1;
-        });
-        var html = '<span class="wir-filter-label">Status</span>';
-        html += '<button type="button" class="wir-filter-chip' + (f.status ? '' : ' wir-on') + '"'
-            + ' aria-pressed="' + (f.status ? 'false' : 'true') + '"'
-            + '\n                    onclick="WIR.serverKpis.filterStatus(' + jsArg('') + ')">All '
-            + rows.length + '</button>';
-        /* Every display value a row can have gets a chip, so the chips always sum to All: a value
-           outside the fixed order is appended rather than dropped, which is how a row that read
-           NOT EVALUATED used to be counted by All and selectable by nothing. */
-        var order = [NEEDS_RECOLLECTION, NOT_REJUDGED].concat(S.STATUS_ORDER);
-        Object.keys(counts).forEach(function (d) {
-            if (order.indexOf(d) < 0) order.push(d);
-        });
-        order.forEach(function (d) {
-            if (!counts[d]) return;
-            html += '<button type="button" class="wir-filter-chip ' + S.chipClass(d)
-                + (f.status === d ? ' wir-on' : '') + '"'
-                + ' aria-pressed="' + (f.status === d ? 'true' : 'false') + '"'
-                + '\n                    onclick="WIR.serverKpis.filterStatus(' + jsArg(d) + ')">'
-                + esc(S.chipLabel(d)) + ' ' + counts[d] + '</button>';
-        });
-        if (f.gate || f.status || f.text) {
-            html += '<button type="button" class="wir-link wir-clear-filters"'
-                + '\n                    onclick="WIR.serverKpis.clearFilters()">Clear filters</button>';
-        }
-        return html;
-    }
-
     /* The text a row is found by: its id, its catalogue metric's label, its description and its
        component. Lower-cased once per render, never per keystroke per row per field. */
     function rowSearchText(row) {
         var k = row.kpi;
         var label = metricLabelOf(k);
         return [k.id, label, k.metric, k.description, k.gate].filter(Boolean).join(' ').toLowerCase();
-    }
-
-    /* Whether a row survives the filters; `ignoreStatus` for the chips' own counts. */
-    function passesFilters(row, ignoreStatus) {
-        var f = state.filters;
-        var k = row.kpi;
-        if (f.gate && (k.gate || '') !== f.gate) return false;
-        if (!ignoreStatus && f.status && rowDisplay(row) !== f.status) return false;
-        if (f.text) {
-            var needle = String(f.text).toLowerCase().trim();
-            if (needle && rowSearchText(row).indexOf(needle) < 0) return false;
-        }
-        return true;
     }
 
     /**
@@ -20102,14 +19754,6 @@ WIR.serverKpis = (function () {
     function bindFilterInput() {
         if (filterInputBound || typeof document === 'undefined' || !document.addEventListener) return;
         filterInputBound = true;
-        document.addEventListener('input', function (e) {
-            var t = e.target;
-            if (!t || !t.getAttribute || t.getAttribute('data-wir-server-filter') !== 'text') return;
-            state.filters.text = t.value;
-            renderCards();
-            var chips = document.getElementById('serverFilterChips');
-            if (chips) chips.innerHTML = filterChipsHtml();
-        });
         document.addEventListener('change', function (e) {
             var t = e.target;
             if (!t || !t.getAttribute || t.getAttribute('data-wir-server-granularity') === null) return;
@@ -20496,45 +20140,56 @@ WIR.serverKpis = (function () {
                 + 'declare one on — a server assert names a component, so add one first.') + '</p>'
                 + firstComponentHtml();
         }
-        var rows = visibleRows();
-        var filtering = !!(state.filters.gate || state.filters.status || state.filters.text);
-        if (filtering && !rows.length) {
+        var v = boardView();
+        var group = WIR.table.table(BOARD).state.group;
+        var filtering = !!(state.filters.gate || WIR.table.filtersActive(BOARD));
+        if (filtering && !v.matched) {
             return '<p class="wir-empty">No server assert matches these filters. '
                 + '<button type="button" class="wir-link"'
                 + '\n                    onclick="WIR.serverKpis.clearFilters()">Clear filters</button></p>';
         }
 
+        if (group !== 'component') return flatBoardHtml(v);
+
         /* Components in declaration order, then the asserts that name none the file declares —
            ServerGateEvaluation's "(no gate)", which still builds and still exits 1. */
-        var strip = gateStrip();
         var entryById = Object.create(null);
-        strip.forEach(function (e) { entryById[e.id] = e; });
-        var ids = componentIdsDeclared().slice();
-        strip.forEach(function (e) { if (ids.indexOf(e.id) < 0) ids.push(e.id); });
-        var byComponent = Object.create(null);
-        var orphans = [];
-        rows.forEach(function (row) {
-            var id = row.kpi.gate;
-            if (id && ids.indexOf(id) >= 0) {
-                (byComponent[id] = byComponent[id] || []).push(row);
-            } else {
-                orphans.push(row);
-            }
+        gateStrip().forEach(function (e) { entryById[e.id] = e; });
+        var groups = Object.create(null);
+        var current = null;
+        v.rows.forEach(function (r) {
+            if (r.kind === 'group') current = groups[r.key] = { open: r.open, rows: [] };
+            else if (r.kind === 'row' && current) current.rows.push(r.record);
         });
 
         var html = '';
-        ids.forEach(function (id) {
-            var mine = byComponent[id] || [];
+        boardIds.forEach(function (id, i) {
+            var g = groups[id];
             /* A filter narrows to the cards it found something in; with none, every declared
                component is a card, its empty one included — it is where its first assert goes. */
-            if (filtering && !mine.length) return;
-            html += cardHtml(id, entryById[id] || null, mine);
+            if (filtering && !g) return;
+            html += cardHtml(id, entryById[id] || null, g ? g.rows : [], g ? g.open : null, '-c' + i);
         });
-        if (orphans.length) html += cardHtml(null, null, orphans);
+        if (groups[ORPHAN_GROUP]) {
+            html += cardHtml(null, null, groups[ORPHAN_GROUP].rows, groups[ORPHAN_GROUP].open, '-c' + boardIds.length);
+        }
         return html;
     }
 
-    function cardHtml(id, entry, rows) {
+    /* Grouped by status, or not at all: one table, the toolkit's group rows between the statuses */
+    function flatBoardHtml(v) {
+        var html = '<section class="wir-board-flat"><div class="table-wrapper">'
+            + '<table class="data-table wir-component-table">' + BOARD_COLGROUP
+            + '<thead><tr>' + boardHeadCells('') + '<th></th></tr></thead><tbody>';
+        v.rows.forEach(function (r) {
+            if (r.kind === 'group') html += WIR.table.groupRow(BOARD, r, BOARD_COLUMNS, ['server assert', 'server asserts']);
+            else if (r.kind === 'row') html += kpiRow(r.record);
+        });
+        return html + '</tbody></table></div></section>';
+    }
+
+    /* A component's card: `open` is its group's state (null for a card with no rows), `suffix` its sort buttons'. */
+    function cardHtml(id, entry, rows, open, suffix) {
         var table = declaredComponents();
         var c = id && hasOwn(table.byId, id) ? table.byId[id] : null;
         var type = c ? catalogueType(c.type) : null;
@@ -20543,9 +20198,16 @@ WIR.serverKpis = (function () {
             return id === null ? !k.gate || componentIdsDeclared().indexOf(k.gate) < 0 : k.gate === id;
         }).length;
 
-        var html = '<section class="wir-component-card"'
+        var html = '<section class="wir-component-card' + (open === false ? ' wir-card-closed' : '') + '"'
             + (id !== null ? ' data-component="' + esc(id) + '"' : ' data-component=""') + '>'
             + '<header class="wir-component-head">'
+            /* the card is its component's group: it opens and closes as one, and Expand all / Collapse all reach it */
+            + (open !== null
+                ? '<button type="button" class="wir-group-toggle wir-card-toggle" aria-expanded="' + open + '"'
+                    + ' title="' + (open ? 'Close' : 'Open') + ' this component\'s server asserts"'
+                    + '\n                    onclick="WIR.table.setOpen(' + jsArg(BOARD) + ', ' + jsArg(id === null ? ORPHAN_GROUP : id)
+                    + ', ' + !open + ')">' + (open ? '▾' : '▸') + '</button> '
+                : '')
             + '<strong class="wir-component-id">' + esc(id === null ? NO_COMPONENT_LABEL : id) + '</strong>'
             + (typeText ? ' <span class="wir-dim wir-component-type">' + esc(typeText)
                 + (c && c.description ? ' · ' + esc(c.description) : '') + '</span>' : '')
@@ -20563,6 +20225,7 @@ WIR.serverKpis = (function () {
             + '</header>'
             + (c && state.componentMenu === id ? componentMenuHtml(id, declaredCount) : '');
 
+        if (open === false) return html + '</section>';
         if (!rows.length) {
             return html + '<p class="wir-empty wir-component-empty">' + esc(id === null
                 ? 'Nothing here.'
@@ -20574,15 +20237,8 @@ WIR.serverKpis = (function () {
         /* In a scrolling wrapper, as the Samplers table is: at 900px a card could be wider than
            the page, and with nothing to contain it the whole PAGE scrolled sideways (F9). */
         /* One set of widths for every card, so a column lines up from one component to the next. */
-        html += '<div class="table-wrapper"><table class="data-table wir-component-table">'
-            + '<colgroup><col class="wir-col-status"><col><col class="wir-col-actual">'
-            + '<col class="wir-col-criteria"><col class="wir-col-cov"><col class="wir-col-inst">'
-            + '<col class="wir-col-actions"></colgroup><thead><tr>'
-            + '<th>Status</th><th>Server assert</th><th class="num">Actual</th><th>Criteria</th>'
-            /* D28 says it in every place coverage is shown; a header has no room, so its title. */
-            + '<th class="num" title="Coverage of the collected window">Coverage</th>'
-            + '<th class="num">Instances</th><th></th>'
-            + '</tr></thead><tbody>';
+        html += '<div class="table-wrapper"><table class="data-table wir-component-table">' + BOARD_COLGROUP
+            + '<thead><tr>' + boardHeadCells(suffix) + '<th></th></tr></thead><tbody>';
         rows.forEach(function (row) { html += kpiRow(row); });
         return html + '</tbody></table></div></section>';
     }
@@ -20703,8 +20359,8 @@ WIR.serverKpis = (function () {
        filter row's Clear filters (the way back to a row the filters hide), else the text box,
        else + Add component — in the header, so on the page whatever the board shows. */
     function filtersHoldFocus() {
-        return document.querySelector('#serverFilterChips .wir-clear-filters')
-            || document.querySelector('#serverBoard [data-wir-server-filter="text"]')
+        return document.querySelector('#serverBoardToolbar .wir-clear-filters')
+            || document.getElementById('serverSearch')
             || document.getElementById('serverAddComponent');
     }
 
@@ -20764,7 +20420,7 @@ WIR.serverKpis = (function () {
                nothing, which is both unreadable and a lie about the one column whose whole job
                is to say what was measured. The row's ▸/▾ sits beside its status, as the Samplers
                tab's does (design §3): every row starts closed, a FAIL included. */
-            + '<td class="wir-status-cell"><button type="button" class="wir-row-toggle"'
+            + '<td class="wir-status-cell"' + WIR.table.cellAttrs(BOARD, 'status') + '><button type="button" class="wir-row-toggle"'
             + ' aria-expanded="' + (open ? 'true' : 'false') + '" title="' + (open ? 'Hide' : 'Show')
             + ' the charts"\n                    onclick="WIR.serverKpis.toggle(' + jsArg(row.key) + ')">'
             + (open ? '▾' : '▸') + '</button>'
@@ -20779,7 +20435,7 @@ WIR.serverKpis = (function () {
                     + 'so this is the verdict the build took, not one recomputed here">from the build</div>'
                 : '')
             + '</td>'
-            + '<td><button type="button" class="wir-kpi-name"'
+            + '<td' + WIR.table.cellAttrs(BOARD, 'name') + '><button type="button" class="wir-kpi-name"'
             + '\n                    onclick="WIR.serverKpis.toggle(' + jsArg(row.key) + ')"'
             + ' title="Show the collected series">' + esc(naming.name) + '</button>'
             /* Q11: a catalogue assert is named by its metric's label, and its id is the dim line
@@ -20803,12 +20459,12 @@ WIR.serverKpis = (function () {
             + (k.requiresLoad ? '<div class="wir-dim">needs ' + esc(k.requiresLoad) + '</div>' : '')
             + '</td>'
             /* Never written onto a band it is not on: 3.004 read "3" beside "breached > 3". */
-            + '<td class="num">' + esc(v ? formatActual(v.actual, unit,
+            + '<td class="num"' + WIR.table.cellAttrs(BOARD, 'actual') + '>' + esc(v ? formatActual(v.actual, unit,
                     [k.warn && k.warn.value, k.fail && k.fail.value]) : EM_DASH)
             + (v && !isNaN(v.actual) && unit
                 ? ' <span class="wir-dim">' + esc(unit) + '</span>' : '')
             + '</td>'
-            + '<td>' + esc(criteria.join(' · ') || EM_DASH)
+            + '<td' + WIR.table.cellAttrs(BOARD, 'criteria') + '>' + esc(criteria.join(' · ') || EM_DASH)
             + (v && v.breached
                 ? '<div class="wir-breached">breached ' + esc(describeBand(bandToJson(v.breached), unit))
                     + '</div>' : '')
@@ -20816,9 +20472,10 @@ WIR.serverKpis = (function () {
             /* "collected" and not just a number: coverage is measured over the payload's whole
                window while the verdict above was taken over the judged one, so the two can
                legitimately disagree. Labelling it stops the row implying they cannot. */
-            + '<td class="num" title="Coverage of the collected window">'
+            + '<td class="num"' + WIR.table.cellAttrs(BOARD, 'coverage') + ' title="Coverage of the collected window">'
             + esc(v ? formatPercent(v.coverage) : EM_DASH) + '</td>'
-            + '<td class="num"' + (instances.title ? ' title="' + esc(instances.title) + '"' : '')
+            + '<td class="num"' + WIR.table.cellAttrs(BOARD, 'instances')
+            + (instances.title ? ' title="' + esc(instances.title) + '"' : '')
             + '>' + esc(instances.text) + '</td>'
             + '<td class="wir-row-actions">'
             + '<button type="button" class="wir-link"'
@@ -27558,7 +27215,8 @@ WIR.serverKpis = (function () {
             }
             state.unavailable = null;
             readPayload(data);
-            state.filters = { gate: '', status: '', text: '' };
+            state.filters = { gate: '' };
+            WIR.table.register(BOARD, boardSpec());
             render();
         },
 
@@ -27750,11 +27408,6 @@ WIR.serverKpis = (function () {
             rerender(true);
         },
 
-        filterStatus: function (status) {
-            state.filters.status = state.filters.status === status ? '' : status;
-            rerender(true);
-        },
-
         /* The Summary card's button: the tab, as the header chip opens it. */
         open: function () {
             if (typeof switchTab === 'function') switchTab('server');
@@ -27763,8 +27416,7 @@ WIR.serverKpis = (function () {
         /* Every filter off, the text box included (U6: an empty board offers the way back). */
         clearFilters: function () {
             state.filters.gate = '';
-            state.filters.status = '';
-            state.filters.text = '';
+            WIR.table.resetFilters(BOARD);
             rerender(true);
         },
 
@@ -28052,7 +27704,6 @@ WIR.serverKpis = (function () {
         _sustained: sustained,
         _slopePerMinute: slopePerMinute,
         _seriesFor2: findSeries,
-        _visibleKpis: visibleKpis,
         _seriesFor: seriesFor,
         _judgedWindow: judgedWindow,
         _describeBand: describeBand,

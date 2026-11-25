@@ -80,12 +80,12 @@ test.describe('SF29: focus stays on the control that was pressed', () => {
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await expect(name, 'the ▸ and the name call one handler; the name is the one pressed').toBeFocused();
 
-    const failChip = page.locator('#serverBoard .wir-filter-chip', { hasText: /^FAIL \d+$/ });
+    const failChip = page.locator('#tab-server .wir-table-toolbar[data-table="serverKpiTable"] .wir-status-chip[data-status="FAIL"]');
     await press(page, failChip);
-    await expect(failChip).toHaveClass(/wir-on/);
+    await expect(failChip).toHaveAttribute('aria-pressed', 'true');
     await expect(failChip).toBeFocused();
     await page.keyboard.press('Enter');
-    await expect(failChip).not.toHaveClass(/wir-on/);
+    await expect(failChip).toHaveAttribute('aria-pressed', 'false');
     await expect(failChip).toBeFocused();
 
     const expand = page.locator('#serverExpandAll');
@@ -179,7 +179,7 @@ test.describe('SF29: focus stays on the control that was pressed', () => {
     await expect(ruleRow(page, next!).locator('.wir-edit-btn')).toBeFocused();
 
     // A status chip, last: it filters the rows the presses above were on.
-    const chip = page.locator('.wir-status-chip').first();
+    const chip = page.locator('#tab-asserts .wir-status-chip').first();
     await press(page, chip);
     await expect(chip).toHaveAttribute('aria-pressed', 'true');
     await expect(chip).toBeFocused();
@@ -287,18 +287,18 @@ test.describe('SF29: focus stays on the control that was pressed', () => {
     // The FAIL chip on, the failing assert loosened, Save: the saved row's Edit is not drawn, and
     // the opener was that same Edit — focus fell to <body> on both tabs.
     await open(page, 'E26', 'server');
-    await press(page, page.locator('#serverBoard .wir-filter-chip', { hasText: /^FAIL \d+$/ }));
+    await press(page, page.locator('#tab-server .wir-table-toolbar[data-table="serverKpiTable"] .wir-status-chip[data-status="FAIL"]'));
     await expect(boardRow(page, 'k1')).toHaveCount(1);
     await press(page, boardAction(page, 'k1', 'Edit'));
     await page.locator('#serverEditor [data-field="fail.value"]').fill('999999999');
     await press(page, page.locator('#serverEditorSave'));
     await expect(page.locator('#serverEditor .wir-slideover')).toHaveCount(0);
     await expect(boardRow(page, 'k1'), 'loosened, it is no longer a FAIL row').toHaveCount(0);
-    await expect(page.locator('#serverFilterChips .wir-clear-filters')).toBeFocused();
+    await expect(page.locator('#serverBoardToolbar .wir-clear-filters')).toBeFocused();
     await expect(page.locator('#wir-toast')).toContainText('hidden by the current filters');
 
     await open(page, 'E25', 'asserts');
-    await press(page, page.locator('.wir-status-chip[data-status="FAIL"]'));
+    await press(page, page.locator('#tab-asserts .wir-status-chip[data-status="FAIL"]'));
     await expect(ruleRow(page, 'slow-api-p95')).toHaveCount(1);
     await press(page, ruleRow(page, 'slow-api-p95').locator('.wir-edit-btn'));
     await page.locator('#editorfailValue').fill('999999999');

@@ -561,16 +561,6 @@ label.checked .sampler-checkbox-box {
     text-align: center;
 }
 
-.sampler-name-cell .row-hide-btn {
-    flex-shrink: 0;
-    margin-left: auto;
-    opacity: 0;
-}
-
-tr:hover .sampler-name-cell .row-hide-btn {
-    opacity: 0.5;
-}
-
 .stats-table tbody tr:hover {
     background: var(--color-bg-row-hover);
 }
@@ -685,29 +675,6 @@ sup.delta-neutral { color: var(--color-text-secondary); }
     white-space: nowrap;
 }
 
-.error-table .row-hide-btn,
-#errorDetailsTable .row-hide-btn,
-#comparisonTable .row-hide-btn {
-    opacity: 0;
-}
-
-.error-table tr:hover .row-hide-btn,
-#errorDetailsTable tr:hover .row-hide-btn,
-#comparisonTable tr:hover .row-hide-btn {
-    opacity: 0.5;
-}
-
-.error-code {
-    display: inline-block;
-    background: var(--color-error-code-bg);
-    color: var(--color-error-code-text);
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-family: monospace;
-    font-weight: 600;
-    font-size: 0.8rem;
-}
-
 /* Charts */
 .chart-container {
     width: 100%;
@@ -767,33 +734,6 @@ sup.delta-neutral { color: var(--color-text-secondary); }
 }
 
 /* Table Toolbar */
-.table-toolbar {
-    display: flex;
-    gap: 12px;
-    margin-bottom: 12px;
-    align-items: center;
-}
-
-.table-search {
-    flex: 1;
-    max-width: 300px;
-    padding: 6px 12px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    font-size: 0.85rem;
-    background: var(--color-bg-input);
-    color: var(--color-text);
-    outline: none;
-}
-
-.table-search:focus {
-    border-color: var(--color-primary);
-    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
-}
-
-.column-toggle-wrapper {
-    position: relative;
-}
 
 .column-toggle-btn {
     padding: 6px 14px;
@@ -985,42 +925,9 @@ sup.delta-neutral { color: var(--color-text-secondary); }
     text-align: center;
 }
 
-.column-toggle-btn.has-hidden,
 .column-toggle-btn.active {
     border-color: var(--color-primary);
     color: var(--color-primary);
-}
-
-.column-menu {
-    display: none;
-    position: absolute;
-    top: 100%;
-    right: 0;
-    z-index: 50;
-    background: var(--color-bg-card);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    padding: 8px 0;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    min-width: 180px;
-}
-
-.column-menu.open {
-    display: block;
-}
-
-.column-menu label {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 12px;
-    font-size: 0.8rem;
-    cursor: pointer;
-    white-space: nowrap;
-}
-
-.column-menu label:hover {
-    background: var(--color-bg-hover);
 }
 
 /* Top Samplers List */
@@ -1252,23 +1159,6 @@ tr.sampler-expanded .sampler-expand-icon {
 }
 
 /* Row Hide Button */
-.row-hide-btn {
-    background: none;
-    border: none;
-    color: var(--color-text-secondary);
-    font-size: 1rem;
-    cursor: pointer;
-    padding: 0 4px;
-    line-height: 1;
-    border-radius: 3px;
-    transition: opacity 0.15s, color 0.15s;
-}
-
-.row-hide-btn:hover {
-    opacity: 1 !important;
-    color: var(--color-error);
-    background: #fef2f2;
-}
 
 /* Assert Mini Badges */
 .assert-badge-mini {
@@ -3033,7 +2923,6 @@ body.dark-mode .wir-preview { background: var(--color-bg-deep); }
     border-color: var(--badge-pass-text);
 }
 
-
 .wir-status-chip-on.wir-chip-unmatched,
 .wir-status-chip-on.wir-chip-no-value,
 .wir-status-chip-on.wir-chip-load-not-achieved,
@@ -3114,7 +3003,11 @@ body.dark-mode .wir-preview { background: var(--color-bg-deep); }
     color: var(--color-ramp-badge-text);
 }
 
-.wir-sort-on { color: var(--color-primary); }
+/* The sort glyph is drawn here, from the header's aria-sort, so a header's text is its label alone (spec 002) */
+.wir-sort-glyph::after { content: '\2195'; }
+th[aria-sort="ascending"] .wir-sort-glyph::after { content: '\25B2'; }
+th[aria-sort="descending"] .wir-sort-glyph::after { content: '\25BC'; }
+th[aria-sort] .wir-sort-glyph { color: var(--color-primary); }
 
 /* ---- The table toolkit (WIR.table, spec 002): one toolbar row, sortable header buttons, group and fold
    rows, x on a row, the Columns menu. Every table of the report draws these. */
@@ -3137,6 +3030,12 @@ body.dark-mode .wir-preview { background: var(--color-bg-deep); }
 .wir-th-sortable .wir-sort-btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 
 .wir-table-toolbar { flex-wrap: wrap; }
+
+/* The Requests table's own buttons (Reset Widths, + Add Chart) sit on the toolkit's line: on a row of their own,
+   Reset Widths appearing under a drag pushed the table down between the two clicks of a double-click. */
+.wir-toolbar-line { display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; }
+.wir-toolbar-line > .wir-table-toolbar-host { flex: 1 1 auto; min-width: 0; }
+.wir-table-extra { display: flex; gap: 8px; align-items: center; }
 
 .wir-table-group {
     display: inline-flex;
@@ -3215,6 +3114,22 @@ body.dark-mode .wir-table-columns-menu { box-shadow: 0 6px 18px rgba(0, 0, 0, 0.
 
 .wir-row-hide:hover, .wir-row-hide:focus-visible { opacity: 1; color: var(--color-text); }
 
+/* A transaction's ▸ on the Requests table: it opens and closes the rows inside it, never the row's chart panel */
+.wir-tree-toggle {
+    flex-shrink: 0;
+    width: 1.4em;
+    padding: 0;
+    font: inherit;
+    color: var(--color-text-secondary);
+    background: none;
+    border: 0;
+    cursor: pointer;
+}
+
+.wir-tree-toggle:hover, .wir-tree-toggle:focus-visible { color: var(--color-primary); }
+
+.sampler-name-cell .wir-row-hide { margin-left: auto; }
+
 /* Distinct from .wir-empty, which means "this run declared no rules at all" and
    keeps precedence over this one. */
 .wir-filtered-empty {
@@ -3235,11 +3150,11 @@ body.dark-mode .wir-table-columns-menu { box-shadow: 0 6px 18px rgba(0, 0, 0, 0.
     /* Controls that do nothing on paper. */
     .tab-nav,
     .filter-bar,
-    .table-toolbar,
+    .wir-table-toolbar,
+    .wir-table-extra,
     .timeline-toolbar,
     .notes-toolbar,
     .table-csv-btn,
-    .row-hide-btn,
     .chart-hide-btn,
     .chart-fullscreen-btn,
     .chart-drag-handle,
@@ -3468,6 +3383,14 @@ body.dark-mode .wir-table-columns-menu { box-shadow: 0 6px 18px rgba(0, 0, 0, 0.
 .cmp-new        { color: var(--color-primary); }
 .cmp-ok         { color: var(--badge-pass-text); }
 
+/* Compare's statuses as the table toolkit's chips (spec 002): outlined, in the cmp palette, so a comparison
+   verdict never reads as an assert's */
+.wir-chip-regression, .wir-chip-removed, .wir-chip-new, .wir-chip-ok { background: transparent; border: 1px solid currentColor; }
+.wir-chip-regression { color: var(--badge-fail-text); }
+.wir-chip-removed    { color: var(--badge-fail-text); opacity: 0.75; }
+.wir-chip-new        { color: var(--color-primary); }
+.wir-chip-ok         { color: var(--badge-pass-text); }
+
 /* ============================================================
    Server tab (M5)
 
@@ -3556,16 +3479,8 @@ body.dark-mode .wir-table-columns-menu { box-shadow: 0 6px 18px rgba(0, 0, 0, 0.
     gap: 6px;
 }
 
-/* The chips' own span (SF40), so typing can redraw them without the box: no box of its own, so
-   the chips stay flex items of the row and wrap as they did. */
-.wir-server-chips {
-    display: contents;
-}
-
-/* First in its span, not in the row: the search box is still to its left. */
-.wir-server-chips > .wir-filter-label:first-child {
-    margin-left: 10px;
-}
+/* The board's toolbar is the toolkit's (spec 002): it takes the row's room, the line colour after it */
+.wir-server-board-toolbar { flex: 1 1 auto; min-width: 0; }
 
 /* The tab's line colour, at the row's far end; its picker opens leftwards from there. */
 .wir-server-line-color {
@@ -3767,7 +3682,9 @@ body.wir-on-tool-tab .filter-bar-toggle-wrapper {
 }
 
 /* One card per component (design §3). */
-.wir-component-card {
+/* The board grouped by status, or not at all, is one table framed as a card is */
+.wir-component-card,
+.wir-board-flat {
     border: 1px solid var(--color-border);
     border-radius: 8px;
     background: var(--color-surface);
@@ -3800,7 +3717,8 @@ body.wir-on-tool-tab .filter-bar-toggle-wrapper {
 /* A size container, so an open row's panels can be as wide as the card shows rather than as wide
    as the table is (SF34, below). Scoped to the cards: a bare .table-wrapper rule would reach the
    Samplers, Errors and Compare tables. */
-.wir-component-card .table-wrapper {
+.wir-component-card .table-wrapper,
+.wir-board-flat .table-wrapper {
     margin: 0;
     container-type: inline-size;
 }
@@ -3868,16 +3786,6 @@ body.wir-on-tool-tab .filter-bar-toggle-wrapper {
    searched for. Breakable anywhere, as a derived id is one long hyphenated token. */
 .wir-kpi-id {
     overflow-wrap: anywhere;
-}
-
-.wir-server-search {
-    min-width: 200px;
-    padding: 4px 8px;
-    border: 1px solid var(--color-border);
-    border-radius: 6px;
-    background: var(--color-surface);
-    color: inherit;
-    margin-right: 8px;
 }
 
 /* An open row's two panels: over time, and per instance. */

@@ -47,12 +47,12 @@ test.describe('Assertion Rules — filtering [E25]', () => {
     // Counts that shrink as you filter read 0 for everything you did not pick, which hides
     // what the run actually contains.
     await openTab(page);
-    const before = await page.locator('.wir-status-chip').allInnerTexts();
+    const before = await page.locator('#tab-asserts .wir-status-chip').allInnerTexts();
     expect(before.map(s => s.trim())).toEqual(
       ['FAIL 1', 'WARN 1', 'INVALID 1', 'PASS 8', 'UNMATCHED 1', 'DISABLED 1']);
 
-    await page.click('.wir-status-chip[data-status="FAIL"]');
-    const after = await page.locator('.wir-status-chip').allInnerTexts();
+    await page.click('#tab-asserts .wir-status-chip[data-status="FAIL"]');
+    const after = await page.locator('#tab-asserts .wir-status-chip').allInnerTexts();
     expect(after.map(s => s.trim())).toEqual(before.map(s => s.trim()));
   });
 
@@ -60,7 +60,7 @@ test.describe('Assertion Rules — filtering [E25]', () => {
     // E25 has nothing the run could not measure, so NO VALUE must not render an empty chip.
     // Chips are the run's own contents; a zero one would be noise that reads as a category.
     await openTab(page);
-    await expect(page.locator('.wir-status-chip[data-status="NO VALUE"]')).toHaveCount(0);
+    await expect(page.locator('#tab-asserts .wir-status-chip[data-status="NO VALUE"]')).toHaveCount(0);
   });
 
   test('searching a sampler name finds the rules that judge it without naming it',
@@ -109,14 +109,14 @@ test.describe('Assertion Rules — filtering [E25]', () => {
 
   test('status chips OR within themselves', async ({ page }) => {
     await openTab(page);
-    await page.click('.wir-status-chip[data-status="FAIL"]');
+    await page.click('#tab-asserts .wir-status-chip[data-status="FAIL"]');
     expect(await visible(page)).toEqual(['slow-api-p95']);
 
-    await page.click('.wir-status-chip[data-status="WARN"]');
+    await page.click('#tab-asserts .wir-status-chip[data-status="WARN"]');
     expect(await visible(page)).toEqual(['slow-api-p95', 'moderate-api-p95']);
 
     // Clicking an active chip removes it again.
-    await page.click('.wir-status-chip[data-status="FAIL"]');
+    await page.click('#tab-asserts .wir-status-chip[data-status="FAIL"]');
     expect(await visible(page)).toEqual(['moderate-api-p95']);
   });
 
@@ -124,7 +124,7 @@ test.describe('Assertion Rules — filtering [E25]', () => {
     await openTab(page);
     // "api-" spans PASS, WARN and FAIL, so this proves the chip and the box AND rather than
     // either one quietly winning: only the PASS members survive.
-    await page.click('.wir-status-chip[data-status="PASS"]');
+    await page.click('#tab-asserts .wir-status-chip[data-status="PASS"]');
     await page.fill('#assertsSearch', 'api-');
     expect((await visible(page)).sort()).toEqual(
       ['api-error-rate', 'fast-api-p95', 'moderate-api-p90', 'slow-api-tail']);
@@ -133,14 +133,14 @@ test.describe('Assertion Rules — filtering [E25]', () => {
   test('Clear filters appears only when something is filtered, and resets everything',
     async ({ page }) => {
       await openTab(page);
-      await page.click('.wir-status-chip[data-status="FAIL"]');
+      await page.click('#tab-asserts .wir-status-chip[data-status="FAIL"]');
       await page.fill('#assertsSearch', 'slow');
       await expect(page.locator('#assertsClearFilters')).toBeVisible();
 
       await page.click('#assertsClearFilters');
       expect(await visible(page)).toHaveLength(ALL);
       expect(await page.inputValue('#assertsSearch')).toBe('');
-      await expect(page.locator('.wir-status-chip-on')).toHaveCount(0);
+      await expect(page.locator('#tab-asserts .wir-status-chip-on')).toHaveCount(0);
       await expect(page.locator('#assertsClearFilters')).toHaveCount(0);
     });
 
@@ -213,7 +213,7 @@ test.describe('Assertion Rules — filtering [E25]', () => {
     await expect(page.locator('#assertsFilter-unmatchedOnly'),
       'the redundant checkbox must be gone').toHaveCount(0);
 
-    await page.click('.wir-status-chip[data-status="UNMATCHED"]');
+    await page.click('#tab-asserts .wir-status-chip[data-status="UNMATCHED"]');
     expect(await visible(page)).toEqual(['renamed-sampler']);
   });
 
@@ -471,7 +471,7 @@ test.describe('Assertion Rules — the shared table toolbar [E25]', () => {
 
   test('CSV holds the rows and columns shown, as the table writes them', async ({ page }) => {
     await openTab(page);
-    await page.click('.wir-status-chip[data-status="FAIL"]');
+    await page.click('#tab-asserts .wir-status-chip[data-status="FAIL"]');
     await page.click('#assertsTable-columns');
     await page.locator('#assertsTable-columns-menu input[data-col="budget"]').uncheck();
     const [download] = await Promise.all([page.waitForEvent('download'), page.click('#assertsTable-csv')]);
@@ -490,7 +490,7 @@ test.describe('Assertion Rules — filtering is view-only [E25]', () => {
     await openTab(page);
     const badge = await page.locator('.header-badge').first().innerText();
 
-    await page.click('.wir-status-chip[data-status="PASS"]');
+    await page.click('#tab-asserts .wir-status-chip[data-status="PASS"]');
     expect(await visible(page)).toHaveLength(8);
 
     await switchTab(page, 'summary');
@@ -514,7 +514,7 @@ test.describe('Assertion Rules — filtering is view-only [E25]', () => {
       () => JSON.parse((window as any).WIR.asserts._documentText()).assertions
         .map((a: any) => a.id));
 
-    await page.click('.wir-status-chip[data-status="FAIL"]');
+    await page.click('#tab-asserts .wir-status-chip[data-status="FAIL"]');
     await page.click('#assertsTable th[data-sort-col="id"]');
 
     const after = await page.evaluate(

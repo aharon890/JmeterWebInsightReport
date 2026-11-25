@@ -311,8 +311,8 @@ test.describe('F5: an Undo is offered only while the document is as its action l
     const n = (await docOf(page)).serverMetrics.asserts.length;
     await page.locator('button[onclick*="WIR.serverKpis.remove"]').first().click();
     await page.click('#serverExpandAll');
-    await page.locator('#serverBoard .wir-filter-chip').nth(1).click();
-    await page.locator('#serverBoard .wir-filter-chip').nth(1).click();
+    await page.locator('#tab-server .wir-table-toolbar[data-table="serverKpiTable"] .wir-status-chip').first().click();
+    await page.locator('#tab-server .wir-table-toolbar[data-table="serverKpiTable"] .wir-status-chip').first().click();
     await switchTab(page, 'asserts');
     await switchTab(page, 'server');
     const toast = page.locator('#wir-undo-toast');
@@ -324,8 +324,8 @@ test.describe('F5: an Undo is offered only while the document is as its action l
     await loadClean(page, 'E25');
     await switchTab(page, 'asserts');
     await page.locator('tr[data-rule-id="slow-api-p95"] .wir-del-btn').click();
-    await page.locator('.wir-status-chip').first().click();
-    await page.locator('.wir-status-chip').first().click();
+    await page.locator('#tab-asserts .wir-status-chip').first().click();
+    await page.locator('#tab-asserts .wir-status-chip').first().click();
     await page.locator('#assertsTable th[data-sort-col]').first().click();
     await page.fill('#assertsSearch', 'api');
     await page.fill('#assertsSearch', '');

@@ -48,8 +48,8 @@ test.describe('Flow: Investigate a Slow Sampler', () => {
     await p95Header.click();
     await page.waitForTimeout(200);
     // Check sort direction; if ascending, click again
-    const sortDir = await p95Header.getAttribute('data-sort');
-    if (sortDir === 'asc') {
+    const sortDir = await p95Header.getAttribute('aria-sort');
+    if (sortDir === 'ascending') {
       await p95Header.click();
       await page.waitForTimeout(200);
     }
@@ -60,7 +60,7 @@ test.describe('Flow: Investigate a Slow Sampler', () => {
     expect(firstRowName!.trim()).toBe(slowestName);
 
     // --- Step 8: Click first row to expand detail panel ---
-    await firstDataRow.click();
+    await firstDataRow.locator('.sampler-name-text').click();   // the name: a metric cell carries the ⊕ of the assert wizard
     await page.waitForTimeout(500);
     await expect(firstDataRow).toHaveClass(/sampler-expanded/);
 
@@ -105,7 +105,7 @@ test.describe('Flow: Investigate a Slow Sampler', () => {
     expect(await slots.count()).toBe(3);
 
     // --- Step 13: Click row to collapse → detail gone ---
-    await firstDataRow.click();
+    await firstDataRow.locator('.sampler-name-text').click();   // the name: a metric cell carries the ⊕ of the assert wizard
     await page.waitForTimeout(400);
     await expect(firstDataRow).not.toHaveClass(/sampler-expanded/);
     const detailRowsAfterCollapse = page.locator('.sampler-detail-row');
@@ -120,7 +120,7 @@ test.describe('Flow: Investigate a Slow Sampler', () => {
     expect(await errorRows.count()).toBeGreaterThan(0);
 
     // --- Step 15: Search for the slow sampler name → filtered ---
-    const errorSearch = page.locator('#tab-errors .table-search').first();
+    const errorSearch = page.locator('#errorSummaryTable-search');
     await errorSearch.fill(slowestName);
     await page.waitForTimeout(300);
 

@@ -172,7 +172,7 @@ test.describe('Compare Tab — Comparison Table', () => {
   test('[R] CSV download button exists and clickable', async ({ page }) => {
     await loadCompareReport(page);
     await switchTab(page, 'compare');
-    const csvBtn = page.locator('#tab-compare .table-csv-btn, #tab-compare button[title*="CSV"]');
+    const csvBtn = page.locator('#comparisonTable-csv');
     if (await csvBtn.count() > 0) {
       const errors: string[] = [];
       page.on('pageerror', e => errors.push(e.message));
