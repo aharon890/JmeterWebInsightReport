@@ -1805,7 +1805,9 @@ verify_report_js_rules() {
     #    writing (asserts|serverKpis) here would match a literal parenthesis and silently stop
     #    matching anything, which is a guard that passes because it can no longer fail.
     #    -i: an HTML attribute name is case-insensitive, so `onClick=` is the same handler.
-    hits=$(grep -ani 'onclick="WIR\.\(asserts\|serverKpis\)\.' "$js" | grep -a 'esc(' || true)
+    #    The table toolkit and the k6 tab (spec 002) build their handlers the same way, so they are
+    #    covered too.
+    hits=$(grep -ani 'onclick="WIR\.\(asserts\|serverKpis\|table\|toolTab\)\.' "$js" | grep -a 'esc(' || true)
     if [[ -n "$hits" ]]; then
         echo "[JSRULES] an inline WIR handler interpolates through esc(), not jsArg():" >&2
         echo "$hits" >&2

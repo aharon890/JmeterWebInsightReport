@@ -3116,68 +3116,104 @@ body.dark-mode .wir-preview { background: var(--color-bg-deep); }
 
 .wir-sort-on { color: var(--color-primary); }
 
-.wir-status-btn {
-    font-family: inherit;
-    font-size: 0.72rem;
-    margin-left: 8px;
-    padding: 3px 5px;
-    border-radius: 4px;
+/* ---- The table toolkit (WIR.table, spec 002): one toolbar row, sortable header buttons, group and fold
+   rows, x on a row, the Columns menu. Every table of the report draws these. */
+/* The whole header is the button: a click anywhere in it sorts, as it did when the cell was the control. */
+.wir-th-sortable .wir-sort-btn {
+    display: inline-flex;
+    align-items: center;
+    width: 100%;
+    font: inherit;
+    font-weight: inherit;
+    color: inherit;
     background: none;
-    border: 1px solid var(--color-border);
-    color: var(--color-text-secondary);
+    border: 0;
+    padding: 0;
     cursor: pointer;
+    text-align: inherit;
+    white-space: nowrap;
 }
 
-.wir-status-btn:hover { background: var(--color-bg-hover); }
+.wir-th-sortable .wir-sort-btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 
-.wir-status-btn-on {
-    border-color: var(--color-primary);
-    color: var(--color-primary);
+.wir-table-toolbar { flex-wrap: wrap; }
+
+.wir-table-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
 }
 
-/* position: fixed, and rendered outside .wir-table-wrap. That wrapper is
-   overflow-x: auto, and CSS promotes overflow-y to auto as soon as one axis stops
-   being visible — a popover nested inside it is clipped at the header row and
-   drifts sideways as the table scrolls. Coordinates are set from the button's rect
-   in positionStatusMenu(). */
-.wir-status-menu {
-    position: fixed;
-    min-width: 190px;
+.wir-table-tools {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+}
+
+.wir-table-columns { position: relative; }
+
+.wir-table-columns-menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 4px);
+    min-width: 180px;
     padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
     box-shadow: 0 6px 18px rgba(15, 23, 42, 0.18);
     z-index: 40;
-}
-
-/* The light-mode shadow is a slate tint and vanishes on a dark page — same defect
-   .wir-slideover had. */
-body.dark-mode .wir-status-menu { box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5); }
-
-.wir-status-menu-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 4px 6px;
     font-size: 0.8rem;
     white-space: nowrap;
+}
+
+body.dark-mode .wir-table-columns-menu { box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5); }
+
+.wir-group-row td {
+    background: var(--color-bg-thead-hover);
+    padding: 6px 8px;
+}
+
+.wir-group-toggle {
+    font: inherit;
+    font-weight: 600;
+    color: var(--color-text);
+    background: none;
+    border: 0;
+    padding: 0;
     cursor: pointer;
 }
 
-.wir-status-menu-row:hover { background: var(--color-bg-hover); }
-
-.wir-status-menu-row .wir-muted { margin-left: auto; }
-
-.wir-status-menu-foot {
-    display: flex;
-    gap: 12px;
-    margin-top: 8px;
-    padding-top: 8px;
-    border-top: 1px solid var(--color-border);
+.wir-group-counts {
+    margin-left: 10px;
+    font-size: 0.78rem;
+    color: var(--color-text-secondary);
 }
 
-.wir-status-menu-foot .wir-link { font-size: 0.78rem; }
+.wir-fold-row td {
+    padding: 4px 8px 4px 24px;
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+}
+
+.wir-row-hide {
+    margin-left: 6px;
+    padding: 0 4px;
+    font: inherit;
+    color: var(--color-text-secondary);
+    background: none;
+    border: 0;
+    cursor: pointer;
+    opacity: 0.55;
+}
+
+.wir-row-hide:hover, .wir-row-hide:focus-visible { opacity: 1; color: var(--color-text); }
 
 /* Distinct from .wir-empty, which means "this run declared no rules at all" and
    keeps precedence over this one. */

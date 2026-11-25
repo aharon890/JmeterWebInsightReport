@@ -65,6 +65,14 @@ test('several chips at once, and each chip still counts every row', () => {
         'a chip that recounts as you filter reads 0 for what you did not pick');
 });
 
+test('a table\'s own filters AND with the search and the chips (the Asserts tab\'s More filters)', () => {
+    const s = Object.assign({}, spec, { filter: (r) => r.group === 'http_reqs' });
+    assert.deepStrictEqual(names(T.view(rows, s, {})), ['Search', 'Pay']);
+    assert.deepStrictEqual(names(T.view(rows, s, { statuses: ['WARN'] })), ['Pay']);
+    assert.strictEqual(T.view(rows, s, {}).matched, 2);
+    assert.strictEqual(T.view(rows, s, {}).total, 5, 'the total is every row');
+});
+
 test('the filter bar ticks narrow the rows, and a row tied to no request stays', () => {
     const withWholeRun = rows.concat([{ name: null, status: 'PASS', group: 'http_req_failed' }]);
     const s = Object.assign({}, spec, { key: (r) => r.name || 'whole run' });
@@ -153,6 +161,17 @@ test('x hides a row, the table counts it, and Show hidden is a state with none',
     assert.deepStrictEqual(names(v), ['Login', 'Search', 'Admin']);
     assert.strictEqual(v.hidden, 2, 'only the rows this table has');
     assert.strictEqual(names(view({ hidden: [] })).length, 5);
+});
+
+test('a hidden row is remembered under the key the table chooses (Asserts: id and occurrence)', () => {
+    const s = Object.assign({}, spec, { hideKey: (r) => 'h:' + r.name });
+    assert.deepStrictEqual(names(T.view(rows, s, { hidden: ['h:Pay'] })), ['Login', 'Browse', 'Search', 'Admin']);
+    assert.strictEqual(T.view(rows, s, { hidden: ['Pay'] }).hidden, 0, 'the row key is not the hide key');
+});
+
+test('Show N hidden counts every hidden row, whatever the search leaves out', () => {
+    assert.strictEqual(view({ hidden: ['Browse'], q: 'login' }).hidden, 1);
+    assert.strictEqual(T.view(treeRows, treeSpec, { group: 'transaction', hidden: ['Open'], q: 'POST' }).hidden, 1);
 });
 
 test('folded rows become one line per group, still counted, and open on request', () => {

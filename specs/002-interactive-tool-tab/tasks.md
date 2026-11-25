@@ -84,18 +84,18 @@ fixture.
 
 ## Stage 3: Asserts moves onto the toolkit (US6, FR-061, FR-062, FR-064, FR-065, FR-068)
 
-- [ ] T030 [US6] Red, in `PW/asserts-filter-sort.spec.ts` and a new `PW/table-toolbar.spec.ts` (one shared test per
+- [X] T030 [US6] Red, in `PW/asserts-filter-sort.spec.ts` and a new `PW/table-toolbar.spec.ts` (one shared test per
   table, extended stage by stage, SC-008): the Asserts toolbar row holds search, chips, Columns, "Show N hidden" and
   CSV; × on a rule row hides it and "Show N hidden" restores it; headers are buttons, sorted from the keyboard, with
   `aria-sort` on the sorted column only; the view (sort, hidden rows by id and occurrence, hidden columns) is
   remembered under `wir_view_<runId>` and another report opens with its own; the header Status popover is gone.
-- [ ] T031 [US6] `WIR.table.mount(tableId, spec)`: the toolbar renderer, header buttons, the state adapter, CSV
+- [X] T031 [US6] `WIR.table.mount(tableId, spec)`: the toolbar renderer, header buttons, the state adapter, CSV
   as shown (`buildCsvFromArrays`, `downloadCsvFile`), the per-report memory record.
-- [ ] T032 [US6] The chip renderer moves from `WIR.asserts` to `WIR.status`, through `chipToken` (rule 2).
-- [ ] T033 [US6] Asserts on the toolkit: its private sort, filter and chip code and the popover are deleted;
+- [X] T032 [US6] The chip renderer moves from `WIR.asserts` to `WIR.status`, through `chipToken` (rule 2).
+- [X] T033 [US6] Asserts on the toolkit: its private sort, filter and chip code and the popover are deleted;
   `wir_assertsSort` (global) moves into the per-report record. `JSU/dead-code.test.js` stays green.
-- [ ] T034 `verify_report_js_rules` rule 1 matches `WIR.table` too.
-- [ ] T035 [P] Docs: `docs/Tutorial/12-Asserts-Tab.md`, and its screenshots.
+- [X] T034 `verify_report_js_rules` rule 1 matches `WIR.table` too.
+- [X] T035 [P] Docs: `docs/Tutorial/12-Asserts-Tab.md`, and its screenshots.
 - [ ] T036 Commit; the gate is pull request 1's, after stage 4.
 
 ## Stage 4: The k6 tab (US1, US2, US3, FR-001 to FR-013, FR-020 to FR-023, FR-031 to FR-034)

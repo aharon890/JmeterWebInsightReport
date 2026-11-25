@@ -273,10 +273,13 @@ test.describe('Assertion Rules — sorting [E25]', () => {
       expect(cols).toEqual(
         ['severity', 'id', 'target', 'metric', 'criteria', 'actual', 'budget', 'matches']);
 
+      // WAI-ARIA's sortable table (spec 002, FR-064): each header is a button, and aria-sort is on the
+      // sorted column only
+      await expect(page.locator('#assertsTable th[data-sort-col] > button')).toHaveCount(8);
       await expect(page.locator('#assertsTable th[data-sort-col="severity"]'))
         .toHaveAttribute('aria-sort', 'ascending');
-      await expect(page.locator('#assertsTable th[data-sort-col="id"]'))
-        .toHaveAttribute('aria-sort', 'none');
+      await expect(page.locator('#assertsTable th[data-sort-col="id"]')).not.toHaveAttribute('aria-sort');
+      await expect(page.locator('#assertsTable th[aria-sort]')).toHaveCount(1);
     });
 
   test('clicking a new column takes its default direction, clicking it again flips',
@@ -392,11 +395,11 @@ test.describe('Assertion Rules — sorting [E25]', () => {
   test('Enter on a focused header sorts it and keeps focus there', async ({ page }) => {
     await openTab(page);
     const rule = page.locator('#assertsTable th[data-sort-col="id"]');
-    await rule.focus();
+    await rule.locator('button').focus();
     await page.keyboard.press('Enter');
     await expect(rule).toHaveAttribute('aria-sort', 'ascending');
     expect(await page.evaluate(
-      () => document.activeElement?.getAttribute('data-sort-col'))).toBe('id');
+      () => document.activeElement?.closest('th')?.getAttribute('data-sort-col'))).toBe('id');
   });
 
   test('the sort is remembered across a reload; the filters are not', async ({ page }) => {
@@ -416,115 +419,66 @@ test.describe('Assertion Rules — sorting [E25]', () => {
   });
 });
 
-test.describe('Assertion Rules — status popover [E25]', () => {
+/**
+ * The table's toolbar (spec 002, US6): every table of the report has the same row — search, chips,
+ * Group by, x and "Show N hidden", Columns, CSV. The chips are the one status control: the header's
+ * status popover went with the change (Q1 A).
+ */
+test.describe('Assertion Rules — the shared table toolbar [E25]', () => {
 
-  test('opens from the Status header without sorting it', async ({ page }) => {
+  test('the chips are the one status control: no popover in the header', async ({ page }) => {
     await openTab(page);
-    const severity = page.locator('#assertsTable th[data-sort-col="severity"]');
-    await expect(severity).toHaveAttribute('aria-sort', 'ascending');
-
-    await page.click('#assertsStatusBtn');
-    await expect(page.locator('#assertsStatusMenu')).toBeVisible();
-    // The click must not have reached the header underneath it.
-    await expect(severity).toHaveAttribute('aria-sort', 'ascending');
+    await expect(page.locator('#assertsStatusBtn')).toHaveCount(0);
+    await expect(page.locator('.wir-table-toolbar[data-table="assertsTable"] .wir-status-chip')).toHaveCount(6);
   });
 
-  test('renders outside the table scroll container, so it is not clipped', async ({ page }) => {
-    // .wir-table-wrap is overflow-x: auto, which promotes overflow-y to auto — a popover
-    // nested inside it is cut off at the header row. This is the regression guard.
+  test('Group by status puts the rules under a header per status, counts only, worst first', async ({ page }) => {
     await openTab(page);
-    await page.click('#assertsStatusBtn');
-
-    const insideWrap = await page.evaluate(
-      () => !!document.querySelector('.wir-table-wrap #assertsStatusMenu'));
-    expect(insideWrap).toBe(false);
-
-    const box = await page.locator('#assertsStatusMenu').boundingBox();
-    expect(box!.width).toBeGreaterThan(150);
-    expect(box!.height).toBeGreaterThan(100);
+    await page.selectOption('#assertsTable-group', 'status');
+    const groups = page.locator('#assertsTable tr.wir-group-row');
+    await expect(groups).toHaveCount(6);
+    await expect(groups.first()).toContainText('FAIL');
+    await expect(groups.first().locator('.wir-group-counts')).toHaveText('1 rules · 1 fail');
+    // a group closes and opens
+    await groups.first().locator('.wir-group-toggle').click();
+    await expect(page.locator('#assertsTable tr.wir-rule-row[data-rule-id="slow-api-p95"]')).toHaveCount(0);
+    await page.click('#assertsTable-expand-all');
+    await expect(page.locator('#assertsTable tr.wir-rule-row')).toHaveCount(ALL);
   });
 
-  test('multi-selects, and stays in sync with the toolbar chips', async ({ page }) => {
+  test('x hides a rule, Show N hidden counts and restores it, and the hidden row survives a reload', async ({ page }) => {
     await openTab(page);
-    await page.click('#assertsStatusBtn');
-    await page.locator('#assertsStatusMenu input[type="checkbox"]').first().check();
-    expect(await visible(page)).toEqual(['slow-api-p95']);
+    await page.locator('#assertsTable tr[data-rule-id="parked-rule"] .wir-row-hide').click();
+    expect(await visible(page)).not.toContain('parked-rule');
+    await expect(page.locator('#assertsTable-show-hidden')).toHaveText('Show 1 hidden');
 
-    const onChips = await page.locator('.wir-status-chip-on')
-      .evaluateAll(els => els.map(e => e.getAttribute('data-status')));
-    expect(onChips).toEqual(['FAIL']);
-  });
-
-  test('Breaching only selects FAIL, WARN and INVALID', async ({ page }) => {
-    await openTab(page);
-    await page.click('#assertsStatusBtn');
-    await page.click('#assertsStatusMenu .wir-status-menu-foot .wir-link:nth-child(2)');
-
-    const onChips = await page.locator('.wir-status-chip-on')
-      .evaluateAll(els => els.map(e => e.getAttribute('data-status')));
-    expect(onChips.sort()).toEqual(['FAIL', 'INVALID', 'WARN']);
-    // Worst first, and INVALID now sorts BELOW the real breaches rather than above them: a
-    // threshold that was actually exceeded is the more actionable row. It stays in this
-    // selection though — "breaching only" means "what needs attention", and a rule the file
-    // got wrong needs attention even though it no longer decides anything.
-    expect(await visible(page)).toEqual(
-      ['slow-api-p95', 'moderate-api-p95', 'unknown-metric']);
-    await expect(page.locator('#assertsStatusMenu')).toHaveCount(0);
-  });
-
-  /**
-   * The popover is `position: fixed`, so anything past the fold is unreachable, not just ugly.
-   *
-   * It opened downward unconditionally and clamped only the horizontal edge. With the toolbar
-   * low in the viewport the two footer buttons sat below the fold, and because a fixed element
-   * does not move with the page, scrolling could not bring them back — Playwright reported
-   * "element is outside of the viewport" and retried until it timed out. A real user gets the
-   * same popover with two buttons they cannot click.
-   */
-  test('the popover stays inside the viewport, flipping above the button if it must',
-    async ({ page }) => {
-      await openTab(page);
-      // A short viewport with the toolbar near the bottom is the case that broke.
-      await page.setViewportSize({ width: 1280, height: 620 });
-      await page.click('#assertsStatusBtn');
-
-      const box = await page.locator('#assertsStatusMenu').boundingBox();
-      const h = await page.evaluate(() => window.innerHeight);
-      expect(box!.y, 'the popover starts above the top edge').toBeGreaterThanOrEqual(0);
-      expect(box!.y + box!.height, 'the popover runs past the fold').toBeLessThanOrEqual(h);
-
-      // And the footer is genuinely clickable, which is the thing that actually failed.
-      await page.click('#assertsStatusMenu .wir-status-menu-foot .wir-link:nth-child(2)');
-      await expect(page.locator('#assertsStatusMenu')).toHaveCount(0);
-    });
-
-  test('All statuses clears the filter', async ({ page }) => {
-    await openTab(page);
-    await page.click('.wir-status-chip[data-status="FAIL"]');
-    await page.click('#assertsStatusBtn');
-    await page.click('#assertsStatusMenu .wir-status-menu-foot .wir-link:nth-child(1)');
+    await loadDirty(page, 'E25');
+    await switchTab(page, 'asserts');
+    expect(await visible(page)).not.toContain('parked-rule');
+    await page.click('#assertsTable-show-hidden');
     expect(await visible(page)).toHaveLength(ALL);
+    await expect(page.locator('#assertsTable-show-hidden')).toHaveCount(0);
   });
 
-  test('closes on an outside click and on Escape', async ({ page }) => {
+  test('Columns hides a column by its identity, header and cells', async ({ page }) => {
     await openTab(page);
-
-    await page.click('#assertsStatusBtn');
-    await expect(page.locator('#assertsStatusMenu')).toBeVisible();
-    await page.click('#assertsRulesCount');
-    await expect(page.locator('#assertsStatusMenu')).toHaveCount(0);
-
-    await page.click('#assertsStatusBtn');
-    await expect(page.locator('#assertsStatusMenu')).toBeVisible();
-    await page.keyboard.press('Escape');
-    await expect(page.locator('#assertsStatusMenu')).toHaveCount(0);
+    await page.click('#assertsTable-columns');
+    await page.locator('#assertsTable-columns-menu input[data-col="budget"]').uncheck();
+    await expect(page.locator('#assertsTable th[data-col-id="budget"]')).toBeHidden();
+    await expect(page.locator('#assertsTable td[data-col-id="budget"]:visible')).toHaveCount(0);
+    await expect(page.locator('#assertsTable th[data-col-id="actual"]')).toBeVisible();
   });
 
-  test('the button reports how many statuses are selected', async ({ page }) => {
+  test('CSV holds the rows and columns shown, as the table writes them', async ({ page }) => {
     await openTab(page);
     await page.click('.wir-status-chip[data-status="FAIL"]');
-    await page.click('.wir-status-chip[data-status="PASS"]');
-    await expect(page.locator('#assertsStatusBtn')).toContainText('2');
+    await page.click('#assertsTable-columns');
+    await page.locator('#assertsTable-columns-menu input[data-col="budget"]').uncheck();
+    const [download] = await Promise.all([page.waitForEvent('download'), page.click('#assertsTable-csv')]);
+    const lines = require('fs').readFileSync(await download.path(), 'utf8').trim().split(/\r?\n/);
+    expect(lines[0]).toBe('"Status","Rule","Target","Metric","Criteria","Actual","Matches"');
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toContain('slow-api-p95');
   });
 });
 

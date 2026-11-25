@@ -353,9 +353,18 @@ test.describe('XSS — Asserts inline handlers', () => {
       Array.from(document.querySelectorAll('#tab-asserts [onclick]'))
         .map((el) => el.getAttribute('onclick') || ''));
 
+    // The table toolkit's controls (spec 002) name their table and, on a row or a group, that row's or
+    // group's key: two literals, the second optional, then at most one true or false (open, close).
+    // Still nothing but literals, so still nothing a breakout can extend.
+    const TABLE_CALL = /^WIR\.table\.[A-Za-z]+\('(?:[^'\\]|\\.)*'(?:, '(?:[^'\\]|\\.)*')?(?:, (?:true|false))?\)$/;
+
     expect(handlers.length).toBeGreaterThan(0);
     handlers.forEach((h) => {
       if (CONSTANT_HANDLERS.has(h)) return;
+      if (h.startsWith('WIR.table.')) {
+        expect(h, `handler is not a single well-formed call: ${h}`).toMatch(TABLE_CALL);
+        return;
+      }
       expect(h, `handler is not a single well-formed call: ${h}`).toMatch(ONE_CALL);
     });
   });
