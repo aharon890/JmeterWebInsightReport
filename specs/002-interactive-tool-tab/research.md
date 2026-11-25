@@ -52,3 +52,34 @@ The facts, with line references: `tmp/002-interactive-tool-tab/plan-facts-2026-1
 - **Decision**: `localStorage` keys under the run's id, as drafts are.
 - **Rationale**: the spec asks for it per report. A global key from a k6 report would also reach JMeter reports in the
   same browser, which the facts flagged for `wir_detailCharts`.
+
+## R8. One toolkit for every table (the owner's widening, 2026-11-25)
+
+- **Decision**: `WIR.table`, a pure core with a DOM adapter (rows Thymeleaf wrote) and a state adapter (rows rendered
+  from state), one toolbar row, extracted from the Asserts tab's pipeline. Each table that moves deletes what it
+  replaced.
+- **Rationale**: today each control exists 2 to 5 times (search 5, sort 4, open and close 5, column chooser 2, chips 2
+  designs), and they drifted: five defects were found by reading. The workbook forbids a second mechanism beside an
+  existing one, so the toolkit must be the existing one, made general.
+- **Alternatives considered**: a new k6-only module (the first plan), rejected by the owner's widening; menus on each
+  header (Grafana's table) and a "View" drawer, both rejected by the owner (Q1 A).
+- **Facts**: `tmp/002-interactive-tool-tab/unified-table-facts-2026-11-25.md` (main checkout, git-ignored).
+
+## R9. What the standard tools do for a table's reader (checked 2026-11-25)
+
+- **JMeter's dashboard**: sort on every header, nothing else in the page; filtering is a property set when the report
+  is built.
+- **Grafana's table panel**: the author sets grouping, column hiding and column filters. Grafana's dashboard variables
+  filter every panel at once, which is the precedent for the ticks narrowing every table (Q4 A).
+- **Grafana's alert list and Grafana Cloud k6**: the reader picks a Grouped or List view and quick status filters.
+  This is the precedent for a reader's Group by and the status chips.
+- **None of them** has a per-row hide or remembers a reader's choices. WIR keeps both, as the owner asked ("hide rows
+  and columns") and as spec 002's FR-032 said.
+
+## R10. The rows R07 reads stay in the HTML
+
+- **Decision**: Requests and the Errors tables keep their server-written rows. The toolkit moves and hides them, but
+  never renders them.
+- **Rationale**: R07 parses `#samplerTable tbody tr[data-sampler]` from the page and holds each cell's text to
+  JMeter's Aggregate Report table. Rendering those rows in JavaScript would take the page's own numbers out of that
+  check.

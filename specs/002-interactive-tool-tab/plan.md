@@ -1,37 +1,57 @@
-# Implementation Plan: An organised, interactive k6 tab
+# Implementation Plan: One table experience for every tab, and an organised, interactive k6 tab
 
-**Branch**: `feat/002-interactive-tool-tab` | **Date**: 2026-11-25 | **Spec**: [spec.md](spec.md)
+**Branch**: `feat/002-interactive-tool-tab` | **Date**: 2026-11-25 (revised the same day) | **Spec**: [spec.md](spec.md)
 
-**Status**: Waiting for the owner. Three layout choices are open (below), shown as mock-ups at
-https://claude.ai/artifact/1LrUgn9nqBeug5jcgHWWoX. Building waits for the choices and the go-ahead (Principle I).
+**Status**: Revised for the owner's widening. Waiting for the owner's go-ahead on this revision (Principle I).
 
-**Input**: the spec, constitution 2.0.0, and the facts gathered read-only on 2026-11-24
-(`tmp/002-interactive-tool-tab/plan-facts-2026-11-24.md` in the main checkout, git-ignored; line references to the
-spec 001 tree, which main now holds).
+**Input**:
+- the spec (revised), constitution 2.0.0;
+- the facts gathered read-only, both git-ignored in the main checkout's `tmp/002-interactive-tool-tab/`:
+  `plan-facts-2026-11-24.md` (the k6 tab) and `unified-table-facts-2026-11-25.md` (every table: the capability
+  matrix, the toolkit's shape, the gates, the standard tools).
+
+## The owner's decisions (2026-11-25)
+
+- **The first plan.** "all 3 are ok, but i want the page to be interactive, like in the other report tabs ... a
+  unifying ui/ux for all report tabs. the logic itself for all 3 is ok". So the data and engine design below stands,
+  and the tables are unified.
+- **The k6 tab's layout** (https://claude.ai/artifact/1LrUgn9nqBeug5jcgHWWoX):
+  - 1A, thresholds in groups like k6's summary;
+  - 2A, numbers plus a bar of the average request;
+  - 3A, the request ticks narrow the k6 tab.
+- **The shared toolbar** (https://claude.ai/artifact/Nhk6xBsrSSwcT7b3qpzpoh):
+  - Q1 A: one toolbar row above every table;
+  - Q2 A: Group by status, plus Apdex rating, error class and code, and Compare's statuses. Numbers are never grouped;
+  - Q3 A: CSV exports what is shown;
+  - Q4 A: the request ticks narrow every tab's tables.
+- **Decided on the mock-up page, from earlier answers and the standard tools; the owner raised no objection:**
+  - Asserts-style chips everywhere;
+  - each table's view remembered per report;
+  - a ▸ per transaction;
+  - keyboard sort;
+  - the Server cards as "group by component";
+  - no number moves.
 
 ## Summary
 
-The k6 tab becomes a page module, `WIR.toolTab`, rendered by report.js from a `chartData.tool` block. Java writes the
-block from the run's tool records and measures:
+One table toolkit, `WIR.table`, serves every table of the report.
+- It is extracted from the Asserts tab's own state pipeline, not written beside it. Each table that moves onto it
+  deletes the code it replaced: five search implementations, four sorts, five open/close mechanisms, two column
+  choosers.
+- It draws one toolbar row (search, status chips, Group by, Expand / Collapse all, Columns, "Show N hidden", CSV) and
+  sortable header buttons.
+- It reads the filter bar's request ticks.
+- It remembers each table's view per report.
+
+The k6 tab is the first new table built on it. Its module, `WIR.toolTab`, renders from a `chartData.tool` block that
+Java writes from the run's tool records and measures:
 - the thresholds, each now with the value k6 measured;
-- the timing parts per request, now with p(99) and k6's request duration;
+- the timing parts per request, with p(99) and k6's request duration;
 - the checks with their group paths;
 - the counters.
 
-The module groups, filters, sorts, folds and remembers, through the mechanisms the Asserts, Requests and Errors tabs
-already have. A small change to the run data lets the threshold record carry the measured value. JMeter reports do not
-change.
-
-## Open choices for the owner (mock-ups on the page above)
-
-| # | Question | Options | Recommended |
-|---|---|---|---|
-| 1 | How the thresholds are laid out | A: groups with headers, like k6's own summary. B: one tree table, like the Requests tab. C: a card per group | A |
-| 2 | How each request's time is shown | A: numbers that follow the statistic switch, plus a bar of the average request from start to end. B: numbers only, with a "% waiting" column | A |
-| 3 | The page's filter bar on the k6 tab | A: the filter bar's request ticks narrow the k6 tab too. B: leave it for a later phase. C: a text box in the filter bar for every tab | A |
-
-The answers and their date go in this section. The design below assumes the recommended options and names what changes
-under the others.
+A small change to the run data lets the threshold record carry the measured value. On a JMeter report every number,
+row text and verdict stays as it is; the table controls change, as the owner asked.
 
 ## Technical Context
 
@@ -45,23 +65,29 @@ under the others.
   - the goldens G1-G13, `PreChangeBaselineTest`, R07 and R08;
   - the regression, and the release tier at release.
 - **Target platform**: the report page in any browser, built by `build-report --from k6` or `--run-data`.
-- **Performance goals**: on the 134,406-request run (spec 001's T067), the tab opens and every control answers in under
-  half a second on the owner's PC (SC-004).
-- **Constraints**: JMeter reports unchanged to the byte (FR-035). Numbers written as JMeter and k6 write them
-  (Principle II). Every new word in all three columns of the words table (`PageWords` refuses a column that differs).
-- **Scale/Scope**: up to hundreds of request names and thresholds (synthetic summary for the check).
+- **Performance goals**: every table opens and every control answers in under half a second on the owner's PC, on a
+  synthetic run with 300 or more request names and about 1,200 thresholds (SC-004, SC-010). The 134,406-request run
+  has only 12 names, so it cannot show this.
+- **Constraints**:
+  - every number, row text and verdict unchanged on JMeter reports (FR-035): the goldens, R07 and
+    `PreChangeBaselineTest` hold, unchanged;
+  - Requests' and the Errors tables' rows stay in the HTML, because R07 reads them (FR-070);
+  - numbers written as JMeter and k6 write them (Principle II);
+  - every new word in all three columns of the words table (`PageWords` refuses a column that differs).
+- **Scale/Scope**: about 2,000 lines of table code across six places in report.js, about 300 Playwright tests in the
+  files that pin today's controls, and 6 docs pages with their screenshots.
 
 ## Constitution Check (2.0.0)
 
 | Principle | Check | Result |
 |---|---|---|
 | I. Go-ahead | Plan only. Building starts on the owner's go | Pass |
-| II. The report follows JMeter (and the standard tool) | The k6 tab follows k6's own summary: its grouping, its units, the measured value beside each threshold. The thresholds stay k6's verdicts, not this report's. No new statistic is invented: p(99) and the duration trend use the engine's existing percentile method | Pass |
+| II. The report follows JMeter (and the standard tool) | The k6 tab follows k6's own summary: its grouping, its units, the measured value beside each threshold. The thresholds stay k6's verdicts, not this report's. No new statistic is invented: p(99) and the duration trend use the engine's existing percentile method. The toolbar follows the standard tools where they have an answer: sort on headers (JMeter's dashboard), a search plus quick status choices and a Grouped / List view (Grafana's alert list, Grafana Cloud k6), every panel narrowed by one page filter (Grafana's variables), an export of what is shown (Grafana, Datadog). A group header never sums or averages percentiles | Pass |
 | III. Tests are the gate, read as counts | Red-first tests per stage; counts reported; K2 becomes a fixture so a real failed threshold is tested | Pass |
 | IV. One self-contained artifact | All rendering inside the page; no new library | Pass |
 | V. Branch-first, one version, clean text | This branch; one version raise, 4.6.0 (a feature); LF files | Pass |
 | VI. Every setting reachable | No new report property. The tab's choices are page state, remembered per report. User-visible behaviour documented in `docs/` (the k6 page) in the same change | Pass |
-| VII. One engine for every load tool | The tool's section only. Thresholds and checks never decide a verdict. The run data change is additive (format 1.1, optional fields), so 1.0 files still read | Pass |
+| VII. One engine for every load tool | The tool's section only. Thresholds and checks never decide a verdict. The run data change is additive (format 1.1, optional fields), so 1.0 files still read. "JMeter users see no change": every fixture, R07 and the number gates hold as before; the table controls change because the owner asked for it (decision 3), and the browser tests that pin today's controls move with them, each named in stage order | Pass, noted |
 
 Re-checked after the design: unchanged.
 
@@ -92,27 +118,67 @@ Re-checked after the design: unchanged.
 ### 3. Rendering: `chartData.tool` and `WIR.toolTab`
 
 - `ToolTab` writes a `tool` block into chartData: thresholds, timing rows, checks, group durations, counters and the
-  words. The panel `#tab-tool` keeps its server-written counters and a mount point. The module renders the rest and
-  re-renders on every control, as the Asserts tab does: state, then filter, then sort, then rows.
+  words. The panel `#tab-tool` keeps its server-written counters and a mount point.
+- `WIR.toolTab` renders the rest through the toolkit's state adapter (section 4), as the Asserts tab will:
+  state, then filter, then group, then sort, then rows.
 - **Why not server-rendered rows.** Switching the grouping (Metric, Request, Condition, Result) and the statistic
-  rebuilds the rows. The generic helpers walk static rows only, and `verify_report_js_rules` rule 3 bans them on
-  re-rendered tables.
+  rebuilds the rows.
 - **What follows:**
   - `BuildReportK6Test` and `BuildReportOtherToolTest` read the `tool` block instead of grepping table ids in the HTML;
-  - rules 1 and 3 of `verify_report_js_rules` cover the new module and its table ids;
   - the block counts toward `externalDataThreshold`. It is small: 7 trends × 8 statistics per request.
 
-### 4. The shared mechanisms, reused, not copied
+### 4. The table toolkit, `WIR.table` (US6, FR-060 to FR-071)
 
-| Need | Existing mechanism | Change |
-|---|---|---|
-| Result chips (FR-003) | `WIR.asserts`' `statusChips` and `WIR.status` tokens | The chip renderer moves to `WIR.status` and both tabs call it. Several chips at once; counts cover every threshold |
-| Groups that open and close (FR-004, FR-020) | the Errors tab's groups | The open and close and the Expand all / Collapse all logic take a container. Groups hold real rows |
-| Search, sort within a group (FR-005, FR-006, FR-012) | the Asserts tab's filter-then-sort over state | The same order of steps in `WIR.toolTab`. The tree order comes from `samplerTreeOrder`, which is pure |
-| Column widths and order | `RESIZABLE_TABLES`, `initColumnDragDropForTable` | The new table ids are added |
-| × and "Show all" | the Requests tab's hidden-rows pattern | Hidden rows are part of the module's state, so a re-render keeps them |
-| CSV (FR-031) | `buildCsvFromArrays`, `downloadCsvFile` | One export per table, of the rows as shown |
-| Link to a request (FR-008) | `switchTab`, `toggleSamplerDetail` | A new `openRequestRow(name)`: switch tab, unhide, open the detail, scroll |
+**Shape**: one pure core, two small adapters, one toolbar.
+
+```
+WIR.table.view(records, spec, state)   pure: filter (search, chips, ticks) -> group -> sort by value within group
+                                       (tree through samplerTreeOrder) -> fold; node-tested in js-unit
+WIR.table.mount(tableId, spec)         the toolbar, the header buttons, the memory; returns {apply, state, csv, reset}
+spec: id, source 'dom' | 'state', key(row), columns [{id, label, value(row), hideable, csv(row)}], search(row),
+      status {of(row), order}, groupings [{id, label, of(row)}], tree, companions, pinned {first, last},
+      render(rows) for state tables, after()
+```
+
+- **The DOM adapter** (Requests, Error Summary, Error Details) keeps the rows Thymeleaf wrote. They stay in the HTML
+  for R07 (FR-070).
+  - It moves the existing `<tr>`s with their companion rows (the chart panel, the judging rows, the error detail).
+  - It sets `display`.
+  - It inserts group header rows as `tr.wir-group-row`, which every walker skips, as companions are skipped today.
+  - It generalises `arrangeSamplerRows` and `applySamplerRowVisibility`.
+- **The state adapter** (Asserts, Compare, the Errors groups, the Server board, the k6 tables) runs the Asserts tab's
+  pipeline: filter and sort the state, then render (`applySort(applyFilters(...))`).
+- **The toolbar** (Q1 A): search · status chips with counts · Group by · Expand all / Collapse all while grouped ·
+  then, on the right, Columns ▾ · "Show N hidden" · CSV. It renders through `WIR.status` chip tokens (rule 2) and one
+  `jsArg` call per inline handler (rules 1 and 4).
+- **Sorting** sorts by the column's value, never its text (FR-064; it fixes Throughput's text sort). Each header is a
+  `<button>`, with `aria-sort` on the sorted column only (WAI-ARIA's sortable table). Names compare with one fixed
+  collation, not the browser's language, so `every-reader-same-page` stays equal.
+- **Chips** (FR-062): several at once, each counting all rows, as the Asserts tab's do. The chip renderer moves out of
+  `WIR.asserts` into `WIR.status`.
+- **Group by** (FR-063, Q2 A), per table:
+
+  | Table | Group by |
+  |---|---|
+  | Requests | none, transaction (the tree, default), assert status, Apdex rating |
+  | Errors | none, sampler + type of error (today's Grouped view), error class, response code |
+  | Compare | none, REGRESSION / NEW / REMOVED / OK |
+  | Asserts | none, status |
+  | Server board | component (its cards, the default), status |
+  | k6 thresholds | metric (default), request, condition, result |
+
+  A group header shows counts only (FR-063).
+- **The filter bar's ticks** (FR-067, Q4 A): one reader, `getVisibleSamplerNames`, feeds every table's filter. The CSS
+  rule that hides the bar on the k6 and Server tabs goes. The Σ Total row, whole-run thresholds and counters stay.
+- **CSV** (FR-066, Q3 A): `table.csv('shown')` writes the rows and columns on screen, as formatted, through the existing
+  `buildCsvFromArrays` and `downloadCsvFile`. Today's exports, which write every row from chartData, are replaced.
+- **Memory** (FR-068): one `localStorage` record per report, `wir_view_<runId>`, holding `{tableId: state}`, inside
+  try/catch, the same shape as the drafts key. The rows of Asserts and Server are remembered by id and occurrence, as
+  `draftCount` pairs rules, because their page keys do not survive a reload. Widths and order keep their global keys.
+- **Link to a request** (FR-008): `openRequestRow(name)` switches to Requests, shows the row, opens its detail and
+  scrolls to it.
+- **Static rules**: rule 1 matches `WIR.table` and `WIR.toolTab` too. Rule 3 becomes "no `style.display` on a table
+  row outside `WIR.table`", once the generic helpers are deleted.
 
 ### 5. The thresholds (US1)
 
@@ -130,7 +196,7 @@ Re-checked after the design: unchanged.
   The parser is a pure function, tested in js-unit, including every operator and k6's spacing variants.
 - **Grouping**: Metric is the default: the metric without its tags, the tags shown in the row. Request uses the `name`
   tag, with "Not tied to one request" for the rest. Condition uses the expression text. Result puts failed first.
-- **The layout** follows choice 1 (A: header bars; B: parent rows in one table; C: cards).
+- **The layout** (1A): a header bar per group with its counts, a group with a failure open, the toolbar above.
 
 ### 6. The timings (US2)
 
@@ -142,9 +208,8 @@ Re-checked after the design: unchanged.
   then sending, waiting and receiving. The bar stays on the average, because percentiles of the parts don't add up.
   - k6's blocked contains connecting and TLS when a request opens a new connection. K2's numbers agree: Login's
     average blocked is 3.11 ms with 3.01 ms of connecting.
-  - Stage 3 checks this against k6's tracer source before the bar is built. If it does not hold, the bar shows the
-    parts side by side instead.
-- **Choice 2 B**: no bar, and a "% waiting" column.
+  - The k6 stage checks this against k6's tracer source before the bar is built. If it does not hold, the bar shows
+    the parts side by side instead.
 
 ### 7. Checks, group duration, counters, strip (US3)
 
@@ -155,18 +220,14 @@ Re-checked after the design: unchanged.
 - **Dropped iterations stay "0" when the summary has none.** k6 writes that counter only when it drops an iteration.
   The spec's US3 says "not measured", which is corrected in the same change.
 
-### 8. The filter bar (US4), by choice 3
+### 8. The filter bar (US4)
 
-- **A**: the filter bar's Requests row shows on the k6 tab. Its ticks narrow every section to the ticked requests, as
-  they narrow the charts. Rows tied to no request stay. CSS today hides the bar on this tab, so that rule goes.
-- **B**: no change. The tab's own searches only.
-- **C**: a new text box in the filter bar, read by every tab. This changes the Requests, Errors and Timeline tabs, and
-  every JMeter report with them. It needs its own spec.
+The k6 tab reads the ticks through the toolkit, as every table does (section 4). The tab's statistic switch joins its
+remembered view.
 
-### 9. Remembered choices (FR-032)
+### 9. Remembered choices (FR-032, FR-068)
 
-The grouping, statistic, open groups, hidden rows, sort and columns are kept in `localStorage` under the run's id, as
-drafts are, inside try/catch. The page works without them. A k6-only key can never reach a JMeter report, which
+The toolkit's per-report record holds the k6 tables' views too. A k6-only key can never reach a JMeter report, which
 answers the `wir_detailCharts` risk in the facts.
 
 ### 10. Over time (US5, P3)
@@ -186,21 +247,48 @@ differ. The column headings that `ToolTab` hard-codes today move into the table.
 
 ## Stages, each tested red first before the next
 
-1. **Data**: the threshold record's four fields, format 1.1, both schemas, `trendStatistics`, p99 and the duration
-   trend. K2 becomes a fixture: the `run_test` line, `FIXTURE_IDS`, `REQUIRED_FIXTURES` and an R07 case.
-   `RunDataSchemaTest`, `K6ResultsTest`, `ToolMeasuresTest`, R08. The goldens and `PreChangeBaselineTest` unchanged.
-2. **Shared pieces**: the chip renderer moved, groups taking a container, `openRequestRow`, the `tool` block. js-unit for
-   the expression parser, always-true, distance and units. The Asserts and Errors specs unchanged.
-3. **US1, US2, US3** in that order. The k6 tracer check comes before the timing bar. 'tool' joins
-   `every-reader-same-page.spec.ts`'s TABS and its CSV map. `tool-tab.spec.ts` grows to K1 and K2. `tool-words.spec.ts`
-   covers the new words.
-4. **US4**, by choice 3.
-5. **US5**, measured first, kept or moved.
-6. **Close**:
-   - the k6 docs page;
-   - SC-004 on the 134,406-request run, timed in the browser;
-   - the regression green, then the owner's walk-through (SC-005) on K1 and K2.
-   - Release 4.6.0 with the release tier.
+Each stage passes the regression and goes to main by pull request, so main stays releasable and no table is left on
+two mechanisms. Every stage holds the goldens, R07 and `PreChangeBaselineTest` unchanged. The release, 4.6.0, comes
+after the last stage.
+
+1. **Data**:
+   - the threshold record's four fields, format 1.1, both schemas, `trendStatistics`;
+   - p99 and the duration trend;
+   - K2 becomes a fixture: the `run_test` line, `FIXTURE_IDS`, `REQUIRED_FIXTURES` and an R07 case;
+   - tests: `RunDataSchemaTest`, `K6ResultsTest`, `ToolMeasuresTest`, R08.
+2. **The toolkit's pure core**: filter, group, sort by value, tree, fold, in js-unit, next to `sampler-tree.test.js`.
+   No page change yet. Also a synthetic run with 300+ request names and about 1,200 thresholds, for SC-010.
+3. **Asserts moves onto the toolkit**, the first table, because its pipeline is the model.
+   - The chip renderer moves to `WIR.status`.
+   - Asserts gains × and Columns, and one status control: the chips. The header popover goes.
+   - `asserts-filter-sort.spec.ts` (41 tests) proves nothing else moved.
+4. **The k6 tab** (US1, US2, US3) on the toolkit's state adapter.
+   - The k6 tracer check comes before the timing bar.
+   - 'tool' joins `every-reader-same-page.spec.ts`'s tabs and its CSV map.
+   - `tool-tab.spec.ts` covers K1 and K2; `tool-words.spec.ts` covers the new words.
+5. **Compare and the Errors tables** move.
+   - The generic helpers are deleted: `filterGenericTable`, `sortGenericTable`, `hideTableRow`, `showAllTableRows`,
+     `toggleGenericColumnMenu`, `applyGenericColumnVisibility`, `filterErrorGroups`.
+   - "By time / Grouped" becomes Group by.
+   - Defects 2-5 (FR-071) are each red first, then fixed.
+   - Rule 3 is rewritten.
+6. **Requests** moves, on the DOM adapter.
+   - `sortTable`, `arrangeSamplerRows`, `applySamplerRowVisibility`, `hideRow`, `showAllRows`, `initColumnMenu` and
+     `applyColumnVisibility` are replaced.
+   - Each transaction gets a ▸, and "Show transaction details" becomes Expand all / Collapse all.
+   - Defect 1 (Throughput's text sort) is red first, then fixed.
+   - `whole-run-totals.spec.ts` skips group header rows.
+7. **The Server board** moves: its chips take the one design, and its cards are "group by component".
+8. **The filter bar's ticks on every table** (US4, FR-067). `filter-controls.spec.ts:394` and `csv-export.spec.ts`,
+   which pin today's opposite, change with it.
+9. **US5**, measured first, kept or moved to a later phase.
+10. **Close**:
+    - the docs: the k6 page, and the Requests, Errors, Compare, Filter bar, Asserts and Server pages, with their
+      screenshots;
+    - SC-004 and SC-010 timed in the browser;
+    - spec 001's four-report comparison, run under its new definition (SC-007);
+    - the owner's walk-through (SC-005) on K1, K2 and E02;
+    - release 4.6.0 with the release tier.
 
 ## Spec text corrected in the same change
 
@@ -211,6 +299,19 @@ differ. The column headings that `ToolTab` hard-codes today move into the table.
 - SC-002: K2 has 12 request names, so 13 rows, plus 3 group rows (setup, Complete Checkout Flow, teardown).
 - SC-006: holds the thresholds' measured values to k6's summary. Per-request timings are nearest-rank, as the engine
   computes every percentile, not k6's interpolation.
+- FR-035 and SC-007 (done in the revised spec): "unchanged in any way" became "every number, row text and verdict
+  unchanged; the table controls change as US6 lists".
+
+## Risks
+
+- **Scope.** This is the biggest change to the page since the Asserts tab: 10 stages, about 300 browser tests to move.
+  Each stage merges on its own, so a stop part-way leaves main green, with some tables moved and the rest as today.
+- **Open charts in a re-rendered table.** A redraw would destroy a chart open in a row (the Server board rebuilds them
+  per keystroke today). The state adapter keeps open companion rows across a re-render, and the search is debounced.
+- **The rows R07 reads.** Requests and the Errors tables keep their rows in the HTML, with today's cells. A selection
+  box or a JS-rendered row would break R07, so neither is planned.
+- **Readers in other languages.** Names are sorted with one fixed collation, so an English and a German reader see the
+  same order.
 
 ## Artifacts
 
