@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  Web Insight Report — Regression suite (~5½ min, ~1½ when fixtures are current)
+#  Web Insight Report — Regression suite (about 13 min when the fixtures regenerate, measured 2026-11-25:
+#  phase 1 3m42s, phase 2 1m53s, the browser tests 6m57s; the owner's limit is 15)
 #
 #  Everything the sanity suite covers, plus the part it deliberately skips:
 #  regenerating the report fixtures from real JMeter runs and then asserting

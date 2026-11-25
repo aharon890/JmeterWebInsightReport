@@ -76,7 +76,7 @@ Two automated suites. Both exit with their failure count.
 
 ```bash
 ./test-plans/scripts/run-sanity.sh       # ~2 min  — run constantly while working
-./test-plans/scripts/run-regression.sh   # ~2 min, ~5 when fixtures are stale
+./test-plans/scripts/run-regression.sh   # ~13 min when fixtures are stale (they regenerate); the owner's limit is 15
 ```
 
 Regression regenerates the report fixtures only when their provenance stamps no

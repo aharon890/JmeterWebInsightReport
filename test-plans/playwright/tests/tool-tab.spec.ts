@@ -312,11 +312,12 @@ test.describe('The k6 tab, organised and interactive [K2]', () => {
   });
 });
 
-test('no JMeter fixture has a tool tab', async ({ page }) => {
-  // K1 and K2 are k6 runs' reports; every other fixture is a JMeter run's
-  for (const id of REQUIRED_FIXTURES.filter((f) => !['K1', 'K2'].includes(f))) {
+// K1 and K2 are k6 runs' reports; every other fixture is a JMeter run's. One test each: twenty pages in one test
+// outran its 30 seconds while the rest of the suite ran beside it (2026-11-25).
+for (const id of REQUIRED_FIXTURES.filter((f) => !['K1', 'K2'].includes(f))) {
+  test(`${id}, a JMeter run, has no tool tab`, async ({ page }) => {
     await loadClean(page, id);
-    await expect(page.locator('.tab-btn[data-tab="tool"]'), id).toHaveCount(0);
-    await expect(page.locator('#tab-tool'), id).toHaveCount(0);
-  }
-});
+    await expect(page.locator('.tab-btn[data-tab="tool"]')).toHaveCount(0);
+    await expect(page.locator('#tab-tool')).toHaveCount(0);
+  });
+}
