@@ -173,11 +173,18 @@ fixture.
 
 ## Stage 7: The Server board (US6, FR-062, FR-063)
 
-- [ ] T080 [US6] Red: the board's chips work as every other table's (several at once, counts over every row);
+- [X] T080 [US6] Red: the board's chips work as every other table's (several at once, counts over every row);
   Group by component (the default) or status; sort by header.
-- [ ] T081 [US6] The board on the state adapter; its one-at-a-time chips (`filterChipsHtml`) deleted; open charts
+- [X] T081 [US6] The board on the state adapter; its one-at-a-time chips (`filterChipsHtml`) deleted; open charts
   kept across a re-render; rule 4 holds (the search reports through the delegated listener).
-- [ ] T082 [P] `PW/server-board.spec.ts` SF40 and SF41 move; docs `13-Server-Tab.md`.
+  Done 2026-11-26: every toolbar's search and Group by now report through one listener of WIR.table's on the
+  document (`data-wir-table-search`, `data-wir-table-group`), so no toolbar carries `oninput`/`onchange` and the
+  Server tab keeps its one handler shape; its sweeps take the toolkit's literal-only calls (`TOOLKIT_CALL`), as the
+  Asserts sweep did. A card is its component's group (▾, Expand all / Collapse all); Status and None draw one
+  table. The component badge stays the board's own filter on top (`spec.filter`). The chips count every row
+  (FR-062), which retires U6's "the counts follow the other filters" and the "All N" chip.
+- [X] T082 [P] `PW/server-board.spec.ts` SF40 and SF41 move (and server-tab, server-identity, keyboard-focus,
+  client-fixes, xss-escaping, asserts-filter-sort, whose chips are scoped to their tab now); docs `13-Server-Tab.md`.
 - [ ] T083 Pull request 2 (stages 5-7): the full regression, push, PR, merge.
 
 ## Stage 8: The filter bar's ticks on every table (US4, FR-030, FR-067)

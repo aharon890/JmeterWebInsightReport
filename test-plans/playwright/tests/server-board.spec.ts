@@ -362,9 +362,9 @@ test.describe('Server tab — the component board', () => {
     await expect(row.locator('.wir-kpi-name')).toHaveText('Connections used (%)');
     await expect(row.locator('.wir-kpi-id')).toHaveText('orders-db-connections-used-pct · derived id');
     // The text box still finds it by either.
-    await page.fill('.wir-server-search', 'orders-db-connections-used');
+    await page.fill('#serverSearch', 'orders-db-connections-used');
     await expect(page.locator('tr.wir-kpi-row')).toHaveCount(1);
-    await page.fill('.wir-server-search', '');
+    await page.fill('#serverSearch', '');
 
     // The editor's title names it the same way ("Edit server assert — orders-db-connections-used-pct").
     await row.locator('button', { hasText: 'Edit' }).click();
@@ -707,56 +707,58 @@ test.describe('Server tab — what a coarser rung draws (REV-10)', () => {
 });
 
 test.describe('Server tab — the filter row (SF40, SF41)', () => {
-  const chips = (page: Page) => page.locator('.wir-server-filters .wir-filter-chip');
+  // The board's toolbar is the table toolkit's since spec 002 (stage 7): its chips count every row, whatever the
+  // other filters select (FR-062), as the Asserts tab's do.
+  const chips = (page: Page) => page.locator('#tab-server .wir-table-toolbar[data-table="serverKpiTable"] .wir-status-chip');
 
-  test('[U] SF40: typing in the filter box re-counts the status chips and offers Clear filters, keeping the focus',
+  test('[U] SF40: typing in the filter box narrows the board and offers Clear filters, keeping the focus; the chips keep counting every row',
     async ({ page }) => {
-      // U6's residue: the chips and Clear filters were rebuilt only by a full render, so "lag" left
-      // three rows under "All (12)" with no Clear filters, and the next chip click counted them.
+      // U6's residue: Clear filters was rebuilt only by a full render, so "lag" left three rows with no Clear
+      // filters. The counts no longer follow the search (FR-062).
       await loadClean(page, 'E26');
       await switchTab(page, 'server');
-      const box = page.locator('.wir-server-search');
+      const every = await chips(page).allTextContents();
+      const box = page.locator('#serverSearch');
       await box.click();
       await page.keyboard.type('lag');
       await expect(page.locator('#serverKpiTable tbody tr.wir-kpi-row')).toHaveCount(3);
-      await expect(chips(page)).toHaveText(['All 3', 'FAIL 1', 'WARN 1', 'PASS 1']);
-      await expect(page.locator('.wir-server-filters .wir-clear-filters')).toBeVisible();
+      await expect(chips(page)).toHaveText(every);
+      await expect(page.locator('#tab-server .wir-table-toolbar[data-table="serverKpiTable"] .wir-clear-filters')).toBeVisible();
       await expect(box).toBeFocused();
       await expect(box).toHaveValue('lag');
 
-      // Nothing left: the chips say so too, beside the board's own way out.
+      // Nothing left: the board says so, beside its own way out.
       await page.keyboard.type('zz');
-      await expect(chips(page)).toHaveText(['All 0']);
+      await expect(page.locator('#serverBoard')).toContainText('No server assert matches these filters.');
       await expect(box).toBeFocused();
-      await page.locator('.wir-server-filters .wir-clear-filters').click();
+      await page.locator('#tab-server .wir-table-toolbar[data-table="serverKpiTable"] .wir-clear-filters').click();
       await expect(page.locator('#serverKpiTable tbody tr.wir-kpi-row')).toHaveCount(12);
-      await expect(chips(page).first()).toHaveText('All 12');
-      await expect(page.locator('.wir-server-search')).toHaveValue('');
-      await expect(page.locator('.wir-server-filters .wir-clear-filters')).toHaveCount(0);
+      await expect(page.locator('#serverSearch')).toHaveValue('');
+      await expect(page.locator('#tab-server .wir-table-toolbar[data-table="serverKpiTable"] .wir-clear-filters')).toHaveCount(0);
     });
 
   test('[U] SF41: the status chips read as the Asserts tab\'s — "FAIL 1" — and say whether they are on, with no "Not judged ▾" on either tab',
     async ({ page }) => {
       await loadClean(page, 'E26');
       await switchTab(page, 'server');
-      // They read "All (12) | FAIL (1) | …" with no aria-pressed, beside the Asserts tab's "FAIL 1".
+      // They read "All (12) | FAIL (1) | …" with no aria-pressed, beside the Asserts tab's "FAIL 1". Since spec 002
+      // they are the Asserts tab's chips: no "All" chip, every chip off until pressed.
       const texts = await chips(page).allTextContents();
-      expect(texts[0]).toBe('All 12');
       expect(texts).toContain('FAIL 1');
+      expect(texts.reduce((n, t) => n + Number(t.split(' ').pop()), 0), 'the chips count every row').toBe(12);
       for (const t of texts) expect(t, 'no parenthesised count').not.toMatch(/\(\d+\)/);
       expect(await chips(page).evaluateAll((els) => els.map((e) => e.getAttribute('aria-pressed'))))
-        .toEqual(texts.map((_, i) => (i === 0 ? 'true' : 'false')));
+        .toEqual(texts.map(() => 'false'));
 
       await chips(page).filter({ hasText: /^FAIL 1$/ }).click();
       await expect(chips(page).filter({ hasText: /^FAIL 1$/ })).toHaveAttribute('aria-pressed', 'true');
-      await expect(chips(page).first()).toHaveAttribute('aria-pressed', 'false');
       await expect(page.locator('#serverKpiTable tbody tr.wir-kpi-row')).toHaveCount(1);
 
       // Every NOT_JUDGED reason is still a chip of its own, on both tabs (Q12): §3's "Not judged ▾"
       // contradicted its own "shaped like the Asserts tab", which has no ▾.
-      await chips(page).first().click();
-      await expect(page.locator('.wir-server-filters')).not.toContainText('Not judged');
-      await expect(page.locator('.wir-server-filters')).not.toContainText('▾');
+      await chips(page).filter({ hasText: /^FAIL 1$/ }).click();
+      await expect(page.locator('#tab-server .wir-table-toolbar[data-table="serverKpiTable"]')).not.toContainText('Not judged');
+      await expect(page.locator('#tab-server .wir-table-toolbar[data-table="serverKpiTable"] .wir-status-chips')).not.toContainText('▾');
       expect(texts).toEqual(expect.arrayContaining(['INVALID 1', 'SOURCE FAILED 1', 'LOW COVERAGE 1',
         'LOAD NOT ACHIEVED 1', 'UNMATCHED 1', 'DISABLED 1']));
       await switchTab(page, 'asserts');

@@ -17,6 +17,16 @@ import { loadClean, switchTab } from './helpers';
 
 const PAYLOAD = `<img src=x onerror="window.__XSS__=1">`;
 
+// The table toolkit's controls (spec 002) name their table and, on a row or a group, that row's or group's key: two
+// literals, the second optional, then at most one true or false (open, close). Still nothing but literals, so still
+// nothing a breakout can extend. The Asserts tab's toolbar since stage 4, the Server board's since stage 7.
+const TOOLKIT_CALL = /^WIR\.table\.[A-Za-z]+\('(?:[^'\\]|\\.)*'(?:, '(?:[^'\\]|\\.)*')?(?:, (?:true|false))?\)$/;
+
+/** A handler is one call of literals: the module's own shape, or the toolkit's. */
+function expectOneCall(h: string, oneCall: RegExp) {
+  expect(h, `handler is not a single well-formed call: ${h}`).toMatch(h.startsWith('WIR.table.') ? TOOLKIT_CALL : oneCall);
+}
+
 /** The payload must never survive as live markup. */
 function assertNoLiveMarkup(html: string, context: string) {
   expect(html, `${context} must not emit a raw tag`).not.toContain('<img');
@@ -353,19 +363,11 @@ test.describe('XSS — Asserts inline handlers', () => {
       Array.from(document.querySelectorAll('#tab-asserts [onclick]'))
         .map((el) => el.getAttribute('onclick') || ''));
 
-    // The table toolkit's controls (spec 002) name their table and, on a row or a group, that row's or
-    // group's key: two literals, the second optional, then at most one true or false (open, close).
-    // Still nothing but literals, so still nothing a breakout can extend.
-    const TABLE_CALL = /^WIR\.table\.[A-Za-z]+\('(?:[^'\\]|\\.)*'(?:, '(?:[^'\\]|\\.)*')?(?:, (?:true|false))?\)$/;
 
     expect(handlers.length).toBeGreaterThan(0);
     handlers.forEach((h) => {
       if (CONSTANT_HANDLERS.has(h)) return;
-      if (h.startsWith('WIR.table.')) {
-        expect(h, `handler is not a single well-formed call: ${h}`).toMatch(TABLE_CALL);
-        return;
-      }
-      expect(h, `handler is not a single well-formed call: ${h}`).toMatch(ONE_CALL);
+      expectOneCall(h, ONE_CALL);
     });
   });
 
@@ -504,9 +506,9 @@ test.describe('XSS — Asserts inline handlers', () => {
     // The hostile id did reach a handler — a sweep over handlers that never carried it proves nothing.
     expect(handlers.some((h) => h.startsWith('WIR.serverKpis.filterGate(') && h.includes('pwned')),
       'no filter chip carries the hostile component id').toBe(true);
-    handlers.forEach((h) => {
-      expect(h, `handler is not a single well-formed call: ${h}`).toMatch(ONE_CALL);
-    });
+    expect(handlers.some((h) => h.startsWith('WIR.table.setOpen(') && h.includes('pwned')),
+      'no card toggle carries the hostile component id').toBe(true);
+    handlers.forEach((h) => expectOneCall(h, ONE_CALL));
     expect(await page.evaluate(() => (window as any).__pwned)).toBeUndefined();
   });
 
@@ -534,7 +536,7 @@ test.describe('XSS — Asserts inline handlers', () => {
       expect(handlers.some((h) => h.startsWith(`WIR.serverKpis.${action}(`) && h.includes('pwned')),
         `no ${action} handler carries the hostile id`).toBe(true);
     }
-    handlers.forEach((h) => expect(h, `handler is not a single well-formed call: ${h}`).toMatch(ONE_CALL));
+    handlers.forEach((h) => expectOneCall(h, ONE_CALL));
     await expect(page.locator('#serverDialog .wir-slideover-head strong')).toHaveText('Edit component — ' + HOSTILE);
     expect(await page.locator('#tab-server img').count(), 'the id created an element').toBe(0);
     expect(await page.evaluate(() => (window as any).__pwned)).toBeUndefined();
@@ -567,9 +569,7 @@ test.describe('XSS — Asserts inline handlers', () => {
     expect(handlers.length,
       'the server tab rendered no inline handlers — the sweep would pass without checking anything')
       .toBeGreaterThan(0);
-    handlers.forEach((h) => {
-      expect(h, `handler is not a single well-formed call: ${h}`).toMatch(ONE_CALL);
-    });
+    handlers.forEach((h) => expectOneCall(h, ONE_CALL));
   });
 
   test('[C/R] the server editor holds the same line, with every handler kind swept', async ({ page }) => {
@@ -604,9 +604,7 @@ test.describe('XSS — Asserts inline handlers', () => {
 
       expect(handlers.editor, 'the editor did not open inside #tab-server').toBeGreaterThan(0);
       expect(handlers.controls, 'the editor rendered no form controls').toBeGreaterThan(5);
-      handlers.all.forEach((h) => {
-        expect(h, `handler is not a single well-formed call: ${h}`).toMatch(ONE_CALL);
-      });
+      handlers.all.forEach((h) => expectOneCall(h, ONE_CALL));
       await page.evaluate(() => (window as any).WIR.serverKpis.closeEditor());
     }
 
@@ -626,9 +624,7 @@ test.describe('XSS — Asserts inline handlers', () => {
       return out;
     }, SELECTOR);
     expect(doc.some((h) => /closeDocument/.test(h)), 'the document editor\'s own handlers were swept').toBe(true);
-    doc.forEach((h) => {
-      expect(h.replace(/^on[a-z]+=| on #.*$/g, ''), `handler is not a single well-formed call: ${h}`).toMatch(ONE_CALL);
-    });
+    doc.forEach((h) => expectOneCall(h.replace(/^on[a-z]+=| on #.*$/g, ''), ONE_CALL));
     // Typing still reaches the editor: Apply follows the text, through a bound listener.
     await page.locator('#docEditorText').fill('{');
     await expect(page.locator('#docEditorProblem')).toContainText('Not valid JSON');

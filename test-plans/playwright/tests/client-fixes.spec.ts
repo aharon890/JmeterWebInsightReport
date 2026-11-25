@@ -311,8 +311,8 @@ test.describe('F5: an Undo is offered only while the document is as its action l
     const n = (await docOf(page)).serverMetrics.asserts.length;
     await page.locator('button[onclick*="WIR.serverKpis.remove"]').first().click();
     await page.click('#serverExpandAll');
-    await page.locator('#serverBoard .wir-filter-chip').nth(1).click();
-    await page.locator('#serverBoard .wir-filter-chip').nth(1).click();
+    await page.locator('#tab-server .wir-table-toolbar[data-table="serverKpiTable"] .wir-status-chip').first().click();
+    await page.locator('#tab-server .wir-table-toolbar[data-table="serverKpiTable"] .wir-status-chip').first().click();
     await switchTab(page, 'asserts');
     await switchTab(page, 'server');
     const toast = page.locator('#wir-undo-toast');

@@ -3479,16 +3479,8 @@ body.dark-mode .wir-table-columns-menu { box-shadow: 0 6px 18px rgba(0, 0, 0, 0.
     gap: 6px;
 }
 
-/* The chips' own span (SF40), so typing can redraw them without the box: no box of its own, so
-   the chips stay flex items of the row and wrap as they did. */
-.wir-server-chips {
-    display: contents;
-}
-
-/* First in its span, not in the row: the search box is still to its left. */
-.wir-server-chips > .wir-filter-label:first-child {
-    margin-left: 10px;
-}
+/* The board's toolbar is the toolkit's (spec 002): it takes the row's room, the line colour after it */
+.wir-server-board-toolbar { flex: 1 1 auto; min-width: 0; }
 
 /* The tab's line colour, at the row's far end; its picker opens leftwards from there. */
 .wir-server-line-color {
@@ -3690,7 +3682,9 @@ body.wir-on-tool-tab .filter-bar-toggle-wrapper {
 }
 
 /* One card per component (design §3). */
-.wir-component-card {
+/* The board grouped by status, or not at all, is one table framed as a card is */
+.wir-component-card,
+.wir-board-flat {
     border: 1px solid var(--color-border);
     border-radius: 8px;
     background: var(--color-surface);
@@ -3723,7 +3717,8 @@ body.wir-on-tool-tab .filter-bar-toggle-wrapper {
 /* A size container, so an open row's panels can be as wide as the card shows rather than as wide
    as the table is (SF34, below). Scoped to the cards: a bare .table-wrapper rule would reach the
    Samplers, Errors and Compare tables. */
-.wir-component-card .table-wrapper {
+.wir-component-card .table-wrapper,
+.wir-board-flat .table-wrapper {
     margin: 0;
     container-type: inline-size;
 }
@@ -3791,16 +3786,6 @@ body.wir-on-tool-tab .filter-bar-toggle-wrapper {
    searched for. Breakable anywhere, as a derived id is one long hyphenated token. */
 .wir-kpi-id {
     overflow-wrap: anywhere;
-}
-
-.wir-server-search {
-    min-width: 200px;
-    padding: 4px 8px;
-    border: 1px solid var(--color-border);
-    border-radius: 6px;
-    background: var(--color-surface);
-    color: inherit;
-    margin-right: 8px;
 }
 
 /* An open row's two panels: over time, and per instance. */

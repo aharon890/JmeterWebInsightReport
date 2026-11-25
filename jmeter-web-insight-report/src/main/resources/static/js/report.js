@@ -8067,7 +8067,7 @@ WIR.table = (function () {
         }
         var t = { id: id, spec: spec, state: s, last: null, menu: false };
         tables[id] = t;
-        bindMenuDismiss();
+        bindDocument();
         return t;
     }
 
@@ -8236,9 +8236,22 @@ WIR.table = (function () {
 
     /* A Columns menu closes on a click outside it and on Escape, as a menu does. */
     var menuDismissBound = false;
-    function bindMenuDismiss() {
+    /* The document's listeners, bound once: a Columns menu closes on a click outside it or on Escape, and a toolbar's
+       search box and Group by report here, by the table their data attribute names. No toolbar carries an oninput
+       or onchange attribute: the Server tab allows its handlers one shape only, a call of literals (R3-17). */
+    function bindDocument() {
         if (menuDismissBound || typeof document === 'undefined' || !document.addEventListener) return;
         menuDismissBound = true;
+        document.addEventListener('input', function (e) {
+            var el = e.target;
+            var id = el && el.getAttribute ? el.getAttribute('data-wir-table-search') : null;
+            if (id !== null && tables[id]) setQuery(id, el.value);
+        });
+        document.addEventListener('change', function (e) {
+            var el = e.target;
+            var id = el && el.getAttribute ? el.getAttribute('data-wir-table-group') : null;
+            if (id !== null && tables[id]) setGroup(id, el.value);
+        });
         var closeAll = function (except) {
             Object.keys(tables).forEach(function (id) {
                 var t = tables[id];
@@ -8268,14 +8281,16 @@ WIR.table = (function () {
         opts = opts || {};
         var sorted = !!(t.state.sort && t.state.sort.col === col);
         var dir = sorted ? t.state.sort.dir : null;
-        var attrs = ' data-col-id="' + esc(col) + '"' + (columnHidden(id, col) ? ' style="display:none"' : '');
+        var attrs = ' data-col-id="' + esc(col) + '"' + (columnHidden(id, col) ? ' style="display:none"' : '') +
+            (opts.thTitle ? ' title="' + esc(opts.thTitle) + '"' : '');
         if (c.sortable === false) {
             return '<th' + (opts.cls ? ' class="' + opts.cls + '"' : '') + attrs + '>' + esc(c.label) +
                 (opts.extra || '') + '</th>';
         }
         return '<th class="wir-th-sortable' + (opts.cls ? ' ' + opts.cls : '') + '" data-sort-col="' + esc(col) + '"' +
             attrs + (sorted ? ' aria-sort="' + (dir === 'desc' ? 'descending' : 'ascending') + '"' : '') + '>' +
-            '<button type="button" class="wir-sort-btn" id="' + esc(id + '-sort-' + col) + '"' +
+            /* opts.idSuffix: a table that draws several header rows (the Server board's cards) */
+            '<button type="button" class="wir-sort-btn" id="' + esc(id + '-sort-' + col + (opts.idSuffix || '')) + '"' +
             ' title="' + esc(opts.title || 'Sort by ' + c.label) + '"' +
             ' onclick="WIR.table.sortBy(' + jsArg(id) + ', ' + jsArg(col) + ')">' +
             esc(c.label) +
@@ -8336,8 +8351,7 @@ WIR.table = (function () {
         if (spec.search) {
             h += '<input type="text" class="wir-rules-search wir-table-search" id="' + esc(opts.searchId || id + '-search') + '"' +
                 ' placeholder="' + esc(opts.placeholder || 'Search…') + '" aria-label="' + esc(opts.label || 'Search') + '"' +
-                ' value="' + esc(s.q) + '"' +
-                ' oninput="WIR.table.setQuery(' + jsArg(id) + ', this.value)"/>';
+                ' value="' + esc(s.q) + '" data-wir-table-search="' + esc(id) + '"/>';
         }
         if (spec.status && t.last) {
             h += WIR.status.chipsHtml({
@@ -8349,7 +8363,7 @@ WIR.table = (function () {
         var groups = Object.keys(spec.groupings || {});
         if (groups.length) {
             h += '<label class="wir-table-group">Group by <select class="wir-filter-select" id="' + esc(id + '-group') + '"' +
-                ' onchange="WIR.table.setGroup(' + jsArg(id) + ', this.value)">' +
+                ' data-wir-table-group="' + esc(id) + '">' +
                 (spec.noGrouping === false ? '' : '<option value=""' + (s.group ? '' : ' selected') + '>None</option>') +
                 groups.map(function (g) {
                     return '<option value="' + esc(g) + '"' + (s.group === g ? ' selected' : '') + '>' +
@@ -18079,7 +18093,7 @@ WIR.serverKpis = (function () {
         excludeRampUp: true,
         unavailable: null,
         open: {},
-        filters: { gate: '', status: '', text: '' },
+        filters: { gate: '' },
         /* Value over time's bucket, in ms; 0 is the collection's own step (SF39/SF42). */
         granularity: 0,
         /* The component whose card's ⋯ actions are showing, or null (SF44). */
@@ -18183,7 +18197,8 @@ WIR.serverKpis = (function () {
         state.block = block;
         state.declaredKpis = assignKeys(kpis);
         state.config = configFromJson(block && !blockShapeProblem(block) ? block : null);
-        state.filters = { gate: '', status: '', text: '' };
+        state.filters = { gate: '' };
+        if (WIR.table.table(BOARD)) WIR.table.resetFilters(BOARD);
         state.componentMenu = null;
         editor = null;
     }
@@ -18863,38 +18878,131 @@ WIR.serverKpis = (function () {
         return seedsCache;
     }
 
-    function visibleRows() {
-        return boardRows().filter(function (row) {
-            return passesFilters(row, false);
-        }).sort(function (a, b) {
-            var ra = rowRank(a);
-            var rb = rowRank(b);
-            if (ra !== rb) return ra - rb;
-            /* Then id, then the key — two KPIs may share an id, and the order must not flip. */
-            var byId = String(a.kpi.id).localeCompare(String(b.kpi.id));
-            if (byId !== 0) return byId;
-            return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
-        });
+    /* ---- the board on the table toolkit (spec 002, stage 7) ------------------------------
+     *
+     * The board is WIR.table's state adapter, as the Asserts tab is: the search and the status chips are the toolkit's
+     * (several chips at once, each counting every row, FR-062), and so are Group by — component, the cards and the
+     * default, status or none (FR-063) — the sort by any header, and the open and closed groups, all remembered for
+     * this report. A card is the component's group, and opens and closes as one. The component badge on a card is the
+     * board's own filter on top (spec.filter), and a row's charts stay the board's: state.open, redrawn by
+     * reinitOpenCharts after every pass, so a chart open in a row survives the search.
+     */
+    var BOARD = 'serverKpiTable';
+    var BOARD_STATUS_ORDER = [NEEDS_RECOLLECTION, NOT_REJUDGED].concat(S.STATUS_ORDER);
+    /* The group key of the asserts that name no component the file declares: ServerGateEvaluation's "(no gate)" */
+    var ORPHAN_GROUP = '';
+    /* The cards' order: the components the document declares, then those only the build judged */
+    var boardIds = [];
+
+    function boardView() {
+        /* registered at init; a render before it (the external-data path) registers it here */
+        if (!WIR.table.table(BOARD)) WIR.table.register(BOARD, boardSpec());
+        boardIds = componentIdsDeclared().slice();
+        gateStrip().forEach(function (e) { if (boardIds.indexOf(e.id) < 0) boardIds.push(e.id); });
+        return WIR.table.compute(BOARD, boardRows());
     }
 
-    /* Kept for the M5 specs and the read-only path: the judged entries as the payload had
-       them, filtered and sorted the same way. */
-    function visibleKpis() {
-        var f = state.filters;
-        return state.kpis.filter(function (k) {
-            /* The wire's "component" (C7); "gate" in a page generated before it. */
-            var component = k.component !== undefined ? k.component : k.gate;
-            if (f.gate && (component || '') !== f.gate) return false;
-            if (f.source && k.source !== f.source) return false;
-            if (f.status && S.displayStatus(k) !== f.status) return false;
-            return true;
-        }).slice().sort(function (a, b) {
-            var ra = S.SORT_RANK[S.displayStatus(a)];
-            var rb = S.SORT_RANK[S.displayStatus(b)];
-            if (ra !== undefined && rb !== undefined && ra !== rb) return ra - rb;
-            return String(a.id).localeCompare(String(b.id));
-        });
+    function componentGroupOf(row) {
+        var id = row.kpi.gate;
+        return id && boardIds.indexOf(id) >= 0 ? id : ORPHAN_GROUP;
     }
+
+    function boardRank(list, key) {
+        var i = list.indexOf(key);
+        return i < 0 ? list.length : i;
+    }
+
+    function finiteOrNull(v) {
+        return typeof v === 'number' && isFinite(v) ? v : null;
+    }
+
+    function boardSpec() {
+        var name = function (row) { return assertNaming(row.kpi.gate, row.kpi.metric, row.kpi.id).name; };
+        var verdictField = function (field) {
+            return function (row) { return row.verdict ? finiteOrNull(row.verdict[field]) : null; };
+        };
+        return {
+            key: function (row) { return row.key; },
+            columns: [
+                { id: 'status', label: 'Status', hideable: false, value: rowRank,
+                  text: function (row) { return S.chipLabel(rowDisplay(row)); } },
+                { id: 'name', label: 'Server assert', hideable: false, value: name, text: name },
+                { id: 'actual', label: 'Actual', hideable: false, firstDir: 'desc', value: verdictField('actual') },
+                { id: 'criteria', label: 'Criteria', hideable: false,
+                  value: function (row) {
+                      var band = row.kpi.fail || row.kpi.warn;
+                      return band ? finiteOrNull(band.value) : null;
+                  } },
+                { id: 'coverage', label: 'Coverage', hideable: false, value: verdictField('coverage') },
+                { id: 'instances', label: 'Instances', hideable: false, firstDir: 'desc', value: verdictField('instances') }
+            ],
+            /* then id, then the key: two asserts may share an id, and the order must not flip */
+            tie: function (a, b) {
+                var byId = WIR.table.compareValues(String(a.kpi.id), String(b.kpi.id));
+                return byId || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+            },
+            search: rowSearchText,
+            filter: function (row) { return !state.filters.gate || (row.kpi.gate || '') === state.filters.gate; },
+            status: rowDisplay,
+            statusOrder: BOARD_STATUS_ORDER,
+            groupings: {
+                component: { label: 'Component',
+                    of: function (row) {
+                        var id = componentGroupOf(row);
+                        return { key: id, label: id === ORPHAN_GROUP ? NO_COMPONENT_LABEL : id };
+                    },
+                    order: function (a, b) { return boardRank(boardIds, a.key) - boardRank(boardIds, b.key); } },
+                status: { label: 'Status',
+                    of: function (row) {
+                        var d = rowDisplay(row);
+                        return { key: d, label: S.chipLabel(d) };
+                    },
+                    order: function (a, b) {
+                        return boardRank(BOARD_STATUS_ORDER, a.key) - boardRank(BOARD_STATUS_ORDER, b.key);
+                    } }
+            },
+            defaultGroup: 'component',
+            defaultSort: { col: 'status', dir: 'asc' },
+            csvName: false,
+            /* A keystroke redraws the cards and the toolbar beside the box, never the box: it keeps its focus. Every
+               other change draws the board again from the rows the last render decided (R3-13). */
+            render: function (what) {
+                if (what === 'query') {
+                    renderCards();
+                    var bar = document.getElementById('serverBoardToolbar');
+                    if (bar) fillKeepingFocus(bar, boardToolbarHtml());
+                } else {
+                    rerender(true);
+                }
+            }
+        };
+    }
+
+    /* The toolbar: search, the status chips, Group by, Expand all / Collapse all, and Clear filters while any filter
+       is on (the badge's included). */
+    function boardToolbarHtml() {
+        boardView();
+        var clear = state.filters.gate || WIR.table.filtersActive(BOARD)
+            ? '<button type="button" class="wir-link wir-clear-filters"'
+                + '\n                    onclick="WIR.serverKpis.clearFilters()">Clear filters</button>'
+            : '';
+        return WIR.table.toolbar(BOARD, { searchId: 'serverSearch', placeholder: 'Filter server asserts…',
+            label: 'Filter server asserts', noun: 'server asserts', extra: clear });
+    }
+
+    /* One card's header row, its sort buttons' ids its own (a suffix per card) */
+    function boardHeadCells(suffix) {
+        var cell = function (col, cls, thTitle) {
+            return WIR.table.headCell(BOARD, col, { cls: cls, idSuffix: suffix, thTitle: thTitle });
+        };
+        /* D28 says it in every place coverage is shown; a header has no room, so its title */
+        return cell('status') + cell('name') + cell('actual', 'num') + cell('criteria')
+            + cell('coverage', 'num', 'Coverage of the collected window') + cell('instances', 'num');
+    }
+
+    var BOARD_COLGROUP = '<colgroup><col class="wir-col-status"><col><col class="wir-col-actual">'
+        + '<col class="wir-col-criteria"><col class="wir-col-cov"><col class="wir-col-inst">'
+        + '<col class="wir-col-actions"></colgroup>';
 
     /* ---- rendering ---------------------------------------------------------- */
 
@@ -19361,7 +19469,8 @@ WIR.serverKpis = (function () {
                 : '')
             + '</div>';
         html += restoredDraftHtml() + droppedDraftHtml();
-        html += '<div class="wir-server-filters">' + filterRowHtml() + lineColorHtml() + '</div>';
+        html += '<div class="wir-server-filters"><span class="wir-server-board-toolbar" id="serverBoardToolbar">'
+            + boardToolbarHtml() + '</span>' + lineColorHtml() + '</div>';
         return html + '</div>';
     }
 
@@ -19589,84 +19698,12 @@ WIR.serverKpis = (function () {
         return S.chipLabel(entry.would);
     }
 
-    /* One filter row, shaped like the Asserts tab's (design §3, U6): a text filter and the status
-       chips. Chips are onclick, not a <select> with onchange, and that is deliberate: a select's
-       onchange would have to carry the chosen value into the handler, where the chips carry one
-       literal each. Every one of these is one WIR.serverKpis.x(literal) call (D20); the text box
-       reports through one delegated listener (bindFilterInput), because this module carries no
-       other event attribute (verify_report_js_rules). The component filter is the badge on each
-       card; the source chips went with C8 — a collection has one source. */
-    function filterRowHtml() {
-        var f = state.filters;
-        return '<input type="search" class="wir-server-search" data-wir-server-filter="text"'
-            + ' placeholder="Filter server asserts…" aria-label="Filter server asserts"'
-            + ' value="' + esc(f.text || '') + '">'
-            /* The chips and Clear filters in a span of their own, so typing redraws them and never
-               the box being typed in (SF40, bindFilterInput). */
-            + '<span class="wir-server-chips" id="serverFilterChips">' + filterChipsHtml() + '</span>';
-    }
-
-    /* The status chips, worded as the Asserts tab's are — "FAIL 1", not "FAIL (1)" — and each
-       says whether it is on (aria-pressed), as the Asserts tab's do (SF41, Q12). Every
-       NOT_JUDGED reason stays a chip of its own: the design's "Not judged ▾" contradicted its own
-       "shaped like the Asserts tab", which has no ▾ either, so neither tab folds them. */
-    function filterChipsHtml() {
-        var f = state.filters;
-        /* The counts follow the OTHER filters (U6): a status chip that counted the whole board
-           beside a card filter read "FAIL 1" over a board showing none. The text filter is one of
-           them, while it is typed too (SF40). */
-        var rows = boardRows().filter(function (row) { return passesFilters(row, true); });
-        var counts = {};
-        rows.forEach(function (r) {
-            var d = rowDisplay(r);
-            counts[d] = (counts[d] || 0) + 1;
-        });
-        var html = '<span class="wir-filter-label">Status</span>';
-        html += '<button type="button" class="wir-filter-chip' + (f.status ? '' : ' wir-on') + '"'
-            + ' aria-pressed="' + (f.status ? 'false' : 'true') + '"'
-            + '\n                    onclick="WIR.serverKpis.filterStatus(' + jsArg('') + ')">All '
-            + rows.length + '</button>';
-        /* Every display value a row can have gets a chip, so the chips always sum to All: a value
-           outside the fixed order is appended rather than dropped, which is how a row that read
-           NOT EVALUATED used to be counted by All and selectable by nothing. */
-        var order = [NEEDS_RECOLLECTION, NOT_REJUDGED].concat(S.STATUS_ORDER);
-        Object.keys(counts).forEach(function (d) {
-            if (order.indexOf(d) < 0) order.push(d);
-        });
-        order.forEach(function (d) {
-            if (!counts[d]) return;
-            html += '<button type="button" class="wir-filter-chip ' + S.chipClass(d)
-                + (f.status === d ? ' wir-on' : '') + '"'
-                + ' aria-pressed="' + (f.status === d ? 'true' : 'false') + '"'
-                + '\n                    onclick="WIR.serverKpis.filterStatus(' + jsArg(d) + ')">'
-                + esc(S.chipLabel(d)) + ' ' + counts[d] + '</button>';
-        });
-        if (f.gate || f.status || f.text) {
-            html += '<button type="button" class="wir-link wir-clear-filters"'
-                + '\n                    onclick="WIR.serverKpis.clearFilters()">Clear filters</button>';
-        }
-        return html;
-    }
-
     /* The text a row is found by: its id, its catalogue metric's label, its description and its
        component. Lower-cased once per render, never per keystroke per row per field. */
     function rowSearchText(row) {
         var k = row.kpi;
         var label = metricLabelOf(k);
         return [k.id, label, k.metric, k.description, k.gate].filter(Boolean).join(' ').toLowerCase();
-    }
-
-    /* Whether a row survives the filters; `ignoreStatus` for the chips' own counts. */
-    function passesFilters(row, ignoreStatus) {
-        var f = state.filters;
-        var k = row.kpi;
-        if (f.gate && (k.gate || '') !== f.gate) return false;
-        if (!ignoreStatus && f.status && rowDisplay(row) !== f.status) return false;
-        if (f.text) {
-            var needle = String(f.text).toLowerCase().trim();
-            if (needle && rowSearchText(row).indexOf(needle) < 0) return false;
-        }
-        return true;
     }
 
     /**
@@ -19717,14 +19754,6 @@ WIR.serverKpis = (function () {
     function bindFilterInput() {
         if (filterInputBound || typeof document === 'undefined' || !document.addEventListener) return;
         filterInputBound = true;
-        document.addEventListener('input', function (e) {
-            var t = e.target;
-            if (!t || !t.getAttribute || t.getAttribute('data-wir-server-filter') !== 'text') return;
-            state.filters.text = t.value;
-            renderCards();
-            var chips = document.getElementById('serverFilterChips');
-            if (chips) chips.innerHTML = filterChipsHtml();
-        });
         document.addEventListener('change', function (e) {
             var t = e.target;
             if (!t || !t.getAttribute || t.getAttribute('data-wir-server-granularity') === null) return;
@@ -20111,45 +20140,56 @@ WIR.serverKpis = (function () {
                 + 'declare one on — a server assert names a component, so add one first.') + '</p>'
                 + firstComponentHtml();
         }
-        var rows = visibleRows();
-        var filtering = !!(state.filters.gate || state.filters.status || state.filters.text);
-        if (filtering && !rows.length) {
+        var v = boardView();
+        var group = WIR.table.table(BOARD).state.group;
+        var filtering = !!(state.filters.gate || WIR.table.filtersActive(BOARD));
+        if (filtering && !v.matched) {
             return '<p class="wir-empty">No server assert matches these filters. '
                 + '<button type="button" class="wir-link"'
                 + '\n                    onclick="WIR.serverKpis.clearFilters()">Clear filters</button></p>';
         }
 
+        if (group !== 'component') return flatBoardHtml(v);
+
         /* Components in declaration order, then the asserts that name none the file declares —
            ServerGateEvaluation's "(no gate)", which still builds and still exits 1. */
-        var strip = gateStrip();
         var entryById = Object.create(null);
-        strip.forEach(function (e) { entryById[e.id] = e; });
-        var ids = componentIdsDeclared().slice();
-        strip.forEach(function (e) { if (ids.indexOf(e.id) < 0) ids.push(e.id); });
-        var byComponent = Object.create(null);
-        var orphans = [];
-        rows.forEach(function (row) {
-            var id = row.kpi.gate;
-            if (id && ids.indexOf(id) >= 0) {
-                (byComponent[id] = byComponent[id] || []).push(row);
-            } else {
-                orphans.push(row);
-            }
+        gateStrip().forEach(function (e) { entryById[e.id] = e; });
+        var groups = Object.create(null);
+        var current = null;
+        v.rows.forEach(function (r) {
+            if (r.kind === 'group') current = groups[r.key] = { open: r.open, rows: [] };
+            else if (r.kind === 'row' && current) current.rows.push(r.record);
         });
 
         var html = '';
-        ids.forEach(function (id) {
-            var mine = byComponent[id] || [];
+        boardIds.forEach(function (id, i) {
+            var g = groups[id];
             /* A filter narrows to the cards it found something in; with none, every declared
                component is a card, its empty one included — it is where its first assert goes. */
-            if (filtering && !mine.length) return;
-            html += cardHtml(id, entryById[id] || null, mine);
+            if (filtering && !g) return;
+            html += cardHtml(id, entryById[id] || null, g ? g.rows : [], g ? g.open : null, '-c' + i);
         });
-        if (orphans.length) html += cardHtml(null, null, orphans);
+        if (groups[ORPHAN_GROUP]) {
+            html += cardHtml(null, null, groups[ORPHAN_GROUP].rows, groups[ORPHAN_GROUP].open, '-c' + boardIds.length);
+        }
         return html;
     }
 
-    function cardHtml(id, entry, rows) {
+    /* Grouped by status, or not at all: one table, the toolkit's group rows between the statuses */
+    function flatBoardHtml(v) {
+        var html = '<section class="wir-board-flat"><div class="table-wrapper">'
+            + '<table class="data-table wir-component-table">' + BOARD_COLGROUP
+            + '<thead><tr>' + boardHeadCells('') + '<th></th></tr></thead><tbody>';
+        v.rows.forEach(function (r) {
+            if (r.kind === 'group') html += WIR.table.groupRow(BOARD, r, BOARD_COLUMNS, ['server assert', 'server asserts']);
+            else if (r.kind === 'row') html += kpiRow(r.record);
+        });
+        return html + '</tbody></table></div></section>';
+    }
+
+    /* A component's card: `open` is its group's state (null for a card with no rows), `suffix` its sort buttons'. */
+    function cardHtml(id, entry, rows, open, suffix) {
         var table = declaredComponents();
         var c = id && hasOwn(table.byId, id) ? table.byId[id] : null;
         var type = c ? catalogueType(c.type) : null;
@@ -20158,9 +20198,16 @@ WIR.serverKpis = (function () {
             return id === null ? !k.gate || componentIdsDeclared().indexOf(k.gate) < 0 : k.gate === id;
         }).length;
 
-        var html = '<section class="wir-component-card"'
+        var html = '<section class="wir-component-card' + (open === false ? ' wir-card-closed' : '') + '"'
             + (id !== null ? ' data-component="' + esc(id) + '"' : ' data-component=""') + '>'
             + '<header class="wir-component-head">'
+            /* the card is its component's group: it opens and closes as one, and Expand all / Collapse all reach it */
+            + (open !== null
+                ? '<button type="button" class="wir-group-toggle wir-card-toggle" aria-expanded="' + open + '"'
+                    + ' title="' + (open ? 'Close' : 'Open') + ' this component\'s server asserts"'
+                    + '\n                    onclick="WIR.table.setOpen(' + jsArg(BOARD) + ', ' + jsArg(id === null ? ORPHAN_GROUP : id)
+                    + ', ' + !open + ')">' + (open ? '▾' : '▸') + '</button> '
+                : '')
             + '<strong class="wir-component-id">' + esc(id === null ? NO_COMPONENT_LABEL : id) + '</strong>'
             + (typeText ? ' <span class="wir-dim wir-component-type">' + esc(typeText)
                 + (c && c.description ? ' · ' + esc(c.description) : '') + '</span>' : '')
@@ -20178,6 +20225,7 @@ WIR.serverKpis = (function () {
             + '</header>'
             + (c && state.componentMenu === id ? componentMenuHtml(id, declaredCount) : '');
 
+        if (open === false) return html + '</section>';
         if (!rows.length) {
             return html + '<p class="wir-empty wir-component-empty">' + esc(id === null
                 ? 'Nothing here.'
@@ -20189,15 +20237,8 @@ WIR.serverKpis = (function () {
         /* In a scrolling wrapper, as the Samplers table is: at 900px a card could be wider than
            the page, and with nothing to contain it the whole PAGE scrolled sideways (F9). */
         /* One set of widths for every card, so a column lines up from one component to the next. */
-        html += '<div class="table-wrapper"><table class="data-table wir-component-table">'
-            + '<colgroup><col class="wir-col-status"><col><col class="wir-col-actual">'
-            + '<col class="wir-col-criteria"><col class="wir-col-cov"><col class="wir-col-inst">'
-            + '<col class="wir-col-actions"></colgroup><thead><tr>'
-            + '<th>Status</th><th>Server assert</th><th class="num">Actual</th><th>Criteria</th>'
-            /* D28 says it in every place coverage is shown; a header has no room, so its title. */
-            + '<th class="num" title="Coverage of the collected window">Coverage</th>'
-            + '<th class="num">Instances</th><th></th>'
-            + '</tr></thead><tbody>';
+        html += '<div class="table-wrapper"><table class="data-table wir-component-table">' + BOARD_COLGROUP
+            + '<thead><tr>' + boardHeadCells(suffix) + '<th></th></tr></thead><tbody>';
         rows.forEach(function (row) { html += kpiRow(row); });
         return html + '</tbody></table></div></section>';
     }
@@ -20318,8 +20359,8 @@ WIR.serverKpis = (function () {
        filter row's Clear filters (the way back to a row the filters hide), else the text box,
        else + Add component — in the header, so on the page whatever the board shows. */
     function filtersHoldFocus() {
-        return document.querySelector('#serverFilterChips .wir-clear-filters')
-            || document.querySelector('#serverBoard [data-wir-server-filter="text"]')
+        return document.querySelector('#serverBoardToolbar .wir-clear-filters')
+            || document.getElementById('serverSearch')
             || document.getElementById('serverAddComponent');
     }
 
@@ -20379,7 +20420,7 @@ WIR.serverKpis = (function () {
                nothing, which is both unreadable and a lie about the one column whose whole job
                is to say what was measured. The row's ▸/▾ sits beside its status, as the Samplers
                tab's does (design §3): every row starts closed, a FAIL included. */
-            + '<td class="wir-status-cell"><button type="button" class="wir-row-toggle"'
+            + '<td class="wir-status-cell"' + WIR.table.cellAttrs(BOARD, 'status') + '><button type="button" class="wir-row-toggle"'
             + ' aria-expanded="' + (open ? 'true' : 'false') + '" title="' + (open ? 'Hide' : 'Show')
             + ' the charts"\n                    onclick="WIR.serverKpis.toggle(' + jsArg(row.key) + ')">'
             + (open ? '▾' : '▸') + '</button>'
@@ -20394,7 +20435,7 @@ WIR.serverKpis = (function () {
                     + 'so this is the verdict the build took, not one recomputed here">from the build</div>'
                 : '')
             + '</td>'
-            + '<td><button type="button" class="wir-kpi-name"'
+            + '<td' + WIR.table.cellAttrs(BOARD, 'name') + '><button type="button" class="wir-kpi-name"'
             + '\n                    onclick="WIR.serverKpis.toggle(' + jsArg(row.key) + ')"'
             + ' title="Show the collected series">' + esc(naming.name) + '</button>'
             /* Q11: a catalogue assert is named by its metric's label, and its id is the dim line
@@ -20418,12 +20459,12 @@ WIR.serverKpis = (function () {
             + (k.requiresLoad ? '<div class="wir-dim">needs ' + esc(k.requiresLoad) + '</div>' : '')
             + '</td>'
             /* Never written onto a band it is not on: 3.004 read "3" beside "breached > 3". */
-            + '<td class="num">' + esc(v ? formatActual(v.actual, unit,
+            + '<td class="num"' + WIR.table.cellAttrs(BOARD, 'actual') + '>' + esc(v ? formatActual(v.actual, unit,
                     [k.warn && k.warn.value, k.fail && k.fail.value]) : EM_DASH)
             + (v && !isNaN(v.actual) && unit
                 ? ' <span class="wir-dim">' + esc(unit) + '</span>' : '')
             + '</td>'
-            + '<td>' + esc(criteria.join(' · ') || EM_DASH)
+            + '<td' + WIR.table.cellAttrs(BOARD, 'criteria') + '>' + esc(criteria.join(' · ') || EM_DASH)
             + (v && v.breached
                 ? '<div class="wir-breached">breached ' + esc(describeBand(bandToJson(v.breached), unit))
                     + '</div>' : '')
@@ -20431,9 +20472,10 @@ WIR.serverKpis = (function () {
             /* "collected" and not just a number: coverage is measured over the payload's whole
                window while the verdict above was taken over the judged one, so the two can
                legitimately disagree. Labelling it stops the row implying they cannot. */
-            + '<td class="num" title="Coverage of the collected window">'
+            + '<td class="num"' + WIR.table.cellAttrs(BOARD, 'coverage') + ' title="Coverage of the collected window">'
             + esc(v ? formatPercent(v.coverage) : EM_DASH) + '</td>'
-            + '<td class="num"' + (instances.title ? ' title="' + esc(instances.title) + '"' : '')
+            + '<td class="num"' + WIR.table.cellAttrs(BOARD, 'instances')
+            + (instances.title ? ' title="' + esc(instances.title) + '"' : '')
             + '>' + esc(instances.text) + '</td>'
             + '<td class="wir-row-actions">'
             + '<button type="button" class="wir-link"'
@@ -27173,7 +27215,8 @@ WIR.serverKpis = (function () {
             }
             state.unavailable = null;
             readPayload(data);
-            state.filters = { gate: '', status: '', text: '' };
+            state.filters = { gate: '' };
+            WIR.table.register(BOARD, boardSpec());
             render();
         },
 
@@ -27365,11 +27408,6 @@ WIR.serverKpis = (function () {
             rerender(true);
         },
 
-        filterStatus: function (status) {
-            state.filters.status = state.filters.status === status ? '' : status;
-            rerender(true);
-        },
-
         /* The Summary card's button: the tab, as the header chip opens it. */
         open: function () {
             if (typeof switchTab === 'function') switchTab('server');
@@ -27378,8 +27416,7 @@ WIR.serverKpis = (function () {
         /* Every filter off, the text box included (U6: an empty board offers the way back). */
         clearFilters: function () {
             state.filters.gate = '';
-            state.filters.status = '';
-            state.filters.text = '';
+            WIR.table.resetFilters(BOARD);
             rerender(true);
         },
 
@@ -27667,7 +27704,6 @@ WIR.serverKpis = (function () {
         _sustained: sustained,
         _slopePerMinute: slopePerMinute,
         _seriesFor2: findSeries,
-        _visibleKpis: visibleKpis,
         _seriesFor: seriesFor,
         _judgedWindow: judgedWindow,
         _describeBand: describeBand,

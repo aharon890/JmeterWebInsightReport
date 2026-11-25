@@ -179,20 +179,19 @@ test.describe('A capped series is never re-judged under a definition the build d
       await expect(page.locator('.wir-withheld-row')).toContainText('capped');
       await expect(page.locator('.wir-withheld-row')).toContainText('jmeter -g');
 
-      // A filter chip selects it, and the chips sum to All n ("FAIL 1", the Asserts tab's
-      // wording, since SF41).
-      const chips = await page.locator('.wir-server-filters .wir-filter-chip[onclick*="filterStatus"]')
-        .allTextContents();
-      const all = Number(/^All (\d+)$/.exec(chips[0])![1]);
-      const summed = chips.slice(1).reduce((n, c) => n + Number(/ (\d+)$/.exec(c)![1]), 0);
-      expect(summed, `the status chips do not add up to All: ${chips.join(' | ')}`).toBe(all);
+      // A filter chip selects it, and the chips sum to the board's rows ("FAIL 1", the Asserts tab's
+      // wording, since SF41; the toolkit's chips since spec 002).
+      const chips = await page.locator('#tab-server .wir-table-toolbar[data-table="serverKpiTable"] .wir-status-chip').allTextContents();
+      const all = await page.locator('#serverKpiTable tbody tr.wir-kpi-row').count();
+      const summed = chips.reduce((n, c) => n + Number(/ (\d+)$/.exec(c)![1]), 0);
+      expect(summed, `the status chips do not add up to the board: ${chips.join(' | ')}`).toBe(all);
       expect(chips).toContain('NOT RE-JUDGED 1');
 
       // Worst-first: above every PASS in its own component's card (many-instances is db's).
       const order = await page.locator('.wir-component-card[data-component="db"] tbody tr.wir-kpi-row .wir-chip').allTextContents();
       expect(order.indexOf('NOT RE-JUDGED')).toBeLessThan(order.indexOf('PASS'));
 
-      await page.evaluate(() => (window as any).WIR.serverKpis.filterStatus('NOT RE-JUDGED'));
+      await page.evaluate(() => (window as any).WIR.table.toggleStatus('serverKpiTable', 'NOT RE-JUDGED'));
       await expect(page.locator('#serverKpiTable tbody tr.wir-kpi-row')).toHaveCount(1);
     });
 

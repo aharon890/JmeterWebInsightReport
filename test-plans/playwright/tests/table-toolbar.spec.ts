@@ -211,3 +211,107 @@ test.describe('Requests on the table toolkit [E02]', () => {
     await expect(page.locator('#samplerTable thead th', { hasText: 'P95 (ms)' })).toHaveAttribute('aria-sort', /ending/);
   });
 });
+
+/*
+ * Stage 7: the Server board on the table toolkit (FR-062, FR-063). Its chips were one at a time and counted what the
+ * other filters left; they work as every other table's now, several at once, each counting every row. Its cards are
+ * Group by component, the default, beside status and none, and a card opens and closes as a group does. Every header
+ * sorts by the column's value. A chart open in a row stays open while the search redraws the cards.
+ */
+const BOARD_BAR = '#tab-server .wir-table-toolbar[data-table="serverKpiTable"]';
+
+async function chipCounts(page: Page): Promise<Record<string, number>> {
+  return page.locator(`${BOARD_BAR} .wir-status-chip`).evaluateAll((chips: HTMLElement[]) => {
+    const out: Record<string, number> = {};
+    chips.forEach((c) => { out[c.getAttribute('data-status')!] = Number((c.textContent || '').trim().split(' ').pop()); });
+    return out;
+  });
+}
+
+async function boardRowCount(page: Page): Promise<number> {
+  return page.locator('#serverBoard tr.wir-kpi-row').count();
+}
+
+test.describe('The Server board on the table toolkit [E26]', () => {
+  test.beforeEach(async ({ page }) => {
+    await loadClean(page, 'E26');
+    await switchTab(page, 'server');
+  });
+
+  test('its status chips work as every table\'s: several at once, each counting every row', async ({ page }) => {
+    const before = await chipCounts(page);
+    const statuses = Object.keys(before);
+    expect(statuses.length, 'E26 has rows in several states').toBeGreaterThanOrEqual(3);
+    const all = await boardRowCount(page);
+    expect(Object.values(before).reduce((a, b) => a + b, 0)).toBe(all);
+
+    await page.locator(`${BOARD_BAR} .wir-status-chip[data-status="${statuses[0]}"]`).click();
+    await page.locator(`${BOARD_BAR} .wir-status-chip[data-status="${statuses[1]}"]`).click();
+    await expect(page.locator(`${BOARD_BAR} .wir-status-chip[aria-pressed="true"]`)).toHaveCount(2);
+    expect(await boardRowCount(page)).toBe(before[statuses[0]] + before[statuses[1]]);
+    expect(await chipCounts(page), 'a chip counts every row, whatever the others select').toEqual(before);
+
+    await page.fill('#serverSearch', 'no assert is called this');
+    await expect(page.locator('#serverBoard tr.wir-kpi-row')).toHaveCount(0);
+    expect(await chipCounts(page), 'the search leaves the counts as they are').toEqual(before);
+  });
+
+  test('Group by: component (its cards, the default), status or none, remembered for this report', async ({ page }) => {
+    const group = page.locator('#serverKpiTable-group');
+    expect(await group.locator('option').evaluateAll((os: HTMLOptionElement[]) => os.map(o => o.value)))
+      .toEqual(['', 'component', 'status']);
+    await expect(group).toHaveValue('component');
+    expect(await page.locator('#serverBoard .wir-component-card').count()).toBeGreaterThanOrEqual(2);
+
+    const statuses = Object.keys(await chipCounts(page));
+    await page.selectOption('#serverKpiTable-group', 'status');
+    await expect(page.locator('#serverBoard .wir-component-card')).toHaveCount(0);
+    await expect(page.locator('#serverBoard tr.wir-group-row')).toHaveCount(statuses.length);
+
+    await page.reload();
+    await page.waitForFunction(() => (window as any).globalChartData);
+    await switchTab(page, 'server');
+    await expect(page.locator('#serverKpiTable-group')).toHaveValue('status');
+
+    await page.selectOption('#serverKpiTable-group', '');
+    await expect(page.locator('#serverBoard tr.wir-group-row')).toHaveCount(0);
+    await expect(page.locator('#serverBoard tr.wir-kpi-row')).toHaveCount(Object.values(await chipCounts(page)).reduce((a, b) => a + b, 0));
+  });
+
+  test('a card opens and closes as a group: Collapse all and Expand all', async ({ page }) => {
+    const rows = await boardRowCount(page);
+    await page.click('#serverKpiTable-collapse-all');
+    await expect(page.locator('#serverBoard tr.wir-kpi-row')).toHaveCount(0);
+    expect(await page.locator('#serverBoard .wir-component-card').count(), 'the cards stay, closed').toBeGreaterThanOrEqual(2);
+    await page.click('#serverKpiTable-expand-all');
+    await expect(page.locator('#serverBoard tr.wir-kpi-row')).toHaveCount(rows);
+  });
+
+  test('a header sorts its card\'s rows by the column\'s value, from the keyboard too', async ({ page }) => {
+    const card = page.locator('#serverBoard .wir-component-card').filter({ has: page.locator('tr.wir-kpi-row') }).first();
+    const header = card.locator('th[data-sort-col="coverage"]');
+    await header.locator('button').focus();
+    await page.keyboard.press('Enter');
+    await expect(card.locator('th[data-sort-col="coverage"]')).toHaveAttribute('aria-sort', /ending/);
+    const dir = await card.locator('th[data-sort-col="coverage"]').getAttribute('aria-sort');
+    const values = await card.locator('tr.wir-kpi-row').evaluateAll((trs: HTMLElement[]) => trs
+      .map(tr => parseFloat((tr.querySelector('td[data-col-id="coverage"]')!.textContent || '').replace(/[^0-9.]/g, '')))
+      .filter(n => !isNaN(n)));
+    expect(values.length).toBeGreaterThan(1);
+    const sorted = [...values].sort((a, b) => dir === 'ascending' ? a - b : b - a);
+    expect(values).toEqual(sorted);
+  });
+
+  test('a chart open in a row stays open while the search redraws the cards', async ({ page }) => {
+    const row = page.locator('#serverBoard tr.wir-kpi-row').first();
+    const key = (await row.getAttribute('data-kpi-key'))!;
+    const name = ((await row.locator('.wir-kpi-name').textContent()) || '').trim();
+    await row.locator('.wir-kpi-name').click();
+    await expect(page.locator('#serverBoard tr.wir-chart-row')).toHaveCount(1);
+    await page.fill('#serverSearch', name.slice(0, 4));
+    await expect(page.locator(`#serverBoard tr.wir-kpi-row[data-kpi-key="${key}"]`)).toBeVisible();
+    await expect(page.locator('#serverBoard tr.wir-chart-row')).toHaveCount(1);
+    await expect(page.locator('#serverBoard tr.wir-chart-row canvas, #serverBoard tr.wir-chart-row svg').first()).toBeVisible();
+    await expect(page.locator('#serverSearch'), 'the box keeps its focus').toBeFocused();
+  });
+});
