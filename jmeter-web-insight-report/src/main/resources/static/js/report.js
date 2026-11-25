@@ -7057,8 +7057,11 @@ function applyColumnOrder(table, order) {
              * a `_origIdx` property that was never assigned anywhere, so it always fell
              * through to positional matching and could mis-map a saved order once columns
              * had already been moved. */
-            var colIndex = currentCells[s].getAttribute('data-col-index');
-            var matches = colIndex != null ? parseInt(colIndex, 10) === order[pos] : s === order[pos];
+            /* its place in the template, else a numeric id tagColumnIds gave it, else where it is */
+            var place = currentCells[s].getAttribute('data-col-index');
+            if (place == null) place = currentCells[s].getAttribute('data-col-id');
+            var n = place != null ? parseInt(place, 10) : NaN;
+            var matches = !isNaN(n) ? n === order[pos] : s === order[pos];
             if (matches) {
                 sourceIdx = s;
                 break;
