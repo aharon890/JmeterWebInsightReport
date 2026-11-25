@@ -183,10 +183,8 @@ test.describe('CSV Export — Error Summary', () => {
     await loadClean(page, 'E02');
     await switchTab(page, 'errors');
     await page.waitForTimeout(300);
-    // Find CSV button near Error Summary table
-    const csvBtns = page.locator('#tab-errors .table-csv-btn');
-    if (await csvBtns.count() === 0) return;
-    const content = await downloadCsv(page, csvBtns.first());
+    // the table toolkit's CSV (spec 002): the rows and columns shown
+    const content = await downloadCsv(page, page.locator('#errorSummaryTable-csv'));
     const rows = parseCsv(content);
     expect(rows.length).toBeGreaterThanOrEqual(2);
   });
@@ -197,12 +195,10 @@ test.describe('CSV Export — Error Details', () => {
     await loadClean(page, 'E02');
     await switchTab(page, 'errors');
     await page.waitForTimeout(300);
-    const csvBtns = page.locator('#tab-errors .table-csv-btn');
-    if (await csvBtns.count() >= 2) {
-      const content = await downloadCsv(page, csvBtns.nth(1));
-      const rows = parseCsv(content);
-      expect(rows.length).toBeGreaterThanOrEqual(2);
-    }
+    const content = await downloadCsv(page, page.locator('#errorDetailsTable-csv'));
+    const rows = parseCsv(content);
+    expect(rows.length).toBeGreaterThanOrEqual(2);
+    expect(rows[0]).toEqual(['Time', 'Sampler', 'Code', 'Class', 'Message', 'Thread']);
   });
 });
 
@@ -211,9 +207,7 @@ test.describe('CSV Export — Comparison Table', () => {
     await loadClean(page, 'CMP');
     await switchTab(page, 'compare');
     await page.waitForTimeout(300);
-    const csvBtn = page.locator('#tab-compare .table-csv-btn').first();
-    if (await csvBtn.count() === 0) return;
-    const content = await downloadCsv(page, csvBtn);
+    const content = await downloadCsv(page, page.locator('#comparisonTable-csv'));
     const rows = parseCsv(content);
     expect(rows.length).toBeGreaterThanOrEqual(2);
   });

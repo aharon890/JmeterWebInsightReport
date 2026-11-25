@@ -659,57 +659,28 @@ test.describe('XSS — Asserts inline handlers', () => {
   });
 });
 
-test.describe('XSS — Error Details grouped view', () => {
+test.describe('XSS — the table toolkit\'s group rows', () => {
   /**
-   * The grouped view builds its rows with innerHTML from chartData.errorRecords,
-   * so sampler / message / thread all reach an HTML sink straight from the JTL.
-   * buildErrorGroups() is driven directly: it rebuilds the tbody from whatever
-   * records it is handed, which makes the hostile input deterministic.
+   * Group by (spec 002) writes a group's label, a sampler name and a message straight from the run, into the
+   * header row it inserts. Driven with a hostile sampler and message on a real row, grouped by sampler and type of
+   * error: the label must arrive as text, with no element and no handler made from it.
    */
-  test('[C/R] buildErrorGroups escapes hostile sampler, message and thread values', async ({ page }) => {
+  test('[C/R] a group header writes a hostile sampler and message as text', async ({ page }) => {
     await loadClean(page, 'E02');
     await switchTab(page, 'errors');
-
-    const html = await page.evaluate((p) => {
-      const w = window as any;
-      w.buildErrorGroups([
-        { timestamp: 1752750000000, sampler: p, code: '500', message: p, thread: p },
-      ]);
-      const table = document.getElementById('errorGroupsTable');
-      return table ? table.innerHTML : '';
+    await page.evaluate((p) => {
+      const row = document.querySelector('#errorDetailsTable tbody tr.error-row-main') as HTMLTableRowElement;
+      row.setAttribute('data-sampler', p);
+      const th = document.querySelector('#errorDetailsTable thead th[data-col-id="message"]') as HTMLTableCellElement;
+      row.cells[th.cellIndex].textContent = p;
     }, PAYLOAD);
-
-    expect(html, 'grouped table should have been rebuilt — E02 must have an errorGroupsTable').not.toBe('');
-    expect(html, 'buildErrorGroups must not emit a raw tag').not.toContain('<img');
-    assertEscapedPayloadPresent(html, 'buildErrorGroups');
-
-    const fired = await page.evaluate(() => (window as any).__XSS__);
-    expect(fired, 'the payload must not have executed').toBeUndefined();
-  });
-
-  /**
-   * The sampler name is interpolated into title="..." as well as cell text, so a
-   * bare double quote would break out of the attribute if escapeHtml stopped
-   * escaping it. Asserted on the parsed DOM, not the source string.
-   */
-  test('[C/R] a quote in the sampler name cannot break out of the title attribute', async ({ page }) => {
-    await loadClean(page, 'E02');
-    await switchTab(page, 'errors');
-
-    const breakout = `" onmouseover="window.__XSS__=1`;
-    const result = await page.evaluate((p) => {
-      const w = window as any;
-      w.buildErrorGroups([
-        { timestamp: 1752750000000, sampler: p, code: '500', message: 'x', thread: 't' },
-      ]);
-      const cell = document.querySelector('#errorGroupsTable tbody tr[data-group-head] td:nth-child(4)');
-      return {
-        title: cell ? cell.getAttribute('title') : null,
-        hasHandler: cell ? cell.hasAttribute('onmouseover') : false,
-      };
-    }, breakout);
-
-    expect(result.title, 'the quote must stay inside the title value').toBe(breakout);
-    expect(result.hasHandler, 'no event handler attribute may be synthesised').toBe(false);
+    await page.selectOption('#errorDetailsTable-group', 'error');
+    const html = await page.locator('#errorDetailsTable tbody').evaluate((b) =>
+      Array.from(b.querySelectorAll('tr.wir-group-row')).map((r) => r.innerHTML).join(''));
+    expect(html, 'the group rows were not drawn').not.toBe('');
+    expect(html, 'a group header emitted a raw tag').not.toContain('<img');
+    assertEscapedPayloadPresent(html, 'the group header');
+    expect(await page.locator('#errorDetailsTable tr.wir-group-row img').count()).toBe(0);
+    expect(await page.evaluate(() => (window as any).__XSS__), 'the payload must not have executed').toBeUndefined();
   });
 });

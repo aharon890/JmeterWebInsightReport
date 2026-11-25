@@ -526,7 +526,6 @@ var LS_PRESETS = 'wir_filterPresets';
 var LS_COL_ORDER = 'wir_columnOrder';
 var LS_FILTER_ROWS = 'wir_filterRowsState';
 var LS_COL_WIDTHS = 'wir_columnWidths';
-var LS_ERR_VIEW = 'wir_errDetailsView';
 
 /* Column order for drag-and-drop reorder */
 var columnOrder = null; // null means default order
@@ -1459,7 +1458,7 @@ function formatApdex(score) {
 }
 
 function updateTotalRow() {
-    updateComparisonTotalRow();
+    renderComparison();
     var table = document.querySelector('#tab-samplers table');
     if (!table || !globalChartData) return;
     var tbody = table.tBodies[0];
@@ -1582,9 +1581,8 @@ function initCharts(data) {
     pendingChartInits.push({ tab: 'errors', fn: function () { initErrorBreakdownCharts(data); } });
 
     // Error Details grouped view (DOM-only — the error tables are parsed before this script runs)
-    buildErrorGroups(data.errorRecords, requestErrorSummaries(data));
+    initErrorTables();
     noteKeptErrorRecords(data);
-    restoreErrorDetailsView();
 
     // Comparison tab
     initComparisonTab(data);
@@ -2999,7 +2997,7 @@ function initErrorBreakdownCharts(data) {
  * says 100.00% of errors only when every row is in it. A Total of every row would sit under rows
  * that add up to less whenever one is hidden, with nothing on screen to say why. So when not every
  * row is counted, its first cell says how many are.
- * Rebuilt by whatever changes what is shown (refreshTableTotal); the search never hides it.
+ * Rebuilt after every pass of the table toolkit over the rows (WIR.table.applyRows); the search never hides it.
  */
 function buildErrorSummaryTotalRow() {
     var table = document.getElementById('errorSummaryTable');
@@ -3012,12 +3010,12 @@ function buildErrorSummaryTotalRow() {
 
     var col = {};
     var headers = table.tHead.rows[0].cells;
-    for (var h = 0; h < headers.length; h++) col[headers[h].textContent.trim()] = h;
-    var countCol = col['Count'];
+    for (var h = 0; h < headers.length; h++) col[headers[h].getAttribute('data-col-id')] = h;
+    var countCol = col.count;
     if (countCol === undefined) return;
 
     var rows = Array.prototype.filter.call(tbody.rows, function (r) {
-        return !r.classList.contains('error-detail-row');
+        return r.hasAttribute('data-sampler');
     });
     if (rows.length === 0) return;
     var countOf = function (r) {
@@ -3035,7 +3033,7 @@ function buildErrorSummaryTotalRow() {
     var errors = (globalChartData && globalChartData.requestErrorCount) || every;
     var samples = (globalChartData && globalChartData.requestSampleCount) || 0;
     var share = function (of) { return of > 0 ? (count * 100.0 / of).toFixed(2) + '%' : ''; };
-    var labelCol = col[W('Sampler')] !== undefined ? col[W('Sampler')] : 0;
+    var labelCol = col.sampler !== undefined ? col.sampler : 0;
 
     var tr = document.createElement('tr');
     tr.className = 'error-summary-total';
@@ -3048,18 +3046,16 @@ function buildErrorSummaryTotalRow() {
                 ? 'Total' : 'Total (' + shown.length + ' of ' + rows.length + ' rows)';
             td.title = 'The sum of the rows shown: % of Errors is their share of all '
                 + errors + ' errors, % of All Samples their share of all '
-                + samples + ' samples. Rows the search or a × hides '
+                + samples + ' samples. Rows the search, a closed group or a × hides '
                 + 'are not in it.';
         }
         else if (c === countCol) td.textContent = String(count);
-        else if (c === col['% of Errors']) td.textContent = share(errors);
-        else if (c === col['% of All Samples']) td.textContent = share(samples);
+        else if (c === col.pctErrors) td.textContent = share(errors);
+        else if (c === col.pctSamples) td.textContent = share(samples);
         tr.appendChild(td);
     }
     tbody.appendChild(tr);
 
-    /* Apply current column visibility */
-    applyGenericColumnVisibility('errorSummaryTable');
 }
 
 /* Fixed color map for HTTP error codes */
@@ -3625,6 +3621,11 @@ function tagColumnIds(table) {
     for (var i = 0; i < cells.length; i++) {
         if (cells[i].getAttribute('data-col-id') == null) {
             cells[i].setAttribute('data-col-id', i);
+        }
+        /* the column's place in the template: what a saved order lists, whatever its id is (Compare's are
+           names since spec 002) */
+        if (cells[i].getAttribute('data-col-index') == null) {
+            cells[i].setAttribute('data-col-index', i);
         }
     }
 }
@@ -5058,162 +5059,232 @@ function toggleErrorDetail(row) {
 
 /* ---- Error Details: "By time" / "Grouped" view ---- */
 
-function setErrorDetailsView(mode) {
-    var timeView = document.getElementById('errViewTime');
-    var groupView = document.getElementById('errViewGroup');
-    if (!timeView || !groupView) return; /* no errors in this report */
 
-    var want = mode === 'group' ? 'group' : 'time';
-    timeView.style.display = want === 'time' ? '' : 'none';
-    groupView.style.display = want === 'group' ? '' : 'none';
 
-    var timeBtn = document.getElementById('errViewTimeBtn');
-    var groupBtn = document.getElementById('errViewGroupBtn');
-    if (timeBtn) timeBtn.classList.toggle('active', want === 'time');
-    if (groupBtn) groupBtn.classList.toggle('active', want === 'group');
 
-    try { localStorage.setItem(LS_ERR_VIEW, want); } catch (e) { /* ignore */ }
-}
 
-function restoreErrorDetailsView() {
-    var saved = null;
-    try { saved = localStorage.getItem(LS_ERR_VIEW); } catch (e) { /* ignore */ }
-    setErrorDetailsView(saved === 'group' ? 'group' : 'time');
-}
-
-/* HH:mm:ss.SSS — formatTime() gives HH:mm:ss, millis appended for ordering within the same second. */
-function formatErrorClock(ts) {
-    if (ts == null) return '';
-    var d = new Date(ts);
-    if (isNaN(d.getTime())) return '';
-    var t = d.getTime();
-    var ms = ((t % 1000) + 1000) % 1000;
-    return formatTime(d) + '.' + (ms < 10 ? '00' : ms < 100 ? '0' : '') + ms;
-}
-
-/* Group error records by sampler + response code, sorted by count desc. Each group renders a head
- * row plus a hidden body row holding one line per occurrence. Field names are the serializer's
- * short keys (sampler/code/message/thread), not the Thymeleaf model's long ones. */
-/* The grouped view's groups, one per sampler + response code (E2).
- *
- * Each group's count and its first and last seen come from the error summaries, which count every
- * error; the occurrences listed under it are the detail records the report kept, the first 500
- * errors. It used to build everything from those records, so past 500 errors the counts and the
- * last seen were the first 500's and said nothing about it (S38: 3,559 errors, its groups added up
- * to 500; 21 of its 108 groups were missing). A payload with no summaries (no errors, or an older
- * one) still groups the records. */
-/* The Errors tab's groups: the failed requests. The payload's errorSummaries also holds a transaction's own
-   failures (transactionRow), which the asserts count, as Java does, and the tab does not (E3). */
-function requestErrorSummaries(data) {
-    return ((data && data.errorSummaries) || []).filter(function (e) { return !e.transactionRow; });
-}
-
-function errorGroupsFrom(records, summaries) {
-    /* Null-prototype map so sampler names like "constructor" can't collide with Object.prototype. */
-    var byKey = Object.create(null);
-    var groups = [];
-    /* Per sampler and JMeter's type of error, the group the engine counted (E1); a payload without
-       one groups by code. */
-    function groupFor(sampler, code, from) {
-        var type = from.errorType || code || '';
-        var key = (sampler || '') + '||' + type;
-        var g = byKey[key];
-        if (!g) {
-            g = { key: key, sampler: sampler || '', code: code || '', errorType: type,
-                  message: from.message || from.responseMessage || '',
-                  /* Carried through from the payload so the grouped view says the same thing as
-                     the server-rendered table it replaces. */
-                  errorClass: from.errorClass || '', errorClassLabel: from.errorClassLabel || '',
-                  messageMeaningless: !!from.messageMeaningless,
-                  count: 0, first: null, last: null, occurrences: [] };
-            byKey[key] = g;
-            groups.push(g);
-        }
-        return g;
-    }
-    var counted = !!(summaries && summaries.length);
-    (counted ? summaries : []).forEach(function (es) {
-        var g = groupFor(es.samplerName, es.responseCode, es);
-        g.count = es.occurrenceCount || 0;
-        if (es.firstTimestamp) g.first = es.firstTimestamp;
-        if (es.lastTimestamp) g.last = es.lastTimestamp;
-    });
-    (records || []).forEach(function (er) {
-        var g = groupFor(er.sampler, er.code, er);
-        g.occurrences.push(er);
-        if (!counted) g.count++;
-        var ts = er.timestamp;
-        if (ts != null && (!counted || g.first == null)) {
-            if (g.first == null || ts < g.first) g.first = ts;
-            if (g.last == null || ts > g.last) g.last = ts;
-        }
-    });
-    groups.sort(function (a, b) { return b.count - a.count; });
-    return groups;
-}
-
-function buildErrorGroups(records, summaries) {
-    var table = document.getElementById('errorGroupsTable');
-    if (!table || !table.tBodies[0]) return;
-    var tbody = table.tBodies[0];
-    tbody.innerHTML = '';
-    var groups = errorGroupsFrom(records, summaries);
-    if (!groups.length) return;
-
-    groups.forEach(function (g) {
-        var head = document.createElement('tr');
-        head.setAttribute('data-group-head', g.key);
-        head.style.cursor = 'pointer';
-        head.innerHTML =
-            '<td style="text-align:center;color:var(--color-text-secondary);font-size:0.7rem;">&#9654;</td>' +
-            '<td><strong>' + g.count + '&times;</strong></td>' +
-            '<td><span class="error-code">' + escapeHtml(String(g.code)) + '</span>' +
-                (g.errorClassLabel
-                    ? '<span class="error-class error-class-' + escapeHtml(g.errorClass) + '">' +
-                      escapeHtml(g.errorClassLabel) + '</span>'
-                    : '') + '</td>' +
-            '<td title="' + escapeHtml(String(g.sampler)) + '" style="max-width:380px;overflow:hidden;' +
-                'text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(String(g.sampler)) + '</td>' +
-            /* JMeter's type of error, the group's key: code/message, or a failed assertion's message
-               where the HTTP reason phrase of a 2xx ("OK") says nothing (E1). */
-            '<td title="' + escapeHtml(String(g.errorType)) + '">' + escapeHtml(String(g.errorType)) + '</td>' +
-            '<td>' + formatErrorClock(g.first) + '</td>' +
-            '<td>' + formatErrorClock(g.last) + '</td>';
-        /* Listener rather than an inline onclick: sampler names may contain quotes. */
-        head.addEventListener('click', function () { toggleErrorGroup(head); });
-        tbody.appendChild(head);
-
-        var body = document.createElement('tr');
-        body.setAttribute('data-group-body', g.key);
-        body.setAttribute('data-open', '0');
-        body.style.display = 'none';
-        body.innerHTML =
-            '<td style="border-bottom:1px solid var(--color-border);"></td>' +
-            '<td colspan="6" style="padding:0 8px 10px;border-bottom:1px solid var(--color-border);">' +
-            '<div style="display:flex;flex-direction:column;gap:2px;padding-top:6px;">' +
-            (g.occurrences.length < g.count
-                ? '<div class="truncation-note" style="font-size:0.72rem;color:var(--color-text-secondary,#64748b);padding:0 8px 4px;">' +
-                  (g.occurrences.length
-                      ? 'The ' + g.occurrences.length + ' of these ' + g.count + ' among the first 500 errors the report keeps in detail.'
-                      : 'None of these ' + g.count + ' is among the first 500 errors the report keeps in detail.') +
-                  '</div>'
-                : '') +
-            g.occurrences.map(function (er) {
-                return '<div style="display:flex;align-items:baseline;gap:12px;font-size:0.76rem;' +
-                    'padding:2px 8px;border-left:2px solid var(--color-border);">' +
-                    '<span style="font-family:monospace;color:var(--color-text);white-space:nowrap;">' +
-                        formatErrorClock(er.timestamp) + '</span>' +
-                    '<span style="color:var(--color-text-secondary);white-space:nowrap;overflow:hidden;' +
-                        'text-overflow:ellipsis;">' + escapeHtml(String(er.thread || '')) + '</span>' +
-                    '</div>';
-            }).join('') +
-            '</div></td>';
-        tbody.appendChild(body);
-    });
-}
 
 /* The By-time list is the detail records, the first 500 errors: say so over it when there were more (E2).
    The codes chart and the error timeline carried that note; the list and the grouped view did not. */
+/* ---- The Errors tab's tables and Compare on the table toolkit (spec 002, stage 5) ---- */
+
+/* A row's cell under the column the header names `col`, wherever a drag has put it. */
+function cellOf(tr, col) {
+    var table = tr.closest('table');
+    var th = table && table.tHead ? table.tHead.querySelector('th[data-col-id="' + col + '"]') : null;
+    return th ? tr.cells[th.cellIndex] : null;
+}
+
+/* A cell's text as a reader reads it: the controls the page adds to a cell (the Asserts tab's ⊕) are not part of it. */
+function cellText(tr, col) {
+    var c = cellOf(tr, col);
+    if (!c) return '';
+    var copy = c.cloneNode(true);
+    Array.prototype.forEach.call(copy.querySelectorAll('button'), function (b) { b.parentNode.removeChild(b); });
+    return copy.textContent.trim();
+}
+
+/* A cell's number as the table wrote it: a percent, a unit or no digits at all is not part of it. */
+function cellNumber(tr, col) {
+    var n = parseFloat(cellText(tr, col).replace(/[%\s]/g, ''));
+    return isNaN(n) ? null : n;
+}
+
+function textColumn(id, label, extra) {
+    return Object.assign({ id: id, label: label,
+        value: function (tr) { return cellText(tr, id); }, text: function (tr) { return cellText(tr, id); } }, extra || {});
+}
+
+function numberColumn(id, label) {
+    return { id: id, label: label, firstDir: 'desc',
+        value: function (tr) { return cellNumber(tr, id); }, text: function (tr) { return cellText(tr, id); } };
+}
+
+/* Error Summary and Error Details keep the template's rows (R07 reads the page's rows, FR-070). "By time / Grouped"
+   is Error Details' Group by now: the sampler and type of error (the old Grouped view), the error class, or the code. */
+function initErrorTables() {
+    if (document.getElementById('errorSummaryTable')) {
+        WIR.table.mountRows('errorSummaryTable', {
+            rows: function (table) {
+                return Array.prototype.filter.call(table.tBodies[0].rows, function (r) { return r.hasAttribute('data-sampler'); });
+            },
+            key: function (tr) {
+                return [tr.getAttribute('data-sampler'), tr.getAttribute('data-response-code'),
+                    tr.getAttribute('data-error-type')].join(' ');
+            },
+            columns: [textColumn('sampler', W('Sampler'), { hideable: false }), textColumn('code', 'Response Code'),
+                textColumn('type', 'Type of error'), textColumn('class', 'Class'), numberColumn('count', 'Count'),
+                numberColumn('pctErrors', '% of Errors'), numberColumn('pctSamples', '% of All Samples')],
+            search: function (tr) { return tr.textContent; },
+            nameOf: function (tr) { return tr.getAttribute('data-sampler'); },
+            groupings: {
+                class: { label: 'Error class', of: function (tr) { return cellText(tr, 'class'); } },
+                code: { label: 'Response code', of: function (tr) { return cellText(tr, 'code'); } }
+            },
+            noun: ['row', 'rows'],
+            csvName: 'error-summary.csv',
+            toolbar: { searchId: 'errorSummaryTable-search', placeholder: 'Filter errors…', label: 'Filter the error summary' },
+            /* The Total covers the rows shown and stays last (B2) */
+            after: function () { buildErrorSummaryTotalRow(); }
+        });
+        WIR.table.applyRows('errorSummaryTable');
+    }
+    if (document.getElementById('errorDetailsTable')) {
+        var errorOf = function (tr) {
+            var s = tr.getAttribute('data-sampler');
+            var m = cellText(tr, 'message');
+            return { key: s + ' ' + m, label: s + ' · ' + m };
+        };
+        WIR.table.mountRows('errorDetailsTable', {
+            rows: function (table) {
+                return Array.prototype.filter.call(table.tBodies[0].rows, function (r) { return r.classList.contains('error-row-main'); });
+            },
+            key: function (tr) { return tr.getAttribute('data-error-idx'); },
+            companions: function (tr) {
+                var out = [];
+                for (var n = tr.nextElementSibling; n && n.classList.contains('error-detail-row'); n = n.nextElementSibling) out.push(n);
+                return out;
+            },
+            columns: [textColumn('time', 'Time', { value: function (tr) { return Number(tr.getAttribute('data-time')); } }),
+                textColumn('sampler', W('Sampler')), textColumn('code', 'Code'), textColumn('class', 'Class'),
+                textColumn('message', 'Message'), textColumn('thread', W('Thread'))],
+            search: function (tr) { return tr.textContent; },
+            nameOf: function (tr) { return tr.getAttribute('data-sampler'); },
+            groupings: {
+                error: { label: W('Sampler') + ' and type of error', of: errorOf,
+                    order: function (a, b) { return b.size - a.size || WIR.table.compareValues(a.label, b.label); } },
+                class: { label: 'Error class', of: function (tr) { return cellText(tr, 'class'); } },
+                code: { label: 'Response code', of: function (tr) { return cellText(tr, 'code'); } }
+            },
+            noun: ['error', 'errors'],
+            csvName: 'error-details.csv',
+            toolbar: { searchId: 'errorDetailsTable-search', placeholder: 'Filter errors…', label: 'Filter the error details' }
+        });
+        WIR.table.applyRows('errorDetailsTable');
+    }
+}
+
+/* ---- Compare: its rows are drawn from the comparison, so Apply, a column drag and the Σ Total chip keep the view ---- */
+
+function comparisonStatus(d) {
+    return d.removed ? 'REMOVED' : d.isNew ? 'NEW' : d.regression ? 'REGRESSION' : 'OK';
+}
+
+function comparisonRecords(data) {
+    var recs = (data.comparisonDiffs || []).slice();
+    var total = data.comparisonTotal;
+    if (total && isTotalVisible()) {
+        recs.unshift(Object.assign({}, total, { total: true, name: TOTAL_SAMPLER_NAME }));
+    }
+    return recs;
+}
+
+var CMP_FIGURES = ['samples', 'errors', 'errorPct', 'mean', 'median', 'p90', 'p95', 'p99', 'min', 'max', 'throughput', 'recv'];
+
+/* A compared row's figures, as the Samplers table writes them (the Aggregate Report's patterns), by column id. */
+function comparisonFigures(d) {
+    if (d.total) {
+        var texts = sigmaTotalCellTexts(totalRowFigures(globalChartData, isTransactionChild)).slice(0, 12);
+        var out = {};
+        CMP_FIGURES.forEach(function (c, i) { out[c] = texts[i]; });
+        return out;
+    }
+    if (d.removed) return {};
+    return {
+        samples: d.currSamples ? wholeNumberText(d.currSamples) : '—',
+        errors: wholeNumberText(d.currErrors || 0),
+        errorPct: twoDecimalsText(d.currSamples > 0 ? (d.currErrors || 0) * 100 / d.currSamples : 0) + '%',
+        mean: wholeNumberText(d.currMean), median: wholeNumberText(d.currMedian), p90: wholeNumberText(d.currP90),
+        p95: wholeNumberText(d.currP95), p99: wholeNumberText(d.currP99), min: wholeNumberText(d.currMin),
+        max: wholeNumberText(d.currMax),
+        throughput: d.currThroughput != null ? formatRate(d.currThroughput) : '—',
+        recv: d.currRecvKBs != null ? twoDecimalsText(d.currRecvKBs) : '—'
+    };
+}
+
+var CMP_VALUE = {
+    samples: 'currSamples', errors: 'currErrors', mean: 'currMean', median: 'currMedian', p90: 'currP90', p95: 'currP95',
+    p99: 'currP99', min: 'currMin', max: 'currMax', throughput: 'currThroughput', recv: 'currRecvKBs'
+};
+
+function comparisonColumns() {
+    var labels = { samples: 'Samples', errors: 'Errors', errorPct: 'Error %', mean: 'Mean (ms)', median: 'Median (ms)',
+        p90: 'P90 (ms)', p95: 'P95 (ms)', p99: 'P99 (ms)', min: 'Min (ms)', max: 'Max (ms)', throughput: 'Throughput',
+        recv: 'Recv KB/s' };
+    return [{ id: 'name', label: W('Sampler'), hideable: false, value: function (d) { return d.name; }, text: function (d) { return d.name; } },
+        { id: 'status', label: 'Status', value: function (d) { return comparisonStatus(d); }, text: comparisonStatus }]
+        .concat(CMP_FIGURES.map(function (c) {
+            return { id: c, label: labels[c], firstDir: 'desc',
+                value: function (d) {
+                    if (d.removed) return null;
+                    if (c === 'errorPct') return d.currSamples > 0 ? (d.currErrors || 0) / d.currSamples : null;
+                    var v = d[CMP_VALUE[c]];
+                    return typeof v === 'number' ? v : null;
+                },
+                text: function (d) { var f = comparisonFigures(d)[c]; return f === undefined ? '—' : f; } };
+        }));
+}
+
+function initComparisonTable() {
+    WIR.table.mountRows('comparisonTable', {
+        key: function (d) { return d.total ? 'Σ' : d.name; },
+        columns: comparisonColumns(),
+        search: function (d) { return d.name; },
+        status: comparisonStatus,
+        statusOrder: ['REGRESSION', 'NEW', 'REMOVED', 'OK'],
+        nameOf: function (d) { return d.total ? null : d.name; },
+        pinned: function (d) { return d.total ? 'first' : null; },
+        groupings: { status: { label: 'Status', of: comparisonStatus,
+            order: function (a, b) { return ['REGRESSION', 'NEW', 'REMOVED', 'OK'].indexOf(a.key) - ['REGRESSION', 'NEW', 'REMOVED', 'OK'].indexOf(b.key); } } },
+        csvName: 'comparison.csv',
+        toolbar: { searchId: 'comparisonTable-search', placeholder: 'Filter ' + W('samplers') + '…', label: 'Filter the comparison',
+            noun: W('samplers') },
+        render: renderComparison
+    });
+    renderComparison();
+}
+
+function comparisonRowHtml(d, order) {
+    var status = comparisonStatus(d);
+    var figures = comparisonFigures(d);
+    var deltas = { samples: [d.deltaSamples, '', 'neutral'], errors: [d.deltaErrors, ''], errorPct: [d.deltaErrorRate, '%'],
+        mean: [d.deltaMean, ' ms'], median: [d.deltaMedian, ' ms'], p90: [d.deltaP90, ' ms'], p95: [d.deltaP95, ' ms'],
+        p99: [d.deltaP99, ' ms'], min: [d.deltaMin, ' ms'], max: [d.deltaMax, ' ms'],
+        throughput: [d.deltaThroughput, '/s', true], recv: [d.deltaRecvKBs, '', true] };
+    var cells = {
+        name: '<td data-col-id="name" title="' + escapeHtml(d.name) + '">' + escapeHtml(d.name) + '</td>',
+        status: '<td data-col-id="status"><span class="status-badge cmp-' + status.toLowerCase() +
+            '" style="font-size:0.65rem;padding:2px 8px;">' + status + '</span></td>'
+    };
+    CMP_FIGURES.forEach(function (c) {
+        cells[c] = d.removed ? '<td data-col-id="' + c + '">—</td>'
+            : '<td data-col-id="' + c + '">' + escapeHtml(figures[c]) + inlineDelta(deltas[c][0], deltas[c][1], deltas[c][2]) + '</td>';
+    });
+    var key = d.total ? 'Σ' : d.name;
+    /* A removed sampler ran in the baseline but not in this run, so it has no current-side figures: dashes. */
+    return '<tr data-key="' + escapeHtml(key) + '"' + (d.total ? ' class="comparison-total-row" style="font-weight:700"' : '') +
+        (d.removed ? ' title="Present in the baseline, absent from this run"' : '') + '>' +
+        order.map(function (c) { return c === null ? '' : cells[c] || ''; }).join('') +
+        '<td>' + (d.total ? '' : '<button type="button" class="wir-row-hide" title="Hide this row" aria-label="Hide this row">&times;</button>') +
+        '</td></tr>';
+}
+
+/* The Compare body, drawn from the comparison under the table's view: Apply, the Σ Total chip and a column drag all
+   come here, so none of them loses the search, the hidden rows or the sort (defect 2), and each cell is drawn under
+   its own header, wherever a drag or a saved order put it (defect 3). */
+function renderComparison() {
+    var tbody = document.getElementById('comparisonTableBody');
+    if (!tbody || !globalChartData || !globalChartData.comparisonDiffs || !WIR.table.table('comparisonTable')) return;
+    var v = WIR.table.compute('comparisonTable', comparisonRecords(globalChartData));
+    var order = WIR.table.headerOrder('comparisonTable').filter(function (c) { return c !== null; });
+    var span = order.length + 1;
+    tbody.innerHTML = v.rows.map(function (row) {
+        return row.kind === 'group' ? WIR.table.groupRow('comparisonTable', row, span, [W('sampler'), W('samplers')])
+            : comparisonRowHtml(row.record, order);
+    }).join('');
+    WIR.table.finish('comparisonTable');
+}
+
 function noteKeptErrorRecords(data) {
     var table = document.getElementById('errorDetailsTable');
     if (!table || !data || !data.errorRecordsTruncated) return;
@@ -5228,54 +5299,15 @@ function noteKeptErrorRecords(data) {
 
 function keptErrorsNote(kept, total) {
     return 'The first ' + kept + ' of ' + (total != null ? total : 'more') + ' errors, kept in detail. ' +
-        'The Error Summary, the charts and the Grouped counts include every error.';
+        'The Error Summary and the charts include every error; Group by counts the errors kept here.';
 }
 
-/* Open state lives on the body row (data-open) so search can re-hide a group without losing it. */
-function setErrorGroupOpen(head, open) {
-    var body = head.nextElementSibling;
-    if (!body || !body.hasAttribute('data-group-body')) return;
-    body.setAttribute('data-open', open ? '1' : '0');
-    /* A group filtered out by search stays collapsed on screen but keeps its open state. */
-    body.style.display = (open && head.style.display !== 'none') ? '' : 'none';
-    var arrow = head.cells[0];
-    if (arrow) arrow.innerHTML = open ? '&#9660;' : '&#9654;';
-}
 
-function isErrorGroupOpen(head) {
-    var body = head.nextElementSibling;
-    return !!body && body.getAttribute('data-open') === '1';
-}
 
-function toggleErrorGroup(head) {
-    if (!head) return;
-    setErrorGroupOpen(head, !isErrorGroupOpen(head));
-}
 
-function setAllErrorGroups(open) {
-    var table = document.getElementById('errorGroupsTable');
-    if (!table || !table.tBodies[0]) return;
-    var heads = table.tBodies[0].querySelectorAll('[data-group-head]');
-    for (var i = 0; i < heads.length; i++) setErrorGroupOpen(heads[i], open);
-}
 
-function expandAllErrorGroups() { setAllErrorGroups(true); }
 
-function collapseAllErrorGroups() { setAllErrorGroups(false); }
 
-function filterErrorGroups(filterText) {
-    var table = document.getElementById('errorGroupsTable');
-    if (!table || !table.tBodies[0]) return;
-    var filter = (filterText || '').toLowerCase();
-    var heads = table.tBodies[0].querySelectorAll('[data-group-head]');
-    for (var i = 0; i < heads.length; i++) {
-        var head = heads[i];
-        head.style.display = head.textContent.toLowerCase().indexOf(filter) >= 0 ? '' : 'none';
-        /* Re-apply open state so a filtered-out group's body hides with its head, and a
-         * matching group that was open re-opens when it comes back. */
-        setErrorGroupOpen(head, isErrorGroupOpen(head));
-    }
-}
 
 /* ---- Response Body Viewer helpers ---- */
 
@@ -7025,8 +7057,8 @@ function applyColumnOrder(table, order) {
              * a `_origIdx` property that was never assigned anywhere, so it always fell
              * through to positional matching and could mis-map a saved order once columns
              * had already been moved. */
-            var colId = currentCells[s].getAttribute('data-col-id');
-            var matches = colId != null ? parseInt(colId, 10) === order[pos] : s === order[pos];
+            var colIndex = currentCells[s].getAttribute('data-col-index');
+            var matches = colIndex != null ? parseInt(colIndex, 10) === order[pos] : s === order[pos];
             if (matches) {
                 sourceIdx = s;
                 break;
@@ -7069,7 +7101,7 @@ function initComparisonTab(data) {
     pendingChartInits.push({ tab: 'compare', fn: function () {
         initCompareRTChart(data);
         initCompareTPChart(data);
-        populateComparisonTable(data);
+        initComparisonTable();
     }});
 }
 
@@ -7132,7 +7164,7 @@ function applyComparisonThresholds() {
     });
 
     /* Re-render comparison table and What Changed summary */
-    populateComparisonTable(globalChartData);
+    renderComparison();
     initWhatChanged(globalChartData);
 }
 
@@ -7315,101 +7347,7 @@ function initCompareTPChart(data) {
     });
 }
 
-function populateComparisonTable(data) {
-    var tbody = document.getElementById('comparisonTableBody');
-    if (!tbody || !data.comparisonDiffs) return;
 
-    tbody.innerHTML = '';
-    data.comparisonDiffs.forEach(function (diff) {
-        var tr = document.createElement('tr');
-
-        /* cmp-* rather than badge-fail / badge-pass.
-         *
-         * A comparison verdict is a COMPUTED OBSERVATION — this sampler is slower than the
-         * baseline — and an assert verdict is a DECLARED JUDGEMENT: you set a limit and it was
-         * crossed. Both are bad news and both are red-ish, but sharing the class meant a change
-         * to assert styling silently restyled the Compare tab and vice versa, and a reader had
-         * no way to tell which kind of red they were looking at. The cmp palette is outlined
-         * rather than filled, the same device .wir-chip-invalid uses to say "related, not the
-         * same thing". */
-        var statusClass = diff.removed ? 'cmp-removed'
-            : (diff.isNew ? 'cmp-new' : (diff.regression ? 'cmp-regression' : 'cmp-ok'));
-        var statusText = diff.removed ? 'REMOVED'
-            : (diff.isNew ? 'NEW' : (diff.regression ? 'REGRESSION' : 'OK'));
-
-        var escapedName = escapeHtml(diff.name);
-
-        /* A removed sampler ran in the baseline but not in this run, so it has no current-side
-         * figures at all. Render the row with em dashes rather than "undefined%" across it. */
-        if (diff.removed) {
-            var dash = '<td>—</td>';
-            tr.innerHTML =
-                '<td title="' + escapedName + '">' + escapedName + '</td>' +
-                '<td><span class="status-badge ' + statusClass + '" style="font-size:0.65rem;padding:2px 8px;">' + statusText + '</span></td>' +
-                dash + dash + dash + dash + dash + dash + dash + dash + dash + dash + dash + dash +
-                '<td><button class="row-hide-btn" onclick="hideTableRow(this, \'comparisonTable\'); event.stopPropagation();" title="Hide row">&times;</button></td>';
-            tr.title = 'Present in the baseline, absent from this run';
-            tbody.appendChild(tr);
-            return;
-        }
-
-        tr.innerHTML =
-            '<td title="' + escapedName + '">' + escapedName + '</td>' +
-            '<td><span class="status-badge ' + statusClass + '" style="font-size:0.65rem;padding:2px 8px;">' + statusText + '</span></td>' +
-            comparedCells(diff, [
-                diff.currSamples ? wholeNumberText(diff.currSamples) : '\u2014',
-                wholeNumberText(diff.currErrors || 0),
-                twoDecimalsText(diff.currSamples > 0 ? (diff.currErrors || 0) * 100 / diff.currSamples : 0) + '%',
-                wholeNumberText(diff.currMean), wholeNumberText(diff.currMedian), wholeNumberText(diff.currP90),
-                wholeNumberText(diff.currP95), wholeNumberText(diff.currP99), wholeNumberText(diff.currMin),
-                wholeNumberText(diff.currMax),
-                diff.currThroughput != null ? formatRate(diff.currThroughput) : '\u2014',
-                diff.currRecvKBs != null ? twoDecimalsText(diff.currRecvKBs) : '\u2014'
-            ]) +
-            '<td><button class="row-hide-btn" onclick="hideTableRow(this, \'comparisonTable\'); event.stopPropagation();" title="Hide row">&times;</button></td>';
-
-        tbody.appendChild(tr);
-    });
-    updateComparisonTotalRow();
-}
-
-/* A compared row's figure cells: each of this run's figures (written as the Samplers table writes it,
-   the Aggregate Report's patterns) with the change from the baseline beside it. */
-function comparedCells(diff, texts) {
-    var deltas = [[diff.deltaSamples, '', 'neutral'], [diff.deltaErrors, ''], [diff.deltaErrorRate, '%'],
-        [diff.deltaMean, ' ms'], [diff.deltaMedian, ' ms'], [diff.deltaP90, ' ms'], [diff.deltaP95, ' ms'],
-        [diff.deltaP99, ' ms'], [diff.deltaMin, ' ms'], [diff.deltaMax, ' ms'],
-        [diff.deltaThroughput, '/s', true], [diff.deltaRecvKBs, '', true]];
-    return texts.map(function (text, i) {
-        return '<td>' + escapeHtml(text) + inlineDelta(deltas[i][0], deltas[i][1], deltas[i][2]) + '</td>';
-    }).join('');
-}
-
-/* The Compare table's Σ Total row: this run's whole run against the baseline's, as a JMeter user reads
-   two Aggregate Reports' TOTAL rows side by side (plan v2 item 3). It shows with the Σ Total chip and
-   stays first, as the Samplers tab's does; its figures are that row's own (sigmaTotalCellTexts over the
-   same totalRowFigures), so the two read the same; the change beside each, and its OK or REGRESSION, are
-   the comparison's (chartData.comparisonTotal: the two runs' OverallMetrics, judged as every row is). */
-function updateComparisonTotalRow() {
-    var tbody = document.getElementById('comparisonTableBody');
-    if (!tbody) return;
-    var existing = tbody.querySelector('tr.comparison-total-row');
-    if (existing) existing.remove();
-    var total = globalChartData && globalChartData.comparisonTotal;
-    if (!total || !isTotalVisible()) return;
-    var tr = document.createElement('tr');
-    tr.className = 'comparison-total-row';
-    tr.style.fontWeight = '700';
-    tr.innerHTML = '<td title="' + escapeHtml(TOTAL_SAMPLER_NAME) + '">' + escapeHtml(TOTAL_SAMPLER_NAME) + '</td>' +
-        '<td><span class="status-badge ' + (total.regression ? 'cmp-regression' : 'cmp-ok') +
-        '" style="font-size:0.65rem;padding:2px 8px;">' + (total.regression ? 'REGRESSION' : 'OK') + '</span></td>' +
-        comparedCells(total, sigmaTotalCellTexts(totalRowFigures(globalChartData, isTransactionChild)).slice(0, 12)) +
-        '<td></td>';
-    tbody.insertBefore(tr, tbody.firstChild);
-    applyGenericColumnVisibility('comparisonTable');
-    var filter = (getTableState('comparisonTable').filterText || '').toLowerCase();
-    if (filter && (tr.textContent || '').toLowerCase().indexOf(filter) < 0) tr.style.display = 'none';
-}
 
 function inlineDelta(val, suffix, invertColor) {
     if (val == null || val === 0) return '';
@@ -7681,235 +7619,15 @@ function updateHiddenRowsBtn() {
 
 var genericTableState = {};
 
-function getTableState(tableId) {
-    if (!genericTableState[tableId]) {
-        genericTableState[tableId] = { hiddenCols: {}, hiddenRowCount: 0 };
-    }
-    return genericTableState[tableId];
-}
 
-function toggleGenericColumnMenu(btn) {
-    var wrapper = btn.parentElement;
-    var menu = wrapper.querySelector('.column-menu');
-    if (!menu) return;
 
-    var isOpen = menu.classList.contains('open');
 
-    /* Close all open generic column menus first */
-    document.querySelectorAll('.column-menu.open').forEach(function (m) { m.classList.remove('open'); });
 
-    if (isOpen) return;
 
-    /* Find the associated table */
-    var section = wrapper.closest('.report-section');
-    if (!section) return;
-    var table = section.querySelector('table.stats-table');
-    if (!table) return;
-    var tableId = table.id;
-    var state = getTableState(tableId);
 
-    /* Build menu from header cells (skip last action column(s)) */
-    menu.innerHTML = '';
-    var headerCells = table.tHead.rows[0].cells;
-    for (var i = 0; i < headerCells.length; i++) {
-        var text = headerCells[i].textContent.trim();
-        if (!text) continue; /* skip action columns */
-        (function (colIdx, colText) {
-            var label = document.createElement('label');
-            var cb = document.createElement('input');
-            cb.type = 'checkbox';
-            cb.checked = !state.hiddenCols[colIdx];
-            cb.addEventListener('change', function () {
-                if (cb.checked) {
-                    delete state.hiddenCols[colIdx];
-                } else {
-                    state.hiddenCols[colIdx] = true;
-                }
-                applyGenericColumnVisibility(tableId);
-            });
-            label.appendChild(cb);
-            label.appendChild(document.createTextNode(' ' + colText));
-            menu.appendChild(label);
-        })(i, text);
-    }
 
-    menu.classList.add('open');
-}
 
-function applyGenericColumnVisibility(tableId) {
-    var table = document.getElementById(tableId);
-    if (!table) return;
-    var state = getTableState(tableId);
 
-    var headerCells = table.tHead.rows[0].cells;
-    for (var i = 0; i < headerCells.length; i++) {
-        headerCells[i].style.display = state.hiddenCols[i] ? 'none' : '';
-    }
-    var rows = table.tBodies[0].rows;
-    for (var r = 0; r < rows.length; r++) {
-        if (rows[r].classList.contains('error-detail-row')) continue;
-        var cells = rows[r].cells;
-        for (var c = 0; c < cells.length; c++) {
-            cells[c].style.display = state.hiddenCols[c] ? 'none' : '';
-        }
-    }
-    // Visual indicator + "Show All Columns" button
-    var count = Object.keys(state.hiddenCols).length;
-    var section = table.closest('.report-section');
-    if (section) {
-        var menuBtn = section.querySelector('.column-toggle-wrapper .column-toggle-btn');
-        if (menuBtn) menuBtn.classList.toggle('has-hidden', count > 0);
-        var colBtn = document.getElementById('showAllColsBtn-' + tableId);
-        if (colBtn) {
-            if (count > 0) {
-                colBtn.style.display = '';
-                colBtn.textContent = 'Show ' + count + ' Hidden Column' + (count > 1 ? 's' : '');
-            } else {
-                colBtn.style.display = 'none';
-            }
-        }
-    }
-}
-
-function showAllGenericColumns(tableId) {
-    var state = getTableState(tableId);
-    state.hiddenCols = {};
-    applyGenericColumnVisibility(tableId);
-    /* Re-check all checkboxes in the open menu */
-    var table = document.getElementById(tableId);
-    if (!table) return;
-    var section = table.closest('.report-section');
-    if (section) {
-        section.querySelectorAll('.column-menu input[type="checkbox"]').forEach(function (cb) { cb.checked = true; });
-    }
-}
-
-/** Sort any table by column index. type: 'text' or 'num'. Skips error-detail-row. */
-function sortGenericTable(tableId, colId, type) {
-    var table = document.getElementById(tableId);
-    if (!table || !table.tBodies[0]) return;
-    var tbody = table.tBodies[0];
-
-    var th = findHeaderByColId(table, colId);
-    if (!th) return;
-    var effectiveCol = th.cellIndex; /* robust to drag reorder (C16) */
-    var asc = th.getAttribute('data-sort') !== 'asc';
-
-    var headers = table.tHead.rows[0].cells;
-    for (var i = 0; i < headers.length; i++) {
-        headers[i].removeAttribute('data-sort');
-    }
-    th.setAttribute('data-sort', asc ? 'asc' : 'desc');
-
-    /* Close any expanded detail rows before sorting so they are not orphaned from their parent (C19). */
-    Array.from(tbody.querySelectorAll('tr.error-detail-row')).forEach(function (dr) { dr.remove(); });
-
-    var rows = Array.from(tbody.rows);
-    var dataRows = rows.filter(function (r) {
-        return !r.classList.contains('error-summary-total') && !r.classList.contains('comparison-total-row');
-    });
-    var totalRow = rows.filter(function (r) { return r.classList.contains('error-summary-total'); });
-    var firstRow = rows.filter(function (r) { return r.classList.contains('comparison-total-row'); });
-
-    dataRows.sort(function (a, b) {
-        var va = a.cells[effectiveCol] ? a.cells[effectiveCol].textContent.trim() : '';
-        var vb = b.cells[effectiveCol] ? b.cells[effectiveCol].textContent.trim() : '';
-        if (type === 'num') {
-            va = parseFloat(va.replace(/[,%]/g, '')) || 0;
-            vb = parseFloat(vb.replace(/[,%]/g, '')) || 0;
-        }
-        if (va < vb) return asc ? -1 : 1;
-        if (va > vb) return asc ? 1 : -1;
-        return 0;
-    });
-
-    dataRows.forEach(function (row) { tbody.appendChild(row); });
-    /* Keep total row pinned at the bottom, and the Compare tab's Σ Total row at the top */
-    totalRow.forEach(function (tr) { tbody.appendChild(tr); });
-    firstRow.forEach(function (tr) { tbody.insertBefore(tr, tbody.firstChild); });
-}
-
-/**
- * Whether each row of a generic table shows: it matches the search, and no × (user-hidden) hides
- * it. The one place that decides it — Show Hidden re-applies it with the search's last text rather
- * than clearing every row's display, which brought back rows nobody had unhidden and undid a search
- * whose box still showed the text (B2).
- */
-function filterGenericTable(tableId, filterText) {
-    var table = document.getElementById(tableId);
-    if (!table) return;
-    var state = getTableState(tableId);
-    state.filterText = filterText;
-    var filter = filterText.toLowerCase();
-    var rows = table.tBodies[0].rows;
-    for (var i = 0; i < rows.length; i++) {
-        if (rows[i].classList.contains('error-detail-row')) continue;
-        /* The Total sums the rows shown; it is not a row the search can hide (B2). */
-        if (rows[i].classList.contains('error-summary-total')) continue;
-        var matches = rows[i].textContent.toLowerCase().indexOf(filter) >= 0;
-        /* Don't un-hide rows the user explicitly hid. */
-        var suppressed = rows[i].classList.contains('user-hidden');
-        rows[i].style.display = (matches && !suppressed) ? '' : 'none';
-    }
-    refreshTableTotal(tableId);
-}
-
-/** Every row's display again, as filterGenericTable decides it under the search's current text. */
-function reapplyGenericRowDisplay(tableId) {
-    filterGenericTable(tableId, getTableState(tableId).filterText || '');
-}
-
-/* The Error Summary's Total covers the rows shown, so whatever changes them rebuilds it — once it
-   exists: the Errors tab builds it when it is first drawn (initErrorBreakdownCharts). */
-function refreshTableTotal(tableId) {
-    if (tableId !== 'errorSummaryTable') return;
-    var table = document.getElementById(tableId);
-    if (table && table.querySelector('tr.error-summary-total')) buildErrorSummaryTotalRow();
-}
-
-function hideTableRow(btn, tableId) {
-    var row = btn.closest('tr');
-    if (!row) return;
-    /* Close any expanded detail row */
-    var next = row.nextElementSibling;
-    if (next && next.classList.contains('error-detail-row')) {
-        next.remove();
-    }
-    row.classList.add('user-hidden');
-    row.style.display = 'none';
-    var state = getTableState(tableId);
-    state.hiddenRowCount++;
-    updateGenericHiddenBtn(tableId);
-    refreshTableTotal(tableId);
-}
-
-/* Brings back what × hid, and only that: the search and the collapsed children keep theirs. */
-function showAllTableRows(tableId) {
-    var table = document.getElementById(tableId);
-    if (!table) return;
-    var rows = table.tBodies[0].rows;
-    for (var i = 0; i < rows.length; i++) {
-        if (!rows[i].classList.contains('error-detail-row')) {
-            rows[i].classList.remove('user-hidden');
-        }
-    }
-    var state = getTableState(tableId);
-    state.hiddenRowCount = 0;
-    updateGenericHiddenBtn(tableId);
-    reapplyGenericRowDisplay(tableId);
-}
-
-function updateGenericHiddenBtn(tableId) {
-    var btn = document.getElementById('showHiddenBtn-' + tableId);
-    if (!btn) return;
-    var state = getTableState(tableId);
-    if (state.hiddenRowCount > 0) {
-        btn.style.display = '';
-        btn.textContent = 'Show ' + state.hiddenRowCount + ' Hidden Row' + (state.hiddenRowCount > 1 ? 's' : '');
-    } else {
-        btn.style.display = 'none';
-    }
-}
 
 /* ============================================================
  *  CSV Export for Tables
@@ -7988,61 +7706,8 @@ function exportTop5SlowestCsv() {
     downloadCsvFile('top5-slowest-' + W('samplers') + '.csv', buildCsvFromArrays(headers, rows));
 }
 
-function exportErrorSummaryCsv() {
-    if (!globalChartData) return;
-    var records = globalChartData.errorSummaries ? requestErrorSummaries(globalChartData) : (globalChartData.errorsByType || []);
-    var headers = [W('Sampler'), 'Response Code', 'Type of Error', 'Error Class', 'Response Message', 'Count',
-        '% of Errors', '% of All Samples'];
-    var rows = records.map(function (e) {
-        return [e.samplerName || e.sampler || '', e.responseCode || e.code || '', e.errorType || '',
-            errorClassLabelOf(e),
-            /* Blank rather than "OK": exporting the HTML reason phrase of a 2xx as a failure
-               message is the same untruth as printing it. */
-            e.messageMeaningless ? '' : (e.responseMessage || e.message || ''),
-            e.occurrenceCount || e.count || 0,
-            fmtNum(e.percentageOfErrors, 2), fmtNum(e.percentageOfAllSamples, 2)];
-    });
-    downloadCsvFile('error-summary.csv', buildCsvFromArrays(headers, rows));
-}
 
-function exportErrorDetailsCsv() {
-    if (!globalChartData || !globalChartData.errorRecords) return;
-    var headers = ['Timestamp', W('Sampler'), 'Response Code', 'Type of Error', 'Error Class', 'Response Message',
-        W('Thread'), 'URL', 'Request Headers', 'Response Body'];
-    var rows = globalChartData.errorRecords.map(function (e) {
-        var ts = e.timestamp ? new Date(e.timestamp).toISOString() : '';
-        return [ts, e.samplerName || e.sampler || '', e.responseCode || e.code || '', e.errorType || '',
-            errorClassLabelOf(e),
-            e.messageMeaningless ? '' : (e.responseMessage || e.message || ''),
-            e.threadName || e.thread || '',
-            e.requestUrl || e.url || '', e.headers || '', e.body || ''];
-    });
-    downloadCsvFile('error-details.csv', buildCsvFromArrays(headers, rows));
-}
 
-function exportComparisonCsv() {
-    if (!globalChartData || !globalChartData.comparisonDiffs) return;
-    var headers = ['Sampler', 'Status', 'Samples', 'Delta Samples', 'Errors', 'Delta Errors',
-        'Error %', 'Delta Error %', 'Mean (ms)', 'Delta Mean', 'Median (ms)', 'Delta Median',
-        'P90 (ms)', 'Delta P90', 'P95 (ms)', 'Delta P95', 'P99 (ms)', 'Delta P99',
-        'Min (ms)', 'Delta Min', 'Max (ms)', 'Delta Max', 'Throughput', 'Delta Throughput',
-        'Recv KB/s', 'Delta Recv KB/s'];
-    var rows = globalChartData.comparisonDiffs.map(function (d) {
-        var status = d.removed ? 'REMOVED' : (d.isNew ? 'NEW' : (d.regression ? 'REGRESSION' : 'OK'));
-        return [d.name, status, d.currSamples, d.deltaSamples, d.currErrors, d.deltaErrors,
-            fmtNum(d.currErrorRate, 2), fmtNum(d.deltaErrorRate, 2),
-            fmtNum(d.currMean, 2), fmtNum(d.deltaMean, 2),
-            fmtNum(d.currMedian, 2), fmtNum(d.deltaMedian, 2),
-            fmtNum(d.currP90, 2), fmtNum(d.deltaP90, 2),
-            fmtNum(d.currP95, 2), fmtNum(d.deltaP95, 2),
-            fmtNum(d.currP99, 2), fmtNum(d.deltaP99, 2),
-            fmtNum(d.currMin, 2), fmtNum(d.deltaMin, 2),
-            fmtNum(d.currMax, 2), fmtNum(d.deltaMax, 2),
-            fmtNum(d.currThroughput, 2), fmtNum(d.deltaThroughput, 2),
-            fmtNum(d.currRecvKBs, 2), fmtNum(d.deltaRecvKBs, 2)];
-    });
-    downloadCsvFile('comparison.csv', buildCsvFromArrays(headers, rows));
-}
 
 /* ============================================================
  *  Bootstrap — run when DOM is ready
@@ -8845,8 +8510,8 @@ WIR.table = (function () {
             ' title="' + esc(opts.title || 'Sort by ' + c.label) + '"' +
             ' onclick="WIR.table.sortBy(' + jsArg(id) + ', ' + jsArg(col) + ')">' +
             esc(c.label) +
-            '<span class="wir-sort-glyph' + (sorted ? ' wir-sort-on' : '') + '">' +
-            (sorted ? (dir === 'desc' ? '▼' : '▲') : '↕') + '</span></button>' + (opts.extra || '') + '</th>';
+            /* the glyph is the stylesheet's, from aria-sort: a header's text stays its label */
+            '<span class="wir-sort-glyph" aria-hidden="true"></span></button>' + (opts.extra || '') + '</th>';
     }
 
     /** A body cell's attributes: its column, and hidden while the column is. */
@@ -8956,6 +8621,148 @@ WIR.table = (function () {
         return h + '</span></div>';
     }
 
+    /* ---------------------------------------------------------------- rows the page's HTML writes
+     *
+     * Requests and the Errors tables keep their rows in the page's HTML, with their cell text: R07 reads the page's
+     * rows and holds each cell to JMeter's Aggregate Report (FR-070). For them the toolkit never renders a row: it
+     * moves the <tr>s the template wrote, each with the rows that belong to it (spec.companions), sets their display,
+     * and inserts its group rows as tr.wir-group-row, removed again before each pass. The rows it hides go first in
+     * the body, so whatever the table keeps last (the Errors Total, spec.after) stays last. The headers become sort
+     * buttons, and a column is hidden by its data-col-id wherever a drag has put it (FR-065, defect 4). A row's x is
+     * read by one listener, in the capture phase so the row's own click (Error Details opens a detail) does not run.
+     * Compare renders its body from state into the same kind of table: it uses the header, x and columns half.
+     */
+    function mountRows(id, spec) {
+        var table = document.getElementById(id);
+        if (!table || !table.tHead || !table.tBodies[0]) return null;
+        if (!spec.render) spec.render = function () { applyRows(id); };
+        var t = register(id, spec);
+        decorateHead(id, table);
+        table.tBodies[0].addEventListener('click', function (e) {
+            var btn = e.target && e.target.closest ? e.target.closest('button.wir-row-hide') : null;
+            if (!btn) return;
+            e.stopPropagation();
+            var tr = btn.closest('tr');
+            if (tr) hide(id, tr.hasAttribute('data-key') ? tr.getAttribute('data-key') : spec.key(tr));
+        }, true);
+        return t;
+    }
+
+    function decorateHead(id, table) {
+        var t = tables[id];
+        Array.prototype.forEach.call(table.tHead.rows[0].cells, function (th) {
+            var col = th.getAttribute('data-col-id');
+            var c = col && columnOf(t.spec, col);
+            if (!c || c.sortable === false || th.querySelector('.wir-sort-btn')) return;
+            th.classList.add('wir-th-sortable');
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'wir-sort-btn';
+            btn.id = id + '-sort-' + col;
+            btn.title = 'Sort by ' + c.label;
+            while (th.firstChild) btn.appendChild(th.firstChild);
+            var glyph = document.createElement('span');
+            glyph.className = 'wir-sort-glyph';
+            glyph.setAttribute('aria-hidden', 'true');
+            btn.appendChild(glyph);
+            th.appendChild(btn);
+            btn.addEventListener('click', function () { sortBy(id, col); });
+        });
+    }
+
+    /** aria-sort on the sorted column only, and the glyphs (WAI-ARIA's sortable table). */
+    function updateHead(id, table) {
+        var s = tables[id].state.sort;
+        Array.prototype.forEach.call(table.tHead.rows[0].cells, function (th) {
+            var glyph = th.querySelector('.wir-sort-glyph');
+            if (!glyph) return;
+            var sorted = !!(s && s.col === th.getAttribute('data-col-id'));
+            if (sorted) th.setAttribute('aria-sort', s.dir === 'desc' ? 'descending' : 'ascending');
+            else th.removeAttribute('aria-sort');
+        });
+    }
+
+    /** Hides a column by its identity: its header and the cell under it in every row that has one per column. */
+    function applyDomColumns(id, table) {
+        var t = tables[id];
+        var heads = table.tHead.rows[0].cells;
+        var n = heads.length;
+        var hiddenAt = [];
+        for (var i = 0; i < n; i++) {
+            var col = heads[i].getAttribute('data-col-id');
+            hiddenAt[i] = !!col && t.state.hiddenCols.indexOf(col) !== -1;
+            heads[i].style.display = hiddenAt[i] ? 'none' : '';
+        }
+        Array.prototype.forEach.call(table.tBodies[0].rows, function (tr) {
+            if (tr.cells.length !== n) return;   /* a detail row or a group row: one cell across */
+            for (var c = 0; c < n; c++) tr.cells[c].style.display = hiddenAt[c] ? 'none' : '';
+        });
+    }
+
+    /** The column ids in the order the header shows them now (a drag moves them). */
+    function headerOrder(id) {
+        var table = document.getElementById(id);
+        if (!table || !table.tHead) return [];
+        return Array.prototype.map.call(table.tHead.rows[0].cells, function (th) { return th.getAttribute('data-col-id'); });
+    }
+
+    function renderToolbar(id) {
+        var host = document.getElementById(id + '-toolbar');
+        if (host) fillKeepingFocus(host, toolbar(id, tables[id].spec.toolbar));
+    }
+
+    /** After a body was drawn from state: hidden columns, the sort marks and the toolbar. */
+    function finish(id) {
+        var table = document.getElementById(id);
+        if (!table) return;
+        applyDomColumns(id, table);
+        updateHead(id, table);
+        renderToolbar(id);
+    }
+
+    function applyRows(id) {
+        var t = tables[id];
+        var table = document.getElementById(id);
+        if (!t || !table) return null;
+        var tbody = table.tBodies[0];
+        Array.prototype.slice.call(tbody.querySelectorAll('tr.wir-group-row, tr.wir-fold-row'))
+            .forEach(function (r) { r.parentNode.removeChild(r); });
+        var records = t.spec.rows(table);
+        var companions = new Map();
+        records.forEach(function (r) { companions.set(r, t.spec.companions ? t.spec.companions(r) : []); });
+        var v = compute(id, records);
+        var shown = new Set();
+        v.rows.forEach(function (row) { if (row.kind === 'row') shown.add(row.record); });
+        var hidden = document.createDocumentFragment();
+        var frag = document.createDocumentFragment();
+        records.forEach(function (r) {
+            if (shown.has(r)) return;
+            r.style.display = 'none';
+            hidden.appendChild(r);
+            companions.get(r).forEach(function (c) { c.style.display = 'none'; hidden.appendChild(c); });
+        });
+        var span = table.tHead.rows[0].cells.length;
+        v.rows.forEach(function (row) {
+            if (row.kind !== 'row') {
+                var holder = document.createElement('tbody');
+                holder.innerHTML = row.kind === 'group' ? groupRow(id, row, span, t.spec.noun)
+                    : foldRow(id, row, span, row.count + ' more');
+                frag.appendChild(holder.firstChild);
+                return;
+            }
+            var tr = row.record;
+            tr.style.display = '';
+            if (t.spec.tree) tr.style.setProperty('--wir-depth', row.depth || 0);
+            frag.appendChild(tr);
+            companions.get(tr).forEach(function (c) { c.style.display = ''; frag.appendChild(c); });
+        });
+        tbody.insertBefore(hidden, tbody.firstChild);
+        tbody.appendChild(frag);
+        if (t.spec.after) t.spec.after(v);
+        finish(id);
+        return v;
+    }
+
     return {
         view: view,
         compareValues: compareValues,
@@ -8984,7 +8791,11 @@ WIR.table = (function () {
         toggleColumn: toggleColumn,
         toggleColumnsMenu: toggleColumnsMenu,
         setExtra: setExtra,
-        csv: csv
+        csv: csv,
+        mountRows: mountRows,
+        applyRows: applyRows,
+        headerOrder: headerOrder,
+        finish: finish
     };
 }());
 
@@ -12009,8 +11820,8 @@ WIR.asserts = (function () {
     /* ============================================================
      *  Filtering and sorting the rules table
      *
-     *  On the DATA, not the DOM. The report's generic helpers — filterGenericTable,
-     *  sortGenericTable — walk `tbody tr` and set style.display, which is right for
+     *  On the DATA, not the DOM. The generic helpers this tab once sat beside (filterGenericTable,
+     *  sortGenericTable, gone with spec 002) walked `tbody tr` and set style.display, which is right for
      *  the Thymeleaf-rendered samplers and errors tables because those rows are
      *  static. These are not: renderTable() rebuilds the whole table on every edit,
      *  toggle, duplicate, delete, drag-retune and wizard apply, and it emits two

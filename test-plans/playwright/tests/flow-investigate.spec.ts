@@ -120,7 +120,7 @@ test.describe('Flow: Investigate a Slow Sampler', () => {
     expect(await errorRows.count()).toBeGreaterThan(0);
 
     // --- Step 15: Search for the slow sampler name → filtered ---
-    const errorSearch = page.locator('#tab-errors .table-search').first();
+    const errorSearch = page.locator('#errorSummaryTable-search');
     await errorSearch.fill(slowestName);
     await page.waitForTimeout(300);
 

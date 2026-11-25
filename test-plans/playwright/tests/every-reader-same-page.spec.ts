@@ -25,8 +25,8 @@ const READERS = [
 const TABS = ['summary', 'timeline', 'samplers', 'errors', 'compare', 'asserts', 'server', 'tool', 'notes'];
 const CSV: Record<string, string[]> = {
   samplers: ['exportSamplerStatsCsv'],
-  errors: ['exportErrorSummaryCsv', 'exportErrorDetailsCsv'],
-  compare: ['exportComparisonCsv'],
+  errors: ['table:errorSummaryTable', 'table:errorDetailsTable'],
+  compare: ['table:comparisonTable'],
   // a table of the toolkit (spec 002) downloads what it shows: table:<its id>
   asserts: ['table:assertsTable'],
   tool: ['table:toolThresholds', 'table:toolTimings', 'table:toolChecks', 'table:toolGroupDurations'],
@@ -161,11 +161,12 @@ async function whatTheReaderSees(browser: Browser, id: string, reader: typeof RE
           }));
         }
       }
-      if (tab === 'errors' && await page.evaluate(() => !!document.getElementById('errViewGroupBtn'))) {
-        await page.evaluate(() => (window as any).setErrorDetailsView('group'));
+      if (tab === 'errors' && await page.evaluate(() => !!document.getElementById('errorDetailsTable-group'))) {
+        // grouped by sampler and type of error, what the old Grouped view showed (spec 002)
+        await page.selectOption('#errorDetailsTable-group', 'error');
         await page.waitForTimeout(600);
         seen['errors: grouped view'] = lines(await page.evaluate(() => (document.getElementById('tab-errors') as HTMLElement).innerText));
-        await page.evaluate(() => (window as any).setErrorDetailsView('time'));
+        await page.selectOption('#errorDetailsTable-group', '');
       }
       if (tab === 'summary') {
         await page.evaluate(() => {

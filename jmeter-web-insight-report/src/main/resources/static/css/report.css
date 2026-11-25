@@ -697,17 +697,6 @@ sup.delta-neutral { color: var(--color-text-secondary); }
     opacity: 0.5;
 }
 
-.error-code {
-    display: inline-block;
-    background: var(--color-error-code-bg);
-    color: var(--color-error-code-text);
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-family: monospace;
-    font-weight: 600;
-    font-size: 0.8rem;
-}
-
 /* Charts */
 .chart-container {
     width: 100%;
@@ -3114,7 +3103,11 @@ body.dark-mode .wir-preview { background: var(--color-bg-deep); }
     color: var(--color-ramp-badge-text);
 }
 
-.wir-sort-on { color: var(--color-primary); }
+/* The sort glyph is drawn here, from the header's aria-sort, so a header's text is its label alone (spec 002) */
+.wir-sort-glyph::after { content: '95'; }
+th[aria-sort="ascending"] .wir-sort-glyph::after { content: 'B2'; }
+th[aria-sort="descending"] .wir-sort-glyph::after { content: 'BC'; }
+th[aria-sort] .wir-sort-glyph { color: var(--color-primary); }
 
 /* ---- The table toolkit (WIR.table, spec 002): one toolbar row, sortable header buttons, group and fold
    rows, x on a row, the Columns menu. Every table of the report draws these. */
@@ -3467,6 +3460,14 @@ body.dark-mode .wir-table-columns-menu { box-shadow: 0 6px 18px rgba(0, 0, 0, 0.
 .cmp-removed    { color: var(--badge-fail-text); opacity: 0.75; }
 .cmp-new        { color: var(--color-primary); }
 .cmp-ok         { color: var(--badge-pass-text); }
+
+/* Compare's statuses as the table toolkit's chips (spec 002): outlined, in the cmp palette, so a comparison
+   verdict never reads as an assert's */
+.wir-chip-regression, .wir-chip-removed, .wir-chip-new, .wir-chip-ok { background: transparent; border: 1px solid currentColor; }
+.wir-chip-regression { color: var(--badge-fail-text); }
+.wir-chip-removed    { color: var(--badge-fail-text); opacity: 0.75; }
+.wir-chip-new        { color: var(--color-primary); }
+.wir-chip-ok         { color: var(--badge-pass-text); }
 
 /* ============================================================
    Server tab (M5)

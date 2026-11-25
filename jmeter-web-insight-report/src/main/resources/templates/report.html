@@ -605,38 +605,29 @@
             <section class="report-section" th:if="${errorSummaries != null and !errorSummaries.isEmpty()}">
                 <div class="table-section-header">
                     <h2>Error Summary</h2>
-                    <button class="table-csv-btn" onclick="exportErrorSummaryCsv()" title="Download as CSV">
-                        <svg viewBox="0 0 24 24"><path d="M5 20h14v-2H5v2zm7-18v12.17l3.59-3.58L17 12l-5 5-5-5 1.41-1.41L12 14.17V2z"/></svg>
-                    </button>
                 </div>
-                <div class="table-toolbar">
-                    <input type="text" class="table-search" placeholder="Filter errors..." oninput="filterGenericTable('errorSummaryTable', this.value)"/>
-                    <button class="column-toggle-btn" id="showHiddenBtn-errorSummaryTable" onclick="showAllTableRows('errorSummaryTable')" style="display:none;">Show Hidden</button>
-                    <button class="column-toggle-btn" id="showAllColsBtn-errorSummaryTable" onclick="showAllGenericColumns('errorSummaryTable')" style="display:none;">Show All Columns</button>
-                    <div class="column-toggle-wrapper">
-                        <button class="column-toggle-btn" onclick="toggleGenericColumnMenu(this)">Columns</button>
-                        <div class="column-menu"></div>
-                    </div>
-                </div>
+                <!-- The table toolkit's toolbar (spec 002): search, Group by, Columns, Show N hidden, CSV -->
+                <div class="wir-table-toolbar-host" id="errorSummaryTable-toolbar"></div>
                 <div class="table-wrapper">
                     <table class="stats-table error-table" id="errorSummaryTable">
                         <thead>
                             <tr>
-                                <th onclick="sortGenericTable('errorSummaryTable', 0, 'text')" th:text="${words['Sampler']}">Sampler</th>
-                                <th onclick="sortGenericTable('errorSummaryTable', 1, 'text')">Response Code</th>
+                                <th data-col-id="sampler" th:text="${words['Sampler']}">Sampler</th>
+                                <th data-col-id="code">Response Code</th>
                                 <!-- JMeter's "Type of error" (E1): code/message, or a failed assertion's message -->
-                                <th onclick="sortGenericTable('errorSummaryTable', 2, 'text')"
+                                <th data-col-id="type"
                                     th:title="${words['errorTypeTitle']}">Type of error</th>
-                                <th onclick="sortGenericTable('errorSummaryTable', 3, 'text')">Class</th>
-                                <th onclick="sortGenericTable('errorSummaryTable', 4, 'num')">Count</th>
-                                <th onclick="sortGenericTable('errorSummaryTable', 5, 'num')">% of Errors</th>
-                                <th onclick="sortGenericTable('errorSummaryTable', 6, 'num')">% of All Samples</th>
+                                <th data-col-id="class">Class</th>
+                                <th data-col-id="count">Count</th>
+                                <th data-col-id="pctErrors">% of Errors</th>
+                                <th data-col-id="pctSamples">% of All Samples</th>
                                 <th></th>
                             </tr>
                         </thead>
                         <tbody>
                             <tr th:each="err : ${errorSummaries}"
-                                th:data-sampler="${err.samplerName}" th:data-error-class="${err.errorClass}">
+                                th:data-sampler="${err.samplerName}" th:data-error-class="${err.errorClass}"
+                                th:data-response-code="${err.responseCode}" th:data-error-type="${err.errorType}">
                                 <td th:text="${err.samplerName}" th:title="${err.samplerName}">Sampler</td>
                                 <td th:text="${err.responseCode}" th:title="${err.responseCode}">500</td>
                                 <td th:text="${err.errorType}" th:title="${err.errorType}">500/Internal Server Error</td>
@@ -646,7 +637,7 @@
                                 <td th:text="${fmt.number(err.occurrenceCount)}">0</td>
                                 <td th:text="${fmt.percentage(err.percentageOfErrors)}">0%</td>
                                 <td th:text="${fmt.percentage(err.percentageOfAllSamples)}">0%</td>
-                                <td><button class="row-hide-btn" onclick="hideTableRow(this, 'errorSummaryTable'); event.stopPropagation();" title="Hide row">&times;</button></td>
+                                <td><button type="button" class="wir-row-hide" title="Hide this row" aria-label="Hide this row">&times;</button></td>
                             </tr>
                         </tbody>
                     </table>
@@ -656,43 +647,27 @@
             <!-- Error detail records (expandable) -->
             <section class="report-section" th:if="${errorRecords != null and !errorRecords.isEmpty()}">
                 <div class="table-section-header">
-                    <div style="display:flex;align-items:center;gap:14px;">
-                        <h2 style="margin-bottom:0;">Error Details</h2>
-                        <div class="filter-btn-group" id="errorViewToggle">
-                            <button class="filter-toggle-btn active" id="errViewTimeBtn" onclick="setErrorDetailsView('time')" title="Chronological list &mdash; trace failures over time">By time</button>
-                            <button class="filter-toggle-btn" id="errViewGroupBtn" onclick="setErrorDetailsView('group')" th:title="${words['errorGroupedTitle']}">Grouped</button>
-                        </div>
-                    </div>
-                    <button class="table-csv-btn" onclick="exportErrorDetailsCsv()" title="Download as CSV">
-                        <svg viewBox="0 0 24 24"><path d="M5 20h14v-2H5v2zm7-18v12.17l3.59-3.58L17 12l-5 5-5-5 1.41-1.41L12 14.17V2z"/></svg>
-                    </button>
+                    <h2>Error Details</h2>
                 </div>
                 <div id="errViewTime">
-                    <div class="table-toolbar">
-                        <input type="text" class="table-search" placeholder="Filter errors..." oninput="filterGenericTable('errorDetailsTable', this.value)"/>
-                        <button class="column-toggle-btn" id="showHiddenBtn-errorDetailsTable" onclick="showAllTableRows('errorDetailsTable')" style="display:none;">Show Hidden</button>
-                        <button class="column-toggle-btn" id="showAllColsBtn-errorDetailsTable" onclick="showAllGenericColumns('errorDetailsTable')" style="display:none;">Show All Columns</button>
-                        <div class="column-toggle-wrapper">
-                            <button class="column-toggle-btn" onclick="toggleGenericColumnMenu(this)">Columns</button>
-                            <div class="column-menu"></div>
-                        </div>
-                    </div>
+                <!-- The table toolkit's toolbar (spec 002): search, Group by, Columns, Show N hidden, CSV -->
+                <div class="wir-table-toolbar-host" id="errorDetailsTable-toolbar"></div>
                     <div class="table-wrapper">
                         <table class="stats-table" id="errorDetailsTable">
                             <thead>
                                 <tr>
-                                    <th onclick="sortGenericTable('errorDetailsTable', 0, 'text')">Time</th>
-                                    <th onclick="sortGenericTable('errorDetailsTable', 1, 'text')" th:text="${words['Sampler']}">Sampler</th>
-                                    <th onclick="sortGenericTable('errorDetailsTable', 2, 'text')">Code</th>
-                                    <th onclick="sortGenericTable('errorDetailsTable', 3, 'text')">Class</th>
-                                    <th onclick="sortGenericTable('errorDetailsTable', 4, 'text')">Message</th>
-                                    <th onclick="sortGenericTable('errorDetailsTable', 5, 'text')" th:text="${words['Thread']}">Thread</th>
+                                    <th data-col-id="time">Time</th>
+                                    <th data-col-id="sampler" th:text="${words['Sampler']}">Sampler</th>
+                                    <th data-col-id="code">Code</th>
+                                    <th data-col-id="class">Class</th>
+                                    <th data-col-id="message">Message</th>
+                                    <th data-col-id="thread" th:text="${words['Thread']}">Thread</th>
                                     <th></th>
                                     <th></th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr th:each="er, iter : ${errorRecords}" th:data-error-idx="${iter.index}" class="error-row-main" onclick="toggleErrorDetail(this)">
+                                <tr th:each="er, iter : ${errorRecords}" th:data-error-idx="${iter.index}" th:data-time="${er.timestamp}" th:data-sampler="${er.samplerName}" class="error-row-main" onclick="toggleErrorDetail(this)">
                                     <td th:text="${#dates.format(new java.util.Date(er.timestamp), 'HH:mm:ss.SSS')}">00:00:00</td>
                                     <td th:text="${er.samplerName}" th:title="${er.samplerName}">Sampler</td>
                                     <td th:text="${er.responseCode}" th:title="${er.responseCode}">500</td>
@@ -706,37 +681,13 @@
                                         th:text="${er.responseMessage}" th:title="${er.responseMessage}">Error</td>
                                     <td th:text="${er.threadName}" th:title="${er.threadName}">Thread</td>
                                     <td style="text-align:center;cursor:pointer;color:var(--color-text-secondary);">&#9660;</td>
-                                    <td><button class="row-hide-btn" onclick="hideTableRow(this, 'errorDetailsTable'); event.stopPropagation();" title="Hide row">&times;</button></td>
+                                    <td><button type="button" class="wir-row-hide" title="Hide this row" aria-label="Hide this row">&times;</button></td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
                 </div>
 
-                <!-- Grouped view: one row per sampler and type of error; tbody built by buildErrorGroups(). -->
-                <div id="errViewGroup" style="display:none;">
-                    <div class="table-toolbar">
-                        <input type="text" class="table-search" placeholder="Filter errors..." oninput="filterErrorGroups(this.value)"/>
-                        <button class="column-toggle-btn" onclick="expandAllErrorGroups()">Expand All</button>
-                        <button class="column-toggle-btn" onclick="collapseAllErrorGroups()">Collapse All</button>
-                    </div>
-                    <div class="table-wrapper">
-                        <table class="stats-table" id="errorGroupsTable">
-                            <thead>
-                                <tr>
-                                    <th style="width:28px;"></th>
-                                    <th>Count</th>
-                                    <th>Code</th>
-                                    <th th:text="${words['Sampler']}">Sampler</th>
-                                    <th>Type of error</th>
-                                    <th>First seen</th>
-                                    <th>Last seen</th>
-                                </tr>
-                            </thead>
-                            <tbody></tbody>
-                        </table>
-                    </div>
-                </div>
             </section>
 
             <section class="report-section" th:if="${errorSummaries == null or errorSummaries.isEmpty()}">
@@ -792,37 +743,27 @@
             <section class="report-section">
                 <div class="table-section-header">
                     <h2 th:text="|${words['Sampler']} Comparison|">Sampler Comparison</h2>
-                    <button class="table-csv-btn" onclick="exportComparisonCsv()" title="Download as CSV">
-                        <svg viewBox="0 0 24 24"><path d="M5 20h14v-2H5v2zm7-18v12.17l3.59-3.58L17 12l-5 5-5-5 1.41-1.41L12 14.17V2z"/></svg>
-                    </button>
                 </div>
-                <div class="table-toolbar">
-                    <input type="text" class="table-search" th:placeholder="|Filter ${words['samplers']}...|" oninput="filterGenericTable('comparisonTable', this.value)"/>
-                    <button class="column-toggle-btn" id="showHiddenBtn-comparisonTable" onclick="showAllTableRows('comparisonTable')" style="display:none;">Show Hidden</button>
-                    <button class="column-toggle-btn" id="showAllColsBtn-comparisonTable" onclick="showAllGenericColumns('comparisonTable')" style="display:none;">Show All Columns</button>
-                    <div class="column-toggle-wrapper">
-                        <button class="column-toggle-btn" onclick="toggleGenericColumnMenu(this)">Columns</button>
-                        <div class="column-menu"></div>
-                    </div>
-                </div>
+                <!-- The table toolkit's toolbar (spec 002): search, Group by, Columns, Show N hidden, CSV -->
+                <div class="wir-table-toolbar-host" id="comparisonTable-toolbar"></div>
                 <div class="table-wrapper">
                     <table class="stats-table" id="comparisonTable">
                         <thead>
                             <tr>
-                                <th draggable="true" onclick="sortGenericTable('comparisonTable', 0, 'text')" th:text="${words['Sampler']}">Sampler</th>
-                                <th draggable="true" onclick="sortGenericTable('comparisonTable', 1, 'text')">Status</th>
-                                <th draggable="true" onclick="sortGenericTable('comparisonTable', 2, 'num')">Samples</th>
-                                <th draggable="true" onclick="sortGenericTable('comparisonTable', 3, 'num')">Errors</th>
-                                <th draggable="true" onclick="sortGenericTable('comparisonTable', 4, 'num')">Error %</th>
-                                <th draggable="true" onclick="sortGenericTable('comparisonTable', 5, 'num')">Mean (ms)</th>
-                                <th draggable="true" onclick="sortGenericTable('comparisonTable', 6, 'num')">Median (ms)</th>
-                                <th draggable="true" onclick="sortGenericTable('comparisonTable', 7, 'num')">P90 (ms)</th>
-                                <th draggable="true" onclick="sortGenericTable('comparisonTable', 8, 'num')">P95 (ms)</th>
-                                <th draggable="true" onclick="sortGenericTable('comparisonTable', 9, 'num')">P99 (ms)</th>
-                                <th draggable="true" onclick="sortGenericTable('comparisonTable', 10, 'num')">Min (ms)</th>
-                                <th draggable="true" onclick="sortGenericTable('comparisonTable', 11, 'num')">Max (ms)</th>
-                                <th draggable="true" onclick="sortGenericTable('comparisonTable', 12, 'num')">Throughput</th>
-                                <th draggable="true" onclick="sortGenericTable('comparisonTable', 13, 'num')">Recv KB/s</th>
+                                <th draggable="true" data-col-id="name" th:text="${words['Sampler']}">Sampler</th>
+                                <th draggable="true" data-col-id="status">Status</th>
+                                <th draggable="true" data-col-id="samples">Samples</th>
+                                <th draggable="true" data-col-id="errors">Errors</th>
+                                <th draggable="true" data-col-id="errorPct">Error %</th>
+                                <th draggable="true" data-col-id="mean">Mean (ms)</th>
+                                <th draggable="true" data-col-id="median">Median (ms)</th>
+                                <th draggable="true" data-col-id="p90">P90 (ms)</th>
+                                <th draggable="true" data-col-id="p95">P95 (ms)</th>
+                                <th draggable="true" data-col-id="p99">P99 (ms)</th>
+                                <th draggable="true" data-col-id="min">Min (ms)</th>
+                                <th draggable="true" data-col-id="max">Max (ms)</th>
+                                <th draggable="true" data-col-id="throughput">Throughput</th>
+                                <th draggable="true" data-col-id="recv">Recv KB/s</th>
                                 <th></th>
                             </tr>
                         </thead>

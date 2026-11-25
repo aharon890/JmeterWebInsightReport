@@ -132,21 +132,21 @@ fixture.
 
 ## Stage 5: Compare and the Errors tables (US6, FR-060 to FR-066, FR-071 defects 2-5)
 
-- [ ] T060 [US6] Red, one test per defect: Compare's Apply keeps the search, hidden rows and sort (2); a saved Compare
+- [X] T060 [US6] Red, one test per defect: Compare's Apply keeps the search, hidden rows and sort (2); a saved Compare
   column order keeps each cell under its header (3); after a column drag, Columns hides the column it names (4); an
   open Error Details row leaves with a search that hides its row (5).
-- [ ] T061 [US6] Red: `PW/table-toolbar.spec.ts` for Error Summary, Error Details and Compare: chips (Compare's
+- [X] T061 [US6] Red: `PW/table-toolbar.spec.ts` for Error Summary, Error Details and Compare: chips (Compare's
   REGRESSION / NEW / REMOVED / OK), Group by (Errors: none, sampler + type of error, error class, response code;
   Compare: status), CSV as shown.
-- [ ] T062 [US6] Error Summary and Error Details on the DOM adapter (rows stay in the HTML, FR-070; the Total stays
+- [X] T062 [US6] Error Summary and Error Details on the DOM adapter (rows stay in the HTML, FR-070; the Total stays
   last over the rows shown); the Errors groups become Group by on Error Details; Compare on the state adapter (Σ Total
   first).
-- [ ] T063 [US6] Delete `filterGenericTable`, `sortGenericTable`, `hideTableRow`, `showAllTableRows`,
+- [X] T063 [US6] Delete `filterGenericTable`, `sortGenericTable`, `hideTableRow`, `showAllTableRows`,
   `toggleGenericColumnMenu`, `applyGenericColumnVisibility`, `filterErrorGroups` and the "By time / Grouped" switch.
-- [ ] T064 Rule 3 rewritten: no `style.display` on a table row outside `WIR.table`.
-- [ ] T065 [P] `PW/csv-export.spec.ts`, `errors-tab.spec.ts`, `error-details-grouping.spec.ts`, `compare-tab.spec.ts`
+- [ ] T064 Rule 3 rewritten: no `style.display` on a table row outside `WIR.table` (with stage 6: the Requests walkers still set it until they move).
+- [X] T065 [P] `PW/csv-export.spec.ts`, `errors-tab.spec.ts`, `error-details-grouping.spec.ts`, `compare-tab.spec.ts`
   move with the controls; `whole-run-totals.spec.ts` skips `tr.wir-group-row`.
-- [ ] T066 [P] Docs: `05-Errors-Tab.md`, `06-Compare-Tab.md`.
+- [X] T066 [P] Docs: `05-Errors-Tab.md`, `06-Compare-Tab.md`.
 - [ ] T067 Commit; the gate is pull request 2's, after stage 7.
 
 ## Stage 6: Requests (US6, FR-064, FR-069, FR-070, FR-071 defect 1)

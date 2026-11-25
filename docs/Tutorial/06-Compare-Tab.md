@@ -82,8 +82,8 @@ With **Σ Total** checked in the filter bar, the table's first row is the whole 
 side by side (JMeter itself has no comparison view). Its figures are this run's Samplers Σ Total row,
 counted per sample over the whole run, never added up from the rows; the delta beside each is the
 baseline's whole run, counted the same way; its status is judged by the same thresholds as every
-row. It stays first when you sort, and the search hides it as it hides any row. The CSV download
-leaves it out, as the Samplers CSV leaves out its Σ row.
+row. It stays first whatever the sort, the search or the status chips, as the whole run is no one
+sampler's, and the CSV writes it first, as the table shows it.
 
 ### Delta Values
 
@@ -111,7 +111,11 @@ The badges are outlined, so they read as a comparison rather than an assert verd
 
 ### Table Controls
 
-Same as Samplers tab: sortable columns, drag-to-reorder, column resize, column toggle, row hide, search filter, CSV download (`comparison.csv`, with each delta in a column of its own).
+The toolbar every table of the report has: search, status chips with their counts (REGRESSION, NEW,
+REMOVED, OK; several at once), **Group by** status, **Columns**, × on a row and **Show N hidden**, and **CSV**
+(`comparison.csv`, the rows and columns shown). Every header sorts by the column's value, from the mouse or the
+keyboard, and columns can be dragged to a new order and resized. **Apply** keeps the search, the hidden rows
+and the sort, and each cell stays under its own header whatever order the columns are in.
 
 ## Regression Thresholds
 
