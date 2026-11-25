@@ -28,7 +28,9 @@ source "$SCRIPT_DIR/../../scripts/lib/common.sh"
 
 GOLDEN_DIR="$PROJECT_DIR/test-plans/goldens"
 EXPECTED_DIR="$GOLDEN_DIR/expected"
-WORK_DIR="$PROJECT_DIR/test-results/_goldens"
+# GOLDENS_WORK_DIR: selftest_goldens_accept's own folder. The regression runs that self-test beside
+# R06, and this script empties its work folder first, so the two must not share one.
+WORK_DIR="${GOLDENS_WORK_DIR:-$PROJECT_DIR/test-results/_goldens}"
 CANON="$SCRIPT_DIR/canonicalise-artifact.py"
 
 ACCEPT=0

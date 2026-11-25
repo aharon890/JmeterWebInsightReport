@@ -115,8 +115,9 @@ fi
 
 CSV_REPORT="$RESULTS_DIR/test-execution-report.csv"
 # The release suite runs while the regression may regenerate the fixtures through this same
-# script, so it keeps its own CSV and markers: neither run empties the other's.
-[[ "$SUITE" == "release" ]] && CSV_REPORT="$RESULTS_DIR/test-execution-report-release.csv"
+# script, and the regression runs the smoke suite beside its fixture regeneration, so each of
+# the two keeps its own CSV and markers: no run empties another's.
+[[ "$SUITE" == "release" || "$SUITE" == "smoke" ]] && CSV_REPORT="$RESULTS_DIR/test-execution-report-$SUITE.csv"
 
 # One marker file per finished scenario (<id>.done). Used only to throttle launches — the
 # results themselves are re-derived from disk by validate_results in the parent. Deriving
@@ -130,7 +131,7 @@ CSV_REPORT="$RESULTS_DIR/test-execution-report.csv"
 # problem) is bash 4.3+, while this project still uses bash-3.2-safe idioms elsewhere —
 # see the ${RESULTS[@]+"${RESULTS[@]}"} expansion in common.sh.
 STATUS_DIR="$RESULTS_DIR/.scenario-status"
-[[ "$SUITE" == "release" ]] && STATUS_DIR="$RESULTS_DIR/.scenario-status-release"
+[[ "$SUITE" == "release" || "$SUITE" == "smoke" ]] && STATUS_DIR="$RESULTS_DIR/.scenario-status-$SUITE"
 
 print_banner "Web Insight Report — Test Execution Suite (--suite $SUITE)"
 

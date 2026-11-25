@@ -6,8 +6,10 @@
 **Tests**: required. Principle III: each phase's test tasks come first and are handed over red; a mutation of the
 fix must turn them red again.
 
-**Organization**: by the plan's ten stages, the build order. Each stage is one pull request to `main`, so `main` stays
-releasable and no table is left on two mechanisms. A task names the story it serves (US1-US6) or none.
+**Organization**: by the plan's ten stages, the build order, one commit or more per stage. The stages go to `main` in
+three pull requests, so `main` stays releasable and no table is left on two mechanisms: stages 1-4 (the k6 tab, with
+the toolkit and Asserts under it), stages 5-7 (the other tables), stages 8-10 (the ticks, US5, the close). A task names
+the story it serves (US1-US6) or none.
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -22,12 +24,14 @@ releasable and no table is left on two mechanisms. A task names the story it ser
 - `resources/` = `jmeter-web-insight-report/src/main/resources/`
 - `report.js` = `resources/static/js/report.js`; `PW/` = `test-plans/playwright/tests/`; `JSU/` = `test-plans/js-unit/`
 
-## Every stage ends the same way
+## How the tests run (the owner, 2026-11-25)
 
-`mvn test`, `./test-plans/scripts/run-sanity.sh`, then `./test-plans/scripts/run-regression.sh`, green. Counts read
-from each runner go into the stage's commit and pull request. Every stage holds the goldens G1-G13, R07, R08 and
-`PreChangeBaselineTest` unchanged (FR-035, SC-007). After the merge, `./scripts/build-and-deploy.sh` and
-`./scripts/check-deploy-freshness.sh`.
+This is feature development, not a test campaign: "stop running regressions on idle". While a stage is built, only the
+tests of what it touches run: `mvn test` for Java, the js-unit tests, and the Playwright specs of the touched tabs
+(rebuild and regenerate only the fixtures those specs open). The full `./test-plans/scripts/run-regression.sh` runs
+once per pull request, at the gate before the push, and must finish within 15 minutes (the owner, the same day). Its
+counts go into the pull request. Every pull request holds the goldens G1-G13, R07, R08 and `PreChangeBaselineTest`
+unchanged (FR-035, SC-007). After the merge, `./scripts/build-and-deploy.sh` and `./scripts/check-deploy-freshness.sh`.
 
 ---
 
@@ -64,7 +68,7 @@ fixture.
   `scripts/lib/common.sh`, `REQUIRED_FIXTURES` in `test-plans/playwright/global-setup.ts`, and an R07 case beside K1's.
 - [X] T010 [P] Docs: the run data page and `specs/001-.../contracts/run-data-format.md` say what 1.1 adds; the
   `test-plans/run-data/README.md` names K2 as a fixture.
-- [ ] T011 Stage gates, PR, merge.
+- [ ] T011 Stage 1 commit (6389fd5); its gate is pull request 1's, after stage 4.
 
 ## Stage 2: The toolkit's pure core (US6, FR-060, FR-063, FR-064)
 
@@ -76,7 +80,7 @@ fixture.
 - [ ] T021 [US6] `WIR.table.view` in `report.js`, pure, reached from `JSU/harness.js`.
 - [ ] T022 [P] [US6] SC-010's synthetic run: `test-plans/run-data/tools/gen-many-names.js` writes k6 files with 300+
   request names and about 1,200 thresholds, from a fixed seed. Not a fixture; used in stage 10.
-- [ ] T023 Stage gates, PR, merge.
+- [ ] T023 Commit; the gate is pull request 1's, after stage 4.
 
 ## Stage 3: Asserts moves onto the toolkit (US6, FR-061, FR-062, FR-064, FR-065, FR-068)
 
@@ -92,7 +96,7 @@ fixture.
   `wir_assertsSort` (global) moves into the per-report record. `JSU/dead-code.test.js` stays green.
 - [ ] T034 `verify_report_js_rules` rule 1 matches `WIR.table` too.
 - [ ] T035 [P] Docs: `docs/Tutorial/12-Asserts-Tab.md`, and its screenshots.
-- [ ] T036 Stage gates, PR, merge.
+- [ ] T036 Commit; the gate is pull request 1's, after stage 4.
 
 ## Stage 4: The k6 tab (US1, US2, US3, FR-001 to FR-013, FR-020 to FR-023, FR-031 to FR-034)
 
@@ -124,7 +128,7 @@ fixture.
 - [ ] T049 `verify_report_js_rules`: rule 1 matches `WIR.toolTab`; rule 3 lists the k6 tables.
 - [ ] T050 [P] Spec text corrected (plan "Spec text corrected"): US3's dropped iterations, SC-002, SC-006.
 - [ ] T051 [P] Docs: the k6 page, with screenshots of K2's tab.
-- [ ] T052 Stage gates, PR, merge.
+- [ ] T052 Pull request 1 (stages 1-4): the full regression within 15 minutes, push, PR, merge.
 
 ## Stage 5: Compare and the Errors tables (US6, FR-060 to FR-066, FR-071 defects 2-5)
 
@@ -143,7 +147,7 @@ fixture.
 - [ ] T065 [P] `PW/csv-export.spec.ts`, `errors-tab.spec.ts`, `error-details-grouping.spec.ts`, `compare-tab.spec.ts`
   move with the controls; `whole-run-totals.spec.ts` skips `tr.wir-group-row`.
 - [ ] T066 [P] Docs: `05-Errors-Tab.md`, `06-Compare-Tab.md`.
-- [ ] T067 Stage gates, PR, merge.
+- [ ] T067 Commit; the gate is pull request 2's, after stage 7.
 
 ## Stage 6: Requests (US6, FR-064, FR-069, FR-070, FR-071 defect 1)
 
@@ -157,7 +161,7 @@ fixture.
 - [ ] T073 [P] The Requests specs move (`samplers-tab`, `sampler-table-walkers`, `sampler-tree`,
   `transaction-details-switch`, `table-sort-and-toast`, `ui-interactions`, `csv-export`); R07 unchanged.
 - [ ] T074 [P] Docs: `04-Samplers-Tab.md`.
-- [ ] T075 Stage gates, PR, merge.
+- [ ] T075 Commit; the gate is pull request 2's, after stage 7.
 
 ## Stage 7: The Server board (US6, FR-062, FR-063)
 
@@ -166,7 +170,7 @@ fixture.
 - [ ] T081 [US6] The board on the state adapter; its one-at-a-time chips (`filterChipsHtml`) deleted; open charts
   kept across a re-render; rule 4 holds (the search reports through the delegated listener).
 - [ ] T082 [P] `PW/server-board.spec.ts` SF40 and SF41 move; docs `13-Server-Tab.md`.
-- [ ] T083 Stage gates, PR, merge.
+- [ ] T083 Pull request 2 (stages 5-7): the full regression, push, PR, merge.
 
 ## Stage 8: The filter bar's ticks on every table (US4, FR-030, FR-067)
 
@@ -176,7 +180,7 @@ fixture.
 - [ ] T091 [US4] One reader, `getVisibleSamplerNames`, feeds every table's filter; the CSS rule hiding the bar on the k6
   tab goes.
 - [ ] T092 [P] `PW/filter-controls.spec.ts:394` and `csv-export.spec.ts` change with it; docs `08-Filter-Bar.md`.
-- [ ] T093 Stage gates, PR, merge.
+- [ ] T093 Commit; the gate is pull request 3's.
 
 ## Stage 9: Over time (US5, P3, FR-040, FR-041)
 
@@ -186,7 +190,7 @@ fixture.
   percentiles chart, labelled as k6's threshold, not draggable.
 - [ ] T102 [US5] The parts per bucket in `perSamplerSeries` for a tool run only; a detail renderer; a k6 mark-line
   source apart from `WIR.asserts`; rule 5 holds.
-- [ ] T103 Stage gates, PR, merge.
+- [ ] T103 Commit; the gate is pull request 3's.
 
 ## Stage 10: Close
 

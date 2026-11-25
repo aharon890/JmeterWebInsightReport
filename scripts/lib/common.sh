@@ -2000,7 +2000,8 @@ selftest_goldens_accept() {
     # own first CI run died: exit 1, nothing printed. The suites run without -e, so only
     # CI could see it.
     rc=0
-    JMETER_HOME="$stub" "$PROJECT_DIR/test-plans/scripts/run-goldens.sh" --accept > "$log" 2>&1 || rc=$?
+    GOLDENS_WORK_DIR="$stub/work" JMETER_HOME="$stub" \
+        "$PROJECT_DIR/test-plans/scripts/run-goldens.sh" --accept > "$log" 2>&1 || rc=$?
     if [[ $rc -eq 0 ]] || ! grep -q "no .json was written" "$log"; then
         echo "[SELFTEST] run-goldens.sh --accept swallowed a failed regeneration (rc=$rc):" >&2
         sed 's/^/    /' "$log" >&2

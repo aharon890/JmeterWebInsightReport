@@ -98,179 +98,269 @@ if [[ "$BROWSER_TESTS" == "only" ]]; then
     exit $FAIL
 fi
 
-# --- 2. Unit tests ------------------------------------------------------------
-# Both languages. The JS half runs report.js in node behind two stubs and costs about
-# a tenth of a second, so there is no tier it is worth leaving out of.
-unit_fail=0
-run_java_tests || unit_fail=1
-run_js_unit_tests || unit_fail=1
-if [[ $unit_fail -eq 0 ]]; then
-    record R02 "Unit tests (Java + report.js)" PASS
-else
-    record R02 "Unit tests (Java + report.js)" FAIL "see output above"
-fi
 
-# --- 3. Static checks ---------------------------------------------------------
-# These were CI steps until the GitHub workflows were removed. Since this suite is
-# what the run-tests skill runs before a change is pushed — and therefore before it
-# can be merged — they belong here as well as in sanity, or they would only ever run
-# on whichever tier a given change happened to get.
+# --- 2-8. The steps, side by side where they share nothing ------------------------
+# One after another this took 19 minutes on the owner's PC (2026-11-25), and it must stay under 15.
+# The fixture regeneration (R04) is JMeter runs on timers: wall-clock bound, the CPU mostly idle.
+# So the steps that need no fixture run beside it, and the steps that do run beside each other:
 #
-# All four fail silently in the wild: a syntax error means the next runner cannot
-# start, a drifted fixture list means something is generated and never asserted on
-# (or demanded and never generated), a hook committed 100644 is skipped without a
-# word on Linux and macOS — which would disable this very gate — and a CRLF blob hides
-# behind git's stat cache until something touches the file, then turns the next change
-# to it into a whole-file diff nobody can review.
-static_fail=0
-for f in "$PROJECT_DIR"/scripts/*.sh "$PROJECT_DIR"/scripts/lib/*.sh \
-         "$PROJECT_DIR"/test-plans/scripts/*.sh; do
-    [[ -e "$f" ]] || continue
-    bash -n "$f" 2>/dev/null || { echo "  SYNTAX FAIL: $f" >&2; static_fail=1; }
-done
-verify_fixture_lists || static_fail=1
-verify_script_modes  || static_fail=1
-verify_line_endings  || static_fail=1
-verify_no_nul_bytes  || static_fail=1
-verify_report_js_rules || static_fail=1
-verify_release_tier   || static_fail=1
-verify_jq_idioms      || static_fail=1
-selftest_report_js_rules || static_fail=1
-selftest_no_nul_bytes    || static_fail=1
-selftest_goldens_accept  || static_fail=1
-selftest_jq_idioms       || static_fail=1
-selftest_purge_old_plugin_jars || static_fail=1
-selftest_fixture_stamps  || static_fail=1
-selftest_failed_regeneration || static_fail=1
-selftest_report_gate_verdict || static_fail=1
-if [[ $static_fail -eq 0 ]]; then
-    record R03 "Static checks (syntax, fixture lists, exec bits, line endings, NUL bytes, report.js rules, self-tests)" PASS
-else
-    record R03 "Static checks (syntax, fixture lists, exec bits, line endings, NUL bytes, report.js rules, self-tests)" FAIL "see output above"
-fi
-
-# --- 4. Fixtures --------------------------------------------------------------
-# The expensive stage, and the only one worth avoiding. Skipping it when the
-# stamps match is not a shortcut: identical source produces an identical report,
-# which is the same reasoning global-setup.ts uses to decide the fixtures are
-# still valid to test against.
+#   phase 1 (after R01):  R04 fixtures  |  R02 unit tests  |  R03 static checks  |  R06 goldens
+#                         (inside R04: the fixture suite | CMP | CMP31 | the live smoke)
+#   phase 2 (after R04):  R07 counts against JMeter  |  R08 run data conformance
+#   phase 3:              R05 browser tests, alone
 #
-# A drifted fixture list (caught above) makes this stage generate a different set
-# than the browser stage demands, so stop rather than spend minutes on it.
-if ! verify_fixture_lists >/dev/null 2>&1; then
-    record R04 "Report fixtures" FAIL "FIXTURE_IDS and REQUIRED_FIXTURES disagree — see R03"
-    record R05 "Playwright ($(playwright_test_count) tests)" FAIL "skipped: fixture lists disagree"
-    print_summary "REGRESSION SUMMARY"
-    exit $FAIL
-fi
+# R05 runs alone, last: it uses most of this machine's CPU on its own (83-90% of 24 threads), and
+# beside other runners 5 to 25 of its tests timed out (run-release.sh, 2026-11-25). Each step writes
+# its own log under $RESULTS_DIR/regression-logs, and its verdict is recorded here, in step order,
+# once it has finished. Every step that shares a folder with another has its own: the smoke suite's
+# CSV and markers (run-all-tests.sh), the goldens self-test's work folder (GOLDENS_WORK_DIR), and
+# R07's and R08's referee classes.
+STEP_LOGS="$RESULTS_DIR/regression-logs"
+rm -rf "$STEP_LOGS"
+mkdir -p "$STEP_LOGS"
+REGRESSION_START=$SECONDS
 
-if [[ $FORCE_FIXTURES -eq 0 ]] && fixtures_current; then
-    echo "[FIXTURES] Current — regeneration skipped (--force-fixtures to override)."
-    # Skipping regeneration also skips every JMeter execution in this suite, and that
-    # was measured, not theorised: a full regression run took 106 seconds and left the
-    # E24 report's mtime untouched. So the tier named "regression" could pass without
-    # ever loading the plugin into a JMeter — while sanity, the cheaper tier, does
-    # exactly that in S04. SKILL.md has always claimed regression "does everything
-    # sanity does"; this is what makes that true. Twenty seconds.
-    if run_live_smoke; then
-        record R04 "Report fixtures + live JMeter smoke" PASS "fixtures already current"
-    else
-        record R04 "Report fixtures + live JMeter smoke" FAIL \
-            "the live smoke failed (E24 or E30) — see $RESULTS_DIR/E24/jmeter.log, $RESULTS_DIR/E30/"
+# elapsed <since>: minutes and seconds since $SECONDS was <since>
+elapsed() {
+    local s=$((SECONDS - $1))
+    printf '%dm%02ds' $((s / 60)) $((s % 60))
+}
+
+# A failed step's log, so a failure reads as it did when every step printed to the console.
+show_log_tail() {
+    echo "  ---- last lines of $1 ----" >&2
+    tail -40 "$1" >&2
+}
+
+step_unit_tests() {
+    local fail=0
+    run_java_tests || fail=1
+    run_js_unit_tests || fail=1
+    return $fail
+}
+
+# These were CI steps until the GitHub workflows were removed. Since this suite is what the
+# run-tests skill runs before a change is pushed — and therefore before it can be merged — they
+# belong here as well as in sanity, or they would only ever run on whichever tier a given change
+# happened to get.
+#
+# All four fail silently in the wild: a syntax error means the next runner cannot start, a drifted
+# fixture list means something is generated and never asserted on (or demanded and never
+# generated), a hook committed 100644 is skipped without a word on Linux and macOS — which would
+# disable this very gate — and a CRLF blob hides behind git's stat cache until something touches
+# the file, then turns the next change to it into a whole-file diff nobody can review.
+step_static_checks() {
+    local fail=0 f
+    for f in "$PROJECT_DIR"/scripts/*.sh "$PROJECT_DIR"/scripts/lib/*.sh \
+             "$PROJECT_DIR"/test-plans/scripts/*.sh; do
+        [[ -e "$f" ]] || continue
+        bash -n "$f" 2>/dev/null || { echo "  SYNTAX FAIL: $f" >&2; fail=1; }
+    done
+    verify_fixture_lists || fail=1
+    verify_script_modes  || fail=1
+    verify_line_endings  || fail=1
+    verify_no_nul_bytes  || fail=1
+    verify_report_js_rules || fail=1
+    verify_release_tier   || fail=1
+    verify_jq_idioms      || fail=1
+    selftest_report_js_rules || fail=1
+    selftest_no_nul_bytes    || fail=1
+    selftest_goldens_accept  || fail=1
+    selftest_jq_idioms       || fail=1
+    selftest_purge_old_plugin_jars || fail=1
+    selftest_fixture_stamps  || fail=1
+    selftest_failed_regeneration || fail=1
+    selftest_report_gate_verdict || fail=1
+    return $fail
+}
+
+# The only stage that makes a SILENTLY MOVED VERDICT loud. Everything else asserts what someone
+# thought to assert; this asserts that the same fixed input keeps producing the same .json and
+# .xml, so a change that shifts a status, a count, an attainment number or a wire name on an
+# unedited file shows up as a diff in the pull request that caused it. It needs no fixture.
+step_goldens() {
+    "$TEST_PLANS/scripts/run-goldens.sh" > "$RESULTS_DIR/goldens.log" 2>&1
+}
+
+# R04, the expensive stage, and the only one worth avoiding. Skipping it when the stamps match is
+# not a shortcut: identical source produces an identical report, which is the same reasoning
+# global-setup.ts uses to decide the fixtures are still valid to test against. Its note goes to
+# $STEP_LOGS/R04.note and its causes of failure to $STEP_LOGS/R04.cause.
+step_fixtures() {
+    if [[ $FORCE_FIXTURES -eq 0 ]] && fixtures_current; then
+        echo "[FIXTURES] Current — regeneration skipped (--force-fixtures to override)."
+        echo "fixtures already current" > "$STEP_LOGS/R04.note"
+        # Skipping regeneration also skips every JMeter execution in this suite, and that was
+        # measured, not theorised: a full regression run took 106 seconds and left the E24
+        # report's mtime untouched. So the tier named "regression" could pass without ever
+        # loading the plugin into a JMeter — while sanity, the cheaper tier, does exactly that in
+        # S04. SKILL.md has always claimed regression "does everything sanity does"; this is what
+        # makes that true. Twenty seconds.
+        if ! run_live_smoke; then
+            echo "the live smoke failed (E24 or E30) — see $RESULTS_DIR/E24/jmeter.log, $RESULTS_DIR/E30/" \
+                > "$STEP_LOGS/R04.cause"
+            return 1
+        fi
+        return 0
     fi
-else
     if [[ $FORCE_FIXTURES -eq 1 ]]; then
         echo "[FIXTURES] Forced regeneration."
     else
         echo "[FIXTURES] Stale, regenerating. Changed since last generation:"
         stale_fixture_reason | sort -u | sed 's/^/    /'
     fi
-    echo "[FIXTURES] Regenerating — roughly 3½ minutes (scenarios run ${WIR_JOBS:-4}-up)."
+    echo "regenerated" > "$STEP_LOGS/R04.note"
 
-    fixture_fail=0
-    SKIP_BUILD=1 bash "$TEST_PLANS/scripts/run-all-tests.sh" --suite fixtures || fixture_fail=1
-    SKIP_BUILD=1 bash "$TEST_PLANS/scripts/generate-cmp-fixture.sh"           || fixture_fail=1
-    CMP_ID=CMP31 SKIP_BUILD=1 bash "$TEST_PLANS/scripts/generate-cmp-fixture.sh" || fixture_fail=1
+    # The four producers side by side, each in its own folders: the fixture suite (its scenarios
+    # ${WIR_JOBS:-4}-up), the two comparison fixtures, and the smoke suite (E24, and E30's live
+    # server-data flow). The fixture suite holds neither smoke scenario, so a regeneration alone
+    # would never run the live flow on exactly the change that needed it.
+    local p_fixtures p_cmp p_cmp31 p_smoke fixture_fail=0 smoke_fail=0 causes=""
+    SKIP_BUILD=1 bash "$TEST_PLANS/scripts/run-all-tests.sh" --suite fixtures \
+        > "$STEP_LOGS/R04-fixture-suite.log" 2>&1 &
+    p_fixtures=$!
+    SKIP_BUILD=1 bash "$TEST_PLANS/scripts/generate-cmp-fixture.sh" > "$STEP_LOGS/R04-cmp.log" 2>&1 &
+    p_cmp=$!
+    CMP_ID=CMP31 SKIP_BUILD=1 bash "$TEST_PLANS/scripts/generate-cmp-fixture.sh" > "$STEP_LOGS/R04-cmp31.log" 2>&1 &
+    p_cmp31=$!
+    run_live_smoke > "$STEP_LOGS/R04-smoke.log" 2>&1 &
+    p_smoke=$!
+    wait "$p_fixtures" || fixture_fail=1
+    wait "$p_cmp"      || fixture_fail=1
+    wait "$p_cmp31"    || fixture_fail=1
+    wait "$p_smoke"    || smoke_fail=1
 
-    # The smoke suite as well (E24, and E30's live server-data flow): the fixture suite holds
-    # neither, so a regeneration alone would never run the live flow on exactly the change that
-    # needed it.
+    # Both are judged, and every cause present is named: a failed smoke used to be the whole R04
+    # line, and a fixture that failed to regenerate beside it went unnamed.
     #
-    # Both are judged, and every cause present is named: a failed smoke used to be the whole
-    # R04 line, and a fixture that failed to regenerate beside it went unnamed.
-    #
-    # A scenario that produced nothing is a recorded FAIL now, not a silent one: every
-    # producer empties its directory first and stamps only a report it wrote, so the
-    # fixture is missing rather than last cycle's under a fresh stamp (F3; pinned by
-    # selftest_failed_regeneration). fixtures_current still has to agree afterwards,
-    # because a regeneration can exit 0 and still not be what the tree would render:
-    # lib/ext swapped during the run, or a source edited while it ran.
-    r04_causes=""
-    run_live_smoke \
-        || r04_causes="the live smoke failed (E24 or E30) — see $RESULTS_DIR/E24/jmeter.log, $RESULTS_DIR/E30/"
+    # A scenario that produced nothing is a recorded FAIL now, not a silent one: every producer
+    # empties its directory first and stamps only a report it wrote, so the fixture is missing
+    # rather than last cycle's under a fresh stamp (F3; pinned by selftest_failed_regeneration).
+    # fixtures_current still has to agree afterwards, because a regeneration can exit 0 and still
+    # not be what the tree would render: lib/ext swapped during the run, or a source edited while
+    # it ran.
+    [[ $smoke_fail -eq 0 ]] \
+        || causes="the live smoke failed (E24 or E30) — see $RESULTS_DIR/E24/jmeter.log, $RESULTS_DIR/E30/"
     if [[ $fixture_fail -ne 0 ]] || ! fixtures_current; then
+        local stale_ids
         stale_ids="$(stale_fixture_reason | sort -u | tr '\n' ',' | sed 's/,$//; s/,/, /g')"
-        r04_causes="${r04_causes:+$r04_causes; }fixtures not regenerated (${stale_ids:-a producer failed})"
-        r04_causes="$r04_causes — see $RESULTS_DIR/test-execution-report.csv"
+        causes="${causes:+$causes; }fixtures not regenerated (${stale_ids:-a producer failed})"
+        causes="$causes — see $RESULTS_DIR/test-execution-report.csv and $STEP_LOGS/R04-*.log"
     fi
-    if [[ -z "$r04_causes" ]]; then
-        record R04 "Report fixtures + live JMeter smoke" PASS "regenerated"
-    else
-        record R04 "Report fixtures + live JMeter smoke" FAIL "$r04_causes"
+    if [[ -n "$causes" ]]; then
+        echo "$causes" > "$STEP_LOGS/R04.cause"
+        return 1
     fi
+    return 0
+}
+
+# Every fixture's whole-run and per-sampler counts against JMeter's Aggregate Report, computed by
+# JMeter's own classes from the run's own files (run_counts_against_jmeter in common.sh). The other
+# suites compare the report with itself, and every whole-run surface reads one shared count, so they
+# agreed with each other on a total that JMeter disagreed with. Only over current fixtures: a stale
+# one holds the previous build's numbers.
+step_counts() {
+    run_counts_against_jmeter > "$RESULTS_DIR/counts-against-jmeter.log" 2>&1
+}
+
+# Every producer of run data held to JMeter's Aggregate Report: the k6 fixtures through build-report
+# --from k6, and the JMeter plugin itself, E02 and E31 written as run data by -g and built again
+# (run-run-data.sh, spec 001).
+step_run_data() {
+    "$TEST_PLANS/scripts/run-run-data.sh" > "$RESULTS_DIR/run-data.log" 2>&1
+}
+
+# A drifted fixture list (R03 names it) makes R04 generate a different set than the browser stage
+# demands, so the fixture steps do not start at all.
+LISTS_AGREE=1
+verify_fixture_lists >/dev/null 2>&1 || LISTS_AGREE=0
+
+# --- Phase 1 ----------------------------------------------------------------------------------
+PHASE_START=$SECONDS
+echo "[REGRESSION] Phase 1: R04 fixtures, R02 unit tests, R03 static checks and R06 goldens, side by side."
+step_unit_tests    > "$STEP_LOGS/R02.log" 2>&1 & P_UNIT=$!
+step_static_checks > "$STEP_LOGS/R03.log" 2>&1 & P_STATIC=$!
+step_goldens       > "$STEP_LOGS/R06.log" 2>&1 & P_GOLDENS=$!
+if [[ $LISTS_AGREE -eq 1 ]]; then
+    step_fixtures > "$STEP_LOGS/R04.log" 2>&1 & P_FIXTURES=$!
 fi
 
-# --- 5. Browser tests ---------------------------------------------------------
-if [[ "$BROWSER_TESTS" == "all" ]]; then
-    browser_step "fixtures still stale after regeneration — R04 names them"
+R02_RC=0; wait "$P_UNIT"    || R02_RC=1
+R03_RC=0; wait "$P_STATIC"  || R03_RC=1
+R06_RC=0; wait "$P_GOLDENS" || R06_RC=1
+R04_RC=0
+if [[ $LISTS_AGREE -eq 1 ]]; then
+    wait "$P_FIXTURES" || R04_RC=1
 fi
 
-# --- 6. Golden artifacts ------------------------------------------------------
-# The only stage that makes a SILENTLY MOVED VERDICT loud. Everything above asserts what
-# someone thought to assert; this asserts that the same fixed input keeps producing the same
-# .json and .xml, so a change that shifts a status, a count, an attainment number or a wire
-# name on an unedited file shows up as a diff in the pull request that caused it.
-#
-# It runs LAST because it is the slowest of the cheap stages (~30s, four `-g -o` runs) and
-# because a failure here is most readable once the suites above have said everything else is
-# fine.
-if "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/run-goldens.sh" > "$RESULTS_DIR/goldens.log" 2>&1; then
+if [[ $R02_RC -eq 0 ]]; then
+    record R02 "Unit tests (Java + report.js)" PASS
+else
+    show_log_tail "$STEP_LOGS/R02.log"
+    record R02 "Unit tests (Java + report.js)" FAIL "see $STEP_LOGS/R02.log"
+fi
+if [[ $R03_RC -eq 0 ]]; then
+    record R03 "Static checks (syntax, fixture lists, exec bits, line endings, NUL bytes, report.js rules, self-tests)" PASS
+else
+    show_log_tail "$STEP_LOGS/R03.log"
+    record R03 "Static checks (syntax, fixture lists, exec bits, line endings, NUL bytes, report.js rules, self-tests)" FAIL "see $STEP_LOGS/R03.log"
+fi
+if [[ $LISTS_AGREE -eq 0 ]]; then
+    record R04 "Report fixtures" FAIL "FIXTURE_IDS and REQUIRED_FIXTURES disagree — see R03"
+    record R05 "Playwright ($(playwright_test_count) tests)" FAIL "skipped: fixture lists disagree"
+elif [[ $R04_RC -eq 0 ]]; then
+    record R04 "Report fixtures + live JMeter smoke" PASS "$(cat "$STEP_LOGS/R04.note" 2>/dev/null)"
+else
+    show_log_tail "$STEP_LOGS/R04.log"
+    record R04 "Report fixtures + live JMeter smoke" FAIL \
+        "$(cat "$STEP_LOGS/R04.cause" 2>/dev/null || echo "see $STEP_LOGS/R04.log")"
+fi
+if [[ $R06_RC -eq 0 ]]; then
     record R06 "Golden artifacts (fixed JTL through -g -o)" PASS
 else
     tail -40 "$RESULTS_DIR/goldens.log" >&2
     record R06 "Golden artifacts (fixed JTL through -g -o)" FAIL "see $RESULTS_DIR/goldens.log"
 fi
+echo "[REGRESSION] Phase 1 took $(elapsed $PHASE_START)."
+if [[ $LISTS_AGREE -eq 0 ]]; then
+    print_summary "REGRESSION SUMMARY"
+    exit $FAIL
+fi
 
-# --- 7. Counts against JMeter -------------------------------------------------
-# Every fixture's whole-run and per-sampler counts against JMeter's Aggregate Report, computed by
-# JMeter's own classes from the run's own files (run_counts_against_jmeter in common.sh). The suites
-# above compare the report with itself, and every whole-run surface reads one shared count, so they
-# agreed with each other on a total that JMeter disagreed with. Only over current fixtures: a stale
-# one holds the previous build's numbers.
+# --- Phase 2 ----------------------------------------------------------------------------------
+PHASE_START=$SECONDS
 if fixtures_current; then
-    if run_counts_against_jmeter > "$RESULTS_DIR/counts-against-jmeter.log" 2>&1; then
+    echo "[REGRESSION] Phase 2: R07 counts against JMeter and R08 run data conformance, side by side."
+    step_counts   > "$STEP_LOGS/R07.log" 2>&1 & P_COUNTS=$!
+    step_run_data > "$STEP_LOGS/R08.log" 2>&1 & P_RUN_DATA=$!
+    R07_RC=0; wait "$P_COUNTS"   || R07_RC=1
+    R08_RC=0; wait "$P_RUN_DATA" || R08_RC=1
+    if [[ $R07_RC -eq 0 ]]; then
         record R07 "Counts against JMeter's Aggregate Report" PASS
     else
         grep -E 'FAIL|ERROR' "$RESULTS_DIR/counts-against-jmeter.log" | head -20 >&2
         record R07 "Counts against JMeter's Aggregate Report" FAIL "see $RESULTS_DIR/counts-against-jmeter.log"
     fi
-else
-    record R07 "Counts against JMeter's Aggregate Report" FAIL "fixtures stale — R04 names them"
-fi
-
-# --- 8. Run data conformance (spec 001) -----------------------------------------
-# Every producer of run data held to JMeter's Aggregate Report: the k6 fixtures through build-report --from k6,
-# and the JMeter plugin itself, E02 and E31 written as run data by -g and built again (run-run-data.sh).
-if fixtures_current; then
-    if "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/run-run-data.sh" > "$RESULTS_DIR/run-data.log" 2>&1; then
+    if [[ $R08_RC -eq 0 ]]; then
         record R08 "Run data conformance (k6 fixtures, JMeter as a producer)" PASS
     else
         grep -E 'FAIL' "$RESULTS_DIR/run-data.log" | head -20 >&2
         record R08 "Run data conformance (k6 fixtures, JMeter as a producer)" FAIL "see $RESULTS_DIR/run-data.log"
     fi
 else
+    record R07 "Counts against JMeter's Aggregate Report" FAIL "fixtures stale — R04 names them"
     record R08 "Run data conformance (k6 fixtures, JMeter as a producer)" FAIL "fixtures stale — R04 names them"
 fi
+echo "[REGRESSION] Phase 2 took $(elapsed $PHASE_START)."
+
+# --- Phase 3: the browser tests, alone --------------------------------------------------------
+if [[ "$BROWSER_TESTS" == "all" ]]; then
+    PHASE_START=$SECONDS
+    browser_step "fixtures still stale after regeneration — R04 names them"
+    echo "[REGRESSION] Phase 3 (browser tests) took $(elapsed $PHASE_START)."
+fi
+echo "[REGRESSION] Steps 2-8 took $(elapsed $REGRESSION_START) in all."
+
 print_summary "REGRESSION SUMMARY"
 if [[ "$BROWSER_TESTS" == "none" ]]; then
     echo "  R05 (the browser tests) was not run: --no-browser-tests. Run --browser-tests-only next."

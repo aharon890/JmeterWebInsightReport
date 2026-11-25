@@ -210,8 +210,12 @@ test.describe('every reader sees the same report', () => {
   for (const id of REQUIRED_FIXTURES) {
     test(`${id}: an English reader in Jerusalem and a German reader in New York see the same page`, async ({ browser }) => {
       test.setTimeout(240000);
-      const first = await whatTheReaderSees(browser, id, READERS[0]);
-      const second = await whatTheReaderSees(browser, id, READERS[1]);
+      // The two readers at once, each in its own context: most of a reader's minute is the waits for a tab's
+      // charts to draw, so one after the other made this file a fifth of the browser suite's time (2026-11-25)
+      const [first, second] = await Promise.all([
+        whatTheReaderSees(browser, id, READERS[0]),
+        whatTheReaderSees(browser, id, READERS[1]),
+      ]);
       const found = differences(first, second);
       expect(found.slice(0, 40), `${found.length} differences between the two readers' pages`).toEqual([]);
     });
