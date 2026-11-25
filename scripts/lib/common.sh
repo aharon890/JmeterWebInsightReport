@@ -637,7 +637,7 @@ _fixture_stamp_files() {
     # costs a full regeneration. That is the right trade here: the alternative is a directory
     # whose contents silently do not count.
     #
-    # test-plans/run-data is K1's input (spec 001): the k6 run, its summary and annotations.
+    # test-plans/run-data is K1's and K2's input (specs 001 and 002): the k6 runs, their summaries and K1's annotations.
     #
     # test-plans/playwright/fixture-stamp.js walks the same directories (STAMP_ROOTS) to compare
     # the listing whole for global-setup.ts, and js-unit/fixture-stamp.test.js parses this find
@@ -871,7 +871,7 @@ _several_plugin_jars_sentence() {
 # much JMeter work an automated cycle has to do — every other scenario in
 # run-all-tests.sh validates only "a report was produced" and is manual-tier.
 # Keep in step with REQUIRED_FIXTURES in test-plans/playwright/global-setup.ts.
-FIXTURE_IDS="E02 E05 E06 E07 E08 E09 E10 E11 E12 E19 E25 E26 E27 E28 E29 E31 CMP CMP31 K1"
+FIXTURE_IDS="E02 E05 E06 E07 E08 E09 E10 E11 E12 E19 E25 E26 E27 E28 E29 E31 CMP CMP31 K1 K2"
 
 # Every tracked .sh and git hook must be committed 100755.
 #
@@ -1461,11 +1461,11 @@ run_counts_against_jmeter() {
         case "$id" in
             E26|E27|E28) _check_g "$id" "$TEST_PLANS/goldens/plain.jtl" || fail=1 ;;
             E29)         _check_g "$id" "$RESULTS_DIR/E29-inputs/soak.jtl" || fail=1 ;;
-            K1)
+            K1|K2)
                 # A k6 run: held to the JMeter-format copy of its samples, written by the research's independent
                 # converter (test-plans/run-data/README.md); its run data names what k6 does not measure
-                _check K1 "$RESULTS_DIR/K1/K1-report.json" "$TEST_PLANS/run-data/K1/results.jtl" \
-                    "$TEST_PLANS/run-data/K1/in-test-plan.jtl" "" "$RESULTS_DIR/K1/K1-report-run-data.jsonl.gz" \
+                _check "$id" "$RESULTS_DIR/$id/$id-report.json" "$TEST_PLANS/run-data/$id/results.jtl" \
+                    "$TEST_PLANS/run-data/$id/in-test-plan.jtl" "" "$RESULTS_DIR/$id/$id-report-run-data.jsonl.gz" \
                     || fail=1 ;;
             CMP|CMP31)
                 # A comparison fixture: both of its runs, each held to its own files
@@ -1805,7 +1805,9 @@ verify_report_js_rules() {
     #    writing (asserts|serverKpis) here would match a literal parenthesis and silently stop
     #    matching anything, which is a guard that passes because it can no longer fail.
     #    -i: an HTML attribute name is case-insensitive, so `onClick=` is the same handler.
-    hits=$(grep -ani 'onclick="WIR\.\(asserts\|serverKpis\)\.' "$js" | grep -a 'esc(' || true)
+    #    The table toolkit and the k6 tab (spec 002) build their handlers the same way, so they are
+    #    covered too.
+    hits=$(grep -ani 'onclick="WIR\.\(asserts\|serverKpis\|table\|toolTab\)\.' "$js" | grep -a 'esc(' || true)
     if [[ -n "$hits" ]]; then
         echo "[JSRULES] an inline WIR handler interpolates through esc(), not jsArg():" >&2
         echo "$hits" >&2
@@ -1830,8 +1832,9 @@ verify_report_js_rules() {
     #    these two: render() rebuilds them, so a display filter would be erased by the next
     #    render and would orphan the detail rows belonging to the row above them. Both ids are
     #    spelled here EXACTLY as the DOM spells them -- this is a literal match, so a renamed
-    #    table id silently drops out of the guard.
-    hits=$(grep -an "\(filterGenericTable\|sortGenericTable\)([^)]*\(assertsTable\|serverKpiTable\)" "$js" || true)
+    #    table id silently drops out of the guard. The k6 tab's four tables (spec 002) are rebuilt
+    #    by WIR.toolTab the same way.
+    hits=$(grep -an "\(filterGenericTable\|sortGenericTable\)([^)]*\(assertsTable\|serverKpiTable\|toolThresholds\|toolTimings\|toolChecks\|toolGroupDurations\)" "$js" || true)
     if [[ -n "$hits" ]]; then
         echo "[JSRULES] a re-rendered table was passed to a generic table helper:" >&2
         echo "$hits" >&2
@@ -2000,7 +2003,8 @@ selftest_goldens_accept() {
     # own first CI run died: exit 1, nothing printed. The suites run without -e, so only
     # CI could see it.
     rc=0
-    JMETER_HOME="$stub" "$PROJECT_DIR/test-plans/scripts/run-goldens.sh" --accept > "$log" 2>&1 || rc=$?
+    GOLDENS_WORK_DIR="$stub/work" JMETER_HOME="$stub" \
+        "$PROJECT_DIR/test-plans/scripts/run-goldens.sh" --accept > "$log" 2>&1 || rc=$?
     if [[ $rc -eq 0 ]] || ! grep -q "no .json was written" "$log"; then
         echo "[SELFTEST] run-goldens.sh --accept swallowed a failed regeneration (rc=$rc):" >&2
         sed 's/^/    /' "$log" >&2

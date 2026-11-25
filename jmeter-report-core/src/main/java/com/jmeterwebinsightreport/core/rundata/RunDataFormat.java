@@ -8,8 +8,11 @@ import java.util.List;
  */
 public final class RunDataFormat {
 
-    /** The version this release writes. A minor version only adds optional fields or record types. */
-    public static final String VERSION = "1.0";
+    /**
+     * The version this release writes. A minor version only adds optional fields or record types: 1.1 (spec 002) adds
+     * a threshold's statistic, measured value and metric type, and the run record's trend statistics.
+     */
+    public static final String VERSION = "1.1";
 
     /** The major versions this release reads. Every earlier released version stays here (FR-014). */
     public static final List<String> READS = List.of("1");

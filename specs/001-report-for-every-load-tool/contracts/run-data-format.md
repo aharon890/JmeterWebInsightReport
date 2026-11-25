@@ -40,6 +40,7 @@ It holds the same samples the report was built from, with `tool.name` `jmeter`, 
 
 ## Versions
 
-- A minor version (1.1) only adds optional fields or record types, so a 1.0 reader still builds the report.
+- A minor version (1.1) only adds optional fields or record types, so a 1.0 reader still builds the report. 1.1 is
+  spec 002's: see `specs/002-interactive-tool-tab/contracts/run-data-1.1.md`.
 - A major version (2.0) is refused by a 1.x reader, with a message naming both versions.
 - The docs list, per report release, the versions it reads and the one it writes (FR-014).

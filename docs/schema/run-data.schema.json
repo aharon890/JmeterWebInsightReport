@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://aharon890.github.io/JmeterWebInsightReport/schema/run-data.schema.json",
   "title": "JMeter Web Insight Report — run data, version 1.x",
-  "description": "One record of a run data file: JSON Lines, one record per line, UTF-8, gzip when the name ends in .gz. The first line is the run record; the others may come in any order. A producer validates each line against this schema. A reader of 1.x skips a record type or a field it does not know, so a minor version can add them; this schema is the 1.0 producer's, and names every field it writes.",
+  "description": "One record of a run data file: JSON Lines, one record per line, UTF-8, gzip when the name ends in .gz. The first line is the run record; the others may come in any order. A producer validates each line against this schema. A reader of 1.x skips a record type or a field it does not know, so a minor version can add them; this schema is the 1.1 producer's, and names every field it writes. 1.1 added the optional threshold fields statistic, measuredValue, metricType and metricContains, and the run record's trendStatistics.",
   "type": "object",
   "required": ["type"],
   "oneOf": [
@@ -57,6 +57,11 @@
           "type": "array",
           "uniqueItems": true,
           "items": {"enum": ["bytes", "sentBytes", "latency", "connect", "user", "iteration"]}
+        },
+        "trendStatistics": {
+          "description": "Since 1.1, optional: the statistics the tool's summary lists for a trend (k6's options.summaryTrendStats), such as avg, med, p(95), p(99).",
+          "type": "array",
+          "items": {"type": "string"}
         }
       }
     },
@@ -143,7 +148,11 @@
         "type": {"const": "threshold"},
         "metric": {"description": "The metric with its tag filter: http_req_duration{name:Login}.", "type": "string"},
         "expression": {"type": "string"},
-        "passed": {"type": "boolean"}
+        "passed": {"type": "boolean"},
+        "statistic": {"description": "Since 1.1, optional: the statistic the expression names, as written: p(95), rate, count, max, value.", "type": "string"},
+        "measuredValue": {"description": "Since 1.1, optional: the value the tool judged the threshold on (k6's summary values[statistic]). Left out when the tool did not say, never 0.", "type": "number"},
+        "metricType": {"description": "Since 1.1, optional: the metric's type in the tool's words: trend, rate, counter, gauge.", "type": "string"},
+        "metricContains": {"description": "Since 1.1, optional: what the metric holds: time, data or default.", "type": "string"}
       }
     },
     "counter": {

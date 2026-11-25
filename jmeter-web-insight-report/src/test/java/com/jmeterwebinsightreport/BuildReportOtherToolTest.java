@@ -68,14 +68,27 @@ class BuildReportOtherToolTest {
 
     @Test
     void itsOwnRecordsGiveItsTabWithOnlyWhatTheRunCarries() throws Exception {
-        String page = build(D1, "d1-tab");
+        File out = tmp.resolve("d1-tab").toFile();
+        assertEquals(0, run("--run-data", D1.getPath(), "--out", out.getPath(),
+                "--property", "webinsight.report.externaldata=true"), log());
+        String page = Files.readString(new File(out, "web-insight-report.html").toPath(), StandardCharsets.UTF_8);
         assertTrue(page.contains("data-tab=\"tool\" id=\"toolTabBtn\">demo</button>"), "a tab named demo");
-        assertTrue(page.contains("id=\"toolThresholds\"") && page.contains("id=\"toolChecks\""),
-                "its threshold and checks");
         assertTrue(page.contains("data-counter=\"iterations\""), "its counter, under its own name");
         assertFalse(page.contains("data-counter=\"vus_max\""), "not k6's counters");
-        assertFalse(page.contains("<h2>HTTP timings</h2>"), "no section it has nothing for");
-        assertTrue(page.contains("data-group=\"Checkout\""), "its transactions' wall time");
+        // spec 002: the rest of the tab is report.js's, from chartData.tool
+        String js = Files.readString(new File(out, "web-insight-data.js").toPath(), StandardCharsets.UTF_8);
+        com.fasterxml.jackson.databind.JsonNode tool = new ObjectMapper()
+                .readTree(js.substring(js.indexOf('{'), js.lastIndexOf('}') + 1)).path("tool");
+        assertEquals("demo", tool.path("name").asText());
+        assertEquals(1, tool.path("thresholds").size(), "its threshold");
+        assertTrue(tool.path("checks").size() > 0, "and checks");
+        assertEquals(0, tool.path("timings").size(), "no timing parts: no section it has nothing for");
+        assertFalse(tool.path("k6").asBoolean());
+        boolean checkout = false;
+        for (com.fasterxml.jackson.databind.JsonNode g : tool.path("groupDurations")) {
+            checkout |= "Checkout".equals(g.path("name").asText());
+        }
+        assertTrue(checkout, "its transactions' wall time");
     }
 
     @Test

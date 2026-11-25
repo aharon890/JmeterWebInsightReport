@@ -1,11 +1,11 @@
-# Feature Specification: An organised, interactive k6 tab
+# Feature Specification: One table experience for every tab, and an organised, interactive k6 tab
 
 **Feature Branch**: `feat/002-interactive-tool-tab`
 
-**Created**: 2026-11-24
+**Created**: 2026-11-24. **Widened**: 2026-11-25, by the owner (decision 3)
 
-**Status**: Draft. The next phase after spec 001: planning starts once spec 001 is released (owner decision 1), and
-building waits for the owner's go-ahead (Principle I).
+**Status**: Draft, revised for the owner's widening. Building waits for the owner's go-ahead on the revised plan
+(Principle I).
 
 **Input**: the owner, 2026-11-24, after testing spec 001's k6 tab on the petstore k6 run (K2) and the k6 shapes run
 (K1), before merging:
@@ -28,6 +28,23 @@ building waits for the owner's go-ahead (Principle I).
    (`max>=0`, `count>=0`, `rate>=0`, `value>=0`) judges nothing; petstore's tests add one per request only so that k6
    keeps that request's numbers. Each group shows them as one line with a chip to show them, so K2's first view lists
    its 9 real thresholds (FR-007).
+3. **One table experience for every tab** (2026-11-25, on the plan): "i want the page to be interactive, like in the
+   other report tabs ... same capabilities, to group by ... like group by stats, to filter by ... to hide rows and
+   columns ... you know, a unifying ui/ux for all report tabs. the logic itself for all 3 is ok, but i want the page to
+   fix ui/ux for performance report by the WIR in general". The k6 tab is built on a toolkit that every table of the
+   report shares (US6).
+4. **The k6 tab's layout** (2026-11-25, mock-ups https://claude.ai/artifact/1LrUgn9nqBeug5jcgHWWoX): thresholds in
+   groups like k6's own summary (1A); HTTP timings as numbers plus a bar of the average request from start to end (2A);
+   the filter bar's request ticks narrow the k6 tab (3A).
+5. **The shared toolbar** (2026-11-25, mock-ups https://claude.ai/artifact/Nhk6xBsrSSwcT7b3qpzpoh), all four the
+   recommended option:
+   - one toolbar row above every table: search, status chips, Group by, Expand all / Collapse all, Columns, "Show N
+     hidden", CSV (Q1 A);
+   - Group by offers status wherever a verdict exists, plus the bands that are already words: Apdex rating on Requests,
+     error class and response code on Errors, REGRESSION / NEW / REMOVED / OK on Compare. Numbers are sorted and
+     filtered, never grouped (Q2 A; "group by stats" read as status);
+   - CSV exports what the table shows (Q3 A);
+   - the filter bar's request ticks narrow every tab's tables, not only the charts and the k6 tab (Q4 A).
 
 ## What the k6 tab is today (spec 001, US3)
 
@@ -62,7 +79,65 @@ the server, or narrow anything to one request.
   - the Errors tab: groups that open and close, with "Expand all" and "Collapse all";
   - the page's filter bar, shared by Requests, Errors and Timeline.
 
+## What every table can do today (2026-11-25)
+
+Read-only research: `tmp/002-interactive-tool-tab/unified-table-facts-2026-11-25.md` in the main checkout
+(git-ignored). Each table does a different subset of the same controls, each in its own code:
+
+| Table | Search | Status chips | Group by | Open / close | Sort | Hide row | Hide columns | CSV | Keyboard |
+|---|---|---|---|---|---|---|---|---|---|
+| Requests | yes | no | the tree only | one global switch | yes | yes | yes | every row | no (mouse only) |
+| Error Summary | yes | no | no | no | yes | yes | yes | every row | no |
+| Error Details | yes | no | by time / grouped | grouped view | yes | yes | yes | every row | no |
+| Compare | yes | no | no | no | yes | yes | yes | every row | no |
+| Asserts | yes | yes, several at once | no | a rule's matches | yes | no | no | no | yes |
+| Server board | yes | one at a time | cards by component | rows | no | no | no | no | yes |
+| k6 tab | no | no | no | no | no | no | no | no | no |
+
+The same control is written 2 to 5 times (search 5, sort 4, open and close 5). Five defects were found by reading,
+each to be proved by a failing test first: Throughput sorts as text; Compare's Apply drops the search, hidden rows and
+sort; a saved Compare column order misplaces cells; after a column drag the shared Columns menu can hide the wrong
+column; an open Error Details row stays after a search hides its row.
+
 ## User Scenarios & Testing *(mandatory)*
+
+### User Story 6 - Every table works the same way (Priority: P1)
+
+A tester who learned one table knows them all. Every table of the report (Requests, Error Summary, Error Details,
+Compare, Asserts, the Server board and the k6 tab's tables) has the same toolbar row, does the same things and
+remembers the same things, and no number, row text or verdict changes.
+
+**Why this priority**: the owner's widening (decision 3). The k6 tab (US1-US3) is built on it, so it comes first.
+
+**Independent Test**: on E02 (a JMeter run) and K2 (a k6 run), on each table: type a request name, click a status chip,
+pick each Group by, hide a row and a column, sort by a header from the keyboard, download the CSV. The same controls
+are in the same places and do the same thing, and the CSV holds the rows and columns on screen.
+
+**Acceptance Scenarios**:
+
+1. **Given** any table, **When** it is shown, **Then** one toolbar row above it holds, as they apply: search, status
+   chips with counts, Group by, Expand all / Collapse all (while grouped), Columns, "Show N hidden", CSV.
+2. **Given** status chips, **When** the tester clicks one or several, **Then** only those statuses show, and every
+   chip counts all rows, as the Asserts tab's chips do today.
+3. **Given** Group by, **When** the tester picks status (or Apdex rating on Requests, error class or response code on
+   Errors, REGRESSION / NEW / REMOVED / OK on Compare), **Then** the rows regroup, each group header shows its counts
+   only, and groups open and close.
+4. **Given** a header, **When** the tester presses Enter on it, **Then** the rows sort by that column's value (not its
+   text), within their group, and a screen reader hears the sort.
+5. **Given** × on a row, **When** pressed, **Then** the row hides, "Show N hidden" counts it, and pressing that brings
+   it back.
+6. **Given** the Columns menu, **When** a column is unticked, **Then** that column hides, even after columns were
+   dragged to a new order.
+7. **Given** the CSV button, **When** pressed, **Then** the file holds the rows left after search, chips and ×, the
+   visible columns, in the shown order and format.
+8. **Given** the filter bar's request ticks, **When** a request is unticked, **Then** its rows leave every tab's tables
+   as well as the charts; rows tied to no request stay.
+9. **Given** a reload of the same report, **Then** each table's sort, grouping, open groups, hidden rows and hidden
+   columns are as they were. Another report opens with its own view.
+10. **Given** Requests, **When** shown, **Then** each transaction has a ▸ that opens and closes its requests, and
+    "Show transaction details" becomes Expand all / Collapse all.
+
+---
 
 ### User Story 1 - Find the threshold that failed, and by how much (Priority: P1)
 
@@ -137,8 +212,8 @@ tab's cards.
 nothing from it, so it comes after the two sections every k6 run has.
 
 **Independent Test**: open K1's k6 tab. Checks sit under "Complete Checkout Flow", "server error is 200" first with 0
-of 12 passed; the "failed" chip leaves only it. The tiles read 11 iterations, dropped iterations "not measured" (K1's
-summary has no such counter) and 3 VUs allocated.
+of 12 passed; the "failed" chip leaves only it. The tiles read 11 iterations, dropped iterations 0 (K1's summary has no
+such counter, and k6 writes it only when it drops an iteration) and 3 VUs allocated.
 
 **Acceptance Scenarios**:
 
@@ -153,21 +228,24 @@ summary has no such counter) and 3 VUs allocated.
 
 ### User Story 4 - One filter for the whole report (Priority: P2)
 
-The page's filter bar, which the Requests, Errors and Timeline tabs share, shows on the k6 tab too and narrows every
-section to the requests it names.
+The page's filter bar shows on the k6 tab too. Its request ticks, which today narrow the charts only, narrow every
+tab's tables: the k6 tab's sections, and Requests, Errors, Compare and Asserts (decisions 4 and 5).
 
-**Why this priority**: a tester following one request (Login) through the report should not lose that filter on the k6
-tab.
+**Why this priority**: a tester following one request (Login) through the report should not lose that choice from tab
+to tab.
 
-**Independent Test**: on K2, type "Login" in the filter bar on the Requests tab, then open the k6 tab: only Login's
-thresholds and timing row show, with the whole-run rows and the counters still there.
+**Independent Test**: on K2, untick every request but Login in the filter bar, then open the k6 tab: only Login's
+thresholds and timing row show, with the whole-run rows and the counters still there. The Requests and Errors tables
+show Login only.
 
 **Acceptance Scenarios**:
 
-1. **Given** a filter set on another tab, **When** the k6 tab opens, **Then** its threshold, timing, check and group
-   rows are narrowed by it, and the rows tied to no request (whole-run thresholds, counters) stay.
-2. **Given** a filter set on the k6 tab, **When** the tester goes back to the Requests tab, **Then** the same filter
-   applies there.
+1. **Given** ticks set on another tab, **When** the k6 tab opens, **Then** its threshold, timing, check and group rows
+   are narrowed by them, and the rows tied to no request (whole-run thresholds, counters) stay.
+2. **Given** ticks changed on the k6 tab, **When** the tester goes back to the Requests tab, **Then** the same ticks
+   apply there, to the table as to the charts.
+3. **Given** a JMeter report, **When** a request is unticked, **Then** its rows leave the Requests, Errors, Compare and
+   Asserts tables. The Σ Total row stays, because it is the whole run, not a request.
 
 ---
 
@@ -252,17 +330,53 @@ the largest piece and can be cut to a later phase without losing US1-US4.
 
 **The whole tab**
 
-- **FR-030**: The page's filter bar MUST show on the k6 tab and narrow every section to the requests it names; rows
-  tied to no request MUST stay.
-- **FR-031**: Every table on the tab MUST download as CSV with the numbers as shown, as the Requests table does.
+- **FR-030**: The page's filter bar MUST show on the k6 tab. Its request ticks MUST narrow every section of the tab to
+  the ticked requests, as they narrow every other tab's tables (FR-067). Rows tied to no request MUST stay.
+- **FR-031**: Every table on the tab MUST download as CSV with the rows, columns and numbers as shown (FR-066).
 - **FR-032**: The tester's choices (grouping, statistic, open groups, hidden rows, sort, columns) MUST be remembered
-  for that report in that browser, as the Requests table's sort and columns are, and the page MUST work without them.
+  for that report in that browser (FR-068), and the page MUST work without them.
 - **FR-033**: Every new word MUST be in the words table (`page-words.json`) in the k6 and 'other' columns; a run from
   another tool MUST get the same controls in its own words.
 - **FR-034**: Every control MUST work from the keyboard, and every reader MUST be shown the same page whatever their
   browser's language and time zone (`every-reader-same-page.spec.ts`).
-- **FR-035**: A JMeter run's report MUST NOT change in any way (no tool tab, the same text on every tab, the goldens
-  G1-G13 and `PreChangeBaselineTest` unchanged).
+- **FR-035**: A JMeter run's report MUST keep every number, row text and verdict: no tool tab; the goldens G1-G13,
+  R07 against JMeter's Aggregate Report and `PreChangeBaselineTest` unchanged. Its table controls change as US6 says
+  (decision 3), and nothing else.
+
+**Every table (US6)**
+
+- **FR-060**: Requests, Error Summary, Error Details, Compare, Asserts, the Server board and the k6 tab's tables MUST
+  share one table toolkit. A control works the same way on every table and is written once. Each step of moving a
+  table onto it deletes the code it replaces (no parallel mechanisms).
+- **FR-061**: Every table MUST have one toolbar row with, as they apply: search, status chips, Group by, Expand all /
+  Collapse all (while grouped), Columns, "Show N hidden", CSV.
+- **FR-062**: Status chips MUST work as the Asserts tab's do today: several at once, each counting all rows. The Server
+  board's one-at-a-time chips change to them.
+- **FR-063**: Group by MUST offer, where they apply:
+  - none;
+  - status (the verdict);
+  - Apdex rating (Requests);
+  - error class, and response code (Errors);
+  - REGRESSION / NEW / REMOVED / OK (Compare);
+  - transaction (Requests' tree);
+  - component (the Server board's cards, its default).
+  A group header MUST show counts only, never a sum or average of rows' percentiles or rates.
+- **FR-064**: Every sortable header MUST be a button that sorts by the column's value from the mouse or the keyboard,
+  with `aria-sort` on the sorted column. A sort keeps rows inside their group and tree.
+- **FR-065**: × MUST hide a row, and "Show N hidden" MUST count and restore the hidden rows. The Columns menu MUST hide
+  a column by its identity, whatever the column order.
+- **FR-066**: CSV MUST export the rows left after search, chips, ticks and ×, the visible columns, in the shown order
+  and format.
+- **FR-067**: The filter bar's request ticks MUST narrow every tab's tables as well as the charts. Rows tied to no
+  single request (the Σ Total row, whole-run thresholds, counters) MUST stay.
+- **FR-068**: Each table's view (sort, grouping, open groups, hidden rows, hidden columns) MUST be remembered for that
+  report in that browser. Column widths and order stay remembered as today.
+- **FR-069**: On Requests, each transaction MUST have a ▸ that opens and closes its requests. The "Show transaction
+  details" switch becomes Expand all / Collapse all.
+- **FR-070**: Requests and the Errors tables MUST keep their rows in the page's HTML with today's cell text, because
+  R07 reads them and holds them to JMeter's Aggregate Report.
+- **FR-071**: The five defects found by reading (section "What every table can do today") MUST each get a failing
+  test, then a fix, in the step that moves their table.
 
 **Over time (P3)**
 
@@ -292,8 +406,9 @@ the largest piece and can be cut to a later phase without losing US1-US4.
 
 - **SC-001**: On K2, the failed threshold, its measured value, its limit and the distance between them are on the
   first screen of the k6 tab, with no click and no scrolling.
-- **SC-002**: On K2, the HTTP timings take 13 rows instead of 78, and one click (a sort) puts the request with the
-  longest server wait first.
+- **SC-002**: On K2, the HTTP timings take 14 rows instead of 78 (12 requests, the "every request" row and the
+  group the checkout requests sit under; corrected 2026-11-25), and one click (a sort) puts the request with the
+  longest server wait first among its siblings.
 - **SC-003**: Typing a request name narrows every section of the tab in one step, on K2 and on the 134,406-request run
   of spec 001's T067.
 - **SC-004**: On that 134,406-request run, the k6 tab opens and every control answers in under half a second on the
@@ -302,8 +417,16 @@ the largest piece and can be cut to a later phase without losing US1-US4.
   which threshold failed and by how much; which request waits longest for the server; which check failed and in which
   group; how many iterations were dropped; whether Login's time is in connecting or in waiting.
 - **SC-006**: Every measured value shown equals k6's own summary to the digits written.
-- **SC-007**: JMeter reports are unchanged: the four-report before/after text comparison of spec 001, the goldens and
-  `PreChangeBaselineTest` all pass.
+- **SC-007**: JMeter reports keep every number, row text and verdict: the goldens, R07 and `PreChangeBaselineTest`
+  pass unchanged. Spec 001's four-report before/after text comparison is redefined to the same: numbers and row texts
+  identical, controls changed as US6 lists.
+- **SC-008**: On E02 and K2, every table in FR-060 has the same toolbar. Search, chips, Group by, ×, Columns, sort and
+  CSV each pass one shared browser test per table.
+- **SC-009**: Every sortable header on every table sorts from the keyboard alone.
+- **SC-010**: On a synthetic run with 300 or more request names (about 1,200 thresholds), every table opens and every
+  control answers in under half a second on the owner's PC. The 134,406-request run has only 12 names, so it cannot
+  show this.
+- **SC-011**: The five defects in FR-071 are each red before their fix and green after.
 
 ## Assumptions
 
@@ -328,3 +451,7 @@ the largest piece and can be cut to a later phase without losing US1-US4.
 - Compare for k6 runs (spec 001, decision 6).
 - Turning a k6 threshold into an assert from the tab (a possible later idea).
 - k6's browser, WebSocket and gRPC metrics.
+- Lists that are not tables, for a later phase: the Server tab's Collection panel, What Changed, Top 5 slowest, the
+  timeline annotations list, and the Timeline's charts.
+- Per-column value filters (Grafana's column filter), multi-column sort, a text box in the filter bar, and reordering
+  columns from the keyboard.

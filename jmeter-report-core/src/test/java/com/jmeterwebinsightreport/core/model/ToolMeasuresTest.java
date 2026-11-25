@@ -125,6 +125,53 @@ class ToolMeasuresTest {
     }
 
     @Test
+    void p99IsTheAggregateReportsRankLikeEveryOtherPercentile() {
+        // spec 002, FR-011: the engine's one percentile method, at rank round(n * p)
+        ToolMeasures m = new ToolMeasures(new ToolRecords());
+        for (int i = 1; i <= 200; i++) {
+            m.add(request("Login", 0, i));
+        }
+        ToolMeasures.Trend waiting = m.timingsByRequest().get("Login").get("waiting");
+        assertEquals(198.0, waiting.p99(), 1e-9, "the 198th of 200");
+        assertEquals(190.0, waiting.p95(), 1e-9, "the 190th of 200");
+    }
+
+    @Test
+    void k6sRequestDurationIsSendingPlusWaitingPlusReceivingPerRequest() {
+        // k6's tracer: trail.Duration = trail.Sending + trail.Waiting + trail.Receiving
+        ToolMeasures m = new ToolMeasures(new ToolRecords());
+        m.add(request("Login", 3.11, 31.29));
+        m.add(request("Login", 0.00, 31.40));
+        m.add(request("Logout", 0.50, 2.00));
+        ToolMeasures.Trend login = m.durationsByRequest().get("Login");
+        assertEquals(2, login.count());
+        assertEquals(31.29 + 0.10, login.min(), 1e-9, "blocked is not part of it");
+        assertEquals(31.40 + 0.10, login.max(), 1e-9);
+        assertEquals(3, m.durationOverAll().count());
+        assertEquals(ToolMeasures.TIMING_PARTS, new ArrayList<>(m.timingsByRequest().get("Login").keySet()),
+                "the six parts stay six: the duration has its own map");
+
+        RunSample partial = new RunSample("Partial", 1_795_452_359_384L, 5, true);
+        partial.timing("waiting", 5.0);
+        m.add(partial);
+        assertNull(m.durationsByRequest().get("Partial"), "without all three parts there is no duration");
+    }
+
+    @Test
+    void theDurationOverEveryRequestIsK6sHttpReqDuration() throws Exception {
+        for (String id : new String[] {"K1", "K2", "K3"}) {
+            ToolMeasures m = measures(id);
+            JsonNode k6 = JSON.readTree(new File(new File(K1.getParentFile(), id), "summary.json"))
+                    .path("metrics").path("http_req_duration").path("values");
+            ToolMeasures.Trend d = m.durationOverAll();
+            // three parts, each kept to the hundredth: within a hundredth and a half of k6's figure
+            assertEquals(k6.path("avg").asDouble(), d.avg(), 0.015, id + " avg");
+            assertEquals(k6.path("min").asDouble(), d.min(), 0.015, id + " min");
+            assertEquals(k6.path("max").asDouble(), d.max(), 0.015, id + " max");
+        }
+    }
+
+    @Test
     void checksArePassesAndFailsPerGroupAndName() {
         ToolRecords records = new ToolRecords();
         records.addCheck(check("::A", "status is 200", true));
@@ -153,8 +200,13 @@ class ToolMeasuresTest {
     // ----- K1 against k6's own end-of-test summary -----
 
     private ToolMeasures k1() throws Exception {
-        File runData = tmp.resolve("K1-run-data.jsonl.gz").toFile();
-        K6Results.toRunData(new File(K1, "results.csv.gz"), new File(K1, "summary.json"), "K1", runData);
+        return measures("K1");
+    }
+
+    private ToolMeasures measures(String id) throws Exception {
+        File dir = new File(K1.getParentFile(), id);
+        File runData = tmp.resolve(id + "-run-data.jsonl.gz").toFile();
+        K6Results.toRunData(new File(dir, "results.csv.gz"), new File(dir, "summary.json"), id, runData);
         LiveStatisticsEngine engine = new LiveStatisticsEngine();
         engine.setApdexThreshold(JtlParser.DEFAULT_APDEX_THRESHOLD);
         return new RunDataReader().read(runData, engine).measures;

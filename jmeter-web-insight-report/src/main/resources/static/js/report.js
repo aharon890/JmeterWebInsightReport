@@ -1627,6 +1627,9 @@ function initCharts(data) {
     if (window.WIR && WIR.serverKpis) {
         WIR.serverKpis.init(data);
     }
+    if (window.WIR && WIR.toolTab && data && data.tool) {
+        WIR.toolTab.init(data.tool);
+    }
     /* The document lifecycle — the baseline, and any draft an accidental refresh would
        otherwise cost — runs here, after BOTH authors have read their half of the payload, and
        nowhere else. Inside WIR.asserts.init it ran before the server slice knew its collection,
@@ -4519,6 +4522,31 @@ function readCurrentDetailConfig() {
         }
     }
     return getDetailChartConfig();
+}
+
+/* The link from the k6 tab to a request (spec 002, FR-008): the Requests tab, on that request's row, with its
+   detail panel open. A row a search, x or a closed transaction hid is shown first. */
+function openRequestRow(name) {
+    switchTab('samplers');
+    var find = function () {
+        var rows = document.querySelectorAll('#samplerTable tbody tr[data-sampler]');
+        for (var i = 0; i < rows.length; i++) {
+            if (rows[i].getAttribute('data-sampler') === name) return rows[i];
+        }
+        return null;
+    };
+    var row = find();
+    if (!row) return;
+    if (row.offsetParent === null) {
+        var search = document.getElementById('samplerSearch');
+        if (search && search.value) { search.value = ''; filterSamplerTable(); }
+    }
+    if (row.offsetParent === null && isTransactionChild(name) && !showTransactionChildren) {
+        toggleTransactionChildrenVisibility(true);
+    }
+    if (row.offsetParent === null) showAllRows();
+    if (!samplerCompanionRow(row, 'sampler-detail-row')) toggleSamplerDetail(row);
+    row.scrollIntoView({ block: 'center' });
 }
 
 function toggleSamplerDetail(row) {
@@ -8220,6 +8248,29 @@ WIR.status = (function () {
         return CHIP_LABEL[s] || s;
     }
 
+    /**
+     * The status chips every table draws (spec 002, FR-062), as the Asserts tab's always worked: one per
+     * status present, in `order`, several on at once, each counting every row whatever is filtered —
+     * chips that recount as you filter read 0 for what you did not pick, which hides what the run holds.
+     * opts: counts, order, selected, onclick(status) (the handler's text), label(status), noun.
+     */
+    function chipsHtml(opts) {
+        var counts = opts.counts || {};
+        var label = opts.label || chipLabel;
+        var present = (opts.order || []).filter(function (s) { return counts[s]; });
+        Object.keys(counts).forEach(function (s) { if (counts[s] && present.indexOf(s) === -1) present.push(s); });
+        if (!present.length) return '';
+        return '<div class="wir-status-chips">' + present.map(function (s) {
+            var on = (opts.selected || []).indexOf(s) !== -1;
+            return '<button type="button" class="wir-status-chip wir-chip-' + chipToken(s) +
+                (on ? ' wir-status-chip-on' : '') + '" data-status="' + escapeHtml(s) + '"' +
+                ' aria-pressed="' + on + '"' +
+                ' title="' + escapeHtml(on ? 'Remove the ' + label(s) + ' filter'
+                    : 'Show only ' + label(s) + ' ' + (opts.noun || 'rows')) + '"' +
+                ' onclick="' + opts.onclick(s) + '">' + escapeHtml(label(s)) + ' ' + counts[s] + '</button>';
+        }).join('') + '</div>';
+    }
+
     return {
         EM_DASH: EM_DASH,
         DISPLAY: DISPLAY,
@@ -8232,7 +8283,1239 @@ WIR.status = (function () {
         displayStatus: displayStatus,
         chipToken: chipToken,
         chipClass: chipClass,
-        chipLabel: chipLabel
+        chipLabel: chipLabel,
+        chipsHtml: chipsHtml
+    };
+}());
+
+/* ============================================================
+ *  WIR.table — one table experience for every tab (spec 002, US6, FR-060 to FR-068).
+ *
+ *  Every table of the report goes through this pipeline, so a control works the same way on each
+ *  and is written once: filter (search, status chips, the filter bar's ticks), group, sort by each
+ *  column's VALUE within its group or the transaction tree, then open, close and fold. It is the
+ *  Asserts tab's state pipeline (applySort(applyFilters(...)) before rendering) made general.
+ *
+ *  view(records, spec, state) is pure: it reads no page and writes nothing, so js-unit holds it
+ *  (table-core.test.js) and every table answers each question one way.
+ *
+ *  spec:
+ *    key(record)            a row's key on this page: what its controls name it by
+ *    hideKey(record)        what x remembers it by across a reload (default: its key)
+ *    columns                [{id, value(record), compare?(a, b)}]: a sort reads value, never the cell text
+ *    search(record)         the text the search box looks in
+ *    filter(record)         the table's own filters, ANDed with the rest (the Asserts tab's More filters)
+ *    status(record)         the row's status, for the chips (optional)
+ *    nameOf(record)         the request a row is about, for the filter bar's ticks; null = tied to none
+ *    groupings              {id: {of(record) -> key | {key, label}, order?(g1, g2), open?(group)}
+ *                            | {tree: true}}: Group by's choices; '' is none
+ *    tree                   {nameOf(record), childrenOf, open}: the transaction hierarchy, for a
+ *                            grouping with tree: true (samplerTreeOrder orders it)
+ *    pinned(record)         'first' | 'last' | null: the Σ Total and Errors Total rows
+ *    fold(record)           true for a row folded into one line per group (k6's always-true thresholds)
+ *    tie(a, b)              how equal values break, ascending in both directions (default: the order given)
+ *  state:
+ *    q, statuses [], names [] | null, group, sort {col, dir}, hidden [keys], open {key: bool},
+ *    unfold {groupKey: true}
+ *
+ *  A group header carries counts only — its size and its rows' statuses — never a sum or an average
+ *  of its rows' numbers: the whole run is counted per sample, never as a sum of rows (CLAUDE.md).
+ * ============================================================ */
+WIR.table = (function () {
+    'use strict';
+
+    /* One collation for every reader: a German and an English reader see one order
+       (every-reader-same-page), and "Item 10" sorts after "item 9". */
+    var COLLATOR = new Intl.Collator('en', { numeric: true });
+
+    function missing(v) {
+        return v === null || v === undefined || (typeof v === 'number' && isNaN(v)) || v === '';
+    }
+
+    /** Two present values: numbers by number, text by the one collation, a number before a text. */
+    function compareValues(a, b) {
+        var na = typeof a === 'number';
+        var nb = typeof b === 'number';
+        if (na && nb) return a < b ? -1 : a > b ? 1 : 0;
+        if (na !== nb) return na ? -1 : 1;
+        return COLLATOR.compare(String(a), String(b));
+    }
+
+    function columnOf(spec, id) {
+        var cols = spec.columns || [];
+        for (var i = 0; i < cols.length; i++) {
+            if (cols[i].id === id) return cols[i];
+        }
+        return null;
+    }
+
+    /** A comparator over {record, index}: a row with no value last in both directions, ties in the order given. */
+    function sorter(spec, sort) {
+        var col = sort && columnOf(spec, sort.col);
+        if (!col) return function (a, b) { return a.index - b.index; };
+        var dir = sort.dir === 'desc' ? -1 : 1;
+        var cmp = col.compare || compareValues;
+        return function (a, b) {
+            var va = col.value(a.record);
+            var vb = col.value(b.record);
+            var ma = missing(va);
+            var mb = missing(vb);
+            if (ma && mb) return (spec.tie && spec.tie(a.record, b.record)) || a.index - b.index;
+            if (ma || mb) return ma ? 1 : -1;
+            var d = cmp(va, vb) * dir;
+            if (d === 0 && spec.tie) d = spec.tie(a.record, b.record);
+            return d !== 0 ? d : a.index - b.index;
+        };
+    }
+
+    function groupOf(grouping, record) {
+        var g = grouping.of(record);
+        if (g !== null && typeof g === 'object') {
+            return { key: String(g.key), label: g.label === undefined ? String(g.key) : String(g.label) };
+        }
+        return { key: String(g), label: String(g) };
+    }
+
+    function countStatuses(items, spec) {
+        var counts = Object.create(null);
+        if (!spec.status) return counts;
+        items.forEach(function (it) {
+            var s = spec.status(it.record);
+            if (s !== null && s !== undefined) counts[s] = (counts[s] || 0) + 1;
+        });
+        return counts;
+    }
+
+    function view(records, spec, state) {
+        state = state || {};
+        var q = String(state.q || '').trim().toLowerCase();
+        var statuses = state.statuses || [];
+        var names = state.names ? Object.create(null) : null;
+        if (names) state.names.forEach(function (n) { names[n] = true; });
+        var hiddenKeys = Object.create(null);
+        (state.hidden || []).forEach(function (k) { hiddenKeys[k] = true; });
+        var open = state.open || {};
+        var unfold = state.unfold || {};
+        var grouping = state.group && spec.groupings ? spec.groupings[state.group] : null;
+        if (grouping && grouping.tree && !spec.tree) grouping = null;
+
+        var first = [], last = [], items = [];
+        (records || []).forEach(function (record, index) {
+            var key = String(spec.key(record));
+            var item = { record: record, index: index, key: key,
+                hideKey: spec.hideKey ? String(spec.hideKey(record)) : key };
+            var pin = spec.pinned ? spec.pinned(record) : null;
+            if (pin === 'first') first.push(item);
+            else if (pin === 'last') last.push(item);
+            else items.push(item);
+        });
+
+        function matches(it) {
+            var r = it.record;
+            if (spec.filter && !spec.filter(r)) return false;
+            if (statuses.length && (!spec.status || statuses.indexOf(spec.status(r)) === -1)) return false;
+            if (names && spec.nameOf) {
+                var n = spec.nameOf(r);
+                if (n !== null && n !== undefined && !names[n]) return false;
+            }
+            if (q && String(spec.search ? spec.search(r) : '').toLowerCase().indexOf(q) === -1) return false;
+            return true;
+        }
+
+        var result = {
+            rows: [], kept: [], groups: [],
+            counts: countStatuses(items, spec),
+            total: items.length, matched: 0,
+            /* every row x hid, whatever the search leaves out: "Show N hidden" must not lose one */
+            hidden: items.filter(function (it) { return hiddenKeys[it.hideKey]; }).length
+        };
+        var cmp = sorter(spec, state.sort);
+        var filterActive = !!(q || statuses.length || names);
+
+        if (grouping && grouping.tree) {
+            treeView(items, spec, state, result, matches, hiddenKeys, open, cmp, filterActive);
+        } else {
+            var kept = [];
+            items.forEach(function (it) {
+                if (!matches(it)) return;
+                result.matched++;
+                if (hiddenKeys[it.hideKey]) return;
+                kept.push(it);
+            });
+            kept.sort(cmp);
+            if (grouping) groupedView(kept, spec, grouping, result, open, unfold);
+            else foldedRows(kept, spec, '', null, 0, result, unfold);
+        }
+
+        result.rows = pinnedRows(first).concat(result.rows, pinnedRows(last));
+        result.kept = first.map(rec).concat(result.kept, last.map(rec));
+        return result;
+    }
+
+    function rec(it) { return it.record; }
+
+    function pinnedRows(items) {
+        return items.map(function (it) {
+            return { kind: 'row', key: it.key, record: it.record, depth: 0, group: null, pinned: true };
+        });
+    }
+
+    /** The rows of one group (or of the whole table), the folded ones as one line at the end. */
+    function foldedRows(items, spec, groupKey, group, depth, result, unfold) {
+        var folded = [];
+        items.forEach(function (it) {
+            result.kept.push(it.record);
+            if (spec.fold && spec.fold(it.record) && !unfold[groupKey]) {
+                folded.push(it);
+                return;
+            }
+            if (group && !group.open) return;
+            result.rows.push({ kind: 'row', key: it.key, record: it.record, depth: depth, group: group ? group.key : null });
+        });
+        if (folded.length && (!group || group.open)) {
+            result.rows.push({ kind: 'fold', key: 'fold:' + groupKey, group: groupKey, count: folded.length,
+                depth: depth });
+        }
+    }
+
+    function groupedView(kept, spec, grouping, result, open, unfold) {
+        var byKey = Object.create(null);
+        var order = [];
+        kept.forEach(function (it) {
+            var g = groupOf(grouping, it.record);
+            if (!byKey[g.key]) {
+                byKey[g.key] = { key: g.key, label: g.label, items: [] };
+                order.push(byKey[g.key]);
+            }
+            byKey[g.key].items.push(it);
+        });
+        order.forEach(function (g) {
+            g.size = g.items.length;
+            g.counts = countStatuses(g.items, spec);
+            g.records = g.items.map(rec);
+        });
+        order.sort(grouping.order || function (a, b) { return COLLATOR.compare(a.label, b.label); });
+        order.forEach(function (g) {
+            var info = { key: g.key, label: g.label, size: g.size, counts: g.counts, records: g.records };
+            g.open = open[g.key] !== undefined ? !!open[g.key] : grouping.open ? !!grouping.open(info) : true;
+            result.groups.push(g.key);
+            result.rows.push({ kind: 'group', key: g.key, label: g.label, size: g.size, counts: g.counts,
+                open: g.open, depth: 0 });
+            foldedRows(g.items, spec, g.key, g, 1, result, unfold);
+        });
+    }
+
+    /* The transaction tree, as the Requests table draws it: samplerTreeOrder orders it, a sort
+       orders siblings only, a filter keeps a match's transactions above it as context, × on a
+       transaction takes its rows with it, and a closed transaction hides its rows. */
+    function treeView(items, spec, state, result, matches, hiddenKeys, open, cmp, filterActive) {
+        var tree = spec.tree;
+        var sorted = !!(state.sort && columnOf(spec, state.sort.col));
+        var byName = Object.create(null);
+        items.forEach(function (it) { byName[tree.nameOf(it.record)] = it; });
+        var allNames = items.map(function (it) { return tree.nameOf(it.record); });
+        /* with no sort, the run's own order: each transaction's rows as first seen (samplerTreeOrder) */
+        var ordered = samplerTreeOrder(allNames, tree.childrenOf || {}, sorted ? function (a, b) {
+            return cmp(byName[a], byName[b]);
+        } : undefined);
+        /* parent and children as the order placed them: depth d + 1 right after its parent */
+        var parentOf = Object.create(null);
+        var kids = Object.create(null);
+        var stack = [];
+        ordered.forEach(function (o) {
+            stack.length = o.depth;
+            if (o.depth > 0) {
+                parentOf[o.name] = stack[o.depth - 1];
+                (kids[stack[o.depth - 1]] = kids[stack[o.depth - 1]] || []).push(o.name);
+            }
+            stack[o.depth] = o.name;
+        });
+        var gone = Object.create(null);
+        ordered.forEach(function (o) {
+            var p = parentOf[o.name];
+            if (hiddenKeys[byName[o.name].hideKey] || (p !== undefined && gone[p])) gone[o.name] = true;
+        });
+        var hit = Object.create(null);
+        var shown = Object.create(null);
+        ordered.forEach(function (o) {
+            var it = byName[o.name];
+            if (!matches(it)) return;
+            result.matched++;
+            if (gone[o.name]) return;
+            hit[o.name] = true;
+            shown[o.name] = true;
+            for (var p = parentOf[o.name]; p !== undefined; p = parentOf[p]) shown[p] = true;
+        });
+        Object.keys(kids).forEach(function (n) { result.groups.push(n); });
+        result.groups.sort(function (a, b) { return allNames.indexOf(a) - allNames.indexOf(b); });
+        var closedAbove = [];
+        ordered.forEach(function (o) {
+            if (!shown[o.name]) return;
+            var it = byName[o.name];
+            result.kept.push(it.record);
+            closedAbove.length = o.depth;
+            var hidden = closedAbove.some(function (c) { return c; });
+            var hasKids = !!kids[o.name];
+            var isOpen = open[o.name] !== undefined ? !!open[o.name]
+                : (filterActive && hasKids) ? true : tree.open !== false;
+            closedAbove[o.depth] = hasKids && !isOpen;
+            if (hidden) return;
+            var row = { kind: 'row', key: it.key, record: it.record, depth: o.depth, group: parentOf[o.name] || null,
+                parent: hasKids, open: hasKids ? isOpen : undefined };
+            if (!hit[o.name]) row.context = true;
+            result.rows.push(row);
+        });
+    }
+
+
+    /* ---------------------------------------------------------------- a table on the page
+     *
+     * register(id, spec) gives a table its state. The reader's view — sort, Group by, open groups,
+     * hidden rows, hidden columns and the table's own choices (`extra`, such as the k6 timings'
+     * statistic) — is remembered for this report in this browser, one record per report under
+     * wir_view_<runId> (FR-068), inside a try: a page with no storage works without its memory. The
+     * search text and the chips are not remembered, as the Asserts tab never remembered its filters:
+     * a report reopened next week to "Showing 4 of 15" reads as a bug, not as a filter left on.
+     *
+     * Every control below is one inline call naming its table through jsArg (rule 1), and after a
+     * change the table's own spec.render(what) draws it again: 'query' for a keystroke in the search
+     * box (a table may redraw only its body, keeping the caret), anything else for the rest.
+     */
+    var VIEW_KEY_PREFIX = 'wir_view_';
+    var tables = Object.create(null);
+
+    function viewStoreKey() {
+        var id = (typeof globalChartData !== 'undefined' && globalChartData && globalChartData.runId)
+            || (typeof pageRunId === 'string' && pageRunId) || null;
+        return id ? VIEW_KEY_PREFIX + id : null;
+    }
+
+    function savedViews() {
+        var key = viewStoreKey();
+        if (!key) return {};
+        try {
+            var all = JSON.parse(localStorage.getItem(key) || '{}');
+            return all && typeof all === 'object' ? all : {};
+        } catch (e) {
+            return {};
+        }
+    }
+
+    function remember(t) {
+        var key = viewStoreKey();
+        if (!key) return;
+        try {
+            var all = savedViews();
+            var s = t.state;
+            all[t.id] = { sort: s.sort, group: s.group, open: s.open, hidden: s.hidden, hiddenCols: s.hiddenCols,
+                extra: s.extra };
+            localStorage.setItem(key, JSON.stringify(all));
+        } catch (e) { /* the view works; it is only not remembered */ }
+    }
+
+    function register(id, spec) {
+        var s = { q: '', statuses: [], names: null, group: spec.defaultGroup || '', sort: spec.defaultSort || null,
+            hidden: [], hiddenCols: (spec.defaultHiddenColumns || []).slice(), open: {}, unfold: {},
+            extra: {} };
+        var saved = savedViews()[id];
+        if (saved && typeof saved === 'object') {
+            if (saved.sort && columnOf(spec, saved.sort.col)) {
+                s.sort = { col: saved.sort.col, dir: saved.sort.dir === 'desc' ? 'desc' : 'asc' };
+            }
+            if (saved.group === '' || (typeof saved.group === 'string' && spec.groupings && spec.groupings[saved.group])) {
+                s.group = saved.group;
+            }
+            if (saved.open && typeof saved.open === 'object') s.open = saved.open;
+            if (Array.isArray(saved.hidden)) s.hidden = saved.hidden.map(String);
+            if (Array.isArray(saved.hiddenCols)) {
+                s.hiddenCols = saved.hiddenCols.filter(function (c) { return !!columnOf(spec, c); });
+            }
+            if (saved.extra && typeof saved.extra === 'object') s.extra = saved.extra;
+        }
+        var t = { id: id, spec: spec, state: s, last: null, menu: false };
+        tables[id] = t;
+        bindMenuDismiss();
+        return t;
+    }
+
+    function table(id) {
+        return tables[id] || null;
+    }
+
+    /** The view of `records` under the table's state, kept for Expand all and CSV. */
+    function compute(id, records) {
+        var t = tables[id];
+        var s = t.state;
+        t.last = view(records, t.spec, { q: s.q, statuses: s.statuses, names: s.names, group: s.group, sort: s.sort,
+            hidden: s.hidden, open: s.open, unfold: s.unfold });
+        t.records = Object.create(null);
+        (records || []).forEach(function (r) { t.records[String(t.spec.key(r))] = r; });
+        return t.last;
+    }
+
+    function changed(t, what) {
+        if (what !== 'query' && what !== 'status' && what !== 'menu') remember(t);
+        if (t.spec.render) t.spec.render(what);
+    }
+
+    function setQuery(id, value) {
+        var t = tables[id];
+        if (!t) return;
+        t.state.q = String(value === null || value === undefined ? '' : value);
+        changed(t, 'query');
+    }
+
+    function toggleStatus(id, status) {
+        var t = tables[id];
+        if (!t) return;
+        var i = t.state.statuses.indexOf(status);
+        if (i === -1) t.state.statuses.push(status);
+        else t.state.statuses.splice(i, 1);
+        changed(t, 'status');
+    }
+
+    /** The search and the chips back to nothing, with no redraw: the caller clears its own filters too. */
+    function resetFilters(id) {
+        var t = tables[id];
+        if (!t) return;
+        t.state.q = '';
+        t.state.statuses = [];
+    }
+
+    function filtersActive(id) {
+        var t = tables[id];
+        return !!(t && (t.state.q.trim() || t.state.statuses.length));
+    }
+
+    function setGroup(id, group) {
+        var t = tables[id];
+        if (!t || (group && !(t.spec.groupings && t.spec.groupings[group]))) return;
+        t.state.group = group || '';
+        changed(t, 'group');
+    }
+
+    /** The sorted column flips; another column takes its own first direction. */
+    function sortBy(id, col) {
+        var t = tables[id];
+        var c = t && columnOf(t.spec, col);
+        if (!c || c.sortable === false) return;
+        var s = t.state.sort;
+        t.state.sort = s && s.col === col ? { col: col, dir: s.dir === 'asc' ? 'desc' : 'asc' }
+            : { col: col, dir: c.firstDir || 'asc' };
+        changed(t, 'sort');
+    }
+
+    function setOpen(id, key, open) {
+        var t = tables[id];
+        if (!t) return;
+        t.state.open[key] = !!open;
+        changed(t, 'open');
+    }
+
+    function expandAll(id, open) {
+        var t = tables[id];
+        if (!t || !t.last) return;
+        t.last.groups.forEach(function (k) { t.state.open[k] = !!open; });
+        changed(t, 'open');
+    }
+
+    function unfold(id, groupKey) {
+        var t = tables[id];
+        if (!t) return;
+        t.state.unfold[groupKey] = true;
+        changed(t, 'unfold');
+    }
+
+    /* The control names the row by its page key; the view remembers it by its hide key. */
+    function hide(id, key) {
+        var t = tables[id];
+        if (!t) return;
+        var record = t.records ? t.records[String(key)] : undefined;
+        var remembered = record !== undefined && t.spec.hideKey ? String(t.spec.hideKey(record)) : String(key);
+        if (t.state.hidden.indexOf(remembered) === -1) t.state.hidden.push(remembered);
+        changed(t, 'hidden');
+    }
+
+    function showHidden(id) {
+        var t = tables[id];
+        if (!t) return;
+        t.state.hidden = [];
+        changed(t, 'hidden');
+    }
+
+    function toggleColumn(id, col) {
+        var t = tables[id];
+        if (!t || !columnOf(t.spec, col)) return;
+        var i = t.state.hiddenCols.indexOf(col);
+        if (i === -1) t.state.hiddenCols.push(col);
+        else t.state.hiddenCols.splice(i, 1);
+        changed(t, 'columns');
+    }
+
+    function toggleColumnsMenu(id) {
+        var t = tables[id];
+        if (!t) return;
+        t.menu = !t.menu;
+        changed(t, 'menu');
+    }
+
+    /** A choice of the table's own, remembered with its view (the k6 timings' statistic). */
+    function setExtra(id, key, value) {
+        var t = tables[id];
+        if (!t) return;
+        t.state.extra[key] = value;
+        changed(t, 'extra');
+    }
+
+    function columnHidden(id, col) {
+        var t = tables[id];
+        return !!t && t.state.hiddenCols.indexOf(col) !== -1;
+    }
+
+    function visibleColumns(t) {
+        return (t.spec.columns || []).filter(function (c) { return t.state.hiddenCols.indexOf(c.id) === -1; });
+    }
+
+    /** What CSV writes (FR-066): the rows left after the search, chips, ticks and x, every group open,
+        and the columns shown, each cell as the table writes it. */
+    function csvRows(id) {
+        var t = tables[id];
+        if (!t || !t.last) return null;
+        var cols = visibleColumns(t).filter(function (c) { return c.csv !== false; });
+        return {
+            headers: cols.map(function (c) { return c.label; }),
+            rows: t.last.kept.map(function (r) {
+                return cols.map(function (c) {
+                    var v = c.text ? c.text(r) : c.value(r);
+                    return v === null || v === undefined ? '' : String(v);
+                });
+            })
+        };
+    }
+
+    function csv(id) {
+        var t = tables[id];
+        var out = csvRows(id);
+        if (!out) return;
+        downloadCsvFile(t.spec.csvName || id + '.csv', buildCsvFromArrays(out.headers, out.rows));
+    }
+
+    /* A Columns menu closes on a click outside it and on Escape, as a menu does. */
+    var menuDismissBound = false;
+    function bindMenuDismiss() {
+        if (menuDismissBound || typeof document === 'undefined' || !document.addEventListener) return;
+        menuDismissBound = true;
+        var closeAll = function (except) {
+            Object.keys(tables).forEach(function (id) {
+                var t = tables[id];
+                if (t.menu && id !== except) { t.menu = false; changed(t, 'menu'); }
+            });
+        };
+        document.addEventListener('click', function (e) {
+            var inside = e.target && e.target.closest ? e.target.closest('.wir-table-columns') : null;
+            closeAll(inside ? inside.getAttribute('data-table') : null);
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' || e.key === 'Esc') closeAll(null);
+        });
+    }
+
+    /* ---------------------------------------------------------------- what a table draws */
+
+    function esc(s) {
+        return escapeHtml(s);
+    }
+
+    /** One header cell: a button that sorts by the column's value, aria-sort on the sorted column only
+        (WAI-ARIA's sortable table), from the mouse or the keyboard (FR-064). */
+    function headCell(id, col, opts) {
+        var t = tables[id];
+        var c = columnOf(t.spec, col);
+        opts = opts || {};
+        var sorted = !!(t.state.sort && t.state.sort.col === col);
+        var dir = sorted ? t.state.sort.dir : null;
+        var attrs = ' data-col-id="' + esc(col) + '"' + (columnHidden(id, col) ? ' style="display:none"' : '');
+        if (c.sortable === false) {
+            return '<th' + (opts.cls ? ' class="' + opts.cls + '"' : '') + attrs + '>' + esc(c.label) +
+                (opts.extra || '') + '</th>';
+        }
+        return '<th class="wir-th-sortable' + (opts.cls ? ' ' + opts.cls : '') + '" data-sort-col="' + esc(col) + '"' +
+            attrs + (sorted ? ' aria-sort="' + (dir === 'desc' ? 'descending' : 'ascending') + '"' : '') + '>' +
+            '<button type="button" class="wir-sort-btn" id="' + esc(id + '-sort-' + col) + '"' +
+            ' title="' + esc(opts.title || 'Sort by ' + c.label) + '"' +
+            ' onclick="WIR.table.sortBy(' + jsArg(id) + ', ' + jsArg(col) + ')">' +
+            esc(c.label) +
+            '<span class="wir-sort-glyph' + (sorted ? ' wir-sort-on' : '') + '">' +
+            (sorted ? (dir === 'desc' ? '▼' : '▲') : '↕') + '</span></button>' + (opts.extra || '') + '</th>';
+    }
+
+    /** A body cell's attributes: its column, and hidden while the column is. */
+    function cellAttrs(id, col) {
+        return ' data-col-id="' + esc(col) + '"' + (columnHidden(id, col) ? ' style="display:none"' : '');
+    }
+
+    function shownColumnCount(id) {
+        return visibleColumns(tables[id]).length;
+    }
+
+    /** x on a row (FR-065). The key is the view's: what "Show N hidden" and the memory name the row by. */
+    function hideButton(id, key) {
+        return '<button type="button" class="wir-row-hide" title="Hide this row" aria-label="Hide this row"' +
+            ' onclick="WIR.table.hide(' + jsArg(id) + ', ' + jsArg(key) + ')">×</button>';
+    }
+
+    /** A group's header row: open or close it, and its counts — never a sum or an average (FR-063). `noun` is
+        [one, many], so a group of one reads "1 rule". */
+    function groupRow(id, row, colspan, noun) {
+        var t = tables[id];
+        var word = Array.isArray(noun) ? (row.size === 1 ? noun[0] : noun[1]) : (noun || 'rows');
+        var label = t.spec.statusLabel || WIR.status.chipLabel;
+        var counts = (t.spec.statusOrder || Object.keys(row.counts)).filter(function (s) { return row.counts[s]; })
+            .map(function (s) { return row.counts[s] + ' ' + String(label(s)).toLowerCase(); });
+        return '<tr class="wir-group-row' + (row.open ? ' wir-group-open' : '') + '" data-group="' + esc(row.key) + '">' +
+            '<td colspan="' + colspan + '"><button type="button" class="wir-group-toggle"' +
+            ' aria-expanded="' + !!row.open + '"' +
+            ' onclick="WIR.table.setOpen(' + jsArg(id) + ', ' + jsArg(row.key) + ', ' + !row.open + ')">' +
+            (row.open ? '▾' : '▸') + ' ' + esc(row.label) + '</button>' +
+            '<span class="wir-group-counts">' + row.size + ' ' + esc(word) +
+            (counts.length ? ' · ' + esc(counts.join(' · ')) : '') + '</span></td></tr>';
+    }
+
+    /** The folded rows of a group as one line, with the control that shows them (FR-007). */
+    function foldRow(id, row, colspan, text) {
+        return '<tr class="wir-fold-row" data-group="' + esc(row.group) + '"><td colspan="' + colspan + '">' +
+            esc(text) + ' <button type="button" class="wir-btn wir-fold-show"' +
+            ' onclick="WIR.table.unfold(' + jsArg(id) + ', ' + jsArg(row.group) + ')">Show</button></td></tr>';
+    }
+
+    /**
+     * The one toolbar row above a table (Q1 A): search, status chips with counts, Group by, Expand all
+     * and Collapse all while grouped, the table's own controls (opts.extra), then Columns, "Show N
+     * hidden" and CSV. Call compute() first: the chips count the view's rows.
+     */
+    function toolbar(id, opts) {
+        var t = tables[id];
+        var s = t.state;
+        var spec = t.spec;
+        opts = opts || {};
+        var h = '<div class="wir-filter-bar wir-table-toolbar" data-table="' + esc(id) + '">';
+        if (spec.search) {
+            h += '<input type="text" class="wir-rules-search wir-table-search" id="' + esc(opts.searchId || id + '-search') + '"' +
+                ' placeholder="' + esc(opts.placeholder || 'Search…') + '" aria-label="' + esc(opts.label || 'Search') + '"' +
+                ' value="' + esc(s.q) + '"' +
+                ' oninput="WIR.table.setQuery(' + jsArg(id) + ', this.value)"/>';
+        }
+        if (spec.status && t.last) {
+            h += WIR.status.chipsHtml({
+                counts: t.last.counts, order: spec.statusOrder, selected: s.statuses, label: spec.statusLabel,
+                noun: opts.noun,
+                onclick: function (st) { return 'WIR.table.toggleStatus(' + jsArg(id) + ', ' + jsArg(st) + ')'; }
+            });
+        }
+        var groups = Object.keys(spec.groupings || {});
+        if (groups.length) {
+            h += '<label class="wir-table-group">Group by <select class="wir-filter-select" id="' + esc(id + '-group') + '"' +
+                ' onchange="WIR.table.setGroup(' + jsArg(id) + ', this.value)">' +
+                (spec.noGrouping === false ? '' : '<option value=""' + (s.group ? '' : ' selected') + '>None</option>') +
+                groups.map(function (g) {
+                    return '<option value="' + esc(g) + '"' + (s.group === g ? ' selected' : '') + '>' +
+                        esc(spec.groupings[g].label || g) + '</option>';
+                }).join('') + '</select></label>';
+            if (s.group && t.last && t.last.groups.length) {
+                h += '<button type="button" class="wir-btn wir-table-expand" id="' + esc(id + '-expand-all') + '"' +
+                    ' onclick="WIR.table.expandAll(' + jsArg(id) + ', true)">Expand all</button>' +
+                    '<button type="button" class="wir-btn wir-table-expand" id="' + esc(id + '-collapse-all') + '"' +
+                    ' onclick="WIR.table.expandAll(' + jsArg(id) + ', false)">Collapse all</button>';
+            }
+        }
+        if (opts.extra) h += opts.extra;
+        h += '<span class="wir-table-tools">';
+        var hideable = (spec.columns || []).filter(function (c) { return c.hideable !== false; });
+        if (hideable.length) {
+            h += '<span class="wir-table-columns" data-table="' + esc(id) + '">' +
+                '<button type="button" class="wir-btn" id="' + esc(id + '-columns') + '" aria-haspopup="true"' +
+                ' aria-expanded="' + !!t.menu + '" onclick="WIR.table.toggleColumnsMenu(' + jsArg(id) + ')">Columns ▾</button>' +
+                (t.menu ? '<div class="wir-table-columns-menu" id="' + esc(id + '-columns-menu') + '">' +
+                    hideable.map(function (c) {
+                        return '<label><input type="checkbox" data-col="' + esc(c.id) + '"' +
+                            (columnHidden(id, c.id) ? '' : ' checked') +
+                            ' onchange="WIR.table.toggleColumn(' + jsArg(id) + ', ' + jsArg(c.id) + ')"/> ' +
+                            esc(c.label) + '</label>';
+                    }).join('') + '</div>' : '') +
+                '</span>';
+        }
+        if (t.last && t.last.hidden) {
+            h += '<button type="button" class="wir-btn wir-table-show-hidden" id="' + esc(id + '-show-hidden') + '"' +
+                ' onclick="WIR.table.showHidden(' + jsArg(id) + ')">Show ' + t.last.hidden + ' hidden</button>';
+        }
+        if (spec.csvName !== false) {
+            h += '<button type="button" class="wir-btn wir-table-csv" id="' + esc(id + '-csv') + '"' +
+                ' title="Download the rows and columns shown, as CSV"' +
+                ' onclick="WIR.table.csv(' + jsArg(id) + ')">CSV</button>';
+        }
+        return h + '</span></div>';
+    }
+
+    return {
+        view: view,
+        compareValues: compareValues,
+        register: register,
+        table: table,
+        compute: compute,
+        toolbar: toolbar,
+        headCell: headCell,
+        cellAttrs: cellAttrs,
+        shownColumnCount: shownColumnCount,
+        hideButton: hideButton,
+        groupRow: groupRow,
+        foldRow: foldRow,
+        csvRows: csvRows,
+        filtersActive: filtersActive,
+        resetFilters: resetFilters,
+        setQuery: setQuery,
+        toggleStatus: toggleStatus,
+        setGroup: setGroup,
+        sortBy: sortBy,
+        setOpen: setOpen,
+        expandAll: expandAll,
+        unfold: unfold,
+        hide: hide,
+        showHidden: showHidden,
+        toggleColumn: toggleColumn,
+        toggleColumnsMenu: toggleColumnsMenu,
+        setExtra: setExtra,
+        csv: csv
+    };
+}());
+
+/* ============================================================
+ *  WIR.toolTab — the tab of a run another tool recorded (spec 002, US1-US3), drawn from chartData.tool.
+ *
+ *  Four WIR.tables: the thresholds (grouped by metric as k6's summary groups them, by request, condition or
+ *  result; each with the value k6 measured and, when it failed, how far past its limit), the HTTP timings (one
+ *  row per request in the Requests tab's tree, a statistic switch, a bar of the average request, a row that
+ *  opens to every statistic), the checks under their group path, and the group durations. A strip says what
+ *  failed. The counters are the template's tiles. The four searches are one: a name typed in any section narrows
+ *  every section (SC-003). Nothing here is a verdict: k6's thresholds are shown as k6 judged them.
+ * ============================================================ */
+WIR.toolTab = (function () {
+    'use strict';
+
+    var T_THRESHOLDS = 'toolThresholds';
+    var T_TIMINGS = 'toolTimings';
+    var T_CHECKS = 'toolChecks';
+    var T_GROUPS = 'toolGroupDurations';
+    var TABLES = [T_THRESHOLDS, T_TIMINGS, T_CHECKS, T_GROUPS];
+    var PARTS = ['blocked', 'connecting', 'tlsHandshaking', 'sending', 'waiting', 'receiving', 'duration'];
+    var PART_LABEL = { blocked: 'Blocked', connecting: 'Connecting', tlsHandshaking: 'TLS', sending: 'Sending',
+        waiting: 'Waiting', receiving: 'Receiving', duration: 'Duration' };
+    var data = null;
+    var hierarchy = {};
+    var expanded = Object.create(null);
+
+    function esc(s) {
+        return escapeHtml(s);
+    }
+
+    function isNum(v) {
+        return typeof v === 'number' && isFinite(v);
+    }
+
+    /** A number as k6 writes it bare: whole as is, else to two decimals, no thousands separator. */
+    function bare(v) {
+        return Math.round(v) === v ? String(v) : String(Math.round(v * 100) / 100);
+    }
+
+    function bytes(v) {
+        if (Math.abs(v) < 1000) return bare(v) + ' B';
+        if (Math.abs(v) < 1e6) return (v / 1000).toFixed(1) + ' kB';
+        return (v / 1e6).toFixed(1) + ' MB';
+    }
+
+    /**
+     * A value of a threshold's metric in k6's units (FR-002): a time in ms to two decimals, as k6's summary writes
+     * p(95)=779.72ms; a rate metric as a percentage; a counter as its count, or per second for its rate; data in B,
+     * kB or MB; anything else, a custom gauge's timestamp included, the bare number.
+     */
+    function formatIn(v, t) {
+        var perSecond = t.statistic === 'rate' && t.metricType === 'counter';
+        if (t.metricContains === 'time') return v.toFixed(2) + ' ms';
+        if (t.metricType === 'rate') return (v * 100).toFixed(2) + '%';
+        if (t.metricContains === 'data') return bytes(v) + (perSecond ? '/s' : '');
+        if (perSecond) return v.toFixed(2) + '/s';
+        return bare(v);
+    }
+
+    /** The measured value, or "not recorded" when the run data has none (never 0). */
+    function formatMeasured(t) {
+        return isNum(t.measured) ? formatIn(t.measured, t) : W('toolNotRecorded');
+    }
+
+    /**
+     * How far a failed threshold is past its limit: in the metric's unit, and as a share of the limit (none when the
+     * limit is 0). An upper limit (<, <=) is passed "over", a lower one (>, >=) "under", an equality "off".
+     */
+    function distance(t) {
+        if (t.passed || !isNum(t.measured) || !isNum(t.limit) || !t.operator) return null;
+        var past;
+        var word;
+        if (t.operator === '<' || t.operator === '<=') { past = t.measured - t.limit; word = 'over'; }
+        else if (t.operator === '>' || t.operator === '>=') { past = t.limit - t.measured; word = 'under'; }
+        else if (t.operator === '==' || t.operator === '===') { past = Math.abs(t.measured - t.limit); word = 'off'; }
+        else return null;
+        return { past: past, word: word, share: t.limit === 0 ? null : past / Math.abs(t.limit) };
+    }
+
+    function distanceText(t) {
+        var d = distance(t);
+        if (!d) return '';
+        return formatIn(d.past, t) + ' ' + d.word + (d.share === null ? '' : ' (' + Math.round(d.share * 100) + '%)');
+    }
+
+    /** k6's group path as a reader reads it: ::A::B is "A › B". */
+    function groupText(path) {
+        if (!path) return '';
+        return (path.indexOf('::') === 0 ? path.slice(2) : path).split('::').join(' › ');
+    }
+
+    function lastGroup(path) {
+        var parts = String(path || '').split('::').filter(Boolean);
+        return parts.length ? parts[parts.length - 1] : null;
+    }
+
+    function statistic() {
+        var t = WIR.table.table(T_TIMINGS);
+        var s = t && t.state.extra.statistic;
+        return data && data.trendStatistics.indexOf(s) !== -1 ? s : 'avg';
+    }
+
+    function failing(g) {
+        return (g.counts.FAIL || 0) > 0;
+    }
+
+    function failedFirst(a, b) {
+        return (failing(b) ? 1 : 0) - (failing(a) ? 1 : 0) || WIR.table.compareValues(a.label, b.label);
+    }
+
+    function resultStatus(r) {
+        return r.passed ? 'PASS' : 'FAIL';
+    }
+
+    function resultLabel(s) {
+        return s === 'FAIL' ? W('toolFailed') : W('toolPassed');
+    }
+
+    /* Every k6 table's search is one: what is typed in one section narrows every section (SC-003). */
+    function rendered(table) {
+        return function (what) {
+            if (what === 'query') {
+                var q = WIR.table.table(table).state.q;
+                TABLES.forEach(function (id) {
+                    var t = WIR.table.table(id);
+                    if (t) t.state.q = q;
+                });
+                renderAll();
+                return;
+            }
+            render(table);
+        };
+    }
+
+    function thresholdsSpec() {
+        return {
+            key: function (t) { return t.metric + ' ' + t.expression; },
+            columns: [
+                { id: 'result', label: 'Result', hideable: false,
+                  value: function (t) { return t.passed ? 1 : 0; }, text: function (t) { return resultLabel(resultStatus(t)); } },
+                { id: 'metric', label: 'Metric', hideable: false,
+                  value: function (t) { return t.metric; }, text: function (t) { return t.metric; } },
+                { id: 'request', label: W('Sampler'),
+                  value: function (t) { return t.request || ''; }, text: function (t) { return t.request || ''; } },
+                { id: 'expression', label: 'Threshold',
+                  value: function (t) { return t.expression; }, text: function (t) { return t.expression; } },
+                { id: 'measured', label: 'Measured',
+                  value: function (t) { return isNum(t.measured) ? t.measured : null; }, text: formatMeasured },
+                { id: 'distance', label: 'Past the limit', firstDir: 'desc',
+                  value: function (t) { var d = distance(t); return d ? (d.share === null ? d.past : d.share) : null; },
+                  text: distanceText }
+            ],
+            search: function (t) { return t.metric + ' ' + t.expression; },
+            status: resultStatus,
+            statusOrder: ['FAIL', 'PASS'],
+            statusLabel: resultLabel,
+            nameOf: function (t) { return t.request || null; },
+            groupings: {
+                metric: { label: 'Metric', of: function (t) { return t.base; }, open: failing, order: failedFirst },
+                request: { label: W('Sampler'), open: failing,
+                    of: function (t) {
+                        return t.request ? { key: 'r:' + t.request, label: t.request } : { key: '', label: W('toolNotTied') };
+                    },
+                    order: function (a, b) { return (a.key === '' ? 1 : 0) - (b.key === '' ? 1 : 0) || failedFirst(a, b); } },
+                condition: { label: 'Condition', of: function (t) { return t.expression; }, open: failing, order: failedFirst },
+                result: { label: 'Result', of: function (t) { var s = resultStatus(t); return { key: s, label: resultLabel(s) }; },
+                    order: function (a, b) { return a.key === 'FAIL' ? -1 : b.key === 'FAIL' ? 1 : 0; } }
+            },
+            defaultGroup: 'metric',
+            defaultSort: { col: 'result', dir: 'asc' },
+            /* decision 2: what holds for any run, folded one line per group; a failed one never folds */
+            fold: function (t) { return t.alwaysTrue && t.passed; },
+            csvName: data.name + '-thresholds.csv',
+            render: rendered(T_THRESHOLDS)
+        };
+    }
+
+    /* The groups the requests sit under, k6's groups being the transactions: rows of their own, with no parts. */
+    function timingRecords() {
+        var recs = [];
+        if (data.timingsEveryRequest) {
+            recs.push({ every: true, request: W('toolEverySampler'), parts: data.timingsEveryRequest.parts });
+        }
+        var present = Object.create(null);
+        data.timings.forEach(function (t) { present[t.request] = true; recs.push({ request: t.request, parts: t.parts }); });
+        var parentOf = Object.create(null);
+        Object.keys(hierarchy).forEach(function (p) {
+            (hierarchy[p] || []).forEach(function (c) { if (parentOf[c] === undefined) parentOf[c] = p; });
+        });
+        data.timings.forEach(function (t) {
+            for (var p = parentOf[t.request], n = 0; p !== undefined && n < 50; p = parentOf[p], n++) {
+                if (present[p]) continue;
+                present[p] = true;
+                recs.push({ request: p, group: true, parts: null });
+            }
+        });
+        return recs;
+    }
+
+    function partValue(r, part) {
+        var s = r.parts && r.parts[part];
+        return s && isNum(s[statistic()]) ? s[statistic()] : null;
+    }
+
+    function timingsSpec() {
+        return {
+            key: function (r) { return r.every ? '*' : r.request; },
+            columns: [{ id: 'request', label: W('Sampler'), hideable: false,
+                value: function (r) { return r.request; }, text: function (r) { return r.request; } }]
+                .concat(PARTS.map(function (p) {
+                    return { id: p, label: PART_LABEL[p], firstDir: 'desc',
+                        value: function (r) { return partValue(r, p); },
+                        text: function (r) { var v = partValue(r, p); return v === null ? '' : v.toFixed(2); } };
+                }))
+                .concat([{ id: 'bar', label: 'Average request', sortable: false, csv: false,
+                    value: function () { return null; } }]),
+            search: function (r) { return r.request; },
+            nameOf: function (r) { return r.every ? null : r.request; },
+            pinned: function (r) { return r.every ? 'first' : null; },
+            groupings: { transaction: { label: 'Group', tree: true } },
+            tree: { nameOf: function (r) { return r.request; }, childrenOf: hierarchy, open: true },
+            defaultGroup: 'transaction',
+            csvName: data.name + '-http-timings.csv',
+            render: rendered(T_TIMINGS)
+        };
+    }
+
+    function checksSpec() {
+        return {
+            key: function (c) { return c.group + ' ' + c.name; },
+            columns: [
+                { id: 'result', label: 'Result', hideable: false,
+                  value: function (c) { return c.fails > 0 ? 0 : 1; }, text: function (c) { return resultLabel(c.fails > 0 ? 'FAIL' : 'PASS'); } },
+                { id: 'name', label: 'Check', hideable: false,
+                  value: function (c) { return c.name; }, text: function (c) { return c.name; } },
+                { id: 'passes', label: 'Passes', value: function (c) { return c.passes; }, text: function (c) { return String(c.passes); } },
+                { id: 'fails', label: 'Fails', firstDir: 'desc', value: function (c) { return c.fails; }, text: function (c) { return String(c.fails); } },
+                { id: 'rate', label: 'Pass rate', value: passRate,
+                  text: function (c) { var r = passRate(c); return r === null ? '' : (r * 100).toFixed(2) + '%'; } }
+            ],
+            search: function (c) { return groupText(c.group) + ' ' + c.name; },
+            status: function (c) { return c.fails > 0 ? 'FAIL' : 'PASS'; },
+            statusOrder: ['FAIL', 'PASS'],
+            statusLabel: resultLabel,
+            nameOf: function (c) { return lastGroup(c.group); },
+            groupings: { group: { label: 'Group', of: function (c) {
+                return { key: c.group || '', label: groupText(c.group) || '(no group)' };
+            }, order: failedFirst } },
+            defaultGroup: 'group',
+            defaultSort: { col: 'fails', dir: 'desc' },
+            csvName: data.name + '-checks.csv',
+            render: rendered(T_CHECKS)
+        };
+    }
+
+    function passRate(c) {
+        var all = c.passes + c.fails;
+        return all ? c.passes / all : null;
+    }
+
+    function groupsSpec() {
+        return {
+            key: function (g) { return g.name; },
+            columns: [{ id: 'name', label: 'Group', hideable: false,
+                value: function (g) { return g.name; }, text: function (g) { return g.name; } },
+                { id: 'count', label: 'Passes', value: function (g) { return g.count; }, text: function (g) { return String(g.count); } }]
+                .concat(data.trendStatistics.map(function (s) {
+                    return { id: s, label: s, value: function (g) { return g[s]; },
+                        text: function (g) { return isNum(g[s]) ? g[s].toFixed(2) : ''; } };
+                })),
+            search: function (g) { return g.name; },
+            nameOf: function (g) { return g.name; },
+            groupings: { transaction: { label: 'Group', tree: true } },
+            tree: { nameOf: function (g) { return g.name; }, childrenOf: hierarchy, open: true },
+            defaultGroup: 'transaction',
+            csvName: data.name + '-group-duration.csv',
+            render: rendered(T_GROUPS)
+        };
+    }
+
+    /* ---------------------------------------------------------------- what the tab draws */
+
+    function chip(status) {
+        return '<span class="' + WIR.status.chipClass(status) + '">' + esc(resultLabel(status)) + '</span>';
+    }
+
+    function requestLink(name) {
+        if (!name) return '';
+        return '<button type="button" class="wir-link wir-tool-request"' +
+            ' onclick="WIR.toolTab.openRequest(' + jsArg(name) + ')">' +
+            esc(name) + '</button>';
+    }
+
+    function bodyRows(id, v, cols, rowHtml, noun, foldText) {
+        return v.rows.map(function (row) {
+            if (row.kind === 'group') return WIR.table.groupRow(id, row, cols, noun);
+            if (row.kind === 'fold') return WIR.table.foldRow(id, row, cols, foldText(row.count));
+            return rowHtml(row);
+        }).join('');
+    }
+
+    function head(id, cols) {
+        return '<thead><tr>' + cols.map(function (c) { return WIR.table.headCell(id, c); }).join('') + '<th></th></tr></thead>';
+    }
+
+    function thresholdsHtml() {
+        var v = WIR.table.compute(T_THRESHOLDS, data.thresholds);
+        var failed = data.thresholds.filter(function (t) { return !t.passed; }).length;
+        var title = '<h2>' + esc(W('toolThresholds')) + ' (' + (data.thresholds.length - failed) + ' of ' +
+            data.thresholds.length + ' ' + esc(W('toolPassed')) + ')</h2>';
+        if (!data.thresholds.length) return '<h2>' + esc(W('toolThresholds')) + '</h2><p class="wir-empty">' + esc(W('toolNoThresholds')) + '</p>';
+        var cols = WIR.table.shownColumnCount(T_THRESHOLDS) + 1;
+        var at = function (c) { return WIR.table.cellAttrs(T_THRESHOLDS, c); };
+        return title + WIR.table.toolbar(T_THRESHOLDS, { searchId: 'toolSearch-thresholds', label: 'Search the thresholds',
+                placeholder: 'Search metric, tag or threshold…', noun: 'thresholds' }) +
+            '<div class="table-wrapper"><table class="data-table wir-tool-table" id="' + T_THRESHOLDS + '">' +
+            head(T_THRESHOLDS, ['result', 'metric', 'request', 'expression', 'measured', 'distance']) + '<tbody>' +
+            bodyRows(T_THRESHOLDS, v, cols, function (row) {
+                var t = row.record;
+                return '<tr class="wir-tool-row' + (t.passed ? '' : ' wir-tool-row-failed') + '"' +
+                    ' data-metric="' + esc(t.metric) + '" data-expression="' + esc(t.expression) + '">' +
+                    '<td' + at('result') + '>' + chip(resultStatus(t)) + '</td>' +
+                    '<td' + at('metric') + '><code>' + esc(t.base) + '</code>' +
+                    (t.tags ? '<span class="wir-tool-tags">{' + esc(t.tags) + '}</span>' : '') + '</td>' +
+                    '<td' + at('request') + '>' + requestLink(t.request) + '</td>' +
+                    '<td' + at('expression') + '><code>' + esc(t.expression) + '</code></td>' +
+                    '<td class="wir-num"' + at('measured') + '>' +
+                    (isNum(t.measured) ? esc((t.statistic || '') + ' = ' + formatMeasured(t)) : '<span class="wir-muted">' + esc(formatMeasured(t)) + '</span>') + '</td>' +
+                    '<td class="wir-num wir-tool-distance"' + at('distance') + '>' + esc(distanceText(t)) + '</td>' +
+                    '<td>' + WIR.table.hideButton(T_THRESHOLDS, row.key) + '</td></tr>';
+            }, ['threshold', 'thresholds'], function (n) { return n + ' ' + W('toolAlwaysTrue'); }) +
+            '</tbody></table></div>';
+    }
+
+    /* Choice 2 A: the average request from start to end — blocked, with connecting and TLS drawn inside it, then
+       sending, waiting and receiving. It stays on the average: percentiles of the parts do not add up. */
+    function barHtml(r) {
+        var p = r.parts || {};
+        var avg = function (k) { return p[k] && isNum(p[k].avg) ? p[k].avg : 0; };
+        var connecting = avg('connecting');
+        var tls = avg('tlsHandshaking');
+        var blocked = Math.max(avg('blocked'), connecting + tls);
+        var segments = [['connecting', connecting], ['tls', tls], ['blocked', blocked - connecting - tls],
+            ['sending', avg('sending')], ['waiting', avg('waiting')], ['receiving', avg('receiving')]];
+        var total = segments.reduce(function (s, x) { return s + x[1]; }, 0);
+        if (!(total > 0)) return '';
+        var title = 'Average request: blocked ' + blocked.toFixed(2) + ' ms (connecting ' + connecting.toFixed(2) +
+            ', TLS ' + tls.toFixed(2) + '), sending ' + avg('sending').toFixed(2) + ', waiting ' +
+            avg('waiting').toFixed(2) + ', receiving ' + avg('receiving').toFixed(2) + ' ms';
+        return '<span class="wir-tool-bar" title="' + esc(title) + '">' + segments.map(function (s) {
+            var w = s[1] / total * 100;
+            return w > 0 ? '<span class="wir-tool-bar-' + s[0] + '" style="width:' + w.toFixed(2) + '%"></span>' : '';
+        }).join('') + '</span>';
+    }
+
+    function timingDetail(r, cols) {
+        var stats = data.trendStatistics;
+        return '<tr class="wir-tool-detail-row"><td colspan="' + cols + '"><table class="data-table wir-tool-detail">' +
+            '<thead><tr><th>Part</th><th>count</th>' + stats.map(function (s) { return '<th>' + esc(s) + '</th>'; }).join('') +
+            '</tr></thead><tbody>' + PARTS.filter(function (p) { return r.parts && r.parts[p]; }).map(function (p) {
+                var s = r.parts[p];
+                return '<tr><td><code>' + esc(p === 'duration' ? 'http_req_duration' : 'http_req_' +
+                    p.replace(/[A-Z]/g, function (c) { return '_' + c.toLowerCase(); })) + '</code></td><td>' + s.count + '</td>' +
+                    stats.map(function (k) { return '<td class="wir-num">' + (isNum(s[k]) ? s[k].toFixed(2) : '') + '</td>'; }).join('') +
+                    '</tr>';
+            }).join('') + '</tbody></table></td></tr>';
+    }
+
+    function timingsHtml() {
+        var title = '<h2>' + esc(W('toolTimings')) + '</h2>';
+        if (!data.timings.length) return data.k6 ? title + '<p class="wir-empty">' + esc(W('toolNoTimings')) + '</p>' : '';
+        var v = WIR.table.compute(T_TIMINGS, timingRecords());
+        var cols = WIR.table.shownColumnCount(T_TIMINGS) + 1;
+        var at = function (c) { return WIR.table.cellAttrs(T_TIMINGS, c); };
+        var current = statistic();
+        var switcher = '<label class="wir-table-group">' + esc(W('toolStatistic')) +
+            ' <select class="wir-filter-select" id="toolTimings-statistic"' +
+            ' onchange="WIR.table.setExtra(' + jsArg(T_TIMINGS) + ', \'statistic\', this.value)">' +
+            data.trendStatistics.map(function (s) {
+                return '<option value="' + esc(s) + '"' + (s === current ? ' selected' : '') + '>' + esc(s) + '</option>';
+            }).join('') + '</select></label>';
+        return title + '<p class="wir-hint">Each request\'s time in its parts, in ms. Blocked holds connecting and TLS ' +
+            'on a new connection; duration is sending + waiting + receiving, as k6 counts it.</p>' +
+            WIR.table.toolbar(T_TIMINGS, { searchId: 'toolSearch-timings', label: 'Search the timings',
+                placeholder: 'Search ' + W('samplers') + '…', noun: W('samplers'), extra: switcher }) +
+            '<div class="table-wrapper"><table class="data-table wir-tool-table" id="' + T_TIMINGS + '">' +
+            head(T_TIMINGS, ['request'].concat(PARTS, ['bar'])) + '<tbody>' +
+            v.rows.map(function (row) {
+                var r = row.record;
+                var toggle = row.parent ? '<button type="button" class="wir-group-toggle" aria-expanded="' + !!row.open + '"' +
+                    ' onclick="WIR.table.setOpen(' + jsArg(T_TIMINGS) + ', ' + jsArg(row.key) + ', ' + !row.open + ')">' +
+                    (row.open ? '▾' : '▸') + '</button> ' : '';
+                var open = !!expanded[row.key];
+                var more = r.parts ? '<button type="button" class="wir-link wir-tool-more" aria-expanded="' + open + '"' +
+                    ' title="Every statistic of every part"' +
+                    ' onclick="WIR.toolTab.toggleTiming(' + jsArg(row.key) + ')">' + (open ? '▴' : '▾') + '</button>' : '';
+                var name = r.every ? '<strong>' + esc(r.request) + '</strong>' : r.group ? esc(r.request) : requestLink(r.request);
+                var html = '<tr class="wir-tool-row' + (r.group ? ' wir-tool-group' : '') + (r.every ? ' wir-tool-every' : '') + '"' +
+                    ' data-request="' + esc(r.every ? '*' : r.request) + '">' +
+                    '<td class="wir-tool-name"' + at('request') + ' style="--wir-depth:' + (row.depth || 0) + '">' + toggle + name + ' ' + more + '</td>' +
+                    PARTS.map(function (p) {
+                        var x = partValue(r, p);
+                        return '<td class="wir-num"' + at(p) + '>' + (x === null ? '' : x.toFixed(2)) + '</td>';
+                    }).join('') +
+                    '<td' + at('bar') + '>' + barHtml(r) + '</td>' +
+                    '<td>' + (r.every ? '' : WIR.table.hideButton(T_TIMINGS, row.key)) + '</td></tr>';
+                return html + (open && r.parts ? timingDetail(r, cols) : '');
+            }).join('') + '</tbody></table></div>';
+    }
+
+    function checksHtml() {
+        var title = '<h2>' + esc(W('toolChecks')) + '</h2>';
+        if (!data.checks.length) return data.k6 ? title + '<p class="wir-empty">' + esc(W('toolNoChecks')) + '</p>' : '';
+        var v = WIR.table.compute(T_CHECKS, data.checks);
+        var cols = WIR.table.shownColumnCount(T_CHECKS) + 1;
+        var at = function (c) { return WIR.table.cellAttrs(T_CHECKS, c); };
+        return title + WIR.table.toolbar(T_CHECKS, { searchId: 'toolSearch-checks', label: 'Search the checks',
+                placeholder: 'Search check or group…', noun: 'checks' }) +
+            '<div class="table-wrapper"><table class="data-table wir-tool-table" id="' + T_CHECKS + '">' +
+            head(T_CHECKS, ['result', 'name', 'passes', 'fails', 'rate']) + '<tbody>' +
+            bodyRows(T_CHECKS, v, cols, function (row) {
+                var c = row.record;
+                var rate = passRate(c);
+                return '<tr class="wir-tool-row" data-group="' + esc(c.group) + '" data-check="' + esc(c.name) + '">' +
+                    '<td' + at('result') + '>' + chip(c.fails > 0 ? 'FAIL' : 'PASS') + '</td>' +
+                    '<td' + at('name') + '>' + esc(c.name) + '</td>' +
+                    '<td class="wir-num"' + at('passes') + '>' + c.passes + '</td>' +
+                    '<td class="wir-num' + (c.fails > 0 ? ' wir-tool-failed' : '') + '"' + at('fails') + '>' + c.fails + '</td>' +
+                    '<td' + at('rate') + '>' + (rate === null ? '' : '<span class="wir-tool-rate">' + (rate * 100).toFixed(2) + '%</span>' +
+                        '<span class="wir-budget-bar"><span class="wir-budget-fill ' + (rate < 1 ? 'wir-budget-over' : 'wir-budget-ok') +
+                        '" style="width:' + (rate * 100).toFixed(2) + '%"></span></span>') + '</td>' +
+                    '<td>' + WIR.table.hideButton(T_CHECKS, row.key) + '</td></tr>';
+            }, ['check', 'checks']) + '</tbody></table></div>';
+    }
+
+    function groupsHtml() {
+        var title = '<h2>' + esc(W('toolGroupDuration')) + '</h2>';
+        if (!data.groupDurations.length) return data.k6 ? title + '<p class="wir-empty">' + esc(W('toolNoGroups')) + '</p>' : '';
+        var v = WIR.table.compute(T_GROUPS, data.groupDurations);
+        var at = function (c) { return WIR.table.cellAttrs(T_GROUPS, c); };
+        var cols = ['name', 'count'].concat(data.trendStatistics);
+        return title + '<p class="wir-hint">Each group\'s passes on their wall time, think time included (<code>group_duration</code>).</p>' +
+            WIR.table.toolbar(T_GROUPS, { searchId: 'toolSearch-groups', label: 'Search the groups',
+                placeholder: 'Search group…', noun: 'groups' }) +
+            '<div class="table-wrapper"><table class="data-table wir-tool-table" id="' + T_GROUPS + '">' +
+            head(T_GROUPS, cols) + '<tbody>' + v.rows.map(function (row) {
+                var g = row.record;
+                return '<tr class="wir-tool-row" data-group="' + esc(g.name) + '">' +
+                    '<td class="wir-tool-name"' + at('name') + ' style="--wir-depth:' + (row.depth || 0) + '">' + esc(g.name) + '</td>' +
+                    '<td class="wir-num"' + at('count') + '>' + g.count + '</td>' +
+                    data.trendStatistics.map(function (s) {
+                        return '<td class="wir-num"' + at(s) + '>' + (isNum(g[s]) ? g[s].toFixed(2) : '') + '</td>';
+                    }).join('') + '<td>' + WIR.table.hideButton(T_GROUPS, row.key) + '</td></tr>';
+            }).join('') + '</tbody></table></div>';
+    }
+
+    /** FR-023: the first screen answers "did k6 see a problem". */
+    function stripHtml() {
+        var parts = [];
+        var failed = data.thresholds.filter(function (t) { return !t.passed; });
+        if (data.thresholds.length) {
+            parts.push(esc(W('toolThresholds')) + ': ' + failed.length + ' of ' + data.thresholds.length + ' ' + esc(W('toolFailed')) +
+                (failed.length ? ': ' + failed.slice(0, 3).map(function (t) {
+                    return '<code>' + esc((t.request || t.base) + ' ' + t.expression) + '</code>';
+                }).join(', ') + (failed.length > 3 ? ' and ' + (failed.length - 3) + ' more' : '') : ''));
+        }
+        var checksFailed = data.checks.filter(function (c) { return c.fails > 0; });
+        if (data.checks.length) {
+            parts.push(esc(W('toolChecks')) + ': ' + checksFailed.length + ' of ' + data.checks.length + ' ' + esc(W('toolFailed')) +
+                (checksFailed.length ? ': ' + checksFailed.slice(0, 3).map(function (c) {
+                    return '<code>' + esc(c.name) + '</code>';
+                }).join(', ') : ''));
+        } else if (data.k6) {
+            parts.push(esc(W('toolChecks')) + ': none ran');
+        }
+        if (!parts.length) return '';
+        return '<div class="wir-tool-strip' + (failed.length || checksFailed.length ? ' wir-tool-strip-failed' : '') + '"' +
+            ' id="toolStrip">' + parts.join(' · ') + '</div>';
+    }
+
+    var HOSTS = {};
+    HOSTS[T_THRESHOLDS] = thresholdsHtml;
+    HOSTS[T_TIMINGS] = timingsHtml;
+    HOSTS[T_CHECKS] = checksHtml;
+    HOSTS[T_GROUPS] = groupsHtml;
+
+    function render(table) {
+        var host = document.getElementById(table + 'Host');
+        if (!host) return;
+        fillKeepingFocus(host, HOSTS[table]());
+    }
+
+    function renderAll() {
+        TABLES.forEach(render);
+    }
+
+    function init(block) {
+        var mount = document.getElementById('toolTabMount');
+        if (!mount || !block) return;
+        data = block;
+        data.thresholds = data.thresholds || [];
+        data.timings = data.timings || [];
+        data.checks = data.checks || [];
+        data.groupDurations = data.groupDurations || [];
+        data.trendStatistics = data.trendStatistics && data.trendStatistics.length ? data.trendStatistics : ['avg'];
+        hierarchy = (typeof globalChartData !== 'undefined' && globalChartData && globalChartData.transactionHierarchy) || {};
+        WIR.table.register(T_THRESHOLDS, thresholdsSpec());
+        WIR.table.register(T_TIMINGS, timingsSpec());
+        WIR.table.register(T_CHECKS, checksSpec());
+        WIR.table.register(T_GROUPS, groupsSpec());
+        mount.innerHTML = stripHtml() + TABLES.map(function (id) {
+            return '<section class="report-section" id="' + id + 'Host"></section>';
+        }).join('');
+        renderAll();
+    }
+
+    function toggleTiming(key) {
+        if (expanded[key]) delete expanded[key];
+        else expanded[key] = true;
+        render(T_TIMINGS);
+    }
+
+    return {
+        init: init,
+        toggleTiming: toggleTiming,
+        openRequest: function (name) { openRequestRow(name); },
+        formatMeasured: formatMeasured,
+        distanceText: distanceText,
+        groupText: groupText
     };
 }());
 
@@ -9582,21 +10865,17 @@ WIR.asserts = (function () {
            strip, the worst-breaches list, the findings, the legacy panel, the header
            badge or the downloaded file. Every one of those reads state.rules whole. */
         filters: {
-            q: '',           /* free text */
-            status: [],      /* OR within itself; empty means all */
-            metric: '', kind: '', sampler: '',   /* '' means any */
+            metric: '', kind: '', sampler: '',   /* '' means any: the More filters, this tab's own */
             draftsOnly: false
         },
-        showAdvanced: false,
-        statusMenu: false,
-        sort: { col: 'severity', dir: 'asc' }
+        showAdvanced: false
     };
 
-    /* Sort is a preference and is remembered. Filters are not: opening a report next
-       week to "Showing 4 of 15" while the header badge says FAIL reads as a bug, not
-       as a filter someone left on. The wir_ prefix matters — loadClean() in the
-       Playwright helpers clears exactly that namespace. */
-    var LS_ASSERTS_SORT = 'wir_assertsSort';
+    /* The rules table is a WIR.table (spec 002): its search, chips, Group by, sort, x and Columns are
+       every table's, and its view (sort, grouping, hidden rows and columns) is remembered for this
+       report, the filters not. */
+    var TABLE = 'assertsTable';
+
 
     function esc(s) {
         return escapeHtml(s);
@@ -10788,20 +12067,12 @@ WIR.asserts = (function () {
         sampler: 'One ' + W('sampler'), samplers: W('Sampler') + ' list', match: 'Pattern', overall: 'Whole run'
     };
 
-    /* Every sortable header must appear here: sortBy() returns immediately on a column this
-       map does not name, so a header rendered with tabindex, role="columnheader" and aria-sort
-       was inert — announced to a screen reader as sortable, silent when activated, and
-       aria-sort stuck on "none" forever. Budget shipped that way, with compareBy's own budget
-       case and consumedOrFloor sitting unreachable behind it. */
+    /* The count line's words for the sorted column ("sorted by breach margin"). */
     var SORT_LABEL = {
         severity: 'severity', id: 'rule id', target: 'target', metric: 'metric',
         criteria: 'threshold', actual: 'breach margin', budget: 'budget',
         matches: 'matches'
     };
-
-    /* Actual, Budget and Matches read as "worst first" / "most used first" / "most first";
-       everything else reads alphabetically or worst-first already. */
-    var SORT_DEFAULT_DIR = { actual: 'desc', budget: 'desc', matches: 'desc' };
 
     var OVERALL_LABEL = 'Whole run';
 
@@ -11011,9 +12282,10 @@ WIR.asserts = (function () {
     }
 
     /** The Budget cell: a percentage, a bar, and the pair it was computed from in the title. */
-    function budgetCell(rule) {
+    function budgetCell(rule, attrs) {
         var a = attainmentOf(rule);
-        if (!a) return '<td class="wir-num wir-budget"></td>';
+        attrs = attrs || '';
+        if (!a) return '<td class="wir-num wir-budget"' + attrs + '></td>';
 
         var pct = Math.round(a.consumed * 100);
         var label = budgetLabel(a.consumed);
@@ -11027,7 +12299,7 @@ WIR.asserts = (function () {
         var title = 'Worst measured ' + formatActual(a.actual, rule.unit, ruleBands(rule)) +
             ' against fail ' + describeBand(rule.fail, rule.unit) +
             ' ' + EM_DASH + ' ' + label + ' of the budget';
-        return '<td class="wir-num wir-budget" title="' + esc(title) + '">' +
+        return '<td class="wir-num wir-budget"' + attrs + ' title="' + esc(title) + '">' +
             '<span class="wir-budget-pct">' + esc(label) + '</span>' +
             '<span class="wir-budget-bar"><span class="wir-budget-fill ' + cls +
             '" style="width:' + width + '%"></span></span></td>';
@@ -11037,72 +12309,110 @@ WIR.asserts = (function () {
         return a < b ? -1 : a > b ? 1 : 0;
     }
 
-    function compareBy(a, b, col) {
-        switch (col) {
-            case 'id':
-                return String(a.id).localeCompare(String(b.id));
-            case 'target':
-                return String((a.target || {}).text || '')
-                    .localeCompare(String((b.target || {}).text || ''));
-            case 'metric':
-                /* numeric collation, or p99.9 sorts between p9 and p99. */
-                return String(a.metric).localeCompare(String(b.metric), undefined, { numeric: true });
-            case 'criteria':
-                return numericCompare(thresholdOf(a), thresholdOf(b));
-            case 'actual':
-                return numericCompare(breachMargin(a), breachMargin(b));
-            case 'budget':
-                return numericCompare(consumedOrFloor(a), consumedOrFloor(b));
-            case 'matches':
-                return numericCompare(a.matched || 0, b.matched || 0);
-            default:
-                return (SORT_RANK[displayStatus(a)] || 0) - (SORT_RANK[displayStatus(b)] || 0);
-        }
-    }
-
-    /* Rules with no budget sink, exactly as they do in a breach-margin sort: -Infinity is
-       "there is no answer", which sorts below every real one in both directions. */
-    function consumedOrFloor(rule) {
+    /* Rules with no budget have no value: they sink to the bottom of a budget sort in both directions,
+       as every table's rows with no value do (WIR.table). */
+    function consumedOrNull(rule) {
         var a = attainmentOf(rule);
-        return a ? a.consumed : -Infinity;
+        return a ? a.consumed : null;
     }
 
-    function applySort(rules) {
-        var col = state.sort.col;
-        var dir = state.sort.dir === 'desc' ? -1 : 1;
-        return rules.slice().sort(function (a, b) {
-            var d = compareBy(a, b, col) * dir;
-            /* Ties always break ascending on id, in both directions, so repeated
-               clicks on one header cannot shuffle equal rows. */
-            return d !== 0 ? d : String(a.id).localeCompare(String(b.id));
-        });
-    }
-
-    /** Every filter ANDs; the statuses OR within themselves. */
-    function applyFilters(rules) {
+    /** The More filters, ANDed with the table's search and chips. */
+    function advancedMatch(rule) {
         var f = state.filters;
-        var q = f.q.trim().toLowerCase();
+        for (var i = 0; i < FILTERS.length; i++) {
+            var spec = FILTERS[i];
+            var set = f[spec.key];
+            if (!set) continue;
+            /* A declared `match` when the comparison is not a plain equality — a sampler
+               filter resolves targets, a checkbox reads a flag. Everything else is the
+               field it names, which is most of them. */
+            var ok = spec.match ? spec.match(rule, set)
+                : (spec.key === 'kind' ? (rule.target || {}).kind : rule[spec.key]) === set;
+            if (!ok) return false;
+        }
+        return true;
+    }
 
-        return rules.filter(function (rule) {
-            if (f.status.length && f.status.indexOf(displayStatus(rule)) === -1) return false;
-            for (var i = 0; i < FILTERS.length; i++) {
-                var spec = FILTERS[i];
-                var set = f[spec.key];
-                if (!set) continue;
-                /* A declared `match` when the comparison is not a plain equality — a sampler
-                   filter resolves targets, a checkbox reads a flag. Everything else is the
-                   field it names, which is most of them. */
-                var ok = spec.match ? spec.match(rule, set)
-                    : (spec.key === 'kind' ? (rule.target || {}).kind : rule[spec.key]) === set;
-                if (!ok) return false;
-            }
-            if (q && haystack(rule).indexOf(q) === -1) return false;
-            return true;
+    /* x and the remembered view name a rule by its id and its occurrence among rules sharing it, as
+       draftCount pairs them: the page's row keys are minted per page. */
+    var hideKeys = {};
+    function hideKeyOf(rule) {
+        return hideKeys[rule.key] || String(rule.id);
+    }
+    function refreshHideKeys() {
+        var seen = Object.create(null);
+        hideKeys = {};
+        state.rules.forEach(function (r) {
+            var n = seen[r.id] = (seen[r.id] || 0) + 1;
+            hideKeys[r.key] = String(r.id) + '#' + n;
         });
+    }
+
+    function actualText(rule) {
+        if (rule.unmatched) return EM_DASH + ' no data ' + EM_DASH;
+        if (rule.status === 'NOT_JUDGED') return EM_DASH;
+        var worst = worstMatch(rule);
+        return formatActual(worst ? worst.actual : null, rule.unit, ruleBands(rule));
+    }
+
+    function noneIfInfinite(v) {
+        return v === Infinity || v === -Infinity ? null : v;
+    }
+
+    function tableSpec() {
+        return {
+            key: function (r) { return r.key; },
+            hideKey: hideKeyOf,
+            columns: [
+                { id: 'severity', label: 'Status', hideable: false,
+                  value: function (r) { return SORT_RANK[displayStatus(r)] || 0; },
+                  text: function (r) { return chipLabel(displayStatus(r)); } },
+                { id: 'id', label: 'Rule', hideable: false,
+                  value: function (r) { return String(r.id); }, text: function (r) { return r.id; } },
+                { id: 'target', label: 'Target',
+                  value: function (r) { return String((r.target || {}).text || ''); },
+                  text: function (r) { return kindWord(r.target.kind) + ' ' + r.target.text; } },
+                { id: 'metric', label: 'Metric',
+                  value: function (r) { return String(r.metric); }, text: function (r) { return r.metric; } },
+                { id: 'criteria', label: 'Criteria',
+                  value: function (r) { return noneIfInfinite(thresholdOf(r)); }, text: describeCriteria },
+                { id: 'actual', label: 'Actual', firstDir: 'desc',
+                  value: function (r) { return noneIfInfinite(breachMargin(r)); }, text: actualText },
+                { id: 'budget', label: 'Budget', firstDir: 'desc', value: consumedOrNull,
+                  text: function (r) { var a = attainmentOf(r); return a ? budgetLabel(a.consumed) : ''; } },
+                { id: 'matches', label: 'Matches', firstDir: 'desc',
+                  value: function (r) { return r.matched || 0; }, text: function (r) { return String(r.matched || 0); } }
+            ],
+            /* Ties break ascending on id, in both directions, so repeated clicks on one header cannot
+               shuffle equal rows. */
+            tie: function (a, b) { return WIR.table.compareValues(String(a.id), String(b.id)); },
+            search: haystack,
+            filter: advancedMatch,
+            status: displayStatus,
+            statusOrder: STATUS_ORDER,
+            groupings: { status: { label: 'Status', of: function (r) {
+                var s = displayStatus(r);
+                return { key: s, label: chipLabel(s) };
+            }, order: function (a, b) { return (SORT_RANK[a.key] || 0) - (SORT_RANK[b.key] || 0); } } },
+            defaultSort: { col: 'severity', dir: 'asc' },
+            csvName: 'asserts.csv',
+            render: function (what) {
+                /* A filter never leaves a detail row without its parent. */
+                if (what !== 'menu' && what !== 'columns' && what !== 'sort') state.expandedRule = null;
+                if (what === 'query') refreshRows();
+                else renderTable();
+            }
+        };
+    }
+
+    /** The rules the table shows, in its order, every group open: what the count line counts. */
+    function tableView() {
+        refreshHideKeys();
+        return WIR.table.compute(TABLE, state.rules);
     }
 
     function visibleRules() {
-        return applySort(applyFilters(state.rules));
+        return tableView().kept;
     }
 
     /** How many of the advanced controls are set — the "More filters · 2" badge. */
@@ -11113,31 +12423,15 @@ WIR.asserts = (function () {
     }
 
     function filtersActive() {
-        return !!(state.filters.q || state.filters.status.length || advancedCount());
+        return WIR.table.filtersActive(TABLE) || advancedCount() > 0;
     }
 
     function clearedFilters() {
-        var cleared = { q: '', status: [] };
+        var cleared = {};
         FILTERS.forEach(function (spec) {
             cleared[spec.key] = spec.kind === 'check' ? false : '';
         });
         return cleared;
-    }
-
-    /* Counts are over the UNFILTERED set on purpose: chips that recount as you filter
-       read 0 for everything you did not pick, which hides what the run contains. */
-    function statusCounts() {
-        var counts = Object.create(null);
-        state.rules.forEach(function (r) {
-            var s = displayStatus(r);
-            counts[s] = (counts[s] || 0) + 1;
-        });
-        return counts;
-    }
-
-    function presentStatuses() {
-        var counts = statusCounts();
-        return STATUS_ORDER.filter(function (s) { return counts[s]; });
     }
 
     /** Distinct values of one rule field, sorted, for an advanced <select>. */
@@ -11636,12 +12930,7 @@ WIR.asserts = (function () {
             '</div>' +
             filterBar() +
             advancedRow() +
-            '<div id="assertsRules">' + rulesBody() + '</div>' +
-            /* Outside .wir-table-wrap deliberately — see renderStatusMenu. */
-            '<div id="assertsStatusMenuHost"></div>');
-
-        bindHeaderSort();
-        renderStatusMenu();
+            '<div id="assertsRules">' + rulesBody() + '</div>');
     }
 
     /**
@@ -11652,158 +12941,52 @@ WIR.asserts = (function () {
      * user is typing into, taking focus and the caret with it.
      */
     function rulesBody() {
-        var visible = visibleRules();
-        if (!visible.length) return filteredEmptyState();
+        var v = tableView();
+        if (!v.kept.length) return filteredEmptyState();
+        var cols = WIR.table.shownColumnCount(TABLE) + 1;
+        var head = function (col, title, cls) { return WIR.table.headCell(TABLE, col, { title: title, cls: cls }); };
 
         return '<div class="wir-table-wrap">' +
             '<table class="wir-asserts-table" id="assertsTable">' +
             '<thead><tr>' +
-            headerCell('severity', 'Status', 'Sort by severity — worst first', statusFilterBtn()) +
-            headerCell('id', 'Rule', 'Sort by rule id', '') +
-            headerCell('target', 'Target', 'Sort by target', '') +
-            headerCell('metric', 'Metric', 'Sort by metric', '') +
-            headerCell('criteria', 'Criteria', 'Sort by the failing threshold', '') +
-            headerCell('actual', 'Actual', 'Sort by how far the worst match is past its threshold',
-                '', 'wir-num') +
-            headerCell('budget', 'Budget', 'Sort by how much of the fail band was used',
-                '', 'wir-num') +
-            headerCell('matches', 'Matches', 'Sort by how many ' + W('samplers') + ' the rule judged', '') +
+            head('severity', 'Sort by severity — worst first') +
+            head('id', 'Sort by rule id') +
+            head('target', 'Sort by target') +
+            head('metric', 'Sort by metric') +
+            head('criteria', 'Sort by the failing threshold') +
+            head('actual', 'Sort by how far the worst match is past its threshold', 'wir-num') +
+            head('budget', 'Sort by how much of the fail band was used', 'wir-num') +
+            head('matches', 'Sort by how many ' + W('samplers') + ' the rule judged') +
             '<th></th>' +
             '</tr></thead><tbody>' +
-            visible.map(ruleRow).join('') +
+            v.rows.map(function (row) {
+                return row.kind === 'group' ? WIR.table.groupRow(TABLE, row, cols, ['rule', 'rules']) : ruleRow(row.record);
+            }).join('') +
             '</tbody></table></div>';
     }
 
     function countLine() {
         var total = state.rules.length;
         var shown = visibleRules().length;
-        var arrow = state.sort.dir === 'desc' ? '↓' : '↑';
-        var sorted = ' ' + MIDDOT + ' sorted by ' + SORT_LABEL[state.sort.col] + ' ' + arrow;
+        var sort = WIR.table.table(TABLE).state.sort;
+        var sorted = sort ? ' ' + MIDDOT + ' sorted by ' + SORT_LABEL[sort.col] + ' ' + (sort.dir === 'desc' ? '↓' : '↑') : '';
         return filtersActive()
             ? 'Showing ' + shown + ' of ' + total + ' rules' + sorted
             : total + ' rule' + (total === 1 ? '' : 's') + sorted;
     }
 
-    function headerCell(col, label, title, extra, cls) {
-        var active = state.sort.col === col;
-        var aria = active ? (state.sort.dir === 'desc' ? 'descending' : 'ascending') : 'none';
-        var glyph = active ? (state.sort.dir === 'desc' ? '▼' : '▲') : '↕';
-        /* No inline handler. The Status header contains the popover button, and an inline
-           onclick here would fire on its way up from that button — opening the popover would
-           also sort the column. A delegated listener (bindHeaderSort) gets the real event and
-           can tell the two apart; stopping propagation on the button instead is not available,
-           because every inline handler in this table has to stay a single well-formed
-           WIR.asserts call. See xss-escaping.spec.ts. */
-        return '<th class="wir-th-sortable' + (cls ? ' ' + cls : '') + '"' +
-            ' data-sort-col="' + col + '" role="columnheader" aria-sort="' + aria + '"' +
-            ' tabindex="0" title="' + esc(title) + '">' +
-            esc(label) +
-            '<span class="wir-sort-glyph' + (active ? ' wir-sort-on' : '') + '">' + glyph + '</span>' +
-            extra + '</th>';
-    }
-
-    /**
-     * Click and Enter/Space on the sortable headers.
-     *
-     * Attached to the freshly rendered thead on every render — the old node goes with the old
-     * table, so nothing accumulates. Delegated rather than per-cell so the popover button
-     * inside the Status header can be excluded in one place.
-     */
-    function bindHeaderSort() {
-        var thead = document.querySelector('#assertsTable thead');
-        if (!thead) return;
-        /* Once per thead: a render that keeps the focused control keeps its ancestors too
-           (fillKeepingFocus) — the Status popover's button sits in this thead — and a second pair
-           of listeners would sort twice per click, which is no sort at all. A property, not an
-           attribute: a kept node takes the new markup's attributes. */
-        if (thead.wirSortBound) return;
-        thead.wirSortBound = true;
-
-        function headerAt(target) {
-            if (!target || !target.closest) return null;
-            /* The popover button lives inside the Status header and is not a sort control. */
-            if (target.closest('#assertsStatusBtn')) return null;
-            return target.closest('th[data-sort-col]');
-        }
-
-        thead.addEventListener('click', function (e) {
-            var th = headerAt(e.target);
-            if (th) sortBy(th.getAttribute('data-sort-col'));
-        });
-
-        thead.addEventListener('keydown', function (e) {
-            if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
-            var th = headerAt(e.target);
-            if (!th) return;
-            e.preventDefault();
-            var col = th.getAttribute('data-sort-col');
-            sortBy(col);
-            /* sortBy rebuilds the thead, so the cell that had focus no longer exists. Without
-               this a keyboard user is dropped back to the top of the document on every sort. */
-            var next = document.querySelector('#assertsTable th[data-sort-col="' + col + '"]');
-            if (next) next.focus();
-        });
-    }
-
-    /** Clicking the active column flips it; a new column takes its own default. */
-    function sortBy(col) {
-        if (!SORT_LABEL[col]) return;
-        if (state.sort.col === col) {
-            state.sort = { col: col, dir: state.sort.dir === 'asc' ? 'desc' : 'asc' };
-        } else {
-            state.sort = { col: col, dir: SORT_DEFAULT_DIR[col] || 'asc' };
-        }
-        saveSort();
-        renderTable();
-    }
-
-    function statusFilterBtn() {
-        var n = state.filters.status.length;
-        return '<button type="button" class="wir-status-btn' + (n ? ' wir-status-btn-on' : '') + '"' +
-            ' id="assertsStatusBtn" aria-haspopup="true" aria-expanded="' + !!state.statusMenu + '"' +
-            ' title="Filter by status"' +
-            /* One well-formed WIR.asserts call and nothing after it. Every inline handler in
-               this table holds to that — see xss-escaping.spec.ts, which asserts it
-               structurally, because a handler that is a single call taking a single string
-               literal is one no breakout can extend. It is why the dismiss listener below
-               identifies its own elements instead of this button stopping propagation. */
-            ' onclick="WIR.asserts.toggleStatusMenu()">▼' +
-            (n ? ' ' + n : '') + '</button>';
-    }
-
     /* ---------------------------------------------------------------- toolbar */
 
+    /* The table's one toolbar row (WIR.table), with this tab's own controls in it: Clear filters and
+       More filters. */
     function filterBar() {
-        return '<div class="wir-filter-bar">' +
-            '<input type="text" class="wir-rules-search" id="assertsSearch"' +
-            ' placeholder="Filter rules — id, description, target, ' + W('sampler') + ', metric…"' +
-            ' aria-label="Filter rules" value="' + esc(state.filters.q) + '"' +
-            ' oninput="WIR.asserts.setQuery(this.value)"/>' +
-            statusChips() +
-            '<span class="wir-filter-actions" id="assertsFilterActions">' + filterActions() + '</span>' +
-            '</div>';
+        return WIR.table.toolbar(TABLE, {
+            searchId: 'assertsSearch', label: 'Filter rules', noun: 'rules',
+            placeholder: 'Filter rules — id, description, target, ' + W('sampler') + ', metric…',
+            extra: '<span class="wir-filter-actions" id="assertsFilterActions">' + filterActions() + '</span>'
+        });
     }
 
-    function statusChips() {
-        var counts = statusCounts();
-        return '<div class="wir-status-chips">' + presentStatuses().map(function (s) {
-            var on = state.filters.status.indexOf(s) !== -1;
-            /* chipToken, not s.toLowerCase(): 'NO VALUE' lowercases to 'no value', which as a
-               class attribute is TWO classes -- wir-chip-no and value -- and neither exists in
-               the stylesheet, so the chip drew unstyled on every run carrying a rule the run
-               could not measure. chipClass three functions up did the replace correctly; these
-               two sites built the same string by hand and did not. */
-            return '<button type="button" class="wir-status-chip wir-chip-' + chipToken(s) +
-                (on ? ' wir-status-chip-on' : '') + '" data-status="' + s + '"' +
-                ' aria-pressed="' + on + '"' +
-                ' title="' + (on ? 'Remove the ' + s + ' filter' : 'Show only ' + s + ' rules') + '"' +
-                ' onclick="WIR.asserts.toggleStatus(\'' + s + '\')">' +
-                esc(chipLabel(s)) + ' ' + counts[s] + '</button>';
-        }).join('') + '</div>';
-    }
-
-    /* Clear filters only exists while there is something to clear — a permanently
-       visible one reads as "filters are on". */
     function filterActions() {
         var n = advancedCount();
         return (filtersActive()
@@ -11870,99 +13053,6 @@ WIR.asserts = (function () {
             'Clear filters</button></div>';
     }
 
-    /* ---------------------------------------------------------------- status popover */
-
-    /**
-     * The status popover, rendered OUTSIDE the table's scroll container.
-     *
-     * .wir-table-wrap is overflow-x: auto, and CSS promotes overflow-y to auto the
-     * moment one axis stops being visible — so a popover nested inside it is clipped
-     * at the header row and drifts sideways when the table scrolls. It is positioned
-     * fixed from the button's own rect rather than at a hardcoded offset below the
-     * header, because the header's height is a function of the type scale.
-     */
-    function renderStatusMenu() {
-        var host = document.getElementById('assertsStatusMenuHost');
-        if (!host) return;
-
-        if (!state.statusMenu) { host.innerHTML = ''; return; }
-
-        var counts = statusCounts();
-        host.innerHTML = '<div class="wir-status-menu" id="assertsStatusMenu" role="dialog"' +
-            ' aria-label="Filter by status">' +
-            presentStatuses().map(function (s) {
-                var on = state.filters.status.indexOf(s) !== -1;
-                return '<label class="wir-status-menu-row">' +
-                    '<input type="checkbox"' + (on ? ' checked' : '') +
-                    ' onchange="WIR.asserts.toggleStatus(\'' + s + '\')"/>' +
-                    '<span class="wir-chip wir-chip-' + chipToken(s) + '">' +
-                    esc(chipLabel(s)) + '</span>' +
-                    '<span class="wir-muted">' + counts[s] + '</span></label>';
-            }).join('') +
-            '<div class="wir-status-menu-foot">' +
-            '<button type="button" class="wir-link" onclick="WIR.asserts.selectStatuses(null)">' +
-            'All statuses</button>' +
-            '<button type="button" class="wir-link" onclick="WIR.asserts.selectStatuses(\'breaching\')">' +
-            'Breaching only</button>' +
-            '</div></div>';
-
-        positionStatusMenu();
-        bindMenuDismiss();
-    }
-
-    function positionStatusMenu() {
-        var btn = document.getElementById('assertsStatusBtn');
-        var menu = document.getElementById('assertsStatusMenu');
-        if (!btn || !menu) return;
-        var r = btn.getBoundingClientRect();
-        /* Flip above the button when there is not room below, and clamp as a last resort.
-           The menu is position:fixed, so anything hanging past the fold is not merely awkward
-           — it is UNREACHABLE. Scrolling moves the page and leaves the menu where it is, so
-           the two footer buttons ("All statuses", "Breaching only") could not be clicked at
-           all with the toolbar low in the viewport. Only the horizontal edge was handled. */
-        var h = menu.offsetHeight;
-        var top = r.bottom + 6;
-        if (top + h > window.innerHeight - 8) {
-            top = r.top - h - 6;                       // flip up
-            if (top < 8) {                             // taller than the viewport: pin and scroll
-                top = 8;
-                menu.style.maxHeight = (window.innerHeight - 16) + 'px';
-                menu.style.overflowY = 'auto';
-            }
-        }
-        menu.style.top = top + 'px';
-        /* Keep it on screen when the Status column sits near the right edge. */
-        menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)) + 'px';
-    }
-
-    var menuDismissBound = false;
-
-    function bindMenuDismiss() {
-        if (menuDismissBound) return;
-        menuDismissBound = true;
-        /* Identifies the button and the popover by selector rather than by node, and does not
-           rely on either of them stopping propagation. Both matter: opening or ticking a box
-           re-renders the table first, so by the time this runs the clicked element is already
-           detached — closest() still walks a detached ancestor chain, contains() on the fresh
-           node would not. */
-        document.addEventListener('click', function (e) {
-            if (!state.statusMenu) return;
-            var t = e.target;
-            if (t && t.closest &&
-                (t.closest('#assertsStatusBtn') || t.closest('.wir-status-menu'))) return;
-            state.statusMenu = false;
-            renderTable();
-        });
-        document.addEventListener('keydown', function (e) {
-            if (state.statusMenu && (e.key === 'Escape' || e.key === 'Esc')) {
-                state.statusMenu = false;
-                renderTable();
-                var btn = document.getElementById('assertsStatusBtn');
-                if (btn) btn.focus();
-            }
-        });
-    }
-
     /* ---------------------------------------------------------------- filter actions */
 
     /** A filter changed: refresh the rows without disturbing the search box. */
@@ -11975,36 +13065,11 @@ WIR.asserts = (function () {
         rows.innerHTML = rulesBody();
         if (count) count.innerHTML = countLine();
         if (actions) actions.innerHTML = filterActions();
-        bindHeaderSort();   /* rulesBody() rebuilt the thead this was attached to */
-        renderStatusMenu();
-    }
-
-    function loadSort() {
-        try {
-            var raw = localStorage.getItem(LS_ASSERTS_SORT);
-            if (!raw) return;
-            var saved = JSON.parse(raw);
-            if (saved && SORT_LABEL[saved.col]) {
-                state.sort = { col: saved.col, dir: saved.dir === 'desc' ? 'desc' : 'asc' };
-            }
-        } catch (e) { /* ignore */ }
-    }
-
-    function saveSort() {
-        try { localStorage.setItem(LS_ASSERTS_SORT, JSON.stringify(state.sort)); }
-        catch (e) { /* ignore */ }
     }
 
     function ruleRow(rule) {
-        var worst = worstMatch(rule);
-        var actual;
-        if (rule.unmatched) {
-            actual = EM_DASH + ' no data ' + EM_DASH;
-        } else if (rule.status === 'NOT_JUDGED') {
-            actual = EM_DASH;
-        } else {
-            actual = formatActual(worst ? worst.actual : null, rule.unit, ruleBands(rule));
-        }
+        var actual = actualText(rule);
+        var at = function (col) { return WIR.table.cellAttrs(TABLE, col); };
 
         /* Rows worth looking at: a breach, or a check the file asked for that never ran. The
            other not-judged reasons are states the tester either chose or can see at a glance. */
@@ -12018,23 +13083,23 @@ WIR.asserts = (function () {
            address, the one every handler on it names (rowKeys). */
         var html = '<tr class="' + rowClasses.join(' ') + '" data-rule-id="' + esc(rule.id) + '"' +
             ' data-rule-key="' + esc(rule.key) + '">' +
-            '<td><span class="' + chipClass(displayStatus(rule)) + '">' +
+            '<td' + at('severity') + '><span class="' + chipClass(displayStatus(rule)) + '">' +
             esc(chipLabel(displayStatus(rule))) + '</span></td>' +
-            '<td><code class="wir-rule-id">' + esc(rule.id) + '</code>' +
+            '<td' + at('id') + '><code class="wir-rule-id">' + esc(rule.id) + '</code>' +
             (rule.draftState ? '<span class="wir-tag wir-tag-draft">' +
                 (rule.draftState === 'new' ? 'NEW' : 'EDITED') + '</span>' : '') +
             (rule.description ? '<div class="wir-rule-desc">' + esc(rule.description) + '</div>' : '') +
             '</td>' +
-            '<td><span class="wir-kind wir-kind-' + esc(rule.target.kind) + '">' +
+            '<td' + at('target') + '><span class="wir-kind wir-kind-' + esc(rule.target.kind) + '">' +
             esc(kindWord(rule.target.kind)) + '</span>' +
             '<code class="wir-target" title="' + esc(rule.target.text) + '">' +
             esc(rule.target.text) + '</code></td>' +
-            '<td><code>' + esc(rule.metric) + '</code></td>' +
-            '<td class="wir-criteria">' + esc(describeCriteria(rule)) + '</td>' +
-            '<td class="wir-num' + (breached ? ' wir-breached' : '') + '">' + esc(actual) + '</td>' +
-            budgetCell(rule) +
-            '<td>' + matchesCell(rule) + '</td>' +
-            '<td class="wir-actions">' + rowActions(rule) + '</td>' +
+            '<td' + at('metric') + '><code>' + esc(rule.metric) + '</code></td>' +
+            '<td class="wir-criteria"' + at('criteria') + '>' + esc(describeCriteria(rule)) + '</td>' +
+            '<td class="wir-num' + (breached ? ' wir-breached' : '') + '"' + at('actual') + '>' + esc(actual) + '</td>' +
+            budgetCell(rule, at('budget')) +
+            '<td' + at('matches') + '>' + matchesCell(rule) + '</td>' +
+            '<td class="wir-actions">' + rowActions(rule) + WIR.table.hideButton(TABLE, rule.key) + '</td>' +
             '</tr>';
 
         if (rule.unmatched) {
@@ -16827,11 +17892,10 @@ WIR.asserts = (function () {
             /* state.gate IS the snapshot of the verdict this run was gated on — it is never
                recomputed, only state.draftGate is. A second copy of it had no readers. */
 
-            /* Sort is remembered; filters deliberately are not — see LS_ASSERTS_SORT. */
+            /* The view is remembered for this report; the filters deliberately are not (WIR.table). */
             state.filters = clearedFilters();
             state.showAdvanced = false;
-            state.statusMenu = false;
-            loadSort();
+            WIR.table.register(TABLE, tableSpec());
 
             /* Drafts survive an accidental refresh, which matters more on file:// than
                anywhere else — there is no server-side copy of what you typed. They are NOT
@@ -16878,39 +17942,8 @@ WIR.asserts = (function () {
 
         /* --- filtering and sorting (view-only; nothing here reaches a verdict) --- */
 
-        /** Per keystroke. Goes through refreshRows so the input keeps focus. */
-        setQuery: function (value) {
-            state.filters.q = String(value == null ? '' : value);
-            refreshRows();
-        },
-
-        toggleStatus: function (status) {
-            var at = state.filters.status.indexOf(status);
-            if (at === -1) state.filters.status = state.filters.status.concat([status]);
-            else state.filters.status = state.filters.status.filter(function (s) {
-                return s !== status;
-            });
-            state.expandedRule = null;
-            renderTable();
-        },
-
-        /** null clears the status filter; 'breaching' picks the states that gate. */
-        selectStatuses: function (which) {
-            state.filters.status = which === 'breaching'
-                ? presentStatuses().filter(function (s) {
-                    /* INVALID is a reason, not a verdict, and it is in this list on purpose:
-                       "breaching only" means "show me what needs attention", and a rule the
-                       file got wrong needs attention more than a passing one does. */
-                    return s === 'FAIL' || s === 'WARN' || s === 'INVALID';
-                })
-                : [];
-            state.statusMenu = false;
-            state.expandedRule = null;
-            renderTable();
-        },
-
         setFilter: function (key, value) {
-            if (!(key in state.filters) || key === 'q' || key === 'status') return;
+            if (!(key in state.filters)) return;
             state.filters[key] = value;
             state.expandedRule = null;
             renderTable();
@@ -16918,6 +17951,7 @@ WIR.asserts = (function () {
 
         clearFilters: function () {
             state.filters = clearedFilters();
+            WIR.table.resetFilters(TABLE);
             state.expandedRule = null;
             renderTable();
         },
@@ -16926,15 +17960,6 @@ WIR.asserts = (function () {
             state.showAdvanced = !state.showAdvanced;
             renderTable();
         },
-
-        toggleStatusMenu: function () {
-            state.statusMenu = !state.statusMenu;
-            renderTable();
-        },
-
-        /* The headers drive this through bindHeaderSort, not an inline handler. Exposed
-           because the specs and the chart code sort without a click. */
-        sortBy: sortBy,
 
         /* For the browser tests: the rule ids the table would show, in order, without
            reading them back out of the DOM. */

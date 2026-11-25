@@ -157,7 +157,7 @@ test('every id report.js looks up by name is one something writes', () => {
    like in report.js, th:classappend="'badge-' + ${marker.type}" in the template. A class under one
    of them is reached by construction. */
 const BUILT_PREFIXES = ['badge-', 'assert-badge-', 'error-class-', 'wir-chip-', 'wir-gate-', 'wir-count-',
-    'wir-finding-', 'wir-kind-', 'wir-validate-'];
+    'wir-finding-', 'wir-kind-', 'wir-validate-', 'wir-tool-bar-'];
 
 test('the scanner blanked comments only — what is left still compiles, line for line', () => {
     assert.strictEqual(JS_CODE.length, JS.length);

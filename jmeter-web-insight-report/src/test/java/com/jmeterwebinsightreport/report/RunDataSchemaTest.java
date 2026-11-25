@@ -52,6 +52,7 @@ class RunDataSchemaTest {
         h.producerVersion = "9.9.9";
         h.timeResolution = "s";
         h.notMeasured.addAll(List.of("bytes", "sentBytes", "latency", "connect", "user", "iteration"));
+        h.trendStatistics = List.of("avg", "min", "med", "max", "p(90)", "p(95)", "p(99)", "count");
         RunSample s = new RunSample("Login", 1_795_452_359_384L, 41, false);
         s.id = "s1";
         s.parent = "t1";
@@ -91,7 +92,12 @@ class RunDataSchemaTest {
             w.sample(s);
             w.users(1_795_452_359_384L, 1);
             w.check(c);
-            w.threshold(new ToolRecords.Threshold("http_req_duration{name:Login}", "p(95)<500", true));
+            ToolRecords.Threshold t = new ToolRecords.Threshold("http_req_duration{name:Login}", "p(95)<500", true);
+            t.statistic = "p(95)";
+            t.measuredValue = 412.5;
+            t.metricType = "trend";
+            t.metricContains = "time";
+            w.threshold(t);
             w.counter("iterations", 11);
         }
         Map<String, JsonNode> byType = new TreeMap<>();

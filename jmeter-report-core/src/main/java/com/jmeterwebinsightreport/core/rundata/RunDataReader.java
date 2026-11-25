@@ -102,6 +102,7 @@ public final class RunDataReader {
                 throw new IOException("Empty run data file: " + file);
             }
             result.header = header(line, file);
+            result.tool.setTrendStatistics(result.header.trendStatistics);
             long lineNo = 1;
             while ((line = reader.readLine()) != null) {
                 lineNo++;
@@ -225,8 +226,14 @@ public final class RunDataReader {
                             result.tool.addCheck(c);
                         }
                     } else if (RunDataFormat.TYPE_THRESHOLD.equals(type)) {
-                        result.tool.addThreshold(new ToolRecords.Threshold(text(r, "metric"), text(r, "expression"),
-                                r.path("passed").asBoolean()));
+                        ToolRecords.Threshold t = new ToolRecords.Threshold(text(r, "metric"), text(r, "expression"),
+                                r.path("passed").asBoolean());
+                        t.statistic = text(r, "statistic");
+                        JsonNode measured = r.get("measuredValue");
+                        t.measuredValue = measured != null && measured.isNumber() ? measured.asDouble() : null;
+                        t.metricType = text(r, "metricType");
+                        t.metricContains = text(r, "metricContains");
+                        result.tool.addThreshold(t);
                     } else if (RunDataFormat.TYPE_COUNTER.equals(type)) {
                         if (text(r, "name") != null && r.hasNonNull("value")) {
                             result.tool.addCounter(text(r, "name"), r.get("value").asDouble());
@@ -352,6 +359,10 @@ public final class RunDataReader {
         h.notMeasured = new ArrayList<>();
         if (r.path("notMeasured").isArray()) {
             r.get("notMeasured").forEach(f -> h.notMeasured.add(f.asText()));
+        }
+        if (r.path("trendStatistics").isArray()) {
+            h.trendStatistics = new ArrayList<>();
+            r.get("trendStatistics").forEach(s -> h.trendStatistics.add(s.asText()));
         }
         if (h.toolName == null || h.testName == null) {
             throw new IOException("Run data without " + (h.toolName == null ? "tool.name" : "testName")

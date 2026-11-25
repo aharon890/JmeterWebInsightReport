@@ -74,6 +74,11 @@ public final class ToolMeasures {
             return at(95);
         }
 
+        /** Spec 002, FR-011: shown when the run's summary lists p(99). The same rank rule as every percentile here. */
+        public double p99() {
+            return at(99);
+        }
+
         private double at(double percentile) {
             return hundredths.getPercentile(percentile) / 100.0;
         }
@@ -82,6 +87,7 @@ public final class ToolMeasures {
     private final ToolRecords records;
     private final Map<String, Trend> groupDurations = new LinkedHashMap<>();
     private final Map<String, Map<String, Trend>> timingsByRequest = new LinkedHashMap<>();
+    private final Map<String, Trend> durationsByRequest = new LinkedHashMap<>();
 
     public ToolMeasures(ToolRecords records) {
         this.records = records == null ? new ToolRecords() : records;
@@ -108,6 +114,14 @@ public final class ToolMeasures {
             if (v != null) {
                 parts.computeIfAbsent(part, k -> new Trend()).add(RunSample.hundredths(v));
             }
+        }
+        // k6's request duration, as its tracer defines it: sending + waiting + receiving (spec 002, FR-010)
+        Double sending = s.timings.get("sending");
+        Double waiting = s.timings.get("waiting");
+        Double receiving = s.timings.get("receiving");
+        if (sending != null && waiting != null && receiving != null) {
+            durationsByRequest.computeIfAbsent(s.name, k -> new Trend()).add(RunSample.hundredths(sending)
+                    + RunSample.hundredths(waiting) + RunSample.hundredths(receiving));
         }
     }
 
@@ -146,6 +160,23 @@ public final class ToolMeasures {
                     all.computeIfAbsent(part, k -> new Trend()).merge(t);
                 }
             }
+        }
+        return all;
+    }
+
+    /**
+     * Each request name's duration in k6's sense, sending + waiting + receiving (the time a request took without
+     * waiting for its connection), in the order first seen. Kept apart from the six parts: it is their sum, not a part.
+     */
+    public Map<String, Trend> durationsByRequest() {
+        return Collections.unmodifiableMap(durationsByRequest);
+    }
+
+    /** The duration over every request, as k6's summary shows {@code http_req_duration}. */
+    public Trend durationOverAll() {
+        Trend all = new Trend();
+        for (Trend t : durationsByRequest.values()) {
+            all.merge(t);
         }
         return all;
     }

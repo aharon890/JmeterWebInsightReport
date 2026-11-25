@@ -102,12 +102,17 @@ asked for never ran. Full reference, with the wire name behind each word:
 
 **Finding a rule.** The search box above the table matches a rule's id, description, target,
 metric and criteria, and the name of every sampler it judges. The status chips beside it, each
-with its count, narrow the table to the statuses you pick, and **More filters** adds the metric,
-the kind of target, the sampler a rule judges and *Drafts only*. The ▼ in the Status header offers
-the same statuses as a list, plus **All statuses** and **Breaching only** (FAIL, WARN and
-INVALID: what needs attention). Every column header sorts, and the sort is remembered in this
-browser. A line above the table says how many rules it shows and how they are sorted, and a filter
-that leaves nothing says *No rule matches these filters*.
+with its count, narrow the table to the statuses you pick (several at once; each chip counts every
+rule, whatever is filtered), and **More filters** adds the metric, the kind of target, the sampler a
+rule judges and *Drafts only*. **Group by** *Status* puts the rules under a header per status, worst
+first, each header with its counts; a header opens and closes its rules, and **Expand all** and
+**Collapse all** do every one. Every column header is a button that sorts by the column's value, from
+the mouse or the keyboard. **×** at the end of a row hides it, and **Show N hidden** brings the hidden
+rules back. **Columns** hides a column, and **CSV** downloads the rules and columns shown. The sort,
+the grouping, the hidden rows and the hidden columns are remembered for this report in this browser;
+the search and the chips are not. A line above the table says how many rules it shows and how they
+are sorted, and a filter that leaves nothing says *No rule matches these filters*. Every table of
+the report has this same toolbar.
 
 Each row ends in **Edit**, **Duplicate** (the copy is named `<id>-copy`), **Disable** (or
 **Enable**) and **Delete**, which offers an **Undo** until the document next changes.

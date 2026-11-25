@@ -160,6 +160,81 @@
       "jmeter": "Configure when a sampler is flagged as REGRESSION in the comparison table.\n\nEach metric defines a threshold: if the change exceeds it, the sampler is marked REGRESSION.\n\nP95/P99/Mean: percentage increase vs baseline (e.g., 10 = flag if P95 grew by more than 10%).\nError rate: absolute increase in error percentage (e.g., 2 = flag if errors grew by more than 2%).\nThroughput: percentage decrease vs baseline.\n\nSet to -1 to disable a metric. Click Apply to re-evaluate without regenerating the report.",
       "k6": "Configure when a request is flagged as REGRESSION in the comparison table.\n\nEach metric defines a threshold: if the change exceeds it, the request is marked REGRESSION.\n\nP95/P99/Mean: percentage increase vs baseline (e.g., 10 = flag if P95 grew by more than 10%).\nError rate: absolute increase in error percentage (e.g., 2 = flag if errors grew by more than 2%).\nThroughput: percentage decrease vs baseline.\n\nSet to -1 to disable a metric. Click Apply to re-evaluate without regenerating the report.",
       "other": "Configure when a request is flagged as REGRESSION in the comparison table.\n\nEach metric defines a threshold: if the change exceeds it, the request is marked REGRESSION.\n\nP95/P99/Mean: percentage increase vs baseline (e.g., 10 = flag if P95 grew by more than 10%).\nError rate: absolute increase in error percentage (e.g., 2 = flag if errors grew by more than 2%).\nThroughput: percentage decrease vs baseline.\n\nSet to -1 to disable a metric. Click Apply to re-evaluate without regenerating the report."
+    },
+    "toolThresholds": {
+      "jmeter": "Thresholds",
+      "k6": "Thresholds",
+      "other": "Thresholds"
+    },
+    "toolChecks": {
+      "jmeter": "Checks",
+      "k6": "Checks",
+      "other": "Checks"
+    },
+    "toolGroupDuration": {
+      "jmeter": "Group duration",
+      "k6": "Group duration",
+      "other": "Group duration"
+    },
+    "toolTimings": {
+      "jmeter": "HTTP timings",
+      "k6": "HTTP timings",
+      "other": "Timings"
+    },
+    "toolPassed": {
+      "jmeter": "passed",
+      "k6": "passed",
+      "other": "passed"
+    },
+    "toolFailed": {
+      "jmeter": "failed",
+      "k6": "failed",
+      "other": "failed"
+    },
+    "toolNotTied": {
+      "jmeter": "Not tied to one sampler",
+      "k6": "Not tied to one request",
+      "other": "Not tied to one request"
+    },
+    "toolAlwaysTrue": {
+      "jmeter": "always-true thresholds",
+      "k6": "always-true thresholds",
+      "other": "always-true thresholds"
+    },
+    "toolNotRecorded": {
+      "jmeter": "not recorded",
+      "k6": "not recorded",
+      "other": "not recorded"
+    },
+    "toolNoThresholds": {
+      "jmeter": "No thresholds: the summary declared none, or it was not given.",
+      "k6": "No thresholds: k6's summary declared none, or it was not given.",
+      "other": "No thresholds: {tool}'s summary declared none, or it was not given."
+    },
+    "toolNoChecks": {
+      "jmeter": "No checks ran.",
+      "k6": "No checks ran.",
+      "other": "No checks ran."
+    },
+    "toolNoGroups": {
+      "jmeter": "No group passes in this run.",
+      "k6": "No group passes in this run.",
+      "other": "No group passes in this run."
+    },
+    "toolNoTimings": {
+      "jmeter": "No sampler carried its timing parts.",
+      "k6": "No request carried its timing parts.",
+      "other": "No request carried its timing parts."
+    },
+    "toolEverySampler": {
+      "jmeter": "Every sampler",
+      "k6": "Every request",
+      "other": "Every request"
+    },
+    "toolStatistic": {
+      "jmeter": "Statistic",
+      "k6": "Statistic",
+      "other": "Statistic"
     }
   }
 }

@@ -76,7 +76,7 @@ Two automated suites. Both exit with their failure count.
 
 ```bash
 ./test-plans/scripts/run-sanity.sh       # ~2 min  — run constantly while working
-./test-plans/scripts/run-regression.sh   # ~2 min, ~5 when fixtures are stale
+./test-plans/scripts/run-regression.sh   # ~13 min when fixtures are stale (they regenerate); the owner's limit is 15
 ```
 
 Regression regenerates the report fixtures only when their provenance stamps no
@@ -131,8 +131,8 @@ reader in New York and fails on any difference in what they are shown: every tab
 tooltip, copy and download. JMeter's HTML report reads the same in every browser, and so must this one.
 
 The suites cover the JMeter scenarios Playwright actually opens (E02, E05-E12, E19, E25-E29, E31)
-plus CMP and CMP31 (E31's plan compared with itself, `CMP_ID=CMP31 generate-cmp-fixture.sh`) and K1, a k6 run's
-report built by `build-report --from k6` with no JMeter run (`tool-words.spec.ts`, `tool-tab.spec.ts`) — the same
+plus CMP and CMP31 (E31's plan compared with itself, `CMP_ID=CMP31 generate-cmp-fixture.sh`) and K1 and K2, k6 runs'
+reports built by `build-report --from k6` with no JMeter run (`tool-words.spec.ts`, `tool-tab.spec.ts`) — the same
 list as `FIXTURE_IDS` in `common.sh`, which is where to check rather than
 here. E19 is easy to forget: `external-data.spec.ts` opens it to assert the payload was written
 to a sibling `.js` and referenced by `<script src>`, which is the one product promise no

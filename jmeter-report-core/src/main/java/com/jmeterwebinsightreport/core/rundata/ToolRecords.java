@@ -30,6 +30,16 @@ public final class ToolRecords {
         public String metric;
         public String expression;
         public boolean passed;
+        /**
+         * Since format 1.1 (spec 002, FR-050), each optional: the statistic the expression names ({@code p(95)},
+         * {@code rate}), the value the tool judged it on (k6's summary {@code values}), and the metric's type
+         * ({@code trend}, {@code rate}, {@code counter}, {@code gauge}) and what it holds ({@code time}, {@code data},
+         * {@code default}). Absent when the tool did not say: never 0.
+         */
+        public String statistic;
+        public Double measuredValue;
+        public String metricType;
+        public String metricContains;
 
         public Threshold() {
         }
@@ -57,6 +67,7 @@ public final class ToolRecords {
     private final Map<String, CheckCount> checks = new LinkedHashMap<>();
     private final List<Threshold> thresholds = new ArrayList<>();
     private final Map<String, Double> counters = new LinkedHashMap<>();
+    private List<String> trendStatistics;
 
     public void addCheck(Check c) {
         String group = c.group == null ? "" : c.group;
@@ -86,6 +97,15 @@ public final class ToolRecords {
 
     public Map<String, Double> counters() {
         return new LinkedHashMap<>(counters);
+    }
+
+    /** The statistics the tool's summary lists for a trend (run data 1.1's trendStatistics), or null. */
+    public List<String> trendStatistics() {
+        return trendStatistics;
+    }
+
+    public void setTrendStatistics(List<String> statistics) {
+        this.trendStatistics = statistics == null ? null : new ArrayList<>(statistics);
     }
 
     public boolean isEmpty() {

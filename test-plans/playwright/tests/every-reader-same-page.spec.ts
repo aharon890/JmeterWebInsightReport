@@ -21,11 +21,15 @@ const READERS = [
   { who: 'an English reader in Jerusalem', locale: 'en-US', timezoneId: 'Asia/Jerusalem' },
   { who: 'a German reader in New York', locale: 'de-DE', timezoneId: 'America/New_York' },
 ] as const;
-const TABS = ['summary', 'timeline', 'samplers', 'errors', 'compare', 'asserts', 'server', 'notes'];
+// 'tool': the tab of a run another tool recorded (spec 002, FR-034), on K1 and K2
+const TABS = ['summary', 'timeline', 'samplers', 'errors', 'compare', 'asserts', 'server', 'tool', 'notes'];
 const CSV: Record<string, string[]> = {
   samplers: ['exportSamplerStatsCsv'],
   errors: ['exportErrorSummaryCsv', 'exportErrorDetailsCsv'],
   compare: ['exportComparisonCsv'],
+  // a table of the toolkit (spec 002) downloads what it shows: table:<its id>
+  asserts: ['table:assertsTable'],
+  tool: ['table:toolThresholds', 'table:toolTimings', 'table:toolChecks', 'table:toolGroupDurations'],
 };
 
 type Seen = Record<string, string[]>;
@@ -173,11 +177,13 @@ async function whatTheReaderSees(browser: Browser, id: string, reader: typeof RE
         seen['Copy Summary / Copy Verdict'] = await page.evaluate(() => (window as any).__clip.flatMap((t: string) => t.split('\n')));
       }
       for (const fn of CSV[tab] || []) {
-        if (!(await page.evaluate((f) => typeof (window as any)[f] === 'function', fn))) continue;
+        const exists = await page.evaluate((f) => f.startsWith('table:')
+          ? !!document.getElementById(f.slice(6)) : typeof (window as any)[f] === 'function', fn);
+        if (!exists) continue;
         try {
           const [download] = await Promise.all([
             page.waitForEvent('download', { timeout: 4000 }),
-            page.evaluate((f) => (window as any)[f](), fn),
+            page.evaluate((f) => f.startsWith('table:') ? (window as any).WIR.table.csv(f.slice(6)) : (window as any)[f](), fn),
           ]);
           seen[`${tab}: ${fn} download`] = fs.readFileSync((await download.path())!, 'utf8').split('\n');
         } catch (e) {
@@ -210,8 +216,12 @@ test.describe('every reader sees the same report', () => {
   for (const id of REQUIRED_FIXTURES) {
     test(`${id}: an English reader in Jerusalem and a German reader in New York see the same page`, async ({ browser }) => {
       test.setTimeout(240000);
-      const first = await whatTheReaderSees(browser, id, READERS[0]);
-      const second = await whatTheReaderSees(browser, id, READERS[1]);
+      // The two readers at once, each in its own context: most of a reader's minute is the waits for a tab's
+      // charts to draw, so one after the other made this file a fifth of the browser suite's time (2026-11-25)
+      const [first, second] = await Promise.all([
+        whatTheReaderSees(browser, id, READERS[0]),
+        whatTheReaderSees(browser, id, READERS[1]),
+      ]);
       const found = differences(first, second);
       expect(found.slice(0, 40), `${found.length} differences between the two readers' pages`).toEqual([]);
     });

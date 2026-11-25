@@ -189,6 +189,58 @@ class RunDataReaderTest {
     }
 
     @Test
+    void thisReleaseWritesFormat11AndStillReadsItsMajor() {
+        // spec 002, contracts/run-data-1.1.md: a minor version adds optional fields only
+        assertEquals("1.1", RunDataFormat.VERSION);
+        assertTrue(RunDataFormat.reads("1.0"), "1.0 files still read");
+        assertTrue(RunDataFormat.reads("1.1"));
+    }
+
+    @Test
+    void aThresholdsMeasuredValueAndTheTrendStatisticsTravelThroughRunData() throws IOException {
+        RunHeader h = new RunHeader("k6", "2.4.0", "checkout (k6)");
+        h.trendStatistics = java.util.List.of("avg", "p(95)", "p(99)");
+        ToolRecords.Threshold t = new ToolRecords.Threshold("http_req_duration{name:Login}", "p(95)<=600", false);
+        t.statistic = "p(95)";
+        t.measuredValue = 779.71796;
+        t.metricType = "trend";
+        t.metricContains = "time";
+        File f = tmp.resolve("v11.jsonl").toFile();
+        try (RunDataWriter w = new RunDataWriter(f, h)) {
+            w.sample(new RunSample("A", T, 10, true));
+            w.threshold(t);
+            w.threshold(new ToolRecords.Threshold("http_req_failed", "rate<0.01", true));
+        }
+        String text = Files.readString(f.toPath());
+        assertTrue(text.contains("\"formatVersion\":\"1.1\""), text);
+        RunDataReader.Result[] r = new RunDataReader.Result[1];
+        read(f, r);
+        assertEquals(java.util.List.of("avg", "p(95)", "p(99)"), r[0].header.trendStatistics);
+        ToolRecords.Threshold back = r[0].tool.thresholds().get(0);
+        assertEquals("p(95)", back.statistic);
+        assertEquals(779.71796, back.measuredValue, 0.0);
+        assertEquals("trend", back.metricType);
+        assertEquals("time", back.metricContains);
+        ToolRecords.Threshold bare = r[0].tool.thresholds().get(1);
+        assertEquals(null, bare.statistic, "a field not written reads as absent");
+        assertEquals(null, bare.measuredValue, "never 0");
+        assertFalse(text.contains("\"statistic\":null"), "absent, not null: " + text);
+    }
+
+    @Test
+    void aFormat10ThresholdReadsWithNoMeasuredValue() throws IOException {
+        RunDataReader.Result[] r = new RunDataReader.Result[1];
+        read(file("v10.jsonl", RUN, sample("\"name\":\"A\",\"start\":" + T + ",\"elapsed\":10,\"success\":true"),
+                "{\"type\":\"threshold\",\"metric\":\"http_req_failed\",\"expression\":\"rate<0.01\",\"passed\":false}"), r);
+        ToolRecords.Threshold t = r[0].tool.thresholds().get(0);
+        assertEquals(null, t.statistic);
+        assertEquals(null, t.measuredValue);
+        assertEquals(null, t.metricType);
+        assertEquals(null, t.metricContains);
+        assertEquals(null, r[0].header.trendStatistics);
+    }
+
+    @Test
     void aToolsOwnRecordsAreKeptForItsTab() throws IOException {
         RunDataReader.Result[] r = new RunDataReader.Result[1];
         read(file("tool.jsonl", RUN,
