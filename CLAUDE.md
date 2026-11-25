@@ -175,10 +175,24 @@ Run them before a release:
 ./test-plans/scripts/run-docker-tests.sh   # E16, E17
 ```
 
-Those four are **not** the release tier. `test-plans/scripts/` ships **14** `run-*.sh`, and
-**11** of them are the release tier (the other three are sanity, regression and goldens) — the
-other seven are the six `run-family-*` scripts and `run-title-junit-tests.sh`, and they carry
-their own A/B, C/D, E, F/H, G, I/J and T ranges.
+Those four are **not** the release tier. **`./test-plans/scripts/run-release.sh` is**: it builds
+and deploys once, then runs in two phases, where one after another took ~75 minutes (2026-11-24).
+Phase 1 runs every release runner except the browser tests side by side, in nine lanes (`LANES`
+in the script). Phase 2 runs the regression's browser tests (R05) alone: they use 83-90% of the
+PC's 24 threads on their own, and beside the lanes 5 to 25 of 1222 timed out in three runs
+(2026-11-25), where a lower priority for the other lanes made no difference. `test-plans/scripts/`
+ships **16** `run-*.sh`: the release runner, sanity, the regression's R06 and R08 (goldens,
+run-data), and the **12** in its lanes — the regression (`--no-browser-tests`, then `--browser-tests-only`), the four above (`run-config-tests.sh` as two halves, `--stages C01-C23`
+and `--stages C24-C44`; `run-all-tests.sh --suite release`: the scenarios the regression does not
+produce, with its own CSV and markers), the six `run-family-*` scripts and
+`run-title-junit-tests.sh`, which carry their own A/B, C/D, E, F/H, G, I/J and T ranges.
+`verify_release_tier` (S03/R03) fails when a runner is in no lane, or when the lanes leave out the
+browser tests and no phase 2 runs them. The lanes are safe together because each runner writes only
+its own folder under `test-results/`, and nothing rebuilds the JAR under them: every runner honours
+`SKIP_BUILD=1`. Two release runs at once would spoil both, so a second one refuses while the first
+is alive (`test-results/.release-running`). `run-family-e-tests.sh` runs its iterations 4 at a time
+(`E_JOBS`), each pair in its own folder, behind a 2-second barrier (`BARRIER_LEAD`) taken with one
+sleep.
 
 Do not maintain that list here. Every range above has already drifted once (`18`, `C01-C15`,
 `N01-N07`), and a hand-kept copy of something executable is wrong within a month while

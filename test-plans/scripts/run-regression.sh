@@ -22,6 +22,17 @@
 #  cycle launches JMeter zero times and cannot notice the plugin failing to load in
 #  lib/ext, which made this tier quietly weaker than sanity.
 #
+#  SKIP_BUILD=1, as every runner reads it: the caller has already built and
+#  deployed this tree's JAR (run-release.sh, which runs the other runners beside
+#  this one on that JAR, so nothing may rebuild it under them). R01 then checks
+#  the deployed JAR instead of building.
+#
+#  --no-browser-tests / --browser-tests-only: the regression in two halves, for
+#  run-release.sh. The browser tests (R05) use most of this machine's CPU on their
+#  own (83-90% of 24 threads, measured 2026-11-25), and beside the other runners 5 to
+#  25 of them timed out. So the release runs every other step beside the other
+#  runners, then R05 alone over the fixtures R04 left current.
+#
 #  Exit code is the number of failed stages.
 # =============================================================================
 set -uo pipefail
@@ -29,13 +40,30 @@ set -uo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../scripts/lib/common.sh"
 
 FORCE_FIXTURES=0
+BROWSER_TESTS=all   # all | none | only
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --force-fixtures) FORCE_FIXTURES=1; shift ;;
-        -h|--help) sed -n '2,25p' "$0"; exit 0 ;;
+        --no-browser-tests) BROWSER_TESTS=none; shift ;;
+        --browser-tests-only) BROWSER_TESTS=only; shift ;;
+        -h|--help) sed -n '2,36p' "$0"; exit 0 ;;
         *) echo "Unknown argument: $1" >&2; exit 2 ;;
     esac
 done
+
+# R05, in one place: in its turn after the fixtures, or alone with --browser-tests-only.
+# browser_step <what to say when the fixtures are stale>
+browser_step() {
+    if fixtures_current; then
+        if run_playwright; then
+            record R05 "Playwright ($(playwright_test_count) tests)" PASS
+        else
+            record R05 "Playwright ($(playwright_test_count) tests)" FAIL "see test-results/playwright-report/"
+        fi
+    else
+        record R05 "Playwright ($(playwright_test_count) tests)" FAIL "$1"
+    fi
+}
 
 print_banner "Regression Suite — Web Insight Report"
 
@@ -47,11 +75,26 @@ require_jmeter
 # or every scenario dies with CannotResolveClassException before a single sample.
 # Building alone was enough on a developer machine that already had the plugin
 # installed from earlier work, and failed on every fresh checkout.
-if build_plugin && deploy_plugin; then
+if [[ "${SKIP_BUILD:-0}" == "1" ]]; then
+    # require_deployed_plugin exits on a missing or doubled JAR, so it runs in a subshell.
+    if (require_deployed_plugin); then
+        record R01 "Build, deploy + shaded JAR relocation guard" PASS "built and deployed by the caller"
+    else
+        record R01 "Build, deploy + shaded JAR relocation guard" FAIL "SKIP_BUILD=1, and this tree's JAR is not deployed alone"
+        print_summary "REGRESSION SUMMARY"
+        exit $FAIL
+    fi
+elif build_plugin && deploy_plugin; then
     record R01 "Build, deploy + shaded JAR relocation guard" PASS
 else
     record R01 "Build, deploy + shaded JAR relocation guard" FAIL "see output above"
     print_summary "REGRESSION SUMMARY"
+    exit $FAIL
+fi
+
+if [[ "$BROWSER_TESTS" == "only" ]]; then
+    browser_step "fixtures stale — run the steps before R05 first (without --browser-tests-only); R04 names them"
+    print_summary "REGRESSION SUMMARY (browser tests only)"
     exit $FAIL
 fi
 
@@ -178,14 +221,8 @@ else
 fi
 
 # --- 5. Browser tests ---------------------------------------------------------
-if fixtures_current; then
-    if run_playwright; then
-        record R05 "Playwright ($(playwright_test_count) tests)" PASS
-    else
-        record R05 "Playwright ($(playwright_test_count) tests)" FAIL "see test-results/playwright-report/"
-    fi
-else
-    record R05 "Playwright ($(playwright_test_count) tests)" FAIL "fixtures still stale after regeneration — R04 names them"
+if [[ "$BROWSER_TESTS" == "all" ]]; then
+    browser_step "fixtures still stale after regeneration — R04 names them"
 fi
 
 # --- 6. Golden artifacts ------------------------------------------------------
@@ -235,6 +272,9 @@ else
     record R08 "Run data conformance (k6 fixtures, JMeter as a producer)" FAIL "fixtures stale — R04 names them"
 fi
 print_summary "REGRESSION SUMMARY"
+if [[ "$BROWSER_TESTS" == "none" ]]; then
+    echo "  R05 (the browser tests) was not run: --no-browser-tests. Run --browser-tests-only next."
+fi
 echo ""
 echo "  Not covered here — run manually before a release:"
 echo "    ./test-plans/scripts/run-all-tests.sh      # + E01/E03/E04/E13/E15/E22 and E20 external-data"

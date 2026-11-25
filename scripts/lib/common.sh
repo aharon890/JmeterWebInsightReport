@@ -1556,8 +1556,11 @@ playwright_test_count() {
     local cli="$pw_dir/node_modules/@playwright/test/cli.js"
     [[ -f "$cli" ]] || { echo "?"; return 0; }
     local total
+    # --reporter=list: the config's json and html reporters would otherwise write a listing
+    # (every test "skipped") over the results the browser run just wrote. R05 counts after it
+    # runs, so test-results/playwright-results.json never held a regression's real results.
     total="$( cd "$pw_dir" \
-        && WIR_SKIP_FIXTURE_CHECK=1 node "$cli" test --list 2>/dev/null \
+        && WIR_SKIP_FIXTURE_CHECK=1 node "$cli" test --list --reporter=list 2>/dev/null \
         | awk '/^Total: [0-9]+ tests/ { print $2 }' | tail -1 )"
     echo "${total:-?}"
 }
@@ -2542,34 +2545,49 @@ selftest_jq_idioms() {
     echo "[SELFTEST] the jq check refuses what it claims to (D8, a malformed line, ${#labels[@]} one-clause mutants)"
 }
 
-# Every runner is named by the release skill.
+# Every runner is in the release tier: run in a lane of run-release.sh, which the release skill
+# runs.
 #
 # The repo ships 13 runners and the release tier named 5 of them, so 8 were invoked by no
 # documented workflow at all — including run-family-ab-tests.sh, which carries B12, one of the
 # two deliberate exit-0 exemptions CLAUDE.md cites BY NAME. An exemption defended only by a
 # stage nobody runs is not defended, and neither is the -n -t -e -o handshake that D01-D06 is
-# the only coverage of.
+# the only coverage of. Since 2026-11-25 the list is run-release.sh's LANES (the release set
+# side by side), so the check reads the lanes, not prose that may name a runner it never runs.
 #
-# Three are exempt, each for its own reason: run-sanity.sh is the constant-cycle tier;
-# run-regression.sh is invoked by name at the top of the release list; and run-goldens.sh is
-# invoked BY regression as R06, so naming it separately would run it twice.
+# Four are exempt, each for its own reason: run-sanity.sh is the constant-cycle tier;
+# run-goldens.sh and run-run-data.sh are the regression's R06 and R08, so naming them again would
+# run them twice; and run-release.sh is the tier itself.
 verify_release_tier() {
+    local release="$PROJECT_DIR/test-plans/scripts/run-release.sh"
     local skill="$PROJECT_DIR/.claude/skills/_perf_release/SKILL.md"
-    # Untracked on some machines by .gitignore; absence is not a failure here.
-    [[ -f "$skill" ]] || { echo "[TIER] no _perf_release skill — skipping"; return 0; }
-    local missing=() f name
+    [[ -f "$release" ]] || { echo "[TIER] test-plans/scripts/run-release.sh is missing" >&2; return 1; }
+    local lanes missing=() f name
+    lanes="$(sed -n '/^LANES=(/,/^)/p' "$release")"
     for f in "$PROJECT_DIR"/test-plans/scripts/run-*.sh; do
         name="$(basename "$f")"
         case "$name" in
-            # run-goldens.sh is R06 and run-run-data.sh R08 of the regression, not release runners
-            run-sanity.sh|run-goldens.sh|run-run-data.sh) continue ;;
+            run-sanity.sh|run-goldens.sh|run-run-data.sh|run-release.sh) continue ;;
         esac
-        grep -q "$name" "$skill" || missing+=("$name")
+        printf '%s
+' "$lanes" | grep -qF "$name" || missing+=("$name")
     done
     if [[ ${#missing[@]} -gt 0 ]]; then
-        echo "[TIER] runners that no release tier invokes: ${missing[*]}" >&2
-        echo "       Add them to .claude/skills/_perf_release/SKILL.md, or delete the runner." >&2
+        echo "[TIER] runners that no release lane runs: ${missing[*]}" >&2
+        echo "       Add them to LANES in test-plans/scripts/run-release.sh, or delete the runner." >&2
         return 1
     fi
-    echo "[TIER] every runner is in the release tier"
+    # Phase 1 runs the regression without its browser tests; phase 2 must run them, or a release
+    # would ship with R05 never run and every lane green.
+    if printf '%s\n' "$lanes" | grep -qF -- "--no-browser-tests" \
+       && ! grep -qE '^BROWSER_PHASE="run-regression\.sh .*--browser-tests-only"' "$release"; then
+        echo "[TIER] a lane runs the regression --no-browser-tests, and no BROWSER_PHASE runs --browser-tests-only" >&2
+        return 1
+    fi
+    # Untracked on some machines by .gitignore; absence is not a failure here.
+    if [[ -f "$skill" ]] && ! grep -qF "run-release.sh" "$skill"; then
+        echo "[TIER] the release skill does not run test-plans/scripts/run-release.sh" >&2
+        return 1
+    fi
+    echo "[TIER] every runner is in a release lane"
 }

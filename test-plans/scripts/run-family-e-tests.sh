@@ -39,7 +39,20 @@ SUITE_DIR="$RESULTS_DIR/family-e"
 PLAN="$TEST_PLANS/single-sampler-test.jmx"
 
 ITER="${E_ITERATIONS:-10}"       # racing rows loop this many times
-BARRIER_LEAD="${BARRIER_LEAD:-12}"  # seconds to allow both JVMs to reach the barrier
+# Seconds between setting the barrier and releasing it. The barrier is BEFORE each JVM starts, so
+# the lead only has to cover forking the two subshells that wait on it; JVM start-up comes after,
+# on both sides alike. It was 12, read as "time for both JVMs to reach the barrier", and the two
+# subshells spent those 12 seconds starting Python in a loop to read the clock: 39 iterations of
+# that were about 8 of this runner's 15 minutes, and a CPU's worth of churn beside whatever else
+# ran.
+BARRIER_LEAD="${BARRIER_LEAD:-2}"
+# Iterations run side by side, each pair in its own iterN directory (a race is between the two
+# runs of ONE iteration, never across iterations). E_JOBS=1 for strict serial.
+E_JOBS="${E_JOBS:-4}"
+if ! [[ "$E_JOBS" =~ ^[1-9][0-9]*$ ]]; then
+    echo "ERROR: E_JOBS must be a positive integer (got '$E_JOBS')" >&2
+    exit 2
+fi
 
 print_banner "Concurrency Scenario Tests (E01-E07)"
 rm -rf "$SUITE_DIR"
@@ -50,6 +63,30 @@ mkdir -p "$SUITE_DIR"
 # ---------------------------------------------------------------------------
 
 now_ms() { "$PYTHON" -c "import time;print(int(time.time()*1000))"; }
+# wait_until <epoch ms> -- one sleep to the barrier, to the millisecond, then return.
+wait_until() {
+    "$PYTHON" -c "import sys,time
+d = int(sys.argv[1]) / 1000.0 - time.time()
+if d > 0: time.sleep(d)" "$1"
+}
+
+# pool_run <command...> -- run a command in the background, at most E_JOBS at once. bash 3.2 has
+# no `wait -n`, so a full pool waits for its OLDEST job; iterations take about the same time, so
+# that costs little. pool_drain waits for every job still running.
+POOL=()
+pool_run() {
+    if (( ${#POOL[@]} >= E_JOBS )); then
+        wait "${POOL[0]}"
+        POOL=(${POOL[@]+"${POOL[@]:1}"})
+    fi
+    "$@" &
+    POOL+=($!)
+}
+pool_drain() {
+    local p
+    for p in ${POOL[@]+"${POOL[@]}"}; do wait "$p"; done
+    POOL=()
+}
 
 json_field() {
     "$PYTHON" -c "import json,sys
@@ -95,13 +132,13 @@ race() {
     local pidA pidB
 
     (
-        while (( $(now_ms) < start_at )); do :; done
+        wait_until "$start_at"
         run_jmeter -n -t "$PLAN" -l "$dir/a.jtl" -Jthreads=1 -Jduration=3 -Jrampup=1 \
             "${RACE_A_ARGS[@]}" > "$dir/a.log" 2>&1
         echo $? > "$dir/a.exit"
     ) & pidA=$!
     (
-        while (( $(now_ms) < start_at )); do :; done
+        wait_until "$start_at"
         run_jmeter -n -t "$PLAN" -l "$dir/b.jtl" -Jthreads=1 -Jduration=3 -Jrampup=1 \
             "${RACE_B_ARGS[@]}" > "$dir/b.log" 2>&1
         echo $? > "$dir/b.exit"
@@ -115,12 +152,19 @@ race() {
 # =============================================================================
 echo "[E01] Two concurrent runs, same dir, same default name (x$ITER)..."
 E01_CLEAN=0; E01_DAMAGED=0; E01_LOST=0; E01_WARN=0; E01_TMP=0
-for i in $(seq 1 "$ITER"); do
-    d="$SUITE_DIR/E01/iter$i"; mkdir -p "$d"
+e01_iteration() {
+    local d="$1"
     RACE_A_ARGS=(-Jwebinsight.report.output="$d" -Jwebinsight.report.title=PROC-A)
     RACE_B_ARGS=(-Jwebinsight.report.output="$d" -Jwebinsight.report.title=PROC-B)
     race "$d"
-
+}
+for i in $(seq 1 "$ITER"); do
+    d="$SUITE_DIR/E01/iter$i"; mkdir -p "$d"
+    pool_run e01_iteration "$d"
+done
+pool_drain
+for i in $(seq 1 "$ITER"); do
+    d="$SUITE_DIR/E01/iter$i"
     ht="$(html_title "$d/web-insight-report.html")"
     jt="$(json_field "$d/web-insight-report.json" testName)"
     [[ -n "$(ls -A "$d"/.*.tmp 2>/dev/null)" ]] && E01_TMP=$((E01_TMP+1))
@@ -147,11 +191,19 @@ fi
 # =============================================================================
 echo "[E02] Two concurrent runs, same dir, DISTINCT filenames (x$ITER)..."
 E02_OK=0; E02_BAD=0
-for i in $(seq 1 "$ITER"); do
-    d="$SUITE_DIR/E02/iter$i"; mkdir -p "$d"
+e02_iteration() {
+    local d="$1"
     RACE_A_ARGS=(-Jwebinsight.report.output="$d" -Jwebinsight.report.filename=a.html -Jwebinsight.report.title=PROC-A)
     RACE_B_ARGS=(-Jwebinsight.report.output="$d" -Jwebinsight.report.filename=b.html -Jwebinsight.report.title=PROC-B)
     race "$d"
+}
+for i in $(seq 1 "$ITER"); do
+    d="$SUITE_DIR/E02/iter$i"; mkdir -p "$d"
+    pool_run e02_iteration "$d"
+done
+pool_drain
+for i in $(seq 1 "$ITER"); do
+    d="$SUITE_DIR/E02/iter$i"
     if [[ "$(html_title "$d/a.html")" == "PROC-A" && "$(html_title "$d/b.html")" == "PROC-B" \
        && "$(json_field "$d/a.json" testName)" == "PROC-A" && "$(json_field "$d/b.json" testName)" == "PROC-B" ]]; then
         E02_OK=$((E02_OK+1))
@@ -170,11 +222,19 @@ fi
 # =============================================================================
 echo "[E03] CONTROL: two concurrent runs, SEPARATE dirs (x3)..."
 E03_OK=0
-for i in 1 2 3; do
-    d="$SUITE_DIR/E03/iter$i"; mkdir -p "$d/a" "$d/b"
+e03_iteration() {
+    local d="$1"
     RACE_A_ARGS=(-Jwebinsight.report.output="$d/a" -Jwebinsight.report.title=PROC-A)
     RACE_B_ARGS=(-Jwebinsight.report.output="$d/b" -Jwebinsight.report.title=PROC-B)
     race "$d"
+}
+for i in 1 2 3; do
+    d="$SUITE_DIR/E03/iter$i"; mkdir -p "$d/a" "$d/b"
+    pool_run e03_iteration "$d"
+done
+pool_drain
+for i in 1 2 3; do
+    d="$SUITE_DIR/E03/iter$i"
     [[ "$(html_title "$d/a/web-insight-report.html")" == "PROC-A" \
     && "$(html_title "$d/b/web-insight-report.html")" == "PROC-B" ]] && E03_OK=$((E03_OK+1))
 done
@@ -189,11 +249,19 @@ fi
 # =============================================================================
 echo "[E04] Two concurrent runs, same name, BOTH external-data (x$ITER)..."
 E04_CLEAN=0; E04_SKEW=0; E04_LOST=0
-for i in $(seq 1 "$ITER"); do
-    d="$SUITE_DIR/E04/iter$i"; mkdir -p "$d"
+e04_iteration() {
+    local d="$1"
     RACE_A_ARGS=(-Jwebinsight.report.output="$d" -Jwebinsight.report.externaldata=true -Jwebinsight.report.title=PROC-A)
     RACE_B_ARGS=(-Jwebinsight.report.output="$d" -Jwebinsight.report.externaldata=true -Jwebinsight.report.title=PROC-B)
     race "$d"
+}
+for i in $(seq 1 "$ITER"); do
+    d="$SUITE_DIR/E04/iter$i"; mkdir -p "$d"
+    pool_run e04_iteration "$d"
+done
+pool_drain
+for i in $(seq 1 "$ITER"); do
+    d="$SUITE_DIR/E04/iter$i"
     ht="$(html_title "$d/web-insight-report.html")"
     pt="$(payload_field "$d/web-insight-data.js" runTestName)"
     if [[ -z "$ht" ]]; then
@@ -224,11 +292,19 @@ fi
 # =============================================================================
 echo "[E05] Concurrent external runs with different names (x3)..."
 E05_OK=0
-for i in 1 2 3; do
-    d="$SUITE_DIR/E05/iter$i"; mkdir -p "$d"
+e05_iteration() {
+    local d="$1"
     RACE_A_ARGS=(-Jwebinsight.report.output="$d" -Jwebinsight.report.externaldata=true -Jwebinsight.report.title=PROC-A)
     RACE_B_ARGS=(-Jwebinsight.report.output="$d" -Jwebinsight.report.externaldata=true -Jwebinsight.report.filename=custom.html -Jwebinsight.report.title=PROC-B)
     race "$d"
+}
+for i in 1 2 3; do
+    d="$SUITE_DIR/E05/iter$i"; mkdir -p "$d"
+    pool_run e05_iteration "$d"
+done
+pool_drain
+for i in 1 2 3; do
+    d="$SUITE_DIR/E05/iter$i"
     [[ "$(html_title "$d/web-insight-report.html")" == "PROC-A" \
     && "$(html_title "$d/custom.html")" == "PROC-B" \
     && -f "$d/web-insight-data.js" && -f "$d/custom-data.js" ]] && E05_OK=$((E05_OK+1))
@@ -259,8 +335,8 @@ fi
 # must leave exactly one internally consistent report rather than a mixed set.
 echo "[E06] Concurrent listener (-n -t) and exporter (-g) on ONE dir (x3)..."
 E06_CLEAN=0; E06_MIXED=0; E06_LOST=0; E06_TMP=0; E06_NOTES=""
-for i in 1 2 3; do
-    d="$SUITE_DIR/E06/iter$i"; mkdir -p "$d/src"
+e06_iteration() {
+    local d="$1" shared start_at lp ep
     # A JTL for the exporter to consume, produced up-front and kept out of the shared dir.
     run_jmeter -n -t "$PLAN" -l "$d/src/seed.jtl" -Jthreads=1 -Jduration=3 -Jrampup=1 \
         -Jwebinsight.report.output="$d/src" -Jwebinsight.report.title=SEEDGEN > "$d/seedgen.log" 2>&1
@@ -271,19 +347,27 @@ for i in 1 2 3; do
     rm -rf "$shared"
     start_at=$(( $(now_ms) + BARRIER_LEAD * 1000 ))
     (
-        while (( $(now_ms) < start_at )); do :; done
+        wait_until "$start_at"
         run_jmeter -n -t "$PLAN" -l "$d/live.jtl" -Jthreads=1 -Jduration=3 -Jrampup=1 \
             -Jwebinsight.report.output="$shared" -Jwebinsight.report.title=LISTENER > "$d/listener.log" 2>&1
     ) &
     lp=$!
     (
-        while (( $(now_ms) < start_at )); do :; done
+        wait_until "$start_at"
         run_jmeter -g "$d/src/seed.jtl" -o "$shared" \
             -Jwebinsight.report.title=EXPORTER > "$d/exporter.log" 2>&1
     ) &
     ep=$!
     wait $lp $ep
-
+}
+for i in 1 2 3; do
+    d="$SUITE_DIR/E06/iter$i"; mkdir -p "$d/src"
+    pool_run e06_iteration "$d"
+done
+pool_drain
+for i in 1 2 3; do
+    d="$SUITE_DIR/E06/iter$i"
+    shared="$d/shared"
     ht="$(html_title "$shared/web-insight-report.html")"
     jt="$(json_field "$shared/web-insight-report.json" testName)"
     [[ -n "$(ls -A "$shared"/.*.tmp 2>/dev/null)" ]] && E06_TMP=$((E06_TMP+1))

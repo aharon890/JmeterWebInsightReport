@@ -61,7 +61,14 @@ if ! docker_cmd info >/dev/null 2>&1; then
 fi
 
 # --- Build plugin (host-side; the container only runs it) ---
-build_plugin || exit 1
+# SKIP_BUILD=1: the caller built this tree's JAR, as run-family-g-tests.sh already allows. Under
+# run-release.sh it must: the other runners use target/ while this one runs, and build_plugin's
+# `mvn clean` pulled it out from under the regression's own Maven run (2026-11-25).
+if [[ "${SKIP_BUILD:-0}" == "1" ]]; then
+    echo "[BUILD] SKIP_BUILD=1 — using the plugin ${PLUGIN_VERSION} already built"
+else
+    build_plugin || exit 1
+fi
 require_plugin_jar
 
 # --- Build image ---
