@@ -8237,6 +8237,286 @@ WIR.status = (function () {
 }());
 
 /* ============================================================
+ *  WIR.table — one table experience for every tab (spec 002, US6, FR-060 to FR-068).
+ *
+ *  Every table of the report goes through this pipeline, so a control works the same way on each
+ *  and is written once: filter (search, status chips, the filter bar's ticks), group, sort by each
+ *  column's VALUE within its group or the transaction tree, then open, close and fold. It is the
+ *  Asserts tab's state pipeline (applySort(applyFilters(...)) before rendering) made general.
+ *
+ *  view(records, spec, state) is pure: it reads no page and writes nothing, so js-unit holds it
+ *  (table-core.test.js) and every table answers each question one way.
+ *
+ *  spec:
+ *    key(record)            a stable key: what × and the remembered view name a row by
+ *    columns                [{id, value(record), compare?(a, b)}]: a sort reads value, never the cell text
+ *    search(record)         the text the search box looks in
+ *    status(record)         the row's status, for the chips (optional)
+ *    nameOf(record)         the request a row is about, for the filter bar's ticks; null = tied to none
+ *    groupings              {id: {of(record) -> key | {key, label}, order?(g1, g2), open?(group)}
+ *                            | {tree: true}}: Group by's choices; '' is none
+ *    tree                   {nameOf(record), childrenOf, open}: the transaction hierarchy, for a
+ *                            grouping with tree: true (samplerTreeOrder orders it)
+ *    pinned(record)         'first' | 'last' | null: the Σ Total and Errors Total rows
+ *    fold(record)           true for a row folded into one line per group (k6's always-true thresholds)
+ *    tie(a, b)              how equal values break, ascending in both directions (default: the order given)
+ *  state:
+ *    q, statuses [], names [] | null, group, sort {col, dir}, hidden [keys], open {key: bool},
+ *    unfold {groupKey: true}
+ *
+ *  A group header carries counts only — its size and its rows' statuses — never a sum or an average
+ *  of its rows' numbers: the whole run is counted per sample, never as a sum of rows (CLAUDE.md).
+ * ============================================================ */
+WIR.table = (function () {
+    'use strict';
+
+    /* One collation for every reader: a German and an English reader see one order
+       (every-reader-same-page), and "Item 10" sorts after "item 9". */
+    var COLLATOR = new Intl.Collator('en', { numeric: true });
+
+    function missing(v) {
+        return v === null || v === undefined || (typeof v === 'number' && isNaN(v)) || v === '';
+    }
+
+    /** Two present values: numbers by number, text by the one collation, a number before a text. */
+    function compareValues(a, b) {
+        var na = typeof a === 'number';
+        var nb = typeof b === 'number';
+        if (na && nb) return a < b ? -1 : a > b ? 1 : 0;
+        if (na !== nb) return na ? -1 : 1;
+        return COLLATOR.compare(String(a), String(b));
+    }
+
+    function columnOf(spec, id) {
+        var cols = spec.columns || [];
+        for (var i = 0; i < cols.length; i++) {
+            if (cols[i].id === id) return cols[i];
+        }
+        return null;
+    }
+
+    /** A comparator over {record, index}: a row with no value last in both directions, ties in the order given. */
+    function sorter(spec, sort) {
+        var col = sort && columnOf(spec, sort.col);
+        if (!col) return function (a, b) { return a.index - b.index; };
+        var dir = sort.dir === 'desc' ? -1 : 1;
+        var cmp = col.compare || compareValues;
+        return function (a, b) {
+            var va = col.value(a.record);
+            var vb = col.value(b.record);
+            var ma = missing(va);
+            var mb = missing(vb);
+            if (ma || mb) return ma && mb ? a.index - b.index : ma ? 1 : -1;
+            var d = cmp(va, vb) * dir;
+            if (d === 0 && spec.tie) d = spec.tie(a.record, b.record);
+            return d !== 0 ? d : a.index - b.index;
+        };
+    }
+
+    function groupOf(grouping, record) {
+        var g = grouping.of(record);
+        if (g !== null && typeof g === 'object') {
+            return { key: String(g.key), label: g.label === undefined ? String(g.key) : String(g.label) };
+        }
+        return { key: String(g), label: String(g) };
+    }
+
+    function countStatuses(items, spec) {
+        var counts = Object.create(null);
+        if (!spec.status) return counts;
+        items.forEach(function (it) {
+            var s = spec.status(it.record);
+            if (s !== null && s !== undefined) counts[s] = (counts[s] || 0) + 1;
+        });
+        return counts;
+    }
+
+    function view(records, spec, state) {
+        state = state || {};
+        var q = String(state.q || '').trim().toLowerCase();
+        var statuses = state.statuses || [];
+        var names = state.names ? Object.create(null) : null;
+        if (names) state.names.forEach(function (n) { names[n] = true; });
+        var hiddenKeys = Object.create(null);
+        (state.hidden || []).forEach(function (k) { hiddenKeys[k] = true; });
+        var open = state.open || {};
+        var unfold = state.unfold || {};
+        var grouping = state.group && spec.groupings ? spec.groupings[state.group] : null;
+        if (grouping && grouping.tree && !spec.tree) grouping = null;
+
+        var first = [], last = [], items = [];
+        (records || []).forEach(function (record, index) {
+            var item = { record: record, index: index, key: String(spec.key(record)) };
+            var pin = spec.pinned ? spec.pinned(record) : null;
+            if (pin === 'first') first.push(item);
+            else if (pin === 'last') last.push(item);
+            else items.push(item);
+        });
+
+        function matches(it) {
+            var r = it.record;
+            if (statuses.length && (!spec.status || statuses.indexOf(spec.status(r)) === -1)) return false;
+            if (names && spec.nameOf) {
+                var n = spec.nameOf(r);
+                if (n !== null && n !== undefined && !names[n]) return false;
+            }
+            if (q && String(spec.search ? spec.search(r) : '').toLowerCase().indexOf(q) === -1) return false;
+            return true;
+        }
+
+        var result = {
+            rows: [], kept: [], groups: [],
+            counts: countStatuses(items, spec),
+            total: items.length, matched: 0, hidden: 0
+        };
+        var cmp = sorter(spec, state.sort);
+        var filterActive = !!(q || statuses.length || names);
+
+        if (grouping && grouping.tree) {
+            treeView(items, spec, state, result, matches, hiddenKeys, open, cmp, filterActive);
+        } else {
+            var kept = [];
+            items.forEach(function (it) {
+                if (!matches(it)) return;
+                result.matched++;
+                if (hiddenKeys[it.key]) { result.hidden++; return; }
+                kept.push(it);
+            });
+            kept.sort(cmp);
+            if (grouping) groupedView(kept, spec, grouping, result, open, unfold);
+            else foldedRows(kept, spec, '', null, 0, result, unfold);
+        }
+
+        result.rows = pinnedRows(first).concat(result.rows, pinnedRows(last));
+        result.kept = first.map(rec).concat(result.kept, last.map(rec));
+        return result;
+    }
+
+    function rec(it) { return it.record; }
+
+    function pinnedRows(items) {
+        return items.map(function (it) {
+            return { kind: 'row', key: it.key, record: it.record, depth: 0, group: null, pinned: true };
+        });
+    }
+
+    /** The rows of one group (or of the whole table), the folded ones as one line at the end. */
+    function foldedRows(items, spec, groupKey, group, depth, result, unfold) {
+        var folded = [];
+        items.forEach(function (it) {
+            result.kept.push(it.record);
+            if (spec.fold && spec.fold(it.record) && !unfold[groupKey]) {
+                folded.push(it);
+                return;
+            }
+            if (group && !group.open) return;
+            result.rows.push({ kind: 'row', key: it.key, record: it.record, depth: depth, group: group ? group.key : null });
+        });
+        if (folded.length && (!group || group.open)) {
+            result.rows.push({ kind: 'fold', key: 'fold:' + groupKey, group: groupKey, count: folded.length,
+                depth: depth });
+        }
+    }
+
+    function groupedView(kept, spec, grouping, result, open, unfold) {
+        var byKey = Object.create(null);
+        var order = [];
+        kept.forEach(function (it) {
+            var g = groupOf(grouping, it.record);
+            if (!byKey[g.key]) {
+                byKey[g.key] = { key: g.key, label: g.label, items: [] };
+                order.push(byKey[g.key]);
+            }
+            byKey[g.key].items.push(it);
+        });
+        order.forEach(function (g) {
+            g.size = g.items.length;
+            g.counts = countStatuses(g.items, spec);
+            g.records = g.items.map(rec);
+        });
+        order.sort(grouping.order || function (a, b) { return COLLATOR.compare(a.label, b.label); });
+        order.forEach(function (g) {
+            var info = { key: g.key, label: g.label, size: g.size, counts: g.counts, records: g.records };
+            g.open = open[g.key] !== undefined ? !!open[g.key] : grouping.open ? !!grouping.open(info) : true;
+            result.groups.push(g.key);
+            result.rows.push({ kind: 'group', key: g.key, label: g.label, size: g.size, counts: g.counts,
+                open: g.open, depth: 0 });
+            foldedRows(g.items, spec, g.key, g, 1, result, unfold);
+        });
+    }
+
+    /* The transaction tree, as the Requests table draws it: samplerTreeOrder orders it, a sort
+       orders siblings only, a filter keeps a match's transactions above it as context, × on a
+       transaction takes its rows with it, and a closed transaction hides its rows. */
+    function treeView(items, spec, state, result, matches, hiddenKeys, open, cmp, filterActive) {
+        var tree = spec.tree;
+        var sorted = !!(state.sort && columnOf(spec, state.sort.col));
+        var byName = Object.create(null);
+        items.forEach(function (it) { byName[tree.nameOf(it.record)] = it; });
+        var allNames = items.map(function (it) { return tree.nameOf(it.record); });
+        /* with no sort, the run's own order: each transaction's rows as first seen (samplerTreeOrder) */
+        var ordered = samplerTreeOrder(allNames, tree.childrenOf || {}, sorted ? function (a, b) {
+            return cmp(byName[a], byName[b]);
+        } : undefined);
+        /* parent and children as the order placed them: depth d + 1 right after its parent */
+        var parentOf = Object.create(null);
+        var kids = Object.create(null);
+        var stack = [];
+        ordered.forEach(function (o) {
+            stack.length = o.depth;
+            if (o.depth > 0) {
+                parentOf[o.name] = stack[o.depth - 1];
+                (kids[stack[o.depth - 1]] = kids[stack[o.depth - 1]] || []).push(o.name);
+            }
+            stack[o.depth] = o.name;
+        });
+        var gone = Object.create(null);
+        ordered.forEach(function (o) {
+            var p = parentOf[o.name];
+            if (hiddenKeys[byName[o.name].key] || (p !== undefined && gone[p])) gone[o.name] = true;
+        });
+        var hit = Object.create(null);
+        var shown = Object.create(null);
+        ordered.forEach(function (o) {
+            var it = byName[o.name];
+            if (!matches(it)) return;
+            result.matched++;
+            if (gone[o.name]) {
+                if (hiddenKeys[it.key]) result.hidden++;
+                return;
+            }
+            hit[o.name] = true;
+            shown[o.name] = true;
+            for (var p = parentOf[o.name]; p !== undefined; p = parentOf[p]) shown[p] = true;
+        });
+        Object.keys(kids).forEach(function (n) { result.groups.push(n); });
+        result.groups.sort(function (a, b) { return allNames.indexOf(a) - allNames.indexOf(b); });
+        var closedAbove = [];
+        ordered.forEach(function (o) {
+            if (!shown[o.name]) return;
+            var it = byName[o.name];
+            result.kept.push(it.record);
+            closedAbove.length = o.depth;
+            var hidden = closedAbove.some(function (c) { return c; });
+            var hasKids = !!kids[o.name];
+            var isOpen = open[o.name] !== undefined ? !!open[o.name]
+                : (filterActive && hasKids) ? true : tree.open !== false;
+            closedAbove[o.depth] = hasKids && !isOpen;
+            if (hidden) return;
+            var row = { kind: 'row', key: it.key, record: it.record, depth: o.depth, group: parentOf[o.name] || null,
+                parent: hasKids, open: hasKids ? isOpen : undefined };
+            if (!hit[o.name]) row.context = true;
+            result.rows.push(row);
+        });
+    }
+
+    return {
+        view: view,
+        compareValues: compareValues
+    };
+}());
+
+/* ============================================================
  *  WIR.javaText — writing a number, and reading a text field, the way Java does.
  *
  *  Every number a mirror sentence quotes is one Java also prints — into the CI/CD JSON's

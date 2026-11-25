@@ -72,15 +72,15 @@ fixture.
 
 ## Stage 2: The toolkit's pure core (US6, FR-060, FR-063, FR-064)
 
-- [ ] T020 [US6] Red: `JSU/table-core.test.js` over `WIR.table.view(records, spec, state)`: search, several chips at
+- [X] T020 [US6] Red: `JSU/table-core.test.js` over `WIR.table.view(records, spec, state)`: search, several chips at
   once (each chip counting every row), the ticks (rows tied to no request stay), group by a key (a group header carries
   counts only), sort by value never by text (`8.3/s` above `20.7/min`), sort inside a group and inside the tree
   (`samplerTreeOrder`), fold, open and closed groups, hidden rows counted, one fixed collation (an English and a German
   reader get one order).
-- [ ] T021 [US6] `WIR.table.view` in `report.js`, pure, reached from `JSU/harness.js`.
-- [ ] T022 [P] [US6] SC-010's synthetic run: `test-plans/run-data/tools/gen-many-names.js` writes k6 files with 300+
+- [X] T021 [US6] `WIR.table.view` in `report.js`, pure, reached from `JSU/harness.js`.
+- [X] T022 [P] [US6] SC-010's synthetic run: `test-plans/run-data/tools/gen-many-names.js` writes k6 files with 300+
   request names and about 1,200 thresholds, from a fixed seed. Not a fixture; used in stage 10.
-- [ ] T023 Commit; the gate is pull request 1's, after stage 4.
+- [X] T023 Commit; the gate is pull request 1's, after stage 4.
 
 ## Stage 3: Asserts moves onto the toolkit (US6, FR-061, FR-062, FR-064, FR-065, FR-068)
 
