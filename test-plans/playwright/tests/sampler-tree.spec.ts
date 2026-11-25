@@ -45,12 +45,10 @@ async function expectEveryChildUnderItsTransaction(page: Page) {
   return children;
 }
 
+/* "Show transaction details" is the table's Expand all / Collapse all since spec 002 */
 async function transactionDetails(page: Page, on: boolean) {
-  const active = await page.locator('#transactionChildrenBtn').evaluate(b => b.classList.contains('active'));
-  if (active !== on) {
-    await page.locator('#transactionChildrenBtn').click();
-    await page.waitForTimeout(200);
-  }
+  await page.click(on ? '#samplerTable-expand-all' : '#samplerTable-collapse-all');
+  await page.waitForTimeout(200);
 }
 
 test.describe('Samplers table as a tree [E31]', () => {
@@ -107,7 +105,7 @@ test.describe('Samplers table as a tree [E31]', () => {
     await transactionDetails(page, true);
     const row = page.locator('#samplerTable tbody tr[data-sampler="Search the thread"]');
     await row.hover();
-    await row.locator('.row-hide-btn, [onclick^="hideRow"]').first().click({ force: true });
+    await row.locator('.wir-row-hide').first().click({ force: true });
     await page.waitForTimeout(150);
     let names = (await shownRows(page)).map(r => r.name);
     expect(names).not.toContain('Search the thread');
@@ -116,8 +114,8 @@ test.describe('Samplers table as a tree [E31]', () => {
     await transactionDetails(page, true);
     names = (await shownRows(page)).map(r => r.name);
     expect(names, 'the hidden transaction stays hidden').not.toContain('GET messages (search)');
-    await expect(page.locator('#showHiddenRowsBtn')).toHaveText(/Show 1 Hidden Row/);
-    await page.locator('#showHiddenRowsBtn').click();
+    await expect(page.locator('#samplerTable-show-hidden')).toHaveText(/Show 1 hidden/);
+    await page.locator('#samplerTable-show-hidden').click();
     names = (await shownRows(page)).map(r => r.name);
     expect(names).toContain('Search the thread');
     expect(names).toContain('GET messages (search)');

@@ -1827,16 +1827,24 @@ verify_report_js_rules() {
         fail=1
     fi
 
-    # 3. Neither re-rendered table goes through the generic table helpers. Those walk tbody tr
-    #    and set style.display, which is right for the Thymeleaf-rendered tables and wrong for
-    #    these two: render() rebuilds them, so a display filter would be erased by the next
-    #    render and would orphan the detail rows belonging to the row above them. Both ids are
-    #    spelled here EXACTLY as the DOM spells them -- this is a literal match, so a renamed
-    #    table id silently drops out of the guard. The k6 tab's four tables (spec 002) are rebuilt
-    #    by WIR.toolTab the same way.
-    hits=$(grep -an "\(filterGenericTable\|sortGenericTable\)([^)]*\(assertsTable\|serverKpiTable\|toolThresholds\|toolTimings\|toolChecks\|toolGroupDurations\)" "$js" || true)
+    # 3. A table row is shown or hidden by WIR.table alone (spec 002, T064). Every table's search, chips, Group by,
+    #    open and close, x and "Show N hidden" go through it, and it moves a row with the rows that belong to it (a
+    #    chart panel, the rules judging it). A display set on a row anywhere else is a second rule for which rows
+    #    show: the next pass of the table undoes it, or it strands a row's companions, which is how the old
+    #    per-table walkers broke (a sort stranded the judging row, a toggle built a second panel). The one exception
+    #    is samplerTotalRowSearch: the Sigma Total row is the whole run's, not a record of the table. Read as a
+    #    display written on a row-named variable (tr, row, r, rows[i], total, childRow, detailRow) outside the
+    #    WIR.table module, from its "WIR.table = (function" line to the first "}());" after it.
+    hits=$(awk '
+        /^WIR\.table = \(function \(\) \{/ { inTable = 1 }
+        inTable && /^\}\(\)\);/ { inTable = 0; next }
+        /^function samplerTotalRowSearch\(/ { inTotal = 1 }
+        inTotal && /^\}/ { inTotal = 0; next }
+        !inTable && !inTotal && /(^|[^A-Za-z0-9_$.])(tr|row|r|rows\[[^]]*\]|total|childRow|detailRow)\.style\.display *= *[^=]/ {
+            print NR ": " $0
+        }' "$js")
     if [[ -n "$hits" ]]; then
-        echo "[JSRULES] a re-rendered table was passed to a generic table helper:" >&2
+        echo "[JSRULES] a table row shown or hidden outside WIR.table (the table's next pass undoes it):" >&2
         echo "$hits" >&2
         fail=1
     fi
@@ -1904,6 +1912,20 @@ selftest_report_js_rules() {
     printf '%s\n' "el.className = 'wir-chip wir-chip-' + chipToken(s);" > "$tmp"
     if ! verify_report_js_rules "$tmp" >/dev/null 2>&1; then
         echo "[SELFTEST] rule 2 flagged a chipToken()-routed chip class" >&2; fail=1
+    fi
+    # Rule 3: a row hidden by hand, outside the toolkit, is refused; the same line inside WIR.table, and the Sigma
+    # Total row's one helper, are not; a comparison is not a write.
+    printf '%s\n' "function hideRow(btn) {" "    var tr = btn.closest('tr');" "    tr.style.display = 'none';" "}" > "$tmp"
+    if verify_report_js_rules "$tmp" >/dev/null 2>&1; then
+        echo "[SELFTEST] rule 3 missed a row hidden outside WIR.table" >&2; fail=1
+    fi
+    printf '%s\n' "rows[i].style.display = '';" > "$tmp"
+    if verify_report_js_rules "$tmp" >/dev/null 2>&1; then
+        echo "[SELFTEST] rule 3 missed rows[i] shown outside WIR.table" >&2; fail=1
+    fi
+    printf '%s\n' "WIR.table = (function () {" "    tr.style.display = 'none';" "}());" "function samplerTotalRowSearch() {" "    total.style.display = 'none';" "}" "if (rows[r].style.display === 'none') return;" > "$tmp"
+    if ! verify_report_js_rules "$tmp" >/dev/null 2>&1; then
+        echo "[SELFTEST] rule 3 flagged WIR.table, the Sigma Total helper or a comparison" >&2; fail=1
     fi
     # Rule 4, both event names: the exact shape the server editor shipped with (R3-17).
     printf '%s\n' "+ 'oninput=\"WIR.serverKpis.set(' + jsArg(field) + ', this.value)\"/>';" > "$tmp"

@@ -352,8 +352,13 @@ test.describe('Errors Tab — Error Summary Total row (B2)', () => {
 
     // A child hidden with × stays hidden through a collapse and an expand.
     await search.fill('');
-    const child = page.locator('#errorSummaryTable tbody tr:not(.error-summary-total)')
+    // pinned by its own attributes: × moves the row below the ones shown, and a locator by text alone
+    // would then name the next row carrying the same sampler
+    const first = page.locator('#errorSummaryTable tbody tr:not(.error-summary-total)')
       .filter({ hasText: 'GET /api/search' }).first();
+    const pin = await first.evaluate((r: HTMLElement) => ['data-sampler', 'data-error-class', 'data-response-code', 'data-error-type']
+      .map(a => r.hasAttribute(a) ? `[${a}="${CSS.escape(r.getAttribute(a)!)}"]` : '').join(''));
+    const child = page.locator(`#errorSummaryTable tbody tr${pin}`);
     await child.locator('.wir-row-hide').click({ force: true });
     const hidden = await readErrorTotal(page);
     await toggleChildren();

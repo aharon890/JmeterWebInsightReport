@@ -143,7 +143,7 @@ fixture.
   first).
 - [X] T063 [US6] Delete `filterGenericTable`, `sortGenericTable`, `hideTableRow`, `showAllTableRows`,
   `toggleGenericColumnMenu`, `applyGenericColumnVisibility`, `filterErrorGroups` and the "By time / Grouped" switch.
-- [ ] T064 Rule 3 rewritten: no `style.display` on a table row outside `WIR.table` (with stage 6: the Requests walkers still set it until they move).
+- [X] T064 Rule 3 rewritten: no `style.display` on a table row outside `WIR.table` (with stage 6: the Requests walkers still set it until they move).
 - [X] T065 [P] `PW/csv-export.spec.ts`, `errors-tab.spec.ts`, `error-details-grouping.spec.ts`, `compare-tab.spec.ts`
   move with the controls; `whole-run-totals.spec.ts` skips `tr.wir-group-row`.
 - [X] T066 [P] Docs: `05-Errors-Tab.md`, `06-Compare-Tab.md`.
@@ -151,17 +151,25 @@ fixture.
 
 ## Stage 6: Requests (US6, FR-064, FR-069, FR-070, FR-071 defect 1)
 
-- [ ] T070 [US6] Red: Throughput sorts by value (defect 1); each transaction has a ▸ that opens and closes its
+- [X] T070 [US6] Red: Throughput sorts by value (defect 1); each transaction has a ▸ that opens and closes its
   requests; Expand all / Collapse all replace "Show transaction details"; Group by none, transaction, assert status,
   Apdex rating; chips; × and "Show N hidden"; CSV as shown; the view remembered per report.
-- [ ] T071 [US6] Requests on the DOM adapter; companion rows (`.sampler-detail-row`, `.wir-judging-row`) travel with
+- [X] T071 [US6] Requests on the DOM adapter; companion rows (`.sampler-detail-row`, `.wir-judging-row`) travel with
   their row; Σ Total first; `WIR.asserts` decorations kept.
-- [ ] T072 [US6] Delete `sortTable`, `arrangeSamplerRows`, `applySamplerRowVisibility`, `hideRow`, `showAllRows`,
+- [X] T072 [US6] Delete `sortTable`, `arrangeSamplerRows`, `applySamplerRowVisibility`, `hideRow`, `showAllRows`,
   `initColumnMenu`, `applyColumnVisibility` and the transaction switch.
-- [ ] T073 [P] The Requests specs move (`samplers-tab`, `sampler-table-walkers`, `sampler-tree`,
+  Done but for the switch (2026-11-26): Expand all / Collapse all **are** the switch now, one state
+  (`showTransactionChildren`) with two controls, and the filter bar keeps its checkbox. It is the only control the
+  Timeline and Errors tabs have for a transaction's requests (4.2.35 moved it there for that reason), so deleting it
+  would bring back the bug that fix closed. A transaction's ▸ opens that one in the table only. Also deleted:
+  `filterSamplerTable`, `isSamplerRowSuppressed`, `samplerRowNamed`, `toggleColumnMenu`, `showAllColumns`,
+  `updateHiddenRowsBtn`, `exportSamplerStatsCsv`, `syncSamplerCompanionRows`, `parseNumericCell`, `findHeaderByColId`,
+  `measuredOr`, `COLUMN_NAMES`, `hiddenColumns`, `hiddenRowCount` and their styles. The CSV now holds what is shown
+  (FR-066), so it no longer carries Std Dev, Avg Connect and Avg Latency; said in `04-Samplers-Tab.md`.
+- [X] T073 [P] The Requests specs move (`samplers-tab`, `sampler-table-walkers`, `sampler-tree`,
   `transaction-details-switch`, `table-sort-and-toast`, `ui-interactions`, `csv-export`); R07 unchanged.
-- [ ] T074 [P] Docs: `04-Samplers-Tab.md`.
-- [ ] T075 Commit; the gate is pull request 2's, after stage 7.
+- [X] T074 [P] Docs: `04-Samplers-Tab.md`; CLAUDE.md's sampler-table paragraphs.
+- [X] T075 Commit; the gate is pull request 2's, after stage 7.
 
 ## Stage 7: The Server board (US6, FR-062, FR-063)
 

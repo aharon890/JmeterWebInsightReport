@@ -205,7 +205,8 @@
             <button class="filter-link-btn" onclick="selectAllSamplers(true)">All</button>
             <button class="filter-link-btn" onclick="selectAllSamplers(false)">None</button>
             <!-- One switch for every tab: the chips below, the charts, the Errors tab's sampler filter and
-                 the Samplers table all read it. It used to be a button in the Samplers table's toolbar. -->
+                 the Samplers table all read it. The Requests table's Expand all and Collapse all set it too, and
+                 a transaction's ▸ there opens that one alone (spec 002). -->
             <label class="filter-transaction-details" id="transactionChildrenBtn" style="display:none;"
                    th:title="${words['hierarchyTitle']}">
                 <input type="checkbox" id="transactionChildrenCheckbox" autocomplete="off" onchange="toggleTransactionChildrenVisibility(this.checked)">
@@ -466,45 +467,37 @@
             <section class="report-section">
                 <div class="table-section-header">
                     <h2 th:text="|${words['Sampler']} Statistics|">Sampler Statistics</h2>
-                    <button class="table-csv-btn" onclick="exportSamplerStatsCsv()" title="Download as CSV">
-                        <svg viewBox="0 0 24 24"><path d="M5 20h14v-2H5v2zm7-18v12.17l3.59-3.58L17 12l-5 5-5-5 1.41-1.41L12 14.17V2z"/></svg>
-                    </button>
                 </div>
-                <!-- Toolbar: search + column toggle -->
-                <div class="table-toolbar">
-                    <input type="text" id="samplerSearch" class="table-search" th:placeholder="|Filter ${words['samplers']}...|" oninput="filterSamplerTable()"/>
-                    <button class="column-toggle-btn" id="showHiddenRowsBtn" onclick="showAllRows()" style="display:none;">Show Hidden Rows</button>
-                    <button class="column-toggle-btn" id="showAllColumnsBtn" onclick="showAllColumns()" style="display:none;">Show All Columns</button>
-                    <div class="column-toggle-wrapper">
-                        <button class="column-toggle-btn" id="columnMenuBtn" onclick="toggleColumnMenu()">Columns</button>
-                        <div class="column-menu" id="columnMenu">
-                            <!-- Populated by JS -->
-                        </div>
-                    </div>
+                <!-- The table toolkit's toolbar (spec 002): search, Group by, Expand all / Collapse all, Columns,
+                     Show N hidden, CSV. The width and detail-chart controls stay the Requests table's own. -->
+                <div class="wir-toolbar-line">
+                <div class="wir-table-toolbar-host" id="samplerTable-toolbar"></div>
+                <div class="wir-table-extra">
                     <button class="column-toggle-btn" id="resetWidthsBtn" onclick="resetColumnWidths('samplerTable')" style="display:none;" title="Return every column to its automatic width">Reset Widths</button>
                     <button class="column-toggle-btn" id="addDetailChartBtn" onclick="addDetailSlotGlobal('throughput')" style="display:none;">+ Add Chart</button>
                     <button class="column-toggle-btn" id="removeDetailChartBtn" onclick="removeLastDetailSlotGlobal()" style="display:none;">&times; Remove Chart</button>
+                </div>
                 </div>
                 <div class="table-wrapper">
                     <table class="stats-table" id="samplerTable">
                         <thead>
                             <tr>
-                                <th draggable="true" onclick="sortTable(0, 'text')" th:text="${words['Sampler']}">Sampler</th>
-                                <th draggable="true" onclick="sortTable(1, 'num')">Samples</th>
-                                <th draggable="true" onclick="sortTable(2, 'num')">Errors</th>
-                                <th draggable="true" onclick="sortTable(3, 'num')">Error %</th>
-                                <th draggable="true" onclick="sortTable(4, 'num')"
+                                <th draggable="true" data-col-id="0" th:text="${words['Sampler']}">Sampler</th>
+                                <th draggable="true" data-col-id="1">Samples</th>
+                                <th draggable="true" data-col-id="2">Errors</th>
+                                <th draggable="true" data-col-id="3">Error %</th>
+                                <th draggable="true" data-col-id="4"
                                     th:title="${words['meanTitle']}">Mean (ms)</th>
-                                <th draggable="true" onclick="sortTable(5, 'num')">Median (ms)</th>
-                                <th draggable="true" onclick="sortTable(6, 'num')">P90 (ms)</th>
-                                <th draggable="true" onclick="sortTable(7, 'num')">P95 (ms)</th>
-                                <th draggable="true" onclick="sortTable(8, 'num')">P99 (ms)</th>
-                                <th draggable="true" onclick="sortTable(9, 'num')">Min (ms)</th>
-                                <th draggable="true" onclick="sortTable(10, 'num')">Max (ms)</th>
-                                <th draggable="true" onclick="sortTable(11, 'num')">Throughput</th>
-                                <th draggable="true" onclick="sortTable(12, 'num')">Recv KB/s</th>
-                                <th draggable="true" onclick="sortTable(13, 'num')">Sent KB/s</th>
-                                <th draggable="true" onclick="sortTable(14, 'num')">Apdex</th>
+                                <th draggable="true" data-col-id="5">Median (ms)</th>
+                                <th draggable="true" data-col-id="6">P90 (ms)</th>
+                                <th draggable="true" data-col-id="7">P95 (ms)</th>
+                                <th draggable="true" data-col-id="8">P99 (ms)</th>
+                                <th draggable="true" data-col-id="9">Min (ms)</th>
+                                <th draggable="true" data-col-id="10">Max (ms)</th>
+                                <th draggable="true" data-col-id="11">Throughput</th>
+                                <th draggable="true" data-col-id="12">Recv KB/s</th>
+                                <th draggable="true" data-col-id="13">Sent KB/s</th>
+                                <th draggable="true" data-col-id="14">Apdex</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -524,7 +517,7 @@
                                               th:if="${samplerNotes != null and samplerNotes.containsKey(stat.samplerName)}"
                                               th:title="${samplerNotes.get(stat.samplerName)}"
                                               onclick="event.stopPropagation();this.classList.toggle('expanded')">i</span>
-                                        <button class="row-hide-btn" onclick="event.stopPropagation();hideRow(this)" title="Hide this row">&times;</button>
+                                        <button type="button" class="wir-row-hide" title="Hide this row" aria-label="Hide this row">&times;</button>
                                     </div>
                                 </td>
                                 <td th:text="${fmt.number(stat.sampleCount)}">0</td>

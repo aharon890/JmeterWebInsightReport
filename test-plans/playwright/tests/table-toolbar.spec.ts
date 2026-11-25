@@ -120,3 +120,94 @@ test.describe('The Errors tables on the table toolkit [E02]', () => {
     await expect(page.locator('#errorSummaryTable tbody tr.error-summary-total')).toBeVisible();
   });
 });
+
+/** The Requests rows on screen, in order, the Σ Total row left out. */
+async function requestNames(page: Page): Promise<string[]> {
+  return page.$$eval('#samplerTable tbody tr[data-sampler]', (trs) => trs
+    .filter((tr) => (tr as HTMLElement).offsetParent !== null)
+    .map((tr) => tr.getAttribute('data-sampler')!));
+}
+
+test.describe('Requests on the table toolkit [E02]', () => {
+  test.beforeEach(async ({ page }) => {
+    await loadClean(page, 'E02');
+    await switchTab(page, 'samplers');
+  });
+
+  test('defect 1: Throughput sorts by value across /s, /min and /hour', async ({ page }) => {
+    await page.selectOption('#samplerTable-group', '');
+    await page.locator('#samplerTable thead th', { hasText: 'Throughput' }).click();
+    const names = await requestNames(page);
+    const rate = await page.evaluate(() => Object.fromEntries((window as any).globalChartData.samplers
+      .map((s: any) => [s.name, s.throughput])));
+    const values = names.map((n) => rate[n]);
+    const sorted = [...values].sort((a, b) => b - a);
+    const ascending = [...values].sort((a, b) => a - b);
+    expect([sorted, ascending]).toContainEqual(values);
+  });
+
+  test('each transaction has a ▸ that opens and closes its requests', async ({ page }) => {
+    await page.click('#samplerTable-collapse-all');
+    const tx = page.locator('#samplerTable tbody tr.transaction-parent').first();
+    const name = (await tx.getAttribute('data-sampler'))!;
+    const children = await page.evaluate((n) => (window as any).globalChartData.transactionHierarchy[n], name);
+    expect(children.length).toBeGreaterThan(0);
+    await expect(page.locator(`#samplerTable tbody tr[data-sampler="${children[0]}"]`)).toBeHidden();
+    await tx.locator('.wir-tree-toggle').click();
+    await expect(page.locator(`#samplerTable tbody tr[data-sampler="${children[0]}"]`)).toBeVisible();
+    await expect(page.locator('#samplerTable .sampler-detail-row')).toHaveCount(0);   // the ▸ is not the row's click
+    await tx.locator('.wir-tree-toggle').click();
+    await expect(page.locator(`#samplerTable tbody tr[data-sampler="${children[0]}"]`)).toBeHidden();
+  });
+
+  test('Expand all and Collapse all are Show transaction details: the switch, the chips and the charts follow', async ({ page }) => {
+    await page.click('#samplerTable-expand-all');
+    const all = await requestNames(page);
+    await page.click('#samplerTable-collapse-all');
+    const top = await requestNames(page);
+    expect(top.length).toBeLessThan(all.length);
+    await expect(page.locator('.transaction-child-filter').first()).toBeHidden();
+    await expect(page.locator('#transactionChildrenCheckbox')).not.toBeChecked();
+    await page.click('#samplerTable-expand-all');
+    await expect(page.locator('.transaction-child-filter').first()).toBeVisible();
+    await expect(page.locator('#transactionChildrenCheckbox')).toBeChecked();
+    // and the switch, flipped in the filter bar, closes every transaction in the table
+    await page.locator('#transactionChildrenCheckbox').uncheck();
+    expect(await requestNames(page)).toEqual(top);
+  });
+
+  test('Group by offers the tree, none, the assert status and the Apdex rating', async ({ page }) => {
+    const options = await page.locator('#samplerTable-group option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
+    expect(options).toEqual(['', 'transaction', 'status', 'apdex']);
+    await expect(page.locator('#samplerTable-group')).toHaveValue('transaction');
+    await page.selectOption('#samplerTable-group', 'apdex');
+    await expect(page.locator('#samplerTable tr.wir-group-row').first()).toBeVisible();
+  });
+
+  test('CSV holds the rows shown: a row hidden with x is not in it', async ({ page }) => {
+    await page.selectOption('#samplerTable-group', '');
+    const first = page.locator('#samplerTable tbody tr[data-sampler]').first();
+    const name = (await first.getAttribute('data-sampler'))!;
+    await first.locator('.wir-row-hide').click();
+    const csv = await page.evaluate(() => {
+      let captured = '';
+      const w = window as any;
+      const real = w.downloadCsvFile;
+      w.downloadCsvFile = (_n: string, c: string) => { captured = c; };
+      w.WIR.table.csv('samplerTable');
+      w.downloadCsvFile = real;
+      return captured;
+    });
+    expect(csv).not.toContain(`"${name}"`);
+    expect(csv.split('\n').length).toBeGreaterThan(2);
+  });
+
+  test('the sort and the hidden rows are remembered for this report', async ({ page }) => {
+    await page.locator('#samplerTable thead th', { hasText: 'P95 (ms)' }).click();
+    await expect(page.locator('#samplerTable thead th', { hasText: 'P95 (ms)' })).toHaveAttribute('aria-sort', /ending/);
+    await page.reload();
+    await page.waitForFunction(() => (window as any).globalChartData);
+    await switchTab(page, 'samplers');
+    await expect(page.locator('#samplerTable thead th', { hasText: 'P95 (ms)' })).toHaveAttribute('aria-sort', /ending/);
+  });
+});

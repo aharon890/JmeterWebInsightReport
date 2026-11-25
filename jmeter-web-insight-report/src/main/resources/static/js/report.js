@@ -1513,9 +1513,18 @@ function updateTotalRow() {
     tbody.insertBefore(tr, tbody.firstChild);
     /* The search holds for this row too, whoever rebuilds it: the switch, and every chart refresh
        after it, rebuilt it shown over a search that hides it (review, 2026-11-05) */
-    var search = document.getElementById('samplerSearch');
-    var filter = search ? search.value.toLowerCase() : '';
-    if (filter && samplerRowText(tr).indexOf(filter) < 0) tr.style.display = 'none';
+    samplerTotalRowSearch();
+}
+
+/* The Σ Total row is the whole run's, no record of the Requests table, so WIR.table never moves it: a search that does
+   not name it hides it. Called after every pass of the table and whenever the row is rebuilt. The one row display
+   verify_report_js_rules (rule 3) allows outside WIR.table. */
+function samplerTotalRowSearch() {
+    var total = document.querySelector('#samplerTable tr.total-sampler-row');
+    if (!total) return;
+    var requests = WIR.table.table('samplerTable');   /* not yet registered during the first draw */
+    var q = String(requests ? requests.state.q || '' : '').trim().toLowerCase();
+    total.style.display = !q || samplerRowText(total).indexOf(q) >= 0 ? '' : 'none';
 }
 
 function getVisibleSamplerNames() {
@@ -3601,17 +3610,6 @@ function responseTimeYAxis(maxMs, name) {
  *  Table sorting
  * ============================================================ */
 
-/* Resolve a header cell by its stable logical column id (data-col-id), falling back to physical
- * index. This keeps sorting correct after columns are drag-reordered (C16). */
-function findHeaderByColId(table, colId) {
-    if (!table || !table.tHead) return null;
-    var cells = table.tHead.rows[0].cells;
-    for (var i = 0; i < cells.length; i++) {
-        var cid = cells[i].getAttribute('data-col-id');
-        if (cid != null && parseInt(cid, 10) === colId) return cells[i];
-    }
-    return cells[colId] || null;
-}
 
 /* Tag each header cell with a stable data-col-id (its initial position) so later reordering does
  * not confuse index-based sorting. Idempotent. */
@@ -3630,111 +3628,7 @@ function tagColumnIds(table) {
     }
 }
 
-/* Read the number out of a formatted cell: thousands separators, a percent sign, a "/s"
- * rate suffix or a unit separated by whitespace ("120 ms"). */
-function parseNumericCell(text) {
-    var n = parseFloat(text.replace(/,/g, '').replace(/[%\s]/g, '').replace(/\/s$/, ''));
-    return isNaN(n) ? 0 : n;
-}
 
-function sortTable(colId, type) {
-    var table = document.getElementById('samplerTable');
-    if (!table) return;
-    var tbody = table.tBodies[0];
-    var header = findHeaderByColId(table, colId);
-    if (!header) return;
-    var effectiveCol = header.cellIndex; /* current physical position, robust to drag reorder */
-
-    var rows = Array.from(tbody.rows);
-    var asc = header.getAttribute('data-sort') !== 'asc';
-    Array.from(table.tHead.rows[0].cells).forEach(function (th) { th.removeAttribute('data-sort'); });
-    header.setAttribute('data-sort', asc ? 'asc' : 'desc');
-
-    /* Sort data rows only, each carrying the rows that belong to it — its chart panel and its
-       judging-rules row — and keep the Σ Total row pinned (C17). The companions are captured
-       before anything moves. A judging row used to be sorted as a data row of its own: one cell,
-       so it compared equal to everything and landed wherever the sort left it, away from its
-       sampler (NEW-judging-row-blind). */
-    var totalGroup = null;
-    var groups = [];
-    var orphans = [];
-    var owner = null;
-    rows.forEach(function (r) {
-        if (isSamplerCompanionRow(r)) {
-            if (owner) owner.companions.push(r); else orphans.push(r);
-            return;
-        }
-        owner = { row: r, companions: [] };
-        if (r.classList.contains('total-sampler-row')) totalGroup = owner; else groups.push(owner);
-    });
-
-    var valueOf = function (row) {
-        var cell = row.cells[effectiveCol];
-        if (!cell) return null;
-        var nameEl = cell.querySelector('.sampler-name-text');
-        /* Sort text columns on the raw label. The old normalizer ran
-         * .replace(/[,%/s]/g, '') on EVERY column — a character class that strips the
-         * literal letter "s" and "/" as well as "," and "%", so "signup" compared as
-         * "ignup" and "GET /users" as "GET uer". Unit stripping belongs to numeric
-         * columns only. */
-        var v = (nameEl ? nameEl.textContent : cell.textContent).trim();
-        return type === 'num' ? parseNumericCell(v) : v;
-    };
-    var byName = Object.create(null);
-    groups.forEach(function (g) { byName[g.row.getAttribute('data-sampler')] = valueOf(g.row); });
-    var compare = function (a, b) {
-        var va = byName[a], vb = byName[b];
-        if (va === null || vb === null || va === undefined || vb === undefined) return 0;
-        if (va < vb) return asc ? -1 : 1;
-        if (va > vb) return asc ? 1 : -1;
-        return 0;
-    };
-
-    arrangeSamplerRows(tbody, compare);
-}
-
-/* The Samplers table's rows in tree order (samplerTreeOrder), each with its companions, the Σ Total row
- * first (C17), a row's depth on it for the indent (--wir-depth). compare: optional sibling order. */
-function arrangeSamplerRows(tbody, compare) {
-    var hierarchy = (globalChartData && globalChartData.transactionHierarchy) || {};
-    var totalGroup = null;
-    var groups = [];
-    var orphans = [];
-    var owner = null;
-    var byName = Object.create(null);
-    Array.from(tbody.rows).forEach(function (r) {
-        if (isSamplerCompanionRow(r)) {
-            if (owner) owner.companions.push(r); else orphans.push(r);
-            return;
-        }
-        owner = { row: r, companions: [] };
-        if (r.classList.contains('total-sampler-row')) { totalGroup = owner; return; }
-        groups.push(owner);
-        var name = r.getAttribute('data-sampler');
-        if (name !== null && byName[name] === undefined) byName[name] = owner;
-    });
-    var appendGroup = function (g) {
-        tbody.appendChild(g.row);
-        g.companions.forEach(function (c) { tbody.appendChild(c); });
-    };
-    if (totalGroup) appendGroup(totalGroup);
-    var names = groups.map(function (g) { return g.row.getAttribute('data-sampler'); })
-        .filter(function (n) { return n !== null; });
-    var arranged = Object.create(null);
-    samplerTreeOrder(names, hierarchy, compare).forEach(function (entry) {
-        var g = byName[entry.name];
-        if (!g) return;
-        arranged[entry.name] = true;
-        g.row.style.setProperty('--wir-depth', String(entry.depth));
-        appendGroup(g);
-    });
-    /* a row with no name, or a second row of one name, keeps its place after them */
-    groups.forEach(function (g) {
-        var name = g.row.getAttribute('data-sampler');
-        if (name === null || byName[name] !== g) appendGroup(g);
-    });
-    orphans.forEach(function (c) { tbody.appendChild(c); });
-}
 
 /* ============================================================
  *  Rows that belong to a sampler row
@@ -3773,26 +3667,6 @@ function samplerCompanionRow(row, className) {
     return found;
 }
 
-/**
- * Every companion row takes its owner's display: a filter or a "show all" decides about the
- * sampler row, and what belongs to it goes with it. Returns whether a chart panel came back into
- * view, so the caller can resize its charts (ECharts sized while hidden draws at zero).
- */
-function syncSamplerCompanionRows(tbody) {
-    var revealedChart = false;
-    var ownerDisplay = '';
-    Array.prototype.forEach.call(tbody.rows, function (r) {
-        if (!isSamplerCompanionRow(r)) {
-            ownerDisplay = r.style.display;
-            return;
-        }
-        if (r.classList.contains('sampler-detail-row') && r.style.display === 'none' && ownerDisplay !== 'none') {
-            revealedChart = true;
-        }
-        r.style.display = ownerDisplay === 'none' ? 'none' : '';
-    });
-    return revealedChart;
-}
 
 /* ============================================================
  *  Cross-chart sync
@@ -4205,169 +4079,146 @@ function getChartTheme() {
  *  Sampler table: search, column toggle
  * ============================================================ */
 
-/* The Aggregate Report's columns (StatGraphVisualizer), Sent KB/s included (B8), plus Apdex. */
-var COLUMN_NAMES = [W('Sampler'), 'Samples', 'Errors', 'Error %', 'Mean (ms)',
-    'Median (ms)', 'P90 (ms)', 'P95 (ms)', 'P99 (ms)', 'Min (ms)', 'Max (ms)',
-    'Throughput', 'Recv KB/s', 'Sent KB/s', 'Apdex'];
-
-var hiddenColumns = {};
-
-/* A row is suppressed independently of the search box: explicitly hidden via ×, or a collapsed
- * transaction child. The search filter must not override these (C18). */
-/* Whether a Samplers row is kept out of sight whatever the search: the reader hid it, or a transaction
- * it is inside, with ×; or it is inside a transaction while Transaction Details is off. */
-function isSamplerRowSuppressed(row, rowByName) {
-    if (row.classList.contains('user-hidden')) return true;
-    if (row.classList.contains('transaction-child') && !showTransactionChildren) return true;
-    var name = row.getAttribute('data-sampler');
-    if (name === null || !row.parentNode) return false;
-    var seen = Object.create(null);
-    for (var p = transactionChildNames[name]; p !== undefined && !seen[p]; p = transactionChildNames[p]) {
-        seen[p] = true;
-        var parentRow = rowByName ? rowByName[p] : samplerRowNamed(row.parentNode, p);
-        if (parentRow && parentRow.classList.contains('user-hidden')) return true;
-    }
-    return false;
+/* ============================================================
+ *  The Requests table on the table toolkit (spec 002, stage 6)
+ *
+ *  Its rows stay the template's, with their text, because R07 holds each cell to JMeter's Aggregate Report
+ *  (FR-070). WIR.table moves them: the transaction tree (samplerTreeOrder), a ▸ on every transaction, the
+ *  search keeping a match's transactions above it, × taking a transaction's rows with it, and the rows that
+ *  belong to a row (its chart panel, the rules judging it) going with it. Every column sorts by the run's own
+ *  number for it (chartData.samplers), never by its text, so 20.7/min no longer sorts above 8.3/s (defect 1).
+ *  Expand all and Collapse all are what "Show transaction details" was: they open or close every transaction
+ *  and set which requests the filter bar's chips and the charts show.
+ * ============================================================ */
+/* A filter preset's hidden columns, as presets have always stored them: {columnId: true} */
+function samplerHiddenColumns() {
+    var t = WIR.table.table('samplerTable');
+    var out = {};
+    (t ? t.state.hiddenCols : []).forEach(function (c) { out[c] = true; });
+    return out;
 }
 
-function samplerRowNamed(tbody, name) {
-    for (var i = 0; i < tbody.rows.length; i++) {
-        if (tbody.rows[i].getAttribute('data-sampler') === name) return tbody.rows[i];
-    }
-    return null;
+function setSamplerHiddenColumns(map) {
+    var t = WIR.table.table('samplerTable');
+    if (!t) return;
+    t.state.hiddenCols = Object.keys(map || {}).filter(function (c) { return map[c]; });
+    WIR.table.applyRows('samplerTable');
 }
+
+function initSamplerTable(data) {
+    if (!document.getElementById('samplerTable')) return;
+    var stats = Object.create(null);
+    (data.samplers || []).forEach(function (s) { stats[s.name] = s; });
+    var name = function (tr) { return tr.getAttribute('data-sampler'); };
+    var figure = function (field) {
+        return function (tr) {
+            var s = stats[name(tr)];
+            var v = s ? s[field] : null;
+            return typeof v === 'number' && isFinite(v) ? v : null;
+        };
+    };
+    var column = function (id, label, field) {
+        /* ascending first, as the table always sorted and JMeter's dashboard sorts */
+        return { id: String(id), label: label, value: figure(field),
+            text: function (tr) { return cellText(tr, String(id)); } };
+    };
+    var verdict = function (tr) {
+        var badge = tr.querySelector('.assert-badge-mini');
+        return badge ? badge.textContent.trim() : null;
+    };
+    var APDEX = [['apdex-excellent', 'Excellent'], ['apdex-good', 'Good'], ['apdex-fair', 'Fair'], ['apdex-poor', 'Poor'],
+        ['apdex-unacceptable', 'Unacceptable']];
+    var rating = function (tr) {
+        var badge = tr.querySelector('.apdex-badge');
+        for (var i = 0; badge && i < APDEX.length; i++) {
+            if (badge.classList.contains(APDEX[i][0])) return { key: String(i), label: APDEX[i][1] };
+        }
+        return { key: '9', label: 'No rating' };
+    };
+    WIR.table.mountRows('samplerTable', {
+        rows: function (table) {
+            return Array.prototype.filter.call(table.tBodies[0].rows, function (r) {
+                return r.hasAttribute('data-sampler') && !r.classList.contains('total-sampler-row');
+            });
+        },
+        key: name,
+        companions: samplerCompanionRows,
+        columns: [{ id: '0', label: W('Sampler'), value: name, text: name },
+            column(1, 'Samples', 'count'), column(2, 'Errors', 'errorCount'), column(3, 'Error %', 'errorRate'),
+            column(4, 'Mean (ms)', 'mean'), column(5, 'Median (ms)', 'median'), column(6, 'P90 (ms)', 'p90'),
+            column(7, 'P95 (ms)', 'p95'), column(8, 'P99 (ms)', 'p99'), column(9, 'Min (ms)', 'min'),
+            column(10, 'Max (ms)', 'max'), column(11, 'Throughput', 'throughput'),
+            column(12, 'Recv KB/s', 'receivedBytesPerSec'), column(13, 'Sent KB/s', 'sentBytesPerSec'),
+            column(14, 'Apdex', 'apdex')],
+        search: function (tr) { return samplerRowText(tr); },
+        status: verdict,
+        statusOrder: ['FAIL', 'WARN', 'PASS'],
+        nameOf: name,
+        groupings: {
+            transaction: { label: W('Transaction'), tree: true },
+            status: { label: 'Assert status', of: function (tr) { return verdict(tr) || 'No assert'; },
+                order: function (a, b) {
+                    var rank = { FAIL: 0, WARN: 1, PASS: 2 };
+                    return (rank[a.key] !== undefined ? rank[a.key] : 3) - (rank[b.key] !== undefined ? rank[b.key] : 3);
+                } },
+            apdex: { label: 'Apdex rating', of: rating, order: function (a, b) { return Number(a.key) - Number(b.key); } }
+        },
+        /* a search keeps a match's transactions above it, and a closed one stands for its request, as the switch
+           always had it */
+        tree: { nameOf: name, childrenOf: data.transactionHierarchy || {}, searchOpens: false, noun: W('transaction'),
+            open: function () { return showTransactionChildren; } },
+        toggleHost: function (tr) { return tr.querySelector('.sampler-name-cell'); },
+        defaultGroup: 'transaction',
+        noun: [W('sampler'), W('samplers')],
+        csvName: W('sampler') + '-statistics.csv',
+        toolbar: { searchId: 'samplerSearch', placeholder: 'Filter ' + W('samplers') + '…', label: 'Filter ' + W('samplers'),
+            noun: W('samplers') },
+        /* Expand all and Collapse all: the old switch, for the chips and the charts too */
+        onExpandAll: function (open) { toggleTransactionChildrenVisibility(open); },
+        /* A chart panel that came back into view is resized: drawn while hidden, it had no size */
+        /* pinned widths are per column: a hidden column shrinks a frozen table by exactly its width */
+        columnsApplied: function (table) {
+            if (table.classList.contains('cols-frozen')) syncTableWidth(table);
+        },
+        after: function () {
+            samplerTotalRowSearch();
+            if (document.querySelector('#samplerTable .sampler-detail-row:not([style*="none"])')) {
+                setTimeout(resizeDetailCharts, 0);
+            }
+        }
+    });
+    WIR.table.applyRows('samplerTable');
+}
+
+/* The rows a reader hid, or hid under a closed transaction, made visible again with their transactions: the k6
+   tab's link to a request (FR-008). */
+function revealSamplerRow(name) {
+    var t = WIR.table.table('samplerTable');
+    if (!t) return;
+    var ancestors = [];
+    for (var p = transactionChildNames[name], n = 0; p !== undefined && n < 50; p = transactionChildNames[p], n++) {
+        ancestors.push(p);
+    }
+    t.state.q = '';
+    t.state.hidden = t.state.hidden.filter(function (k) { return k !== name && ancestors.indexOf(k) === -1; });
+    ancestors.forEach(function (a) { t.state.open[a] = true; });
+    WIR.table.applyRows('samplerTable');
+}
+
+
+
+
 
 function samplerRowText(row) {
     var nameEl = row.querySelector('.sampler-name-text');
     return (nameEl ? nameEl.textContent : row.cells[0].textContent).toLowerCase();
 }
 
-/* The one rule for which Samplers rows show, used by the search, the ×, "Show all", the Transaction
- * Details switch and the first render. A row shows unless suppressed (isSamplerRowSuppressed), and,
- * with a search typed, when it or a row inside it matches: a matching request keeps its transactions
- * above it, so it is never shown under a stranger. Each switch used to set rows on its own, so the
- * switch showed every child whatever × and the search said (E02: a hidden row came back while "Show 1
- * Hidden Row" was still offered). Returns whether a chart panel came back into view. */
-function applySamplerRowVisibility() {
-    var table = document.getElementById('samplerTable');
-    if (!table || !table.tBodies[0]) return false;
-    var tbody = table.tBodies[0];
-    var input = document.getElementById('samplerSearch');
-    var filter = input ? input.value.toLowerCase() : '';
-    var rows = Array.from(tbody.rows).filter(function (r) { return !isSamplerCompanionRow(r); });
-    /* One name -> row map per pass: each row's ancestors are looked up in it, not by a scan */
-    var rowByName = Object.create(null);
-    rows.forEach(function (r) {
-        var name = r.getAttribute('data-sampler');
-        if (name !== null && rowByName[name] === undefined) rowByName[name] = r;
-    });
-    var matches = Object.create(null);   /* by name: a match, or a transaction holding one */
-    if (filter) {
-        rows.forEach(function (r) {
-            var name = r.getAttribute('data-sampler');
-            if (name === null || samplerRowText(r).indexOf(filter) < 0) return;
-            matches[name] = true;
-            var seen = Object.create(null);
-            for (var p = transactionChildNames[name]; p !== undefined && !seen[p]; p = transactionChildNames[p]) {
-                seen[p] = true;
-                matches[p] = true;
-            }
-        });
-    }
-    rows.forEach(function (r) {
-        var name = r.getAttribute('data-sampler');
-        var searched = !filter || (name !== null ? matches[name] === true : samplerRowText(r).indexOf(filter) >= 0);
-        r.style.display = (searched && !isSamplerRowSuppressed(r, rowByName)) ? '' : 'none';
-    });
-    return syncSamplerCompanionRows(tbody);
-}
 
-function filterSamplerTable() {
-    /* A companion row is not a sampler: it was searched by its own text (a judging row's rule list),
-       so it hid under a sampler that matched and showed under one that did not. It goes with its
-       owner (applySamplerRowVisibility). */
-    if (applySamplerRowVisibility()) setTimeout(resizeDetailCharts, 0);
-}
 
-function initColumnMenu() {
-    var menu = document.getElementById('columnMenu');
-    if (!menu) return;
-    menu.innerHTML = '';
 
-    COLUMN_NAMES.forEach(function (name, idx) {
-        var label = document.createElement('label');
-        var cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.checked = !hiddenColumns[idx];
-        cb.addEventListener('change', function () {
-            if (cb.checked) {
-                delete hiddenColumns[idx];
-            } else {
-                hiddenColumns[idx] = true;
-            }
-            applyColumnVisibility();
-        });
-        label.appendChild(cb);
-        label.appendChild(document.createTextNode(' ' + name));
-        menu.appendChild(label);
-    });
-}
 
-function toggleColumnMenu() {
-    var menu = document.getElementById('columnMenu');
-    if (menu) menu.classList.toggle('open');
-}
 
-function applyColumnVisibility() {
-    var table = document.getElementById('samplerTable');
-    if (!table) return;
-
-    /* hiddenColumns is keyed by the column's logical id — its COLUMN_NAMES index, which is the
-       data-col-id a header keeps when it is dragged elsewhere — and a cell is hidden by where
-       that column is now. Keyed by physical position, the Columns menu hid whichever column had
-       been dragged into the unchecked one's place. */
-    var headerCells = table.tHead.rows[0].cells;
-    var hiddenAt = [];
-    for (var i = 0; i < headerCells.length; i++) {
-        var cid = headerCells[i].getAttribute('data-col-id');
-        hiddenAt[i] = !!hiddenColumns[cid == null ? i : cid];
-        headerCells[i].style.display = hiddenAt[i] ? 'none' : '';
-    }
-    // Body
-    var rows = table.tBodies[0].rows;
-    for (var r = 0; r < rows.length; r++) {
-        /* A companion row is one cell spanning the table: hiding "column 0" of a judging row hid
-           its only cell, and the rule list vanished with the Sampler column. */
-        if (isSamplerCompanionRow(rows[r])) continue;
-        var cells = rows[r].cells;
-        for (var c = 0; c < cells.length; c++) {
-            cells[c].style.display = hiddenAt[c] ? 'none' : '';
-        }
-    }
-    /* Pinned widths are per-column, so hiding one has to shrink the table by
-     * exactly that column's width rather than leave a gap at the right. */
-    syncTableWidth(table);
-
-    // Visual indicator + "Show All Columns" button
-    var count = Object.keys(hiddenColumns).length;
-    var menuBtn = document.getElementById('columnMenuBtn');
-    if (menuBtn) menuBtn.classList.toggle('has-hidden', count > 0);
-    var colBtn = document.getElementById('showAllColumnsBtn');
-    if (colBtn) {
-        if (count > 0) {
-            colBtn.style.display = '';
-            colBtn.textContent = 'Show ' + count + ' Hidden Column' + (count > 1 ? 's' : '');
-        } else {
-            colBtn.style.display = 'none';
-        }
-    }
-}
-
-function showAllColumns() {
-    hiddenColumns = {};
-    applyColumnVisibility();
-    initColumnMenu();
-}
 
 /* ============================================================
  *  Transaction Controller Hierarchy
@@ -4385,12 +4236,13 @@ function initTransactionHierarchy(data) {
 
     /* Show the switch, in the filter bar's Samplers row, when there are transactions */
     var toggleBtn = document.getElementById('transactionChildrenBtn');
-    if (toggleBtn && Object.keys(hierarchy).length > 0) {
+    if (toggleBtn && hasHierarchy) {
         toggleBtn.style.display = '';
         toggleBtn.classList.toggle('active', showTransactionChildren);
         var toggleBox = document.getElementById('transactionChildrenCheckbox');
         if (toggleBox) toggleBox.checked = showTransactionChildren;
     }
+
 
     /* Build a set of child sampler names */
     var childOf = Object.create(null);
@@ -4436,10 +4288,7 @@ function initTransactionHierarchy(data) {
             addTitle(row, 'Also contains: ' + elsewhere[samplerName].join(', ') + ' (listed elsewhere in this table)');
         }
     });
-    if (hasHierarchy) {
-        arrangeSamplerRows(tbody, null);
-        applySamplerRowVisibility();
-    }
+    initSamplerTable(data);
 }
 
 /* on: the checkbox's own state when it calls (a click on it, or on its label); absent, a flip. Taking
@@ -4460,12 +4309,17 @@ function toggleTransactionChildrenVisibility(on) {
     var box = document.getElementById('transactionChildrenCheckbox');
     if (box) box.checked = showTransactionChildren;
 
+    /* Every transaction in the Requests table opens or closes with it: one choice, the ▸ per row aside */
+    var requests = WIR.table.table('samplerTable');
+    if (requests) requests.state.open = {};
+
+
     /* The Σ Total row first, rebuilt as it always was, then every row by the one rule, so × and the
        search still hold, the Σ row's included (it came back after a flip, review 2026-11-05). What
        belongs to a child goes with it: a chart panel or judging row open under a child stayed on
        screen under nothing once the children were collapsed. */
     updateTotalRow();
-    if (applySamplerRowVisibility()) setTimeout(resizeDetailCharts, 0);
+    WIR.table.applyRows('samplerTable');
 
     /* Show/hide child checkboxes in filter bar */
     var filterLabels = document.querySelectorAll('.transaction-child-filter');
@@ -4538,14 +4392,7 @@ function openRequestRow(name) {
     };
     var row = find();
     if (!row) return;
-    if (row.offsetParent === null) {
-        var search = document.getElementById('samplerSearch');
-        if (search && search.value) { search.value = ''; filterSamplerTable(); }
-    }
-    if (row.offsetParent === null && isTransactionChild(name) && !showTransactionChildren) {
-        toggleTransactionChildrenVisibility(true);
-    }
-    if (row.offsetParent === null) showAllRows();
+    if (row.offsetParent === null) revealSamplerRow(name);
     if (!samplerCompanionRow(row, 'sampler-detail-row')) toggleSamplerDetail(row);
     row.scrollIntoView({ block: 'center' });
 }
@@ -5447,7 +5294,7 @@ function saveFilterPreset() {
         currentMetric: currentMetric,
         currentPalette: currentPalette,
         lineThickness: lineThickness,
-        hiddenColumns: JSON.parse(JSON.stringify(hiddenColumns))
+        hiddenColumns: samplerHiddenColumns()
     };
 
     var presets = getPresets();
@@ -5505,9 +5352,7 @@ function resetToDefaults() {
     }
 
     /* Reset column visibility */
-    hiddenColumns = {};
-    applyColumnVisibility();
-    initColumnMenu();
+    setSamplerHiddenColumns({});
 
     saveSettings();
     if (globalChartData) initFilterBar(globalChartData);
@@ -5565,9 +5410,7 @@ function loadFilterPreset(name) {
 
     /* Apply hidden columns */
     if (preset.hiddenColumns) {
-        hiddenColumns = JSON.parse(JSON.stringify(preset.hiddenColumns));
-        applyColumnVisibility();
-        initColumnMenu(); // refresh checkboxes
+        setSamplerHiddenColumns(preset.hiddenColumns);
     }
 
     saveSettings();
@@ -7566,55 +7409,9 @@ function toggleNotesPreview() {
  *  Row hide/show
  * ============================================================ */
 
-var hiddenRowCount = 0;
 
-function hideRow(btn) {
-    var row = btn.closest('tr');
-    if (!row) return;
-    /* Close what belongs to the row first — its chart panel and its judging-rules row, which
-       follow it in either order. Only a detail row directly below was closed, so an open judging
-       row stayed behind under a row that was gone. */
-    samplerCompanionRows(row).forEach(function (c) {
-        if (c.classList.contains('sampler-detail-row')) disposeDetailRowCharts(c);
-        c.remove();
-    });
-    row.classList.remove('sampler-expanded');
-    row.classList.add('user-hidden');
-    row.style.display = 'none';
-    /* the rows inside a hidden transaction go with it; the count is of the rows the reader hid */
-    applySamplerRowVisibility();
-    hiddenRowCount++;
-    updateHiddenRowsBtn();
-    updateDetailChartToolbarButtons();
-}
 
-function showAllRows() {
-    var table = document.getElementById('samplerTable');
-    if (!table) return;
-    var rows = table.tBodies[0].rows;
-    for (var i = 0; i < rows.length; i++) {
-        if (isSamplerCompanionRow(rows[i])) continue;
-        /* Every × is undone, and a transaction child shows only while Transaction Details is on.
-           This asked the parent's .tc-icon for data-expanded="true", which nothing ever sets, so a
-           child hidden with × stayed hidden while the count — and the button — reset to 0. */
-        rows[i].classList.remove('user-hidden');
-    }
-    /* and the search still holds, as the one rule says */
-    if (applySamplerRowVisibility()) setTimeout(resizeDetailCharts, 0);
-    hiddenRowCount = 0;
-    updateHiddenRowsBtn();
-}
 
-function updateHiddenRowsBtn() {
-    var btn = document.getElementById('showHiddenRowsBtn');
-    if (!btn) return;
-    if (hiddenRowCount > 0) {
-        btn.style.display = '';
-        btn.textContent = 'Show ' + hiddenRowCount + ' Hidden Row' + (hiddenRowCount > 1 ? 's' : '');
-    } else {
-        btn.style.display = 'none';
-    }
-}
 
 /* ============================================================
  *  Generic Table Column Toggle, Row Hide & Filter
@@ -7676,26 +7473,6 @@ function fmtNum(v, decimals) {
     return decimals != null ? Number(v).toFixed(decimals) : String(v);
 }
 
-/* A CSV cell for a sample field: "not measured" where the run's tool does not record it (FR-008). */
-function measuredOr(field, text) {
-    return isNotMeasured(field) ? W('notMeasured') : text;
-}
-
-function exportSamplerStatsCsv() {
-    if (!globalChartData || !globalChartData.samplers) return;
-    var headers = [W('Sampler'), 'Samples', 'Errors', 'Error %', 'Mean (ms)', 'Median (ms)',
-        'P90 (ms)', 'P95 (ms)', 'P99 (ms)', 'Min (ms)', 'Max (ms)', 'Std Dev',
-        'Throughput (/s)', 'Received B/s', 'Sent B/s', 'Avg Connect (ms)', 'Avg Latency (ms)', 'Apdex'];
-    var rows = globalChartData.samplers.map(function (s) {
-        return [s.name, s.count, s.errorCount, fmtNum(s.errorRate, 2),
-            fmtNum(s.mean, 2), fmtNum(s.median, 2), fmtNum(s.p90, 2), fmtNum(s.p95, 2),
-            fmtNum(s.p99, 2), fmtNum(s.min, 2), fmtNum(s.max, 2), fmtNum(s.stdDev, 2),
-            fmtNum(s.throughput, 2), measuredOr('bytes', fmtNum(s.receivedBytesPerSec, 2)),
-            measuredOr('sentBytes', fmtNum(s.sentBytesPerSec, 2)), measuredOr('connect', fmtNum(s.meanConnectTime, 2)),
-            measuredOr('latency', fmtNum(s.meanLatency, 2)), fmtNum(s.apdex, 2)];
-    });
-    downloadCsvFile(W('sampler') + '-statistics.csv', buildCsvFromArrays(headers, rows));
-}
 
 function exportTop5SlowestCsv() {
     if (!globalChartData || !globalChartData.samplers) return;
@@ -7724,7 +7501,6 @@ document.addEventListener('DOMContentLoaded', function () {
     initPaletteToggle();
     initLineThicknessToggle();
     initPercentileToggle();
-    initColumnMenu();
     initColumnDragDrop();
     /* After initColumnDragDrop, so a saved column order is already applied and
      * the restored widths land on the columns they were measured from. */
@@ -7732,20 +7508,8 @@ document.addEventListener('DOMContentLoaded', function () {
     initChartDragDrop();
     restoreChartLayout();
 
-    // Close column menus on outside click
+    // Close the filter bar's menu on an outside click (a table's Columns menu closes itself, WIR.table)
     document.addEventListener('click', function (e) {
-        var menu = document.getElementById('columnMenu');
-        var btn = document.getElementById('columnMenuBtn');
-        if (menu && !menu.contains(e.target) && e.target !== btn) {
-            menu.classList.remove('open');
-        }
-        /* Close generic column menus */
-        document.querySelectorAll('.column-menu.open').forEach(function (m) {
-            var wrapper = m.closest('.column-toggle-wrapper');
-            if (wrapper && !wrapper.contains(e.target)) {
-                m.classList.remove('open');
-            }
-        });
         /* Close filter bar menu */
         var fbMenu = document.getElementById('filterBarMenu');
         var fbWrapper = fbMenu ? fbMenu.closest('.filter-bar-toggle-wrapper') : null;
@@ -8217,6 +7981,7 @@ WIR.table = (function () {
         Object.keys(kids).forEach(function (n) { result.groups.push(n); });
         result.groups.sort(function (a, b) { return allNames.indexOf(a) - allNames.indexOf(b); });
         var closedAbove = [];
+        var defaultOpen = typeof tree.open === 'function' ? !!tree.open() : tree.open !== false;
         ordered.forEach(function (o) {
             if (!shown[o.name]) return;
             var it = byName[o.name];
@@ -8225,7 +7990,7 @@ WIR.table = (function () {
             var hidden = closedAbove.some(function (c) { return c; });
             var hasKids = !!kids[o.name];
             var isOpen = open[o.name] !== undefined ? !!open[o.name]
-                : (filterActive && hasKids) ? true : tree.open !== false;
+                : (filterActive && hasKids && tree.searchOpens !== false) ? true : defaultOpen;
             closedAbove[o.depth] = hasKids && !isOpen;
             if (hidden) return;
             var row = { kind: 'row', key: it.key, record: it.record, depth: o.depth, group: parentOf[o.name] || null,
@@ -8384,6 +8149,7 @@ WIR.table = (function () {
         var t = tables[id];
         if (!t || !t.last) return;
         t.last.groups.forEach(function (k) { t.state.open[k] = !!open; });
+        if (t.spec.onExpandAll) t.spec.onExpandAll(!!open);
         changed(t, 'open');
     }
 
@@ -8629,8 +8395,9 @@ WIR.table = (function () {
      * Requests and the Errors tables keep their rows in the page's HTML, with their cell text: R07 reads the page's
      * rows and holds each cell to JMeter's Aggregate Report (FR-070). For them the toolkit never renders a row: it
      * moves the <tr>s the template wrote, each with the rows that belong to it (spec.companions), sets their display,
-     * and inserts its group rows as tr.wir-group-row, removed again before each pass. The rows it hides go first in
-     * the body, so whatever the table keeps last (the Errors Total, spec.after) stays last. The headers become sort
+     * and inserts its group rows as tr.wir-group-row, removed again before each pass. The rows it hides go after the
+     * rows it shows, so the body's first rows are the ones on screen; a row the table keeps last (the Errors Total)
+     * is put back last by spec.after, and one it keeps first (the Σ Total) is never moved. The headers become sort
      * buttons, and a column is hidden by its data-col-id wherever a drag has put it (FR-065, defect 4). A row's x is
      * read by one listener, in the capture phase so the row's own click (Error Details opens a detail) does not run.
      * Compare renders its body from state into the same kind of table: it uses the header, x and columns half.
@@ -8642,6 +8409,12 @@ WIR.table = (function () {
         var t = register(id, spec);
         decorateHead(id, table);
         table.tBodies[0].addEventListener('click', function (e) {
+            var toggle = e.target && e.target.closest ? e.target.closest('button.wir-tree-toggle') : null;
+            if (toggle && spec.tree) {
+                e.stopPropagation();
+                setOpen(id, spec.tree.nameOf(toggle.closest('tr')), toggle.getAttribute('aria-expanded') !== 'true');
+                return;
+            }
             var btn = e.target && e.target.closest ? e.target.closest('button.wir-row-hide') : null;
             if (!btn) return;
             e.stopPropagation();
@@ -8663,12 +8436,15 @@ WIR.table = (function () {
             btn.className = 'wir-sort-btn';
             btn.id = id + '-sort-' + col;
             btn.title = 'Sort by ' + c.label;
-            while (th.firstChild) btn.appendChild(th.firstChild);
+            /* the header's content moves into the button; a column-resize handle stays the header's own */
+            Array.prototype.slice.call(th.childNodes).forEach(function (n) {
+                if (!(n.classList && n.classList.contains('col-resize-handle'))) btn.appendChild(n);
+            });
             var glyph = document.createElement('span');
             glyph.className = 'wir-sort-glyph';
             glyph.setAttribute('aria-hidden', 'true');
             btn.appendChild(glyph);
-            th.appendChild(btn);
+            th.insertBefore(btn, th.firstChild);
             btn.addEventListener('click', function () { sortBy(id, col); });
         });
     }
@@ -8700,6 +8476,7 @@ WIR.table = (function () {
             if (tr.cells.length !== n) return;   /* a detail row or a group row: one cell across */
             for (var c = 0; c < n; c++) tr.cells[c].style.display = hiddenAt[c] ? 'none' : '';
         });
+        if (t.spec.columnsApplied) t.spec.columnsApplied(table);
     }
 
     /** The column ids in the order the header shows them now (a drag moves them). */
@@ -8721,6 +8498,27 @@ WIR.table = (function () {
         applyDomColumns(id, table);
         updateHead(id, table);
         renderToolbar(id);
+    }
+
+    /** A transaction's ▸ in the row's own cell (spec.toggleHost): it opens and closes the rows inside it. */
+    function treeToggle(t, tr, parent, open) {
+        var host = t.spec.toggleHost ? t.spec.toggleHost(tr) : null;
+        if (!host) return;
+        var toggle = host.querySelector('.wir-tree-toggle');
+        if (!parent) {
+            if (toggle) toggle.parentNode.removeChild(toggle);
+            return;
+        }
+        if (!toggle) {
+            toggle = document.createElement('button');
+            toggle.type = 'button';
+            toggle.className = 'wir-tree-toggle';
+            host.insertBefore(toggle, host.firstChild);
+        }
+        toggle.setAttribute('aria-expanded', String(!!open));
+        var noun = t.spec.tree.noun || 'group';
+        toggle.title = (open ? 'Close this ' : 'Open this ') + noun;
+        toggle.textContent = open ? '▾' : '▸';
     }
 
     function applyRows(id) {
@@ -8745,6 +8543,8 @@ WIR.table = (function () {
             companions.get(r).forEach(function (c) { c.style.display = 'none'; hidden.appendChild(c); });
         });
         var span = table.tHead.rows[0].cells.length;
+        var grouping = t.state.group && t.spec.groupings ? t.spec.groupings[t.state.group] : null;
+        var treeMode = !!(grouping && grouping.tree);
         v.rows.forEach(function (row) {
             if (row.kind !== 'row') {
                 var holder = document.createElement('tbody');
@@ -8755,12 +8555,13 @@ WIR.table = (function () {
             }
             var tr = row.record;
             tr.style.display = '';
-            if (t.spec.tree) tr.style.setProperty('--wir-depth', row.depth || 0);
+            if (t.spec.tree) tr.style.setProperty('--wir-depth', treeMode ? row.depth || 0 : 0);
+            treeToggle(t, tr, treeMode && row.parent, row.open);
             frag.appendChild(tr);
             companions.get(tr).forEach(function (c) { c.style.display = ''; frag.appendChild(c); });
         });
-        tbody.insertBefore(hidden, tbody.firstChild);
         tbody.appendChild(frag);
+        tbody.appendChild(hidden);
         if (t.spec.after) t.spec.after(v);
         finish(id);
         return v;

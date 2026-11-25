@@ -88,7 +88,7 @@ test.describe('Samplers Tab — Table defaults', () => {
     for (let i = 0; i < Math.min(count, 5); i++) {
       const row = dataRows.nth(i);
       await expect(row.locator('.sampler-expand-icon')).toBeVisible();
-      await expect(row.locator('.row-hide-btn')).toBeVisible();
+      await expect(row.locator('.wir-row-hide')).toBeVisible();
     }
   });
 
@@ -128,14 +128,14 @@ test.describe('Samplers Tab — Sort CRUD', () => {
     // Rows should have reordered (or at least sorting was applied)
     // Note: if data row with fewest samples was already first, name could be same
     // so we check the header got a sort indicator instead
-    const headerSort = await page.locator('#samplerTable thead th', { hasText: 'Samples' }).getAttribute('data-sort');
-    expect(headerSort).toBe('asc');
+    const headerSort = await page.locator('#samplerTable thead th', { hasText: 'Samples' }).getAttribute('aria-sort');
+    expect(headerSort).toBe('ascending');
 
     // Click again to reverse sort
     await page.locator('#samplerTable thead th', { hasText: 'Samples' }).click();
     await page.waitForTimeout(300);
-    const headerSortDesc = await page.locator('#samplerTable thead th', { hasText: 'Samples' }).getAttribute('data-sort');
-    expect(headerSortDesc).toBe('desc');
+    const headerSortDesc = await page.locator('#samplerTable thead th', { hasText: 'Samples' }).getAttribute('aria-sort');
+    expect(headerSortDesc).toBe('descending');
 
     // The first row after desc sort should be different from after asc sort
     const nameAfterSecond = await firstDataRow().getAttribute('data-sampler');
@@ -179,12 +179,12 @@ test.describe('Samplers Tab — Column hide/show CRUD', () => {
   test('Columns button opens menu with 15 checked checkboxes', async ({ page }) => {
     await goSamplers(page);
 
-    const columnsBtn = page.locator('#columnMenuBtn');
+    const columnsBtn = page.locator('#samplerTable-columns');
     await expect(columnsBtn).toBeVisible();
     await columnsBtn.click();
 
-    const menu = page.locator('#columnMenu');
-    await expect(menu).toHaveClass(/open/);
+    const menu = page.locator('#samplerTable-columns-menu');
+    await expect(menu).toBeVisible();
 
     const checkboxes = menu.locator('input[type="checkbox"]');
     expect(await checkboxes.count()).toBe(15);
@@ -197,8 +197,8 @@ test.describe('Samplers Tab — Column hide/show CRUD', () => {
 
   test('uncheck Min and Max hides columns, re-check restores them', async ({ page }) => {
     await goSamplers(page);
-    await page.locator('#columnMenuBtn').click();
-    const menu = page.locator('#columnMenu');
+    await page.locator('#samplerTable-columns').click();
+    const menu = page.locator('#samplerTable-columns-menu');
 
     // Find "Min (ms)" checkbox by its label text
     const minLabel = menu.locator('label', { hasText: 'Min (ms)' });
@@ -250,7 +250,7 @@ test.describe('Samplers Tab — Row hide/show CRUD', () => {
   test('hide two rows shows counter, show hidden restores both', async ({ page }) => {
     await goSamplers(page);
 
-    const showHiddenBtn = page.locator('#showHiddenRowsBtn');
+    const showHiddenBtn = page.locator('#samplerTable-show-hidden');
     await expect(showHiddenBtn).toBeHidden();
 
     const dataRows = page.locator(
@@ -263,19 +263,19 @@ test.describe('Samplers Tab — Row hide/show CRUD', () => {
     const row2Name = await dataRows.nth(1).getAttribute('data-sampler');
 
     // Hide first data row via its X button
-    await dataRows.nth(0).locator('.row-hide-btn').click({ force: true });
+    await dataRows.nth(0).locator('.wir-row-hide').click({ force: true });
     await page.waitForTimeout(200);
     await expect(showHiddenBtn).toBeVisible();
-    await expect(showHiddenBtn).toHaveText(/Show 1 Hidden Row/);
+    await expect(showHiddenBtn).toHaveText(/Show 1 hidden/);
 
     // Hide second data row
     // Re-query because indices shifted
     const visibleRows = page.locator(
       '#samplerTable tbody tr[data-sampler]:not(.total-sampler-row):not(.transaction-child):visible'
     );
-    await visibleRows.nth(0).locator('.row-hide-btn').click({ force: true });
+    await visibleRows.nth(0).locator('.wir-row-hide').click({ force: true });
     await page.waitForTimeout(200);
-    await expect(showHiddenBtn).toHaveText(/Show 2 Hidden Rows/);
+    await expect(showHiddenBtn).toHaveText(/Show 2 hidden/);
 
     // Show all hidden rows
     await showHiddenBtn.click();
@@ -311,7 +311,7 @@ test.describe('Samplers Tab — Detail expansion CRUD', () => {
     const firstRow = page.locator(
       '#samplerTable tbody tr[data-sampler]:not(.total-sampler-row):not(.transaction-child)'
     ).first();
-    await firstRow.click();
+    await firstRow.locator('.sampler-name-text').click();
     await page.waitForTimeout(500);
 
     // Detail row should appear
@@ -337,7 +337,7 @@ test.describe('Samplers Tab — Detail expansion CRUD', () => {
     const firstRow = page.locator(
       '#samplerTable tbody tr[data-sampler]:not(.total-sampler-row):not(.transaction-child)'
     ).first();
-    await firstRow.click();
+    await firstRow.locator('.sampler-name-text').click();
     await page.waitForTimeout(500);
 
     const detailRow = page.locator('#samplerTable tbody tr.sampler-detail-row').first();
@@ -361,7 +361,7 @@ test.describe('Samplers Tab — Detail expansion CRUD', () => {
     const firstRow = page.locator(
       '#samplerTable tbody tr[data-sampler]:not(.total-sampler-row):not(.transaction-child)'
     ).first();
-    await firstRow.click();
+    await firstRow.locator('.sampler-name-text').click();
     await page.waitForTimeout(500);
 
     const addBtn = page.locator('#addDetailChartBtn');
@@ -388,12 +388,12 @@ test.describe('Samplers Tab — Detail expansion CRUD', () => {
     ).first();
 
     // Expand
-    await firstRow.click();
+    await firstRow.locator('.sampler-name-text').click();
     await page.waitForTimeout(500);
     expect(await page.locator('#samplerTable tbody tr.sampler-detail-row').count()).toBe(1);
 
     // Collapse
-    await firstRow.click();
+    await firstRow.locator('.sampler-name-text').click();
     await page.waitForTimeout(300);
     expect(await page.locator('#samplerTable tbody tr.sampler-detail-row').count()).toBe(0);
     await expect(firstRow).not.toHaveClass(/sampler-expanded/);
@@ -461,7 +461,7 @@ test.describe('Samplers Tab — CSV export', () => {
   test('CSV button is visible and click produces no JS error', async ({ page }) => {
     await goSamplers(page);
 
-    const csvBtn = page.locator('#tab-samplers .table-csv-btn');
+    const csvBtn = page.locator('#samplerTable-csv');
     await expect(csvBtn).toBeVisible();
 
     await expectNoJsErrors(page, async () => {

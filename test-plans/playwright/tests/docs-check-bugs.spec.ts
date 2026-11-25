@@ -115,9 +115,7 @@ test.describe('Samplers table [E02]', () => {
       w.reorderColumns(table, 2, 5);
       const target = headers()[5];                     // logical column 2, now at position 5
       const logical = logicalOf(target, 5);
-      w.hiddenColumns = {};
-      w.hiddenColumns[logical] = true;
-      w.applyColumnVisibility();
+      w.setSamplerHiddenColumns({ [logical]: true });      // what the Columns menu does
       return headers().filter(th => th.style.display === 'none').map(th => th.getAttribute('data-col-id'));
     });
     expect(hidden).toEqual(['2']);
@@ -127,11 +125,12 @@ test.describe('Samplers table [E02]', () => {
     await loadClean(page, 'E02');
     await switchTab(page, 'samplers');
     await page.locator('#transactionChildrenBtn').click();          // children shown
-    const child = page.locator('#samplerTable tbody tr.transaction-child').first();
+    const name = await page.locator('#samplerTable tbody tr.transaction-child').first().getAttribute('data-sampler');
+    const child = page.locator(`#samplerTable tbody tr[data-sampler="${name}"]`);
     await expect(child).toBeVisible();
-    await child.locator('.row-hide-btn').click();
+    await child.locator('.wir-row-hide').click();
     await expect(child).toBeHidden();
-    await page.locator('#showHiddenRowsBtn').click();
+    await page.locator('#samplerTable-show-hidden').click();
     await expect(child).toBeVisible();
   });
 });

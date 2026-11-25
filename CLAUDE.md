@@ -627,18 +627,26 @@ differently before and after an unrelated edit.
 The sampler table is Thymeleaf-rendered and still not static: a click on a row inserts its chart
 panel (`.sampler-detail-row`) and a click on its verdict badge the rules judging it
 (`.wir-judging-row`), both directly under the row, in either order. They belong to the row above
-them, so the table's own walkers (`sortTable`, `filterSamplerTable`, `applyColumnVisibility`,
-`hideRow`, `showAllRows`, Transaction Details, the two toggles) read them through `isSamplerCompanionRow` /
-`samplerCompanionRows` / `syncSamplerCompanionRows` and never as rows of their own. They knew only
-the chart panel once, so a sort stranded the judging row and a toggle built a second panel.
+them, so the table toolkit reads them through `samplerCompanionRows` (`isSamplerCompanionRow`) and moves
+them with their row, never as rows of their own. The old per-table walkers knew only the chart panel once,
+so a sort stranded the judging row and a toggle built a second panel.
 
-The table is a tree. `samplerTreeOrder` puts each transaction's rows under it, in the order the run first
-saw them and a level deeper each time (`--wir-depth`); `arrangeSamplerRows` applies it at load and on
-every sort, which orders siblings only, so a request never leaves its transaction; the chips follow the
-same order and keep their data-index colour. `applySamplerRowVisibility` is the one rule for which rows
-show, and the search, ×, "Show all", the "Show transaction details" switch (a checkbox in the filter
-bar's Samplers row, id `transactionChildrenBtn`) and the first render all go through it: × on a
-transaction hides its rows, a search keeps a match's transactions above it. The hierarchy Java ships
+**Every table of the report is on one toolkit, `WIR.table`** (spec 002): search, status chips, Group by,
+Expand all / Collapse all, sort, ×, Columns, "Show N hidden", CSV of what is shown, and a memory per
+report (`wir_view_<runId>`). A pure core, `view(records, spec, state)`, decides the rows; a state adapter
+draws the tables report.js builds (Asserts, Compare, the k6 tab's), and a DOM adapter
+(`mountRows`/`applyRows`) moves the `<tr>`s the template wrote for Requests and the two Errors tables,
+because R07 reads their cells. Only `WIR.table` shows or hides a table row: `verify_report_js_rules` rule 3
+refuses a row display set anywhere else, bar `samplerTotalRowSearch` (the Σ Total row is the run's, not a
+record). Its rows hidden go after the rows shown, so a body's first rows are the ones on screen.
+
+The Requests table is a tree. `samplerTreeOrder` puts each transaction's rows under it, in the order the run
+first saw them and a level deeper each time (`--wir-depth`); a sort orders siblings only, so a request never
+leaves its transaction; the chips follow the same order and keep their data-index colour. It sorts by the
+run's own numbers (`chartData.samplers`), never the cell text. Expand all / Collapse all are the "Show
+transaction details" switch (a checkbox in the filter bar's Samplers row, id `transactionChildrenBtn`), and a
+transaction's ▸ opens that one in the table only; × on a transaction hides its rows, and a search keeps a
+match's transactions above it, a closed one standing for its request (`tree.searchOpens: false`). The hierarchy Java ships
 lists each name under one parent, the first by name that closes no loop, and a name a listener received
 on its own is a top-level row; either says where else it ran (`samplers[].alsoInside`).
 

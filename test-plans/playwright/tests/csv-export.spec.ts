@@ -35,14 +35,14 @@ test.describe('CSV Export — Sampler Statistics Table', () => {
   test('[R] CSV download button exists on Samplers tab', async ({ page }) => {
     await loadClean(page, 'E02');
     await switchTab(page, 'samplers');
-    const csvBtn = page.locator('#tab-samplers .table-csv-btn').first();
+    const csvBtn = page.locator('#samplerTable-csv');
     await expect(csvBtn).toBeVisible();
   });
 
   test('[C/R] Download CSV and verify header row has all 14 columns', async ({ page }) => {
     await loadClean(page, 'E02');
     await switchTab(page, 'samplers');
-    const csvBtn = page.locator('#tab-samplers .table-csv-btn').first();
+    const csvBtn = page.locator('#samplerTable-csv');
     const content = await downloadCsv(page, csvBtn);
     const rows = parseCsv(content);
     const header = rows[0];
@@ -62,7 +62,7 @@ test.describe('CSV Export — Sampler Statistics Table', () => {
     // Count total sampler rows in table (visible)
     const visibleRows = await page.locator('#tab-samplers table tbody tr').count();
 
-    const csvBtn = page.locator('#tab-samplers .table-csv-btn').first();
+    const csvBtn = page.locator('#samplerTable-csv');
     const content = await downloadCsv(page, csvBtn);
     const rows = parseCsv(content);
     const dataRows = rows.slice(1); // skip header
@@ -71,19 +71,12 @@ test.describe('CSV Export — Sampler Statistics Table', () => {
     expect(dataRows.length).toBeGreaterThanOrEqual(1);
   });
 
-  test('[C/R] CSV includes data even after hiding columns via JS', async ({ page }) => {
+  test('[C/R] a column hidden with Columns is left out of the CSV (FR-066)', async ({ page }) => {
     await loadClean(page, 'E02');
     await switchTab(page, 'samplers');
 
-    // Hide Min column programmatically (simulate what Columns dropdown does)
-    await page.evaluate(() => {
-      if (typeof applyColumnVisibility === 'function' && typeof hiddenColumns !== 'undefined') {
-        // @ts-ignore
-        hiddenColumns['Min (ms)'] = true;
-        // @ts-ignore
-        applyColumnVisibility();
-      }
-    });
+    // Hide Min (column id 9) as the Columns menu does
+    await page.evaluate(() => (window as any).setSamplerHiddenColumns({ 9: true }));
     await page.waitForTimeout(200);
 
     // Verify Min column is visually hidden in table
@@ -91,36 +84,32 @@ test.describe('CSV Export — Sampler Statistics Table', () => {
       const headers = document.querySelectorAll('#tab-samplers table thead th');
       return Array.from(headers).some(th => th.textContent?.includes('Min') && (th as HTMLElement).style.display !== 'none');
     });
-    // Min should be hidden now (or the evaluate didn't work — either way test the CSV)
-
-    // Download CSV — Min column should STILL be in the export
-    const csvBtn = page.locator('#tab-samplers .table-csv-btn').first();
+    // The file holds the columns on screen: no Min
+    const csvBtn = page.locator('#samplerTable-csv');
     const content = await downloadCsv(page, csvBtn);
     const rows = parseCsv(content);
     const header = rows[0];
-    expect(header.some(h => h.includes('Min'))).toBe(true);
+    expect(header.some(h => h.includes('Min'))).toBe(false);
+    expect(header.some(h => h.includes('Max'))).toBe(true);
   });
 
-  test('[C/R] CSV includes data even after hiding rows', async ({ page }) => {
+  test('[C/R] a row hidden with × is left out of the CSV (FR-066)', async ({ page }) => {
     await loadClean(page, 'E02');
     await switchTab(page, 'samplers');
 
     // Count rows before hiding
-    const csvBtnBefore = page.locator('#tab-samplers .table-csv-btn').first();
+    const csvBtnBefore = page.locator('#samplerTable-csv');
     const contentBefore = await downloadCsv(page, csvBtnBefore);
     const rowsBefore = parseCsv(contentBefore).slice(1).length;
 
     // Hide first data row via X button
-    const hideBtn = page.locator('#tab-samplers table tbody tr .hide-row-btn, #tab-samplers table tbody tr button[title*="Hide"]').first();
-    if (await hideBtn.count() > 0) {
-      await hideBtn.click();
-      await page.waitForTimeout(200);
-    }
+    await page.locator('#samplerTable tbody tr[data-sampler]:visible .wir-row-hide').first().click({ force: true });
+    await page.waitForTimeout(200);
 
-    // Download CSV again — hidden row should STILL be in export
+    // The file holds the rows on screen: one fewer
     const contentAfter = await downloadCsv(page, csvBtnBefore);
     const rowsAfter = parseCsv(contentAfter).slice(1).length;
-    expect(rowsAfter).toBe(rowsBefore); // Same count — hidden row included
+    expect(rowsAfter).toBe(rowsBefore - 1);
   });
 
   test('[C/R] CSV includes data even after deselecting sampler in filter', async ({ page }) => {
@@ -128,7 +117,7 @@ test.describe('CSV Export — Sampler Statistics Table', () => {
     await switchTab(page, 'samplers');
 
     // Download CSV before filtering
-    const csvBtn = page.locator('#tab-samplers .table-csv-btn').first();
+    const csvBtn = page.locator('#samplerTable-csv');
     const contentBefore = await downloadCsv(page, csvBtn);
     const rowsBefore = parseCsv(contentBefore).slice(1).length;
 
@@ -153,7 +142,7 @@ test.describe('CSV Export — Sampler Statistics Table', () => {
   test('[R] CSV data values are non-empty (not all zeros)', async ({ page }) => {
     await loadClean(page, 'E02');
     await switchTab(page, 'samplers');
-    const csvBtn = page.locator('#tab-samplers .table-csv-btn').first();
+    const csvBtn = page.locator('#samplerTable-csv');
     const content = await downloadCsv(page, csvBtn);
     const rows = parseCsv(content);
     // Check first data row has non-zero Samples value (column index 1)
@@ -269,15 +258,14 @@ test.describe('CSV Export — formula injection', () => {
     await loadClean(page, 'E02');
     await switchTab(page, 'samplers');
 
-    // Plant a formula payload as a sampler name, then export.
+    // Plant a formula payload as a sampler name (the row's own name, which the CSV writes), then export.
     await page.evaluate(() => {
-      const w = window as any;
-      if (w.globalChartData && w.globalChartData.samplers && w.globalChartData.samplers.length) {
-        w.globalChartData.samplers[0].name = '=HYPERLINK("http://evil/","x")';
-      }
+      const row = document.querySelector('#samplerTable tbody tr[data-sampler]:not(.transaction-child)') as HTMLElement;
+      row.setAttribute('data-sampler', '=HYPERLINK("http://evil/","x")');
+      (row.querySelector('.sampler-name-text') as HTMLElement).textContent = '=HYPERLINK("http://evil/","x")';
     });
 
-    const csvBtn = page.locator('#tab-samplers .table-csv-btn').first();
+    const csvBtn = page.locator('#samplerTable-csv');
     const content = await downloadCsv(page, csvBtn);
 
     expect(content).toContain('"\'=HYPERLINK');

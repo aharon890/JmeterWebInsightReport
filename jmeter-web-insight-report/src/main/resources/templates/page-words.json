@@ -36,6 +36,16 @@
       "k6": "request",
       "other": "request"
     },
+    "Transaction": {
+      "jmeter": "Transaction",
+      "k6": "Group",
+      "other": "Transaction"
+    },
+    "transaction": {
+      "jmeter": "transaction",
+      "k6": "group",
+      "other": "transaction"
+    },
     "Thread": {
       "jmeter": "Thread",
       "k6": "VU",

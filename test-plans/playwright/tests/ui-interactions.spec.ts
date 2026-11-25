@@ -14,7 +14,7 @@ test.describe('localStorage Persistence', () => {
     const firstRow = page.locator(
       '#samplerTable tbody tr[data-sampler]:not(.total-sampler-row):not(.transaction-child)'
     ).first();
-    await firstRow.click();
+    await firstRow.locator('.sampler-name-text').click();
     await page.waitForTimeout(500);
 
     // Change the first slot dropdown to 'throughput'
@@ -35,7 +35,7 @@ test.describe('localStorage Persistence', () => {
     const rowAfter = page.locator(
       '#samplerTable tbody tr[data-sampler]:not(.total-sampler-row):not(.transaction-child)'
     ).first();
-    await rowAfter.click();
+    await rowAfter.locator('.sampler-name-text').click();
     await page.waitForTimeout(500);
 
     // The first slot should still be 'throughput'
@@ -49,8 +49,8 @@ test.describe('localStorage Persistence', () => {
     await switchTab(page, 'samplers');
 
     // Open column menu and uncheck "Min (ms)"
-    await page.locator('#columnMenuBtn').click();
-    const menu = page.locator('#columnMenu');
+    await page.locator('#samplerTable-columns').click();
+    const menu = page.locator('#samplerTable-columns-menu');
     const minCheckbox = menu.locator('label', { hasText: 'Min (ms)' }).locator('input');
     await minCheckbox.uncheck();
     await page.waitForTimeout(300);
@@ -95,8 +95,8 @@ test.describe('localStorage Persistence', () => {
     });
 
     // Re-hide Min via the menu to verify the interaction still works after reload
-    await page.locator('#columnMenuBtn').click();
-    const menuAfter = page.locator('#columnMenu');
+    await page.locator('#samplerTable-columns').click();
+    const menuAfter = page.locator('#samplerTable-columns-menu');
     const minCbAfter = menuAfter.locator('label', { hasText: 'Min (ms)' }).locator('input');
     await minCbAfter.uncheck();
     await page.waitForTimeout(300);
@@ -490,7 +490,7 @@ test.describe('Sampler Detail Chart Types', () => {
     const firstRow = page.locator(
       '#samplerTable tbody tr[data-sampler]:not(.total-sampler-row):not(.transaction-child)'
     ).first();
-    await firstRow.click();
+    await firstRow.locator('.sampler-name-text').click();
     await page.waitForTimeout(500);
 
     const detailRow = page.locator('#samplerTable tbody tr.sampler-detail-row').first();

@@ -6,48 +6,27 @@ import { loadClean, switchTab } from './helpers';
  */
 
 test.describe('Sampler table — text sort', () => {
-  test('[R] numeric cells are parsed with their units stripped', async ({ page }) => {
-    await loadClean(page, 'E02');
-    const parsed = await page.evaluate(() => {
-      const f = (window as any).parseNumericCell;
-      return {
-        thousands: f('1,234'),
-        percent: f('12.3%'),
-        rate: f('4.5/s'),
-        withUnit: f('120 ms'),
-        plain: f('42'),
-        empty: f(''),
-        text: f('n/a'),
-      };
-    });
-    expect(parsed.thousands).toBe(1234);
-    expect(parsed.percent).toBeCloseTo(12.3, 6);
-    expect(parsed.rate).toBeCloseTo(4.5, 6);
-    expect(parsed.withUnit).toBe(120);
-    expect(parsed.plain).toBe(42);
-    expect(parsed.empty).toBe(0);
-    expect(parsed.text).toBe(0);
-  });
-
   test('[C/R] sampler names sort alphabetically on the real label', async ({ page }) => {
     await loadClean(page, 'E02');
     await switchTab(page, 'samplers');
 
     // Plant names whose ordering the old [,%/s] normalizer got wrong: it stripped the
-    // letter "s" and "/", so "signup" compared as "ignup" and sorted under "i".
+    // letter "s" and "/", so "signup" compared as "ignup" and sorted under "i". The table sorts
+    // a row by its own name (data-sampler), so the names go there, on four top-level rows.
     const planted = ['zebra', 'signup', 'apple', 'search'];
     await page.evaluate((names: string[]) => {
       const rows = Array.from(
-        document.querySelectorAll('#samplerTable tbody tr[data-sampler]:not(.total-sampler-row)')
+        document.querySelectorAll('#samplerTable tbody tr[data-sampler]:not(.total-sampler-row):not(.transaction-child):not(.transaction-parent)')
       ).slice(0, names.length);
       rows.forEach((row, i) => {
+        row.setAttribute('data-sampler', names[i]);
         const cell = row.querySelector('.sampler-name-text') || row.querySelector('td');
         if (cell) cell.textContent = names[i];
       });
     }, planted);
 
     // Sort by the Sampler column (logical column id 0, text).
-    await page.evaluate(() => (window as any).sortTable(0, 'text'));
+    await page.evaluate(() => (window as any).WIR.table.sortBy('samplerTable', '0'));
     await page.waitForTimeout(200);
 
     const order = await page.evaluate((names: string[]) => {
@@ -76,25 +55,29 @@ test.describe('Sampler table — text sort', () => {
     });
     test.skip(samplesColId < 0, 'Samples column not present');
 
-    await page.evaluate((id: number) => (window as any).sortTable(id, 'num'), samplesColId);
+    await page.click('#samplerTable-expand-all');      // every transaction open, its requests on screen
+    await page.evaluate((id: number) => (window as any).WIR.table.sortBy('samplerTable', String(id)), samplesColId);
     await page.waitForTimeout(200);
 
     // Siblings by value (4.2.34): the top-level rows among themselves, and each transaction's rows
     // among themselves, a transaction's requests staying under it (E02's TC — Browse Session)
-    const groups: Record<string, number[]> = await page.evaluate((id: number) => {
+    // each row's Samples as the run counted it (chartData), in the order the rows now stand
+    const groups: Record<string, number[]> = await page.evaluate(() => {
       const table = document.getElementById('samplerTable') as HTMLTableElement;
-      const header = (window as any).findHeaderByColId(table, id);
-      const col = header.cellIndex;
       const parentOf = (window as any).transactionChildNames;
+      const count: Record<string, number> = {};
+      (window as any).globalChartData.samplers.forEach((s: any) => { count[s.name] = s.count; });
       const out: Record<string, number[]> = {};
       Array.from(table.tBodies[0].rows)
-        .filter((r) => !r.classList.contains('sampler-detail-row') && !r.classList.contains('total-sampler-row'))
+        .filter((r) => r.hasAttribute('data-sampler') && !r.classList.contains('total-sampler-row')
+          && (r as HTMLElement).style.display !== 'none')
         .forEach((r) => {
-          const parent = parentOf[r.getAttribute('data-sampler') || ''] || '(top level)';
-          (out[parent] = out[parent] || []).push((window as any).parseNumericCell(r.cells[col].textContent.trim()));
+          const name = r.getAttribute('data-sampler') || '';
+          const parent = parentOf[name] || '(top level)';
+          (out[parent] = out[parent] || []).push(count[name]);
         });
       return out;
-    }, samplesColId);
+    });
 
     expect(Object.keys(groups)).toContain('(top level)');
     for (const [parent, values] of Object.entries(groups)) {
