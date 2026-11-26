@@ -156,6 +156,17 @@ class BuildReportTest {
         assertTrue(compared(compared), "a JMeter run's baseline is compared");
     }
 
+    @Test
+    void aBaselineThatIsRunDataIsCompared() throws Exception {
+        // Spec 004, User Story 3: a baseline is a JMeter results file or run data, read by its content
+        File runData = jmeterRunData("plain");
+        File out = tmp.resolve("rd").toFile();
+        assertEquals(0, run("--run-data", runData.getPath(), "--out", out.getPath(), "--baseline", runData.getPath()),
+                err());
+        String html = Files.readString(new File(out, "web-insight-report.html").toPath(), StandardCharsets.UTF_8);
+        assertTrue(compared(html), "a baseline of run data is compared");
+    }
+
     /** Whether the page's payload carries a comparison: report.js names the key on every page, the payload only when built. */
     private static boolean compared(String html) {
         return html.replace("\\\"", "\"").contains("\"hasComparison\":true");

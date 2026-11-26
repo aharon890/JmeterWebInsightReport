@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine;
 
+import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -87,10 +88,49 @@ public final class RunDataReader {
         return result;
     }
 
+    /**
+     * The run's report data from a read: the engine's statistics, with the tool that recorded the run named in its
+     * metadata (none for JMeter, so a JMeter run's report is as it always was), the fields the tool does not record,
+     * its time resolution and the tool's own measures. One step for every reader of run data: {@code build-report}
+     * and a Compare baseline (spec 004).
+     */
+    public static com.jmeterwebinsightreport.core.model.ReportData reportOf(Result read, LiveStatisticsEngine engine) {
+        com.jmeterwebinsightreport.core.model.ReportData data = engine.buildReportData(read.header.testName);
+        com.jmeterwebinsightreport.core.model.TestMetadata meta = data.getMetadata();
+        if (read.header.isJMeter()) {
+            meta.setJmeterVersion(read.header.toolVersion);
+        } else {
+            meta.setToolName(read.header.toolName);
+            meta.setToolVersion(read.header.toolVersion);
+        }
+        if (read.header.notMeasured != null && !read.header.notMeasured.isEmpty()) {
+            meta.setNotMeasured(new ArrayList<>(read.header.notMeasured));
+        }
+        if (read.header.wholeSeconds()) {
+            meta.setTimeResolution("s");
+        }
+        data.setToolMeasures(read.header.isJMeter() || read.measures.isEmpty() ? null : read.measures);
+        return data;
+    }
+
+    /** Whether the stream starts with gzip's two magic bytes: run data is read by its content, not its name (spec 004). */
+    public static boolean isGzip(InputStream in) throws IOException {
+        in.mark(2);
+        int b1 = in.read();
+        int b2 = in.read();
+        in.reset();
+        return b1 == 0x1f && b2 == 0x8b;
+    }
+
     private static BufferedReader open(File file) throws IOException {
-        InputStream in = new FileInputStream(file);
-        if (file.getName().endsWith(".gz")) {
-            in = new GZIPInputStream(in, 1 << 16);
+        InputStream in = new BufferedInputStream(new FileInputStream(file), 1 << 16);
+        try {
+            if (isGzip(in)) {
+                in = new GZIPInputStream(in, 1 << 16);
+            }
+        } catch (IOException e) {
+            in.close();
+            throw e;
         }
         return new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8), 1 << 16);
     }

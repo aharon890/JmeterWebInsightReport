@@ -4,7 +4,6 @@ import com.jmeterwebinsightreport.WirCollect;
 import com.jmeterwebinsightreport.core.model.ReportData;
 import com.jmeterwebinsightreport.core.rundata.RunHeader;
 import com.jmeterwebinsightreport.core.rundata.RunDataRecorder;
-import com.jmeterwebinsightreport.core.model.TestMetadata;
 import com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine;
 import com.jmeterwebinsightreport.core.rundata.RunDataReader;
 import com.jmeterwebinsightreport.core.rundata.RunDataFormat;
@@ -230,22 +229,7 @@ public final class ReportRebuild {
                     + " leave the title out, or write the run data under that name");
         }
         config.setReportTitle(read.header.testName);
-        ReportData data = engine.buildReportData(read.header.testName);
-        TestMetadata meta = data.getMetadata();
-        if (read.header.isJMeter()) {
-            meta.setJmeterVersion(read.header.toolVersion);
-        } else {
-            meta.setToolName(read.header.toolName);
-            meta.setToolVersion(read.header.toolVersion);
-        }
-        if (read.header.notMeasured != null && !read.header.notMeasured.isEmpty()) {
-            meta.setNotMeasured(new java.util.ArrayList<>(read.header.notMeasured));
-        }
-        if (read.header.wholeSeconds()) {
-            meta.setTimeResolution("s");
-        }
-        data.setToolMeasures(read.header.isJMeter() || read.measures.isEmpty() ? null : read.measures);
-        return data;
+        return RunDataReader.reportOf(read, engine);
     }
 
     private static String jmeterVersionOrNull() {
