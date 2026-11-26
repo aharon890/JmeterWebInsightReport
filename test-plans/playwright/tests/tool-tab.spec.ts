@@ -316,9 +316,11 @@ test.describe('The k6 tab, organised and interactive [K2]', () => {
   });
 });
 
-// K1 and K2 are k6 runs' reports; every other fixture is a JMeter run's. One test each: twenty pages in one test
-// outran its 30 seconds while the rest of the suite ran beside it (2026-11-25).
-for (const id of REQUIRED_FIXTURES.filter((f) => !['K1', 'K2'].includes(f))) {
+// K1 and K2 are k6 runs' reports, and so are CMPK and CMPX (K2's run with a baseline, spec 004); every other fixture
+// is a JMeter run's. One test each: twenty pages in one test outran its 30 seconds while the rest of the suite ran
+// beside it (2026-11-25).
+const K6_RUNS = ['K1', 'K2', 'CMPK', 'CMPX'];
+for (const id of REQUIRED_FIXTURES.filter((f) => !K6_RUNS.includes(f))) {
   test(`${id}, a JMeter run, has no tool tab`, async ({ page }) => {
     await loadClean(page, id);
     await expect(page.locator('.tab-btn[data-tab="tool"]')).toHaveCount(0);
