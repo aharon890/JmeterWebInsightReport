@@ -488,7 +488,9 @@ A run another tool recorded names its tool in `TestMetadata` (`toolName`, `toolV
 `timeResolution`; all absent on a JMeter run, so no JMeter artifact moves). The page then reads that tool's column of
 the words table, `templates/page-words.json` (`PageWords`; report.js reads it through `W(key)`), adds the tool's tab
 (`ToolTab` over `core/model/ToolMeasures`), and writes "not measured" for the fields the tool does not record. A JMeter
-run gets JMeter's column, which is today's text exactly. `build-report` runs from the standalone bundle's `lib/` with
+run gets JMeter's column, which is today's text exactly. The judge's four sentences that name a sampler (into the JSON
+and JUnit, mirrored by the page) read the same column's `sampler`/`samplers` through core's `SamplerWords`, handed in by
+`PageWords.samplerWords(run)`; a parity vector with `"tool": "k6"` holds both sides to k6's. `build-report` runs from the standalone bundle's `lib/` with
 no JMeter (C44): the launcher looks for JMeter's `lib/` as before, and second for a `lib/` beside the JAR.
 
 `ReportRebuild` (parse, companion files with the in-process CSV collection, generate and announce) is

@@ -197,6 +197,20 @@ class ServerParityTest {
         return ServerGateEvaluation.of(annotations, payload, client.gate());
     }
 
+    /**
+     * A case with a {@code tool} (spec 001, contracts/page-words.md): the same document and payload, judged over the
+     * vectors' run as that tool recorded it, as the generator judges it - over the run - so a sentence that names a
+     * sampler says the tool's word for one ("requests" on a k6 run).
+     */
+    static ServerGateEvaluation evaluateOnRunOf(String tool, JsonNode root, JsonNode caseConfig, JsonNode caseComponents,
+                                                List<JsonNode> kpis, ServerMetricsPayload payload) throws IOException {
+        ReportData run = reportData(root);
+        run.getMetadata().setToolName(tool);
+        ReportAnnotations annotations = document(root, caseConfig, caseComponents, kpis);
+        GateEvaluation client = GateEvaluation.of(run, annotations);
+        return ServerGateEvaluation.of(annotations, payload, client.gate(), run);
+    }
+
     // ---------------------------------------------------------------- the vectors
 
     @TestFactory
@@ -211,8 +225,10 @@ class ServerParityTest {
             tests.add(DynamicTest.dynamicTest(testCase.get("name").asText(), () -> {
                 List<JsonNode> one = new ArrayList<>();
                 one.add(testCase.get("kpi"));
-                ServerGateEvaluation evaluation = evaluate(root, testCase.get("config"), testCase.get("components"),
-                        one, data, payload);
+                ServerGateEvaluation evaluation = testCase.hasNonNull("tool")
+                        ? evaluateOnRunOf(testCase.get("tool").asText(), root, testCase.get("config"),
+                                testCase.get("components"), one, payload)
+                        : evaluate(root, testCase.get("config"), testCase.get("components"), one, data, payload);
                 assertEquals(1, evaluation.results().size(), "the mapper dropped the KPI: " + evaluation.findings());
                 checkResult(evaluation.results().get(0), testCase.get("expect"), evaluation);
             }));

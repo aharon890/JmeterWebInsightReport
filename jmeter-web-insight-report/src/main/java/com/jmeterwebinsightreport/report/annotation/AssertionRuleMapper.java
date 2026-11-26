@@ -4,6 +4,7 @@ import com.jmeterwebinsightreport.core.assertion.AssertionRule;
 import com.jmeterwebinsightreport.core.assertion.AssertionTarget;
 import com.jmeterwebinsightreport.core.assertion.AssertionValidator;
 import com.jmeterwebinsightreport.core.assertion.Predicate;
+import com.jmeterwebinsightreport.core.assertion.SamplerWords;
 import com.jmeterwebinsightreport.core.assertion.Usability;
 
 import java.util.ArrayList;
@@ -34,6 +35,19 @@ public final class AssertionRuleMapper {
 
         public List<AssertionRule> rules() { return Collections.unmodifiableList(rules); }
         public List<AssertionValidator.Finding> findings() { return Collections.unmodifiableList(findings); }
+    }
+
+    /** The retired keys' sentences in the run's word for a sampler (contracts/page-words.md). */
+    private final Map<String, String> retiredRuleKeys;
+
+    /** A mapper whose sentences say "sampler", as a JMeter run's do. */
+    public AssertionRuleMapper() {
+        this(SamplerWords.JMETER);
+    }
+
+    /** A mapper whose sentences name a sampler in the run's own word: "request" on a k6 run. */
+    public AssertionRuleMapper(SamplerWords words) {
+        this.retiredRuleKeys = words == null || words == SamplerWords.JMETER ? RETIRED_RULE_KEYS : retiredRuleKeys(words);
     }
 
     public Result map(List<ReportAnnotations.AssertionConfig> configs) {
@@ -239,7 +253,7 @@ public final class AssertionRuleMapper {
         if (unknown == null || unknown.isEmpty()) {
             return;
         }
-        for (Map.Entry<String, String> retired : RETIRED_RULE_KEYS.entrySet()) {
+        for (Map.Entry<String, String> retired : retiredRuleKeys.entrySet()) {
             if (unknown.containsKey(retired.getKey())) {
                 findings.add(error(label, retired.getValue()));
                 builder.declarationProblem(
@@ -270,9 +284,15 @@ public final class AssertionRuleMapper {
      *
      * <p>A map in one place rather than an if-chain, so retiring a seventh key costs one line —
      * and so the question "does this one invert the rule?" is asked in the same place every time.
+     *
+     * <p>In a JMeter run's words; a mapper writes its run's own ({@link #retiredRuleKeys}), so on a
+     * k6 run {@code onMissing}'s sentence says "a missing request" (contracts/page-words.md).
+     * {@code AnnotationsSchemaTest} reads this map's keys.
      */
-    private static final Map<String, String> RETIRED_RULE_KEYS;
-    static {
+    private static final Map<String, String> RETIRED_RULE_KEYS = retiredRuleKeys(SamplerWords.JMETER);
+
+    /** {@link #RETIRED_RULE_KEYS}, each sentence naming a sampler in {@code words}. */
+    private static Map<String, String> retiredRuleKeys(SamplerWords words) {
         Map<String, String> m = new LinkedHashMap<>();
         m.put("observe", "\"observe\" is no longer a rule modifier. It meant \"report this and "
                 + "never gate\", and a rule that keeps its bands without it does gate — so leaving "
@@ -282,8 +302,8 @@ public final class AssertionRuleMapper {
                 + "nothing is now NOT_JUDGED / NO_MATCH and never fails the run on its own, "
                 + "because a plan running a subset is legitimate — so a rule relying on "
                 + "\"onMissing\": \"fail\" would pass where it used to fail. Delete the key; if a "
-                + "missing sampler must stop the build, assert on it in the pipeline.");
-        RETIRED_RULE_KEYS = Collections.unmodifiableMap(m);
+                + "missing " + words.one() + " must stop the build, assert on it in the pipeline.");
+        return Collections.unmodifiableMap(m);
     }
 
     private static boolean notBlank(String s) {

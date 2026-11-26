@@ -3,6 +3,8 @@ package com.jmeterwebinsightreport.report.template;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jmeterwebinsightreport.core.assertion.SamplerWords;
+import com.jmeterwebinsightreport.core.model.ReportData;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -41,6 +43,20 @@ public final class PageWords {
         Map<String, String> words = new LinkedHashMap<>();
         column.forEach((k, v) -> words.put(k, v.replace("{tool}", tool)));
         return Collections.unmodifiableMap(words);
+    }
+
+    /**
+     * The judge's word for a sampler on a run {@code toolName} recorded: this table's {@code sampler} and
+     * {@code samplers}, so the few sentences the judge writes into the CI/CD JSON and JUnit say what the page says
+     * ("request" on a k6 run; contracts/page-words.md, done 2026-11-26).
+     */
+    public static SamplerWords samplerWords(String toolName) {
+        return SamplerWords.of(forTool(toolName));
+    }
+
+    /** {@link #samplerWords(String)} for the tool that recorded {@code run}: JMeter's when there is none. */
+    public static SamplerWords samplerWords(ReportData run) {
+        return samplerWords(run == null || run.getMetadata() == null ? null : run.getMetadata().getToolName());
     }
 
     /** The words as the page's script reads them: a JSON object. */

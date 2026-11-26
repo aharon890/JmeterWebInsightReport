@@ -171,6 +171,14 @@ public final class Usability {
      * under a consequence of it.
      */
     public static List<Usability> check(AssertionRule rule) {
+        return check(rule, SamplerWords.JMETER);
+    }
+
+    /**
+     * {@link #check(AssertionRule)} on a run whose word for a sampler is {@code words}: the one sentence here that
+     * names a sampler, a metric not available per sampler, says "per request" on a k6 run (contracts/page-words.md).
+     */
+    public static List<Usability> check(AssertionRule rule, SamplerWords words) {
         List<Usability> found = new ArrayList<>(2);
         if (rule == null) {
             return found;
@@ -193,7 +201,7 @@ public final class Usability {
             return found;
         }
 
-        Usability metric = metricProblem(rule);
+        Usability metric = metricProblem(rule, words);
         if (metric != null) {
             found.add(metric);
             return found;
@@ -227,7 +235,12 @@ public final class Usability {
      * one.
      */
     public static Usability refusal(AssertionRule rule) {
-        for (Usability u : check(rule)) {
+        return refusal(rule, SamplerWords.JMETER);
+    }
+
+    /** {@link #refusal(AssertionRule)} in the run's word for a sampler, as {@link #check(AssertionRule, SamplerWords)}. */
+    public static Usability refusal(AssertionRule rule, SamplerWords words) {
+        for (Usability u : check(rule, words)) {
             if (u.refuses()) {
                 return u;
             }
@@ -268,7 +281,7 @@ public final class Usability {
      * typo'd metric name silently switching the gate off is the precise failure this feature
      * exists to prevent.
      */
-    private static Usability metricProblem(AssertionRule rule) {
+    private static Usability metricProblem(AssertionRule rule, SamplerWords words) {
         boolean overallScope = rule.target().kind() == AssertionTarget.Kind.OVERALL;
         MetricRef metric = rule.metric();
 
@@ -294,7 +307,7 @@ public final class Usability {
         }
         if (!overallScope && !metric.validForSampler()) {
             return new Usability(Reason.METRIC_WRONG_SCOPE, AssertionValidator.Severity.ERROR,
-                    "metric '" + metric.canonicalName() + "' is not available per sampler", null);
+                    "metric '" + metric.canonicalName() + "' is not available per " + words.one(), null);
         }
         return null;
     }

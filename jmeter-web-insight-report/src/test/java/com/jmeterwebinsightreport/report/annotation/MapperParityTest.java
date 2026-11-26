@@ -7,6 +7,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jmeterwebinsightreport.core.assertion.AssertionRule;
 import com.jmeterwebinsightreport.core.assertion.AssertionTarget;
 import com.jmeterwebinsightreport.core.assertion.Predicate;
+import com.jmeterwebinsightreport.core.assertion.SamplerWords;
+import com.jmeterwebinsightreport.report.template.PageWords;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
@@ -160,9 +162,12 @@ class MapperParityTest {
         List<DynamicTest> tests = new ArrayList<>();
         for (JsonNode c : root.path("detailCases")) {
             tests.add(DynamicTest.dynamicTest("detail — " + c.get("name").asText(), () -> {
-                AssertionRule rule = throughMapper(c.get("rule"));
+                // On the run the case names (its tool), in that run's word for a sampler: the mapper and the
+                // refusal, as GateEvaluation drives both (contracts/page-words.md).
+                SamplerWords words = PageWords.samplerWords(c.hasNonNull("tool") ? c.get("tool").asText() : null);
+                AssertionRule rule = throughMapper(c.get("rule"), words);
                 com.jmeterwebinsightreport.core.assertion.Usability refusal =
-                        com.jmeterwebinsightreport.core.assertion.Usability.refusal(rule);
+                        com.jmeterwebinsightreport.core.assertion.Usability.refusal(rule, words);
                 assertNotNull(refusal, "the rule was not refused");
                 assertEquals(c.get("expect").get("detail").asText(), refusal.reasonText(), "the INVALID_RULE detail");
             }));
@@ -321,13 +326,18 @@ class MapperParityTest {
         }
     }
 
-    /** The mapper, driven exactly as {@code GateEvaluation} drives it. */
+    /** The mapper, driven exactly as {@code GateEvaluation} drives it on a JMeter run. */
     private static AssertionRule throughMapper(JsonNode declared) throws IOException {
+        return throughMapper(declared, SamplerWords.JMETER);
+    }
+
+    /** The mapper, driven exactly as {@code GateEvaluation} drives it on a run whose word for a sampler is {@code words}. */
+    private static AssertionRule throughMapper(JsonNode declared, SamplerWords words) throws IOException {
         ObjectNode doc = MAPPER.createObjectNode();
         doc.putArray("assertions").add(declared);
         ReportAnnotations annotations = document(doc);
         AssertionRuleMapper.Result result =
-                new AssertionRuleMapper().map(annotations.getAssertions());
+                new AssertionRuleMapper(words).map(annotations.getAssertions());
         assertEquals(1, result.rules().size(), "the mapper dropped the rule");
         return result.rules().get(0);
     }

@@ -29,6 +29,16 @@ const VECTORS = require(path.resolve(__dirname,
 const WIR = loadReportJs();
 const A = WIR.asserts;
 
+/* A case with a `tool` is judged on a run that tool recorded (contracts/page-words.md): report.js loaded with that
+   tool's words, as the template hands a k6 run's page k6's. One load per tool, and per vocabulary below. */
+const loaded = {};
+function assertsFor(tool, chartData) {
+    const key = tool + (chartData ? ':vocabulary' : '');
+    if (!loaded[key]) loaded[key] = loadReportJs(chartData, { tool: tool }).asserts;
+    return loaded[key];
+}
+let toolCases = 0;
+
 /** The vector file's sampler shape → the payload shape the client evaluator reads. */
 function payloadFrom(v) {
     const samplers = v.samplers.map((s) => Object.assign({
@@ -100,8 +110,10 @@ for (const run of runs) for (const c of run.cases) {
     const label = run.prefix + (c.rule.id || c.name);
     try {
         // THE POINT OF THIS FILE: the production parser, not a test helper.
-        const rule = A._ruleFromJson(c.rule, 0);
-        const result = A.evaluate([rule], payload).rules[0];
+        const P = c.tool ? assertsFor(c.tool) : A;
+        if (c.tool) toolCases++;
+        const rule = P._ruleFromJson(c.rule, 0);
+        const result = P.evaluate([rule], payload).rules[0];
 
         assert.strictEqual(result.status, c.expect.status, 'status');
         assert.strictEqual(result.matched, c.expect.matched, 'matched count');
@@ -202,16 +214,18 @@ const scopeVocabulary = (scope) => VECTORS.vocabulary[scope].map((name) => {
     assert.ok(Object.prototype.hasOwnProperty.call(VECTORS.units, name), 'no unit for ' + name);
     return { name, unit: VECTORS.units[name] };
 });
-const D = loadReportJs({ assertMetrics: { sampler: scopeVocabulary('sampler'),
-                                          overall: scopeVocabulary('overall') } }).asserts;
+const vocabulary = { assertMetrics: { sampler: scopeVocabulary('sampler'), overall: scopeVocabulary('overall') } };
+const D = loadReportJs(vocabulary).asserts;
 let details = 0;
 for (const c of (VECTORS.detailCases || [])) {
     details++;
     ran++;
     try {
-        const rule = D._ruleFromJson(c.rule, c.index || 0);
-        assert.strictEqual(D._whyUnusable(rule), c.expect.detail, 'the INVALID_RULE detail');
-        const result = D.evaluate([rule], payload).rules[0];
+        const P = c.tool ? assertsFor(c.tool, vocabulary) : D;
+        if (c.tool) toolCases++;
+        const rule = P._ruleFromJson(c.rule, c.index || 0);
+        assert.strictEqual(P._whyUnusable(rule), c.expect.detail, 'the INVALID_RULE detail');
+        const result = P.evaluate([rule], payload).rules[0];
         assert.strictEqual(result.notJudged, 'INVALID_RULE', 'refused');
         assert.strictEqual(result.notJudgedDetail, c.expect.detail, 'the detail the evaluator reports');
         console.log('  ok   detail: ' + c.name);
@@ -222,6 +236,8 @@ for (const c of (VECTORS.detailCases || [])) {
     }
 }
 assert.ok(details >= 18, 'the detail cases are gone: ' + details);
+/* The cases on a run another tool recorded: a runner that skipped them would hold the page to nothing. */
+assert.ok(toolCases >= 3, 'the cases with a tool are gone: ' + toolCases);
 
 /* The legacy loadValidity block, migrated into assertions[] as the run migrates it (M5
    exploratory F1) — MapperParityTest runs the same documents through AnnotationLoader's mapper

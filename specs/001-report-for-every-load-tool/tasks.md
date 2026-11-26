@@ -320,7 +320,8 @@ As built (2026-11-23):
 - Timing parts are kept to the hundredth of a millisecond (data-model.md `Sample.timings`): whole milliseconds read 0
   for four of k6's six parts on K1.
 - The words table is `templates/page-words.json` (`PageWords`); report.js reads it through `W(key)`. Four sentences the
-  Java judge writes, and the page mirrors, still say "sampler" (contracts/page-words.md, "Not changed yet").
+  Java judge writes, and the page mirrors, still said "sampler"; since 2026-11-26 they say the run's word, "request" on
+  a k6 run (contracts/page-words.md, the "Done 2026-11-26" table).
 - The proof that JMeter reports did not change: E02, E31, an E26-shaped report and a Compare report, built from the same
   run data with the JAR before US3 and after it; each tab's text, the header, the tab bar, the footer and every title,
   placeholder and label are identical.
