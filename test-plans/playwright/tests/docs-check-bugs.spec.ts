@@ -58,7 +58,7 @@ test.describe('Compare Apply keeps Java\'s regression rule [CMP]', () => {
   test('Samples deltas are neutral, not red [CMP]', async ({ page }) => {
     await loadClean(page, 'CMP');
     await switchTab(page, 'compare');
-    const html = await evaluate(page, () => (window as any).inlineDelta(25, '', 'neutral'));
+    const html = await evaluate(page, () => (window as any).inlineDelta(25, '+25', 'neutral'));
     expect(html).toContain('delta-neutral');
     expect(html).not.toContain('delta-bad');
   });

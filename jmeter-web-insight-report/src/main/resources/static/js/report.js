@@ -5297,9 +5297,10 @@ function comparisonPairCellHtml(c, base, curr, delta) {
         (delta == null ? '' : '<span class="cmp-pair-delta">' + escapeHtml(delta) + '</span>') + '</td>';
 }
 
-/* A pair's throughput change (spec 004), in the unit the larger of the cell's two rates is written in (formatRate's
+/* A compared pair's throughput change, in the unit the larger of the row's two rates is written in (formatRate's
    per second, minute or hour), at one decimal: 13.2/min -> 13.8/min changed by +0.6/min, where '/s' at one decimal
-   read +0.0/s; 55.8/s -> 14.8/min by -55.6/s. */
+   read +0.0/s; 55.8/s -> 14.8/min by -55.6/s. Both readings of a pair write it: the grey difference of a pair of two
+   tools (spec 004) and the coloured superscript of a pair of one (owner, 2026-11-27). */
 function pairRateDelta(perSecond, baseRate, currRate) {
     if (perSecond === 0) return '0';
     var larger = Math.max(baseRate || 0, currRate || 0);
@@ -5314,7 +5315,17 @@ function comparisonRowHtml(d, order) {
     var deltas = { samples: [d.deltaSamples, '', 'neutral'], errors: [d.deltaErrors, ''], errorPct: [d.deltaErrorRate, '%'],
         mean: [d.deltaMean, ' ms'], median: [d.deltaMedian, ' ms'], p90: [d.deltaP90, ' ms'], p95: [d.deltaP95, ' ms'],
         p99: [d.deltaP99, ' ms'], min: [d.deltaMin, ' ms'], max: [d.deltaMax, ' ms'],
-        throughput: [d.deltaThroughput, '/s', true], recv: [d.deltaRecvKBs, '', true] };
+        throughput: [d.deltaThroughput, null, true], recv: [d.deltaRecvKBs, '', true] };
+    /* The change beside a figure, one text for both readings of a pair. A throughput's is in its two rates' unit: a
+       pair of one tool ships no baseline rate, which is this run's less the change, as Apply reads it. */
+    var changeText = function (c) {
+        var val = deltas[c][0];
+        if (val == null) return '';
+        if (c !== 'throughput') return deltaText(val, deltas[c][1]);
+        var baseRate = d.baseThroughput != null ? d.baseThroughput
+            : d.currThroughput != null ? d.currThroughput - val : null;
+        return pairRateDelta(val, baseRate, d.currThroughput);
+    };
     var twoTools = comparisonTwoTools();
     var cells = {
         name: '<td data-col-id="name" title="' + escapeHtml(d.name) + '">' + escapeHtml(d.name) + '</td>',
@@ -5328,9 +5339,7 @@ function comparisonRowHtml(d, order) {
         if (twoTools) {
             var oneSided = d.removed || d.isNew;
             var unmeasured = c === 'recv' && (isNotMeasured('bytes') || baselineNotMeasured('bytes'));
-            var delta = oneSided || unmeasured || deltas[c][0] == null ? null
-                : c === 'throughput' ? pairRateDelta(deltas[c][0], d.baseThroughput, d.currThroughput)
-                : (deltaText(deltas[c][0], deltas[c][1]) || '0');
+            var delta = oneSided || unmeasured || deltas[c][0] == null ? null : (changeText(c) || '0');
             cells[c] = comparisonPairCellHtml(c, base[c] === undefined ? '—' : base[c],
                 figures[c] === undefined ? '—' : figures[c], delta);
             return;
@@ -5338,7 +5347,7 @@ function comparisonRowHtml(d, order) {
         var notMeasuredHere = c === 'recv' && isNotMeasured('bytes');
         cells[c] = d.removed ? '<td data-col-id="' + c + '">—</td>'
             : '<td data-col-id="' + c + '">' + escapeHtml(figures[c]) +
-                (notMeasuredHere ? '' : inlineDelta(deltas[c][0], deltas[c][1], deltas[c][2])) + '</td>';
+                (notMeasuredHere ? '' : inlineDelta(deltas[c][0], changeText(c), deltas[c][2])) + '</td>';
     });
     var key = d.total ? 'Σ' : d.name;
     /* A removed sampler ran in the baseline but not in this run, so it has no current-side figures: dashes. */
@@ -7476,9 +7485,10 @@ function deltaText(val, suffix) {
     return String(text);
 }
 
-function inlineDelta(val, suffix, invertColor) {
+/* A pair of one tool's coloured superscript: `val` the change, which decides the colour and whether there is one at all
+   (none for no change), `text` the change as written (comparisonRowHtml's changeText). */
+function inlineDelta(val, text, invertColor) {
     if (val == null || val === 0) return '';
-    var text = deltaText(val, suffix);
     /* invertColor: true when lower is worse (throughput), 'neutral' when neither direction is —
        more samples is a longer or busier run, not a regression, and coloured it red. */
     var bad = invertColor ? (val < 0) : (val > 0);
@@ -9000,7 +9010,9 @@ WIR.toolTab = (function () {
 
     /**
      * How far a failed threshold is past its limit: in the metric's unit, and as a share of the limit (none when the
-     * limit is 0). An upper limit (<, <=) is passed "over", a lower one (>, >=) "under", an equality "off".
+     * limit is 0; the text writes none for a rate, and the Past the limit column still sorts by it, the one figure
+     * that compares a time with a rate). An upper limit (<, <=) is passed "over", a lower one (>, >=) "under", an
+     * equality "off".
      */
     function distance(t) {
         if (t.passed || !isNum(t.measured) || !isNum(t.limit) || !t.operator) return null;
@@ -9013,9 +9025,13 @@ WIR.toolTab = (function () {
         return { past: past, word: word, share: t.limit === 0 ? null : past / Math.abs(t.limit) };
     }
 
+    /* A rate's limit and value are percentages already, so how far past is their difference in points, with no share
+       of the limit: "17.18% over (1718%)" read as two percentages that contradicted each other (owner, 2026-11-27). The
+       strip and the Thresholds table both write this text. */
     function distanceText(t) {
         var d = distance(t);
         if (!d) return '';
+        if (t.metricType === 'rate') return (d.past * 100).toFixed(2) + ' points ' + d.word;
         return formatIn(d.past, t) + ' ' + d.word + (d.share === null ? '' : ' (' + Math.round(d.share * 100) + '%)');
     }
 
