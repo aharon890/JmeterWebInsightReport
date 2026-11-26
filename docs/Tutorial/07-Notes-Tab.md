@@ -56,7 +56,7 @@ Per-sampler annotations shown as blue (i) icons in the Samplers tab table:
 
 ### What Changed summary
 
-When baseline comparison exists, an auto-generated summary of regressions and improvements appears in the Notes tab — see [Compare](06-Compare-Tab.md#what-changed-summary).
+When baseline comparison exists, an auto-generated summary of regressions and improvements appears in the Notes tab — see [Compare](06-Compare-Tab.md#what-changed-summary). On a pair of two tools (JMeter and k6) it lists each request's change instead, judging none — see [A pair of two tools](06-Compare-Tab.md#a-pair-of-two-tools).
 
 ## Without Annotations
 

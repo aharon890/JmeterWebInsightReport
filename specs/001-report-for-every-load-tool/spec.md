@@ -39,6 +39,9 @@ Dependencies.
 5. **The Server tab first.** Server data and server asserts are tied to the run through the common format, not through
    a JMeter results file, and are judged the same way for every tool. This is the main reason for the change.
 6. **Compare for non-JMeter runs, and across tools, is later, not in this version** (answered 2026-11-23).
+   *Note, 2026-11-26: lifted by spec 004 (`specs/004-compare-for-every-tool/`), the owner's answer "k6, and across tools": a baseline is a JMeter
+   results file or run data of any tool, a pair of one tool is judged as before, and a pair of two tools is compared
+   without judging.*
 7. **A non-JMeter run uses its tool's own words** (answered 2026-11-23). On a k6 run:
 
    | JMeter's word | k6 run |
@@ -294,7 +297,8 @@ report.
   user and pass) and, when given, k6's end-of-test summary, and build the report from them through the common format
   (decision 8). The same files MUST give the same report whoever runs the command.
 - **FR-017**: On a non-JMeter run, a Compare baseline MUST be refused with a sentence naming decision 6, and the
-  report built without Compare.
+  report built without Compare. *Note, 2026-11-26: replaced by spec 004 (`specs/004-compare-for-every-tool/`) (its FR-001 to FR-004): the refusal
+  (`ReportRebuild.refuseCrossToolBaseline`) is removed, and a baseline is compared on a run of any tool.*
 
 ### Key Entities
 
@@ -340,7 +344,7 @@ report.
   millisecond times and each request's virtual user. Perf hub calls it (its spec 010). A k6 plugin that writes the data
   inside k6 is a later, separate project, and is optional now that the command reads k6's file.
 - **Out of scope:**
-  - Compare for non-JMeter runs and across tools (decision 6, a later version);
+  - Compare for non-JMeter runs and across tools (decision 6, a later version; done by spec 004, 2026-11-26);
   - the k6 plugin itself;
   - a Gatling producer;
   - renaming the project away from "Jmeter";

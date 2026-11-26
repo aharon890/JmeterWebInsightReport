@@ -58,13 +58,17 @@ code before the change (red), then passing after it (green). A deviation from th
   tools; chart series named by tool; What Changed's per-request lines (`whatChangedRequestText`).
   `sigmaTotalCellTexts` takes whose "not measured" it writes, and `deltaText` is `inlineDelta`'s text, shared by
   both readings. Recv KB/s reads "not measured" on a k6 run's Compare rows (it read 0.00). The template gives the
-  table's title an id and adds the legend and the notes; the words table gains 11 keys (`compare*`,
+  table's title an id and adds the legend and the notes; the words table gains 10 keys (`compare*`,
   `whatChangedEach`); report.css the two-tool cell, and a table that takes its cells' widths and scrolls sideways.
 
 ## Stage 4: docs and the dated notes
 
-- [ ] T011 Tutorials 06, 17, 18, FEATURES, `build-report --help`'s `--baseline` line.
-- [ ] T012 Spec 001 decision 6 and FR-017: dated notes pointing at spec 004.
+- [X] T011 Tutorial 06 (what a baseline can be; one tool and two tools; a section "A pair of two tools"), 07 (What
+  Changed on two tools), 17 (`--baseline` row, and Compare for k6 runs with an example), 18 (run data as a baseline),
+  FEATURES (Run Comparison: setup and Two tools; Other load tools: Compare), `build-report --help`'s `--baseline`
+  line, and WIR's CLAUDE.md (the four comparison fixtures). `docs-links.test.js`: 274 links pass.
+- [X] T012 Spec 001 decision 6, FR-017, its out-of-scope line and `contracts/build-report-cli.md`'s `--baseline` row:
+  dated notes (2026-11-26) pointing at spec 004.
 
 ## Stage 5: regression, PR
 

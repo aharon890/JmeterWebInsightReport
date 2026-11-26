@@ -138,6 +138,15 @@ java -jar jmeter-web-insight-report-<version>.jar build-report --run-data run-da
 `<report name>-run-data.jsonl.gz`, from the listener or from `jmeter -g`. A report built from it with `build-report` is
 the original report: the same CI/CD JSON, `runId` included, and the same Errors tab, response bodies included.
 
+## Run data as a Compare baseline
+
+Run data of any tool is also a Compare baseline: `-Jwebinsight.report.baseline=<file>` (or `baseline.jtl` in the
+output folder), and `build-report --baseline <file>`. The report reads a baseline by what is in it, never by its name:
+a file whose first record is the `run` record (plain or gzipped) is run data, and a JMeter CSV results file is read as
+before. The baseline's `tool.name` decides how the pair reads: one tool is judged as a JMeter pair always was, two
+tools (JMeter and k6) are compared without judging ([Compare](06-Compare-Tab.md#a-pair-of-two-tools)). The baseline's
+`notMeasured` fields read "not measured" on its side of every cell.
+
 ## Holding a new producer to JMeter's numbers
 
 The project's regression step R08 (`test-plans/scripts/run-run-data.sh`) holds every producer to JMeter's own Aggregate
