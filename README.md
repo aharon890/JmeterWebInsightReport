@@ -116,7 +116,7 @@ Precedence: **`-J` property > GUI field > default.**
 | `webinsight.report.annotations` | Path to `report-annotations.json` (asserts, server asserts, markers, notes) | auto-detected in the output directory |
 | `webinsight.report.servermetrics` | The *actual* numbers the server asserts are judged against: a CSV exported from your monitoring tool, which `jmeter -g` collects itself, or the `server-metrics.json` payload `wir-collect` wrote. Read by the `-g -o` step and by the listener's **Rebuild report with server data** button, where it wins over the **Server data (CSV)** field. The listener writes its own report when the run ends, before the server data exists, so at that point it ignores the property (and says so in `jmeter.log`). One `run.properties` can therefore serve both commands. A relative path missing where JMeter runs is looked up beside the JTL. See [Server asserts](#server-asserts) | none — never auto-detected |
 | `webinsight.report.servermetrics.*` | For a CSV, read by `jmeter -g` and the Rebuild button alike: `step`, `clockoffset`, `timezone`, `from`, `layout`, `columns`, `csvcolumns`, `component`, `env` — each the collector's flag of the same name | none |
-| `webinsight.report.baseline` | Path to a baseline JTL, which enables the Compare tab | auto-detected as `baseline.jtl` in the output directory |
+| `webinsight.report.baseline` | Path to a baseline, which enables the Compare tab: a JMeter results file, or run data of any tool (`.jsonl` / `.jsonl.gz`), read by content | auto-detected as `baseline.jtl` in the output directory |
 | `webinsight.report.rampup` | Ramp-up duration in ms, for the timeline overlay | none |
 | `webinsight.report.externaldata` | Force the chart payload into a separate `.js` file | `false` |
 | `webinsight.report.externaldata.threshold` | Payload size (chars) above which that happens automatically. Values ≤ 0 are rejected with a warning | `10000000` |
@@ -369,6 +369,13 @@ whose output directory must be empty). The plugin picks it up and adds a **Compa
 - Per-sampler diff table with regression detection — by default a p95 more than 10% higher, or an
   error rate more than 2 points higher; the thresholds are editable on the tab and settable with
   the `webinsight.compare.*` properties
+
+Since 4.8.0 the baseline can also be run data of any tool (`.jsonl` / `.jsonl.gz`, as `build-report
+--write-run-data` writes it), and a k6 run gets the Compare tab too (`build-report --baseline`):
+- **k6 against k6** reads like a JMeter pair, with its regression badges, in k6's words
+- **JMeter against k6** (either way round) judges nothing: each cell shows the baseline's number →
+  this run's, with the difference in grey, and no badges, colours or thresholds; a line says why
+  connection time differs between the two tools. See [Compare tab](docs/Tutorial/06-Compare-Tab.md)
 
 ### Server asserts
 
