@@ -1,6 +1,6 @@
 # Plan: Compare for every load tool, and across tools (spec 004)
 
-**Status**: Draft with the spec, for the owner's approval. No code before it.
+**Status**: Approved with the spec on 2026-11-26.
 
 ## Approach
 

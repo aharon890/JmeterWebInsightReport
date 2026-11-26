@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-26
 
-**Status**: Draft, for the owner's approval. Nothing is built before it.
+**Status**: Approved by the owner on 2026-11-26 ("Approve, build it"), to be built after perf hub PR #39 (merged).
 
 **Input**: the owner's answer of 2026-11-26 to "What should the report's Compare do?": **"k6, and across tools"**. It
 lifts spec 001's decision 6 ("Compare for non-JMeter runs, and across tools, is later", 2026-11-23) and its FR-017
@@ -102,9 +102,8 @@ Compare tab is titled by its two tools and judges nothing.
 ## Owner decisions for this spec
 
 1. 2026-11-26: Compare for k6 runs **and** across tools (lifts spec 001 decision 6).
-2. Open: how a pair of two tools reads (see the approval page): without judging, as perf hub's Compare (recommended).
-3. Open: what a baseline file can be: a JMeter results file or run data of any tool (recommended), or also k6's own
-   `results.csv.gz`.
+2. 2026-11-26: a pair of two tools reads **like perf hub's Compare**: titled by its tools, both numbers, no judging.
+3. 2026-11-26: a baseline is **a JMeter results file or run data** of any tool (not k6's raw `results.csv.gz`).
 
 ## Assumptions
 
