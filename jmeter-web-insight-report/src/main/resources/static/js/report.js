@@ -5297,6 +5297,17 @@ function comparisonPairCellHtml(c, base, curr, delta) {
         (delta == null ? '' : '<span class="cmp-pair-delta">' + escapeHtml(delta) + '</span>') + '</td>';
 }
 
+/* A pair's throughput change (spec 004), in the unit the larger of the cell's two rates is written in (formatRate's
+   per second, minute or hour), at one decimal: 13.2/min -> 13.8/min changed by +0.6/min, where '/s' at one decimal
+   read +0.0/s; 55.8/s -> 14.8/min by -55.6/s. */
+function pairRateDelta(perSecond, baseRate, currRate) {
+    if (perSecond === 0) return '0';
+    var larger = Math.max(baseRate || 0, currRate || 0);
+    var scale = larger >= 1 ? 1 : larger * 60 >= 1 ? 60 : 3600;
+    var unit = scale === 1 ? 's' : scale === 60 ? 'min' : 'hour';
+    return (perSecond > 0 ? '+' : '-') + WIR.javaText.decimalFormat(Math.abs(perSecond) * scale, 1, true) + '/' + unit;
+}
+
 function comparisonRowHtml(d, order) {
     var status = comparisonStatus(d);
     var figures = comparisonFigures(d);
@@ -5317,7 +5328,9 @@ function comparisonRowHtml(d, order) {
         if (twoTools) {
             var oneSided = d.removed || d.isNew;
             var unmeasured = c === 'recv' && (isNotMeasured('bytes') || baselineNotMeasured('bytes'));
-            var delta = oneSided || unmeasured || deltas[c][0] == null ? null : (deltaText(deltas[c][0], deltas[c][1]) || '0');
+            var delta = oneSided || unmeasured || deltas[c][0] == null ? null
+                : c === 'throughput' ? pairRateDelta(deltas[c][0], d.baseThroughput, d.currThroughput)
+                : (deltaText(deltas[c][0], deltas[c][1]) || '0');
             cells[c] = comparisonPairCellHtml(c, base[c] === undefined ? '—' : base[c],
                 figures[c] === undefined ? '—' : figures[c], delta);
             return;

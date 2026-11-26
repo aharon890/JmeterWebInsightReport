@@ -105,5 +105,8 @@ code before the change (red), then passing after it (green). A deviation from th
    pair of two tools"; of a third tool (run data from another producer) the page does not know how it times a
    connection, so it claims nothing. Kept so on 2026-11-26 as a technical call (the report cannot know a third
    tool's timing), and told to the owner with PR #59.
+8. Found on a real pair (perf hub #82 JMeter against #83 k6, 2026-11-26): a two-tool cell's throughput change was
+   written per second at one decimal ("+0.0/s" under 13.2/min → 13.8/min). It takes the unit of the larger rate in
+   its cell now (`pairRateDelta`, `js-unit/compare-pair-throughput.test.js`, red first).
 7. On a two-tool pair the table's columns take their cells' widths (`table-layout: auto`) and the wrapper scrolls
    sideways, as perf hub's table does: "baseline → current" did not fit the fixed columns of a one-tool table.
