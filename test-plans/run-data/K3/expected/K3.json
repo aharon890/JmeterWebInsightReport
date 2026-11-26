@@ -24,7 +24,12 @@
       "p99": 21.0,
       "errorRate": 0.0,
       "throughput": 0.25,
-      "apdex": 1.0
+      "apdex": 1.0,
+      "errorCount": 0,
+      "min": 15.0,
+      "median": 15.0,
+      "p90": 19.0,
+      "max": 21.0
     },
     {
       "name": "Browse by Category",
@@ -34,7 +39,12 @@
       "p99": 16.0,
       "errorRate": 0.0,
       "throughput": 0.24,
-      "apdex": 1.0
+      "apdex": 1.0,
+      "errorCount": 0,
+      "min": 13.0,
+      "median": 13.0,
+      "p90": 15.0,
+      "max": 16.0
     },
     {
       "name": "Check Stock",
@@ -44,7 +54,12 @@
       "p99": 11.0,
       "errorRate": 0.0,
       "throughput": 0.26,
-      "apdex": 1.0
+      "apdex": 1.0,
+      "errorCount": 0,
+      "min": 8.0,
+      "median": 8.0,
+      "p90": 9.0,
+      "max": 11.0
     },
     {
       "name": "Filter by Price",
@@ -54,7 +69,12 @@
       "p99": 36.0,
       "errorRate": 0.0,
       "throughput": 0.25,
-      "apdex": 1.0
+      "apdex": 1.0,
+      "errorCount": 0,
+      "min": 23.0,
+      "median": 28.0,
+      "p90": 35.0,
+      "max": 36.0
     },
     {
       "name": "Get Categories",
@@ -64,7 +84,12 @@
       "p99": 10.0,
       "errorRate": 0.0,
       "throughput": 0.26,
-      "apdex": 1.0
+      "apdex": 1.0,
+      "errorCount": 0,
+      "min": 8.0,
+      "median": 9.0,
+      "p90": 9.0,
+      "max": 10.0
     },
     {
       "name": "Search Pets",
@@ -74,7 +99,12 @@
       "p99": 19.0,
       "errorRate": 0.0,
       "throughput": 0.25,
-      "apdex": 1.0
+      "apdex": 1.0,
+      "errorCount": 0,
+      "min": 10.0,
+      "median": 15.0,
+      "p90": 18.0,
+      "max": 19.0
     },
     {
       "name": "View Pet Detail",
@@ -84,9 +114,27 @@
       "p99": 11.0,
       "errorRate": 0.0,
       "throughput": 0.25,
-      "apdex": 1.0
+      "apdex": 1.0,
+      "errorCount": 0,
+      "min": 8.0,
+      "median": 9.0,
+      "p90": 10.0,
+      "max": 11.0
     }
   ],
+  "total": {
+    "sampleCount": 42,
+    "errorCount": 0,
+    "errorRate": 0.0,
+    "mean": 14.83,
+    "min": 8.0,
+    "median": 13.0,
+    "p90": 28.0,
+    "p95": 33.0,
+    "p99": 36.0,
+    "max": 36.0,
+    "throughput": 1.17
+  },
   "artifacts": {
     "outputDirectory": "<outputDir>",
     "html": {

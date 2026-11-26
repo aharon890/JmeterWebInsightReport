@@ -221,10 +221,37 @@ public class CiCdJsonSerializer {
                     s.put("assertStatus",
                             assertResults.get(stat.getSamplerName()).getOverallStatus().name());
                 }
+                // 4.7.0 (spec 003): the rest of the Aggregate Report's columns, after every key a 4.6.1
+                // consumer reads, so that consumer's keys keep their places. The same model values the
+                // Requests table writes.
+                s.put("errorCount", stat.getErrorCount());
+                s.put("min", round2(stat.getMinResponseTime()));
+                s.put("median", round2(stat.getMedianResponseTime()));
+                s.put("p90", round2(stat.getPercentile90()));
+                s.put("max", round2(stat.getMaxResponseTime()));
                 samplerSummaries.add(s);
             }
         }
         cicd.put("samplers", samplerSummaries);
+
+        // 4.7.0 (spec 003): the whole run as the page's Sigma Total row writes it (OverallMetrics, the one
+        // resolver), counted as the Aggregate Report counts its TOTAL. Its counts are the top-level ones
+        // above, so a consumer reading either gets one number.
+        com.jmeterwebinsightreport.core.model.OverallMetrics sigma =
+                com.jmeterwebinsightreport.core.model.OverallMetrics.of(reportData);
+        Map<String, Object> total = new LinkedHashMap<>();
+        total.put("sampleCount", totalSamples);
+        total.put("errorCount", totalErrors);
+        total.put("errorRate", totalSamples > 0 ? round2(totalErrors * 100.0 / totalSamples) : 0);
+        total.put("mean", round2(sigma.getMean()));
+        total.put("min", round2(sigma.getMin()));
+        total.put("median", round2(sigma.getMedian()));
+        total.put("p90", round2(sigma.getP90()));
+        total.put("p95", round2(sigma.getP95()));
+        total.put("p99", round2(sigma.getP99()));
+        total.put("max", round2(sigma.getMax()));
+        total.put("throughput", round2(sigma.getThroughput()));
+        cicd.put("total", total);
 
         // Breached samplers.
         if (assertResults != null) {

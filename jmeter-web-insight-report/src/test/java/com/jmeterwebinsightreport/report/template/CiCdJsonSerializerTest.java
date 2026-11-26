@@ -278,6 +278,91 @@ class CiCdJsonSerializerTest {
 
     // --- Tests ---
 
+    // --- 4.7.0 (spec 003): the Aggregate Report's columns and the whole-run row ---
+
+    @Test
+    void eachSamplerEndsWithTheAggregateReportColumnsAfterEveryOlderKey() throws JsonProcessingException {
+        ReportData data = createReportData("T", 60000, 300, 3);
+        SamplerStatistics s = createSamplerStats("GET /a", 300, 150.25, 300.0, 500.0, 1.0, 5.0);
+        s.setErrorCount(3);
+        s.setMinResponseTime(12);
+        s.setMedianResponseTime(140);
+        s.setPercentile90(260);
+        s.setMaxResponseTime(910);
+        data.setSamplerStatistics(List.of(s));
+
+        JsonNode first = objectMapper.readTree(serializer.serialize(data, null, null)).get("samplers").get(0);
+
+        assertEquals(3, first.get("errorCount").asLong());
+        assertEquals(12.0, first.get("min").asDouble());
+        assertEquals(140.0, first.get("median").asDouble());
+        assertEquals(260.0, first.get("p90").asDouble());
+        assertEquals(910.0, first.get("max").asDouble());
+        List<String> keys = new ArrayList<>();
+        first.fieldNames().forEachRemaining(keys::add);
+        assertEquals(List.of("name", "sampleCount", "mean", "p95", "p99", "errorRate", "throughput", "apdex",
+                "errorCount", "min", "median", "p90", "max"), keys);
+    }
+
+    @Test
+    void theNewColumnsComeAfterAnAssertStatus() throws JsonProcessingException {
+        ReportData data = createReportData("T", 60000, 10, 0);
+        data.setSamplerStatistics(List.of(createSamplerStats("GET /a", 10, 5, 6, 7, 0, 1)));
+        SamplerVerdicts verdicts = SamplerVerdicts.builder()
+                .put("GET /a", AssertionStatus.PASS, Map.of("p95", AssertionStatus.PASS)).build();
+
+        JsonNode first = objectMapper.readTree(serializer.serialize(data, verdicts, AssertionStatus.PASS))
+                .get("samplers").get(0);
+
+        List<String> keys = new ArrayList<>();
+        first.fieldNames().forEachRemaining(keys::add);
+        assertEquals(keys.indexOf("assertStatus") + 1, keys.indexOf("errorCount"), keys.toString());
+    }
+
+    @Test
+    void theWholeRunRowFollowsTheSamplersAndIsTheSigmaTotalRow() throws JsonProcessingException {
+        ReportData data = createReportData("T", 60000, 300, 3);
+        SamplerStatistics s = createSamplerStats("GET /a", 300, 150.25, 300.0, 500.0, 1.0, 5.0);
+        s.setErrorCount(3);
+        s.setMinResponseTime(12);
+        s.setMaxResponseTime(910);
+        data.setSamplerStatistics(List.of(s));
+        SamplerStatistics whole = createSamplerStats("whole run", 300, 150.25, 300.0, 500.0, 1.0, 5.0);
+        whole.setErrorCount(3);
+        whole.setMinResponseTime(12);
+        whole.setMaxResponseTime(910);
+        data.setWholeRun(whole);
+        data.setOverallMedian(140);
+        data.setOverallP90(260);
+        data.setOverallP95(300);
+        data.setOverallP99(500);
+        com.jmeterwebinsightreport.core.model.OverallMetrics sigma =
+                com.jmeterwebinsightreport.core.model.OverallMetrics.of(data);
+
+        JsonNode root = objectMapper.readTree(serializer.serialize(data, null, null));
+        JsonNode total = root.get("total");
+
+        assertNotNull(total, "no total");
+        List<String> top = new ArrayList<>();
+        root.fieldNames().forEachRemaining(top::add);
+        assertEquals(top.indexOf("samplers") + 1, top.indexOf("total"), top.toString());
+        List<String> keys = new ArrayList<>();
+        total.fieldNames().forEachRemaining(keys::add);
+        assertEquals(List.of("sampleCount", "errorCount", "errorRate", "mean", "min", "median", "p90", "p95", "p99",
+                "max", "throughput"), keys);
+        assertEquals(root.get("totalSamples").asLong(), total.get("sampleCount").asLong());
+        assertEquals(root.get("totalErrors").asLong(), total.get("errorCount").asLong());
+        assertEquals(root.get("errorRate").asDouble(), total.get("errorRate").asDouble());
+        assertEquals(sigma.getMean(), total.get("mean").asDouble(), 0.005);
+        assertEquals(12.0, total.get("min").asDouble());
+        assertEquals(140.0, total.get("median").asDouble());
+        assertEquals(260.0, total.get("p90").asDouble());
+        assertEquals(300.0, total.get("p95").asDouble());
+        assertEquals(500.0, total.get("p99").asDouble());
+        assertEquals(910.0, total.get("max").asDouble());
+        assertEquals(sigma.getThroughput(), total.get("throughput").asDouble(), 0.005);
+    }
+
     @Test
     void serialize_producesValidJson() throws JsonProcessingException {
         ReportData data = createReportData("Test Plan", 60000, 1000, 5);

@@ -24,7 +24,12 @@
       "p99": 32.0,
       "errorRate": 0.0,
       "throughput": 2.17,
-      "apdex": 1.0
+      "apdex": 1.0,
+      "errorCount": 0,
+      "min": 31.0,
+      "median": 31.0,
+      "p90": 32.0,
+      "max": 32.0
     },
     {
       "name": "Batch B",
@@ -34,7 +39,12 @@
       "p99": 32.0,
       "errorRate": 0.0,
       "throughput": 2.17,
-      "apdex": 1.0
+      "apdex": 1.0,
+      "errorCount": 0,
+      "min": 31.0,
+      "median": 31.0,
+      "p90": 32.0,
+      "max": 32.0
     },
     {
       "name": "Complete Checkout Flow",
@@ -44,7 +54,12 @@
       "p99": 161.0,
       "errorRate": 52.17,
       "throughput": 3.88,
-      "apdex": 0.478
+      "apdex": 0.478,
+      "errorCount": 12,
+      "min": 31.0,
+      "median": 157.0,
+      "p90": 159.0,
+      "max": 161.0
     },
     {
       "name": "Inner Payment",
@@ -54,7 +69,12 @@
       "p99": 32.0,
       "errorRate": 0.0,
       "throughput": 2.13,
-      "apdex": 1.0
+      "apdex": 1.0,
+      "errorCount": 0,
+      "min": 31.0,
+      "median": 31.0,
+      "p90": 32.0,
+      "max": 32.0
     },
     {
       "name": "Login",
@@ -64,7 +84,12 @@
       "p99": 32.0,
       "errorRate": 0.0,
       "throughput": 2.17,
-      "apdex": 1.0
+      "apdex": 1.0,
+      "errorCount": 0,
+      "min": 31.0,
+      "median": 31.0,
+      "p90": 32.0,
+      "max": 32.0
     },
     {
       "name": "Outside Group",
@@ -74,7 +99,12 @@
       "p99": 32.0,
       "errorRate": 0.0,
       "throughput": 2.17,
-      "apdex": 1.0
+      "apdex": 1.0,
+      "errorCount": 0,
+      "min": 31.0,
+      "median": 32.0,
+      "p90": 32.0,
+      "max": 32.0
     },
     {
       "name": "Pay",
@@ -84,7 +114,12 @@
       "p99": 32.0,
       "errorRate": 0.0,
       "throughput": 2.17,
-      "apdex": 1.0
+      "apdex": 1.0,
+      "errorCount": 0,
+      "min": 31.0,
+      "median": 31.0,
+      "p90": 32.0,
+      "max": 32.0
     },
     {
       "name": "Redirected",
@@ -94,7 +129,12 @@
       "p99": 32.0,
       "errorRate": 0.0,
       "throughput": 4.34,
-      "apdex": 1.0
+      "apdex": 1.0,
+      "errorCount": 0,
+      "min": 1.0,
+      "median": 1.0,
+      "p90": 31.0,
+      "max": 32.0
     },
     {
       "name": "Refused",
@@ -104,7 +144,12 @@
       "p99": 0.0,
       "errorRate": 100.0,
       "throughput": 2.18,
-      "apdex": 0.0
+      "apdex": 0.0,
+      "errorCount": 12,
+      "min": 0.0,
+      "median": 0.0,
+      "p90": 0.0,
+      "max": 0.0
     },
     {
       "name": "Second Pass",
@@ -114,7 +159,12 @@
       "p99": 32.0,
       "errorRate": 0.0,
       "throughput": 2.19,
-      "apdex": 1.0
+      "apdex": 1.0,
+      "errorCount": 0,
+      "min": 31.0,
+      "median": 32.0,
+      "p90": 32.0,
+      "max": 32.0
     },
     {
       "name": "Server Error",
@@ -124,7 +174,12 @@
       "p99": 2.0,
       "errorRate": 100.0,
       "throughput": 2.18,
-      "apdex": 0.0
+      "apdex": 0.0,
+      "errorCount": 12,
+      "min": 1.0,
+      "median": 1.0,
+      "p90": 1.0,
+      "max": 2.0
     },
     {
       "name": "Setup Read",
@@ -134,7 +189,12 @@
       "p99": 32.0,
       "errorRate": 0.0,
       "throughput": 31.25,
-      "apdex": 1.0
+      "apdex": 1.0,
+      "errorCount": 0,
+      "min": 32.0,
+      "median": 32.0,
+      "p90": 32.0,
+      "max": 32.0
     },
     {
       "name": "Teardown Clean",
@@ -144,7 +204,12 @@
       "p99": 32.0,
       "errorRate": 0.0,
       "throughput": 31.25,
-      "apdex": 1.0
+      "apdex": 1.0,
+      "errorCount": 0,
+      "min": 32.0,
+      "median": 32.0,
+      "p90": 32.0,
+      "max": 32.0
     },
     {
       "name": "http://127.0.0.1:8080/unnamed?token=secret123",
@@ -154,9 +219,27 @@
       "p99": 32.0,
       "errorRate": 0.0,
       "throughput": 2.19,
-      "apdex": 1.0
+      "apdex": 1.0,
+      "errorCount": 0,
+      "min": 31.0,
+      "median": 31.0,
+      "p90": 32.0,
+      "max": 32.0
     }
   ],
+  "total": {
+    "sampleCount": 48,
+    "errorCount": 12,
+    "errorRate": 25.0,
+    "mean": 63.35,
+    "min": 31.0,
+    "median": 32.0,
+    "p90": 158.0,
+    "p95": 159.0,
+    "p99": 161.0,
+    "max": 161.0,
+    "throughput": 7.91
+  },
   "artifacts": {
     "outputDirectory": "<outputDir>",
     "html": {

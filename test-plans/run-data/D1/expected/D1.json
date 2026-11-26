@@ -25,7 +25,12 @@
       "p99": 100.0,
       "errorRate": 50.0,
       "throughput": 6.67,
-      "apdex": 0.5
+      "apdex": 0.5,
+      "errorCount": 1,
+      "min": 90.0,
+      "median": 90.0,
+      "p90": 100.0,
+      "max": 100.0
     },
     {
       "name": "Health",
@@ -35,7 +40,12 @@
       "p99": 7.0,
       "errorRate": 0.0,
       "throughput": 9.66,
-      "apdex": 1.0
+      "apdex": 1.0,
+      "errorCount": 0,
+      "min": 5.0,
+      "median": 5.0,
+      "p90": 7.0,
+      "max": 7.0
     },
     {
       "name": "Login",
@@ -45,7 +55,12 @@
       "p99": 40.0,
       "errorRate": 0.0,
       "throughput": 23.53,
-      "apdex": 1.0
+      "apdex": 1.0,
+      "errorCount": 0,
+      "min": 35.0,
+      "median": 35.0,
+      "p90": 40.0,
+      "max": 40.0
     },
     {
       "name": "Pay",
@@ -55,9 +70,27 @@
       "p99": 60.0,
       "errorRate": 50.0,
       "throughput": 19.05,
-      "apdex": 0.5
+      "apdex": 0.5,
+      "errorCount": 1,
+      "min": 55.0,
+      "median": 55.0,
+      "p90": 60.0,
+      "max": 60.0
     }
   ],
+  "total": {
+    "sampleCount": 4,
+    "errorCount": 1,
+    "errorRate": 25.0,
+    "mean": 50.5,
+    "min": 5.0,
+    "median": 7.0,
+    "p90": 100.0,
+    "p95": 100.0,
+    "p99": 100.0,
+    "max": 100.0,
+    "throughput": 3.31
+  },
   "artifacts": {
     "outputDirectory": "<outputDir>",
     "html": {
