@@ -14,7 +14,7 @@ The report is organized into **8 tabs**:
 | **Timeline** | Full time-series charts — response time, throughput, error rate, bytes, connect/latency, response codes, percentile comparison, scatter plot |
 | **Samplers** | Detailed statistics table with sorting, filtering, column control, inline detail expansion, per-cell assert verdicts |
 | **Errors** | Error breakdown charts, error timeline, error detail records with expandable response bodies |
-| **Compare** | Baseline vs current run overlay and regression detection |
+| **Compare** | Baseline vs current run overlay and regression detection; for k6 runs too, and across tools (JMeter against k6, not judged) since 4.8.0 |
 | **Asserts** | The client quality gate — rules table, editor, wizard, findings banner, save/round-trip. **Always reachable**, whether or not the run declared a rule |
 | **Server** | Server asserts — the values you expect from the servers, compared with the metrics `wir-collect` fetched for the run: one badge per component, a board of asserts, charts, an editor. **Shipped visible**: on a run that declared nothing it says so, and on the interim report it says what was declared and not yet collected. See [Server tab](Tutorial/13-Server-Tab.md) |
 | **Notes** | Test notes (Markdown), timeline annotations, what changed against the baseline |
