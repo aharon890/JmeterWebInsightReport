@@ -9,6 +9,7 @@ import com.jmeterwebinsightreport.core.model.TestMetadata;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -248,13 +249,40 @@ class AssertionParityTest {
         return caseTests(run.get("cases"), reportData(run));
     }
 
-    private static Stream<DynamicTest> caseTests(JsonNode cases, ReportData data) {
-        AssertionEvaluator evaluator = new AssertionEvaluator();
+    /**
+     * The page-words table, as the report module ships it: core cannot read the report module's resource, so the
+     * test reads the file, as {@code K6ResultsTest} reads {@code test-plans/run-data}.
+     */
+    private static final File PAGE_WORDS =
+            new File("../jmeter-web-insight-report/src/main/resources/templates/page-words.json");
 
+    /**
+     * The words a case's run says a sampler in (its {@code tool}, contracts/page-words.md): that tool's column of the
+     * table, the {@code other} column for a tool it has none for, as {@code PageWords.forTool} picks it. JMeter's
+     * when the case names no tool.
+     */
+    static SamplerWords wordsFor(JsonNode testCase) throws IOException {
+        if (!testCase.hasNonNull("tool")) {
+            return SamplerWords.JMETER;
+        }
+        JsonNode table = MAPPER.readTree(PAGE_WORDS);
+        String tool = testCase.get("tool").asText().toLowerCase(java.util.Locale.ROOT);
+        boolean known = false;
+        for (JsonNode c : table.get("columns")) {
+            known |= c.asText().equals(tool);
+        }
+        String column = known ? tool : "other";
+        Map<String, String> words = new LinkedHashMap<>();
+        table.get("words").fields().forEachRemaining(e -> words.put(e.getKey(), e.getValue().get(column).asText()));
+        return SamplerWords.of(words);
+    }
+
+    private static Stream<DynamicTest> caseTests(JsonNode cases, ReportData data) {
         List<DynamicTest> tests = new ArrayList<>();
         for (JsonNode c : cases) {
             final JsonNode testCase = c;
             tests.add(DynamicTest.dynamicTest(testCase.get("name").asText(), () -> {
+                AssertionEvaluator evaluator = new AssertionEvaluator(wordsFor(testCase));
                 AssertionRule rule = rule(testCase.get("rule"));
                 GateSummary gate = evaluator.evaluate(Collections.singletonList(rule), data);
                 RuleResult result = gate.ruleResults().get(0);

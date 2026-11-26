@@ -51,7 +51,11 @@
   "`invisibleEnds.ranges` is the class of characters the INVISIBLE_PADDING WARNING names at a query's",
   "end (F8): each side holds its own copy as a range table, and ServerParityTest and server-parity.test.js",
   "check that copy against this one for every code point (server-parity.spec.ts: each range's edges",
-  "and one either side), so neither side's Unicode tables decide what the WARNING says."
+  "and one either side), so neither side's Unicode tables decide what the WARNING says.",
+  "A case with a `tool` is judged on a run that tool recorded (spec 001, contracts/page-words.md): a",
+  "sentence that names a sampler says the tool's word from the page-words table - 'request' on a k6",
+  "run. Java judges it over a run naming that tool, node loads report.js with the tool's words, and",
+  "the browser spec runs it on a k6 report (K1). A case without one is a JMeter run's."
  ],
  "samplers": [
   {
@@ -3221,6 +3225,27 @@
     "status": "NOT_JUDGED",
     "notJudged": "INVALID_RULE",
     "reason": "matched 2 samplers"
+   }
+  },
+  {
+   "name": "on a k6 run the same refusal says requests, k6's word for samplers",
+   "tool": "k6",
+   "kpi": {
+    "id": "div-many-k6",
+    "component": "c",
+    "query": "cpu",
+    "reduce": {
+     "kind": "max"
+    },
+    "divideBy": "load:everything",
+    "fail": {
+     "gt": 1
+    }
+   },
+   "expect": {
+    "status": "NOT_JUDGED",
+    "notJudged": "INVALID_RULE",
+    "detail": "divideBy names 'load:everything', which matched 2 requests - a ratio needs one measured load, so name a rule with a single target (\"scope\": \"overall\", or one request)"
    }
   },
   {

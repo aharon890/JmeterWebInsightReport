@@ -72,109 +72,120 @@ function clientPayload(v: any) {
   };
 }
 
+/**
+ * Every vector, judged by the mirror of the report the page is: run inside page.evaluate, so it may read nothing but
+ * its argument and the page. The E26 test hands it a JMeter run's cases, the tool test a k6 run's.
+ */
+const judgeInPage = ({ v, client }: { v: any; client: any }) => {
+  const W = (window as any).WIR;
+  const A = W.asserts;
+  const SK = W.serverKpis;
+
+  // Live client results — uncapped and full precision. Reading the BAKED
+  // chartData.assertions instead would take a divisor rounded to 2dp out of a list
+  // capped at 200 matches, and a server KPI would not re-decide when its client load
+  // rule was retuned, which is the whole point of a mirror.
+  const rules = v.clientRules.map((r: any, i: number) => A._ruleFromJson(r, i));
+  const clientResults = A.evaluate(rules, client).rules;
+
+  // The block's declared components - the file's, with a case's own merged over them by id.
+  // The same object ServerParityTest declares. The catalogue is the one this report shipped
+  // (chartData.serverCatalogue), read from the same files the node tier reads.
+  const componentsFor = (c: any) => Object.assign(JSON.parse(JSON.stringify(v.components)),
+    c && c.components ? JSON.parse(JSON.stringify(c.components)) : {});
+
+  function configFor(c: any) {
+    const block: any = {
+      collection: {
+        coverageFloor: v.block.coverageFloor,
+        excludeRampUp: v.block.excludeRampUp,
+      },
+    };
+    if (c && c.config) {
+      if (c.config.excludeRampUp !== undefined) block.collection.excludeRampUp = c.config.excludeRampUp;
+      if (c.config.coverageFloor !== undefined) block.collection.coverageFloor = c.config.coverageFloor;
+      if (c.config.requiresLoad !== undefined) block.requiresLoad = c.config.requiresLoad;
+    }
+    return SK.configFromDocument(block);
+  }
+
+  const shape = (r: any) => ({
+    id: r.id,
+    status: r.status,
+    notJudged: r.notJudged,
+    detail: r.notJudgedDetail,
+    actual: isNaN(r.actual) ? null : r.actual,
+    coverage: isNaN(r.coverage) ? null : r.coverage,
+    instances: r.instances,
+    breached: r.breached ? { op: r.breached.op, value: r.breached.value } : null,
+    warnings: SK._kpiWarnings(r.kpi),
+  });
+
+  // A document case's block: the file's components, its asserts and the case's own block
+  // keys (environments, defaultEnv, collection) — what ServerParityTest sets over it.
+  const documentBlock = (d: any) => Object.assign({ components: componentsFor(d), asserts: d.asserts },
+    d.block ? JSON.parse(JSON.stringify(d.block)) : {});
+
+  return {
+    cases: v.cases.map((c: any) => {
+      // The PRODUCTION parser, not a hand-written shape — the client side learned that
+      // pinning two evaluators while both suites build the rule with a test helper leaves
+      // the two PARSERS compared by nothing at all.
+      const kpi = SK.kpisFromDocument({ components: componentsFor(c), asserts: [c.kpi] })[0];
+      return shape(SK.evaluate([kpi], configFor(c), v.payload, clientResults)[0]);
+    }),
+    // Several asserts in one block: two sharing an id are still two results, in order.
+    documents: (v.documentCases || []).map((d: any) => {
+      const kpis = SK.kpisFromDocument(documentBlock(d));
+      return SK.evaluate(kpis, configFor(null), v.payload, clientResults).map(shape);
+    }),
+    // What only a set raises (R2-2/R3-8): the shared-id WARNINGs, then each assert's own.
+    documentWarnings: (v.documentCases || []).map((d: any) => {
+      const kpis = SK.kpisFromDocument(documentBlock(d));
+      const raised = SK.duplicateIdFindings(kpis).map((f: any) => ({ id: f.ruleId, message: f.message }));
+      kpis.forEach((k: any) => SK._kpiWarnings(k).forEach((m: string) => raised.push({ id: k.id, message: m })));
+      return raised;
+    }),
+    // EVERY finding, in Java's phases and under its ruleIds (SF18), each mistake once (SF21):
+    // the production builder the Server tab's pane draws, over the verdicts just judged.
+    documentFindings: (v.documentCases || []).map((d: any) => {
+      if (d.findings === undefined) return null;
+      const block = documentBlock(d);
+      const kpis = SK.kpisFromDocument(block);
+      const results = SK.evaluate(kpis, configFor(null), v.payload, clientResults);
+      return SK.documentFindings(block, kpis, results, [], null).map((f: any) => ({
+        severity: String(f.severity).toUpperCase(), id: f.ruleId, message: f.message }));
+    }),
+    // NotJudged.phrase(), which the load-rule sentences and the chart notes are built from.
+    reasonPhrases: W.status.REASON_PHRASE,
+    // What a block says beside its asserts (D25, D26): a leftover `kpis`, a `packs`.
+    blocks: (v.blockCases || []).map((b: any) => {
+      const block: any = Object.assign({ components: componentsFor(null) }, b.block);
+      return {
+        problems: SK.blockProblems(block),
+        componentProblems: SK.componentProblems(block),
+        ids: SK.kpisFromDocument(block).map((k: any) => k.id),
+        shape: SK._blockShapeProblem(block),
+      };
+    }),
+  };
+};
+
+/**
+ * A case with a `tool` is judged on a run that tool recorded, in the report of one (contracts/page-words.md): its
+ * page reads that tool's words - K1 for k6. Every other case is a JMeter run's, judged in E26. A tool with no fixture
+ * fails, never skips.
+ */
+const TOOL_FIXTURES: Record<string, string> = { k6: 'K1' };
+const jmeterRun = Object.assign({}, vectors, { cases: vectors.cases.filter((c: any) => !c.tool) });
+
 test.describe('Server parity — the vectors, in a real report', () => {
   test('[U] every vector produces the declared result in the browser', async ({ page }) => {
     await loadClean(page, 'E26');
 
-    const results = await page.evaluate(
-      ({ v, client }) => {
-        const W = (window as any).WIR;
-        const A = W.asserts;
-        const SK = W.serverKpis;
+    const results = await page.evaluate(judgeInPage, { v: jmeterRun, client: clientPayload(vectors) });
 
-        // Live client results — uncapped and full precision. Reading the BAKED
-        // chartData.assertions instead would take a divisor rounded to 2dp out of a list
-        // capped at 200 matches, and a server KPI would not re-decide when its client load
-        // rule was retuned, which is the whole point of a mirror.
-        const rules = v.clientRules.map((r: any, i: number) => A._ruleFromJson(r, i));
-        const clientResults = A.evaluate(rules, client).rules;
-
-        // The block's declared components - the file's, with a case's own merged over them by id.
-        // The same object ServerParityTest declares. The catalogue is the one this report shipped
-        // (chartData.serverCatalogue), read from the same files the node tier reads.
-        const componentsFor = (c: any) => Object.assign(JSON.parse(JSON.stringify(v.components)),
-          c && c.components ? JSON.parse(JSON.stringify(c.components)) : {});
-
-        function configFor(c: any) {
-          const block: any = {
-            collection: {
-              coverageFloor: v.block.coverageFloor,
-              excludeRampUp: v.block.excludeRampUp,
-            },
-          };
-          if (c && c.config) {
-            if (c.config.excludeRampUp !== undefined) block.collection.excludeRampUp = c.config.excludeRampUp;
-            if (c.config.coverageFloor !== undefined) block.collection.coverageFloor = c.config.coverageFloor;
-            if (c.config.requiresLoad !== undefined) block.requiresLoad = c.config.requiresLoad;
-          }
-          return SK.configFromDocument(block);
-        }
-
-        const shape = (r: any) => ({
-          id: r.id,
-          status: r.status,
-          notJudged: r.notJudged,
-          detail: r.notJudgedDetail,
-          actual: isNaN(r.actual) ? null : r.actual,
-          coverage: isNaN(r.coverage) ? null : r.coverage,
-          instances: r.instances,
-          breached: r.breached ? { op: r.breached.op, value: r.breached.value } : null,
-          warnings: SK._kpiWarnings(r.kpi),
-        });
-
-        // A document case's block: the file's components, its asserts and the case's own block
-        // keys (environments, defaultEnv, collection) — what ServerParityTest sets over it.
-        const documentBlock = (d: any) => Object.assign({ components: componentsFor(d), asserts: d.asserts },
-          d.block ? JSON.parse(JSON.stringify(d.block)) : {});
-
-        return {
-          cases: v.cases.map((c: any) => {
-            // The PRODUCTION parser, not a hand-written shape — the client side learned that
-            // pinning two evaluators while both suites build the rule with a test helper leaves
-            // the two PARSERS compared by nothing at all.
-            const kpi = SK.kpisFromDocument({ components: componentsFor(c), asserts: [c.kpi] })[0];
-            return shape(SK.evaluate([kpi], configFor(c), v.payload, clientResults)[0]);
-          }),
-          // Several asserts in one block: two sharing an id are still two results, in order.
-          documents: (v.documentCases || []).map((d: any) => {
-            const kpis = SK.kpisFromDocument(documentBlock(d));
-            return SK.evaluate(kpis, configFor(null), v.payload, clientResults).map(shape);
-          }),
-          // What only a set raises (R2-2/R3-8): the shared-id WARNINGs, then each assert's own.
-          documentWarnings: (v.documentCases || []).map((d: any) => {
-            const kpis = SK.kpisFromDocument(documentBlock(d));
-            const raised = SK.duplicateIdFindings(kpis).map((f: any) => ({ id: f.ruleId, message: f.message }));
-            kpis.forEach((k: any) => SK._kpiWarnings(k).forEach((m: string) => raised.push({ id: k.id, message: m })));
-            return raised;
-          }),
-          // EVERY finding, in Java's phases and under its ruleIds (SF18), each mistake once (SF21):
-          // the production builder the Server tab's pane draws, over the verdicts just judged.
-          documentFindings: (v.documentCases || []).map((d: any) => {
-            if (d.findings === undefined) return null;
-            const block = documentBlock(d);
-            const kpis = SK.kpisFromDocument(block);
-            const results = SK.evaluate(kpis, configFor(null), v.payload, clientResults);
-            return SK.documentFindings(block, kpis, results, [], null).map((f: any) => ({
-              severity: String(f.severity).toUpperCase(), id: f.ruleId, message: f.message }));
-          }),
-          // NotJudged.phrase(), which the load-rule sentences and the chart notes are built from.
-          reasonPhrases: W.status.REASON_PHRASE,
-          // What a block says beside its asserts (D25, D26): a leftover `kpis`, a `packs`.
-          blocks: (v.blockCases || []).map((b: any) => {
-            const block: any = Object.assign({ components: componentsFor(null) }, b.block);
-            return {
-              problems: SK.blockProblems(block),
-              componentProblems: SK.componentProblems(block),
-              ids: SK.kpisFromDocument(block).map((k: any) => k.id),
-              shape: SK._blockShapeProblem(block),
-            };
-          }),
-        };
-      },
-      { v: vectors, client: clientPayload(vectors) },
-    );
-
-    expect(results.cases.length).toBe(vectors.cases.length);
+    expect(results.cases.length).toBe(jmeterRun.cases.length);
     expect(results.cases.length).toBeGreaterThanOrEqual(55);
     expect(results.documents.length, 'the document cases are gone').toBeGreaterThanOrEqual(4);
 
@@ -187,7 +198,7 @@ test.describe('Server parity — the vectors, in a real report', () => {
       checkOne(got, expected, where, name);
     };
 
-    vectors.cases.forEach((c: any, i: number) => check(results.cases[i], c.expect, c.kpi.id || c.name));
+    jmeterRun.cases.forEach((c: any, i: number) => check(results.cases[i], c.expect, c.kpi.id || c.name));
     (vectors.documentCases || []).forEach((d: any, i: number) => {
       expect(results.documents[i].length, `results for ${d.name}`).toBe(d.expect.length);
       d.expect.forEach((e: any, j: number) => check(results.documents[i][j], e, `${d.name} [${j}]`));
@@ -215,6 +226,26 @@ test.describe('Server parity — the vectors, in a real report', () => {
         .toEqual(b.expect.componentProblems || []);
       expect(results.blocks[i].shape, `not a whole-file refusal: ${b.name}`).toBeNull();
     });
+  });
+
+  test("[U] a case on another tool's run is judged in a report of that tool, in its words", async ({ page }) => {
+    const tools = Array.from(new Set(vectors.cases.filter((c: any) => c.tool).map((c: any) => c.tool as string)));
+    expect(tools.length, "the cases on another tool's run are gone").toBeGreaterThanOrEqual(1);
+    for (const tool of tools) {
+      const fixture = TOOL_FIXTURES[tool];
+      expect(fixture, `no fixture is a run ${tool} recorded: add one to TOOL_FIXTURES`).toBeTruthy();
+      const run = Object.assign({}, vectors, { cases: vectors.cases.filter((c: any) => c.tool === tool),
+        documentCases: [], blockCases: [] });
+      await loadClean(page, fixture);
+      const results = await page.evaluate(judgeInPage, { v: run, client: clientPayload(vectors) });
+      expect(results.cases.length).toBe(run.cases.length);
+      run.cases.forEach((c: any, i: number) => {
+        const got = results.cases[i];
+        const name = `${tool}: ${c.kpi.id || c.name}`;
+        if (c.expect.id !== undefined) expect(got.id, `id for ${name}`).toBe(c.expect.id);
+        checkOne(got, c.expect, `${name}${got.detail ? ' (' + got.detail + ')' : ''}`, name);
+      });
+    }
   });
 
   test('[U] F8: the invisible-end class is the vector file\'s, at every range edge and one either side',

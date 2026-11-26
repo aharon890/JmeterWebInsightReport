@@ -25,6 +25,19 @@ import java.util.regex.PatternSyntaxException;
  */
 public final class AssertionValidator {
 
+    /** The run's word for a sampler, where a finding names one (contracts/page-words.md). */
+    private final SamplerWords words;
+
+    /** A validator whose findings say "sampler", as a JMeter run's do. */
+    public AssertionValidator() {
+        this(SamplerWords.JMETER);
+    }
+
+    /** A validator whose findings name a sampler in the run's own word: "request" on a k6 run. */
+    public AssertionValidator(SamplerWords words) {
+        this.words = words == null ? SamplerWords.JMETER : words;
+    }
+
     public enum Severity {
         /**
          * The rule cannot decide anything. It is {@code NOT_JUDGED / INVALID_RULE} — it gates in
@@ -115,7 +128,7 @@ public final class AssertionValidator {
             // to answer that question a second time, in its own words, and the two answers drifted
             // — most damagingly for a band that could never fire, which was reported here and
             // judged anyway.
-            for (Usability u : Usability.check(rule)) {
+            for (Usability u : Usability.check(rule, words)) {
                 if (!u.loaderReported()) {
                     findings.add(u.asFinding(rule.id()));
                 }
@@ -183,7 +196,7 @@ public final class AssertionValidator {
         findings.add(new Finding(severity, rule.id(),
                 "target " + rule.target().describe() + " matched nothing in this run — the gate "
                         + "never executed" + suggestion(rule, data)
-                        + ". This run contained: " + nameList(data)));
+                        + ". This run contained: " + nameList(data, words)));
     }
 
     /** The matched samplers that recorded no samples, in match order. */
@@ -219,13 +232,13 @@ public final class AssertionValidator {
         return "";
     }
 
-    private static String nameList(ReportData data) {
+    private static String nameList(ReportData data, SamplerWords words) {
         List<String> names = new ArrayList<>();
         for (SamplerStatistics s : safeStats(data)) {
             names.add(s.getSamplerName());
         }
         if (names.isEmpty()) {
-            return "(no samplers at all)";
+            return "(no " + words.many() + " at all)";
         }
         // Long plans would otherwise put hundreds of names into one log line.
         if (names.size() > 12) {

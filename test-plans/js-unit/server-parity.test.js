@@ -91,8 +91,21 @@ function clientPayload(v) {
 const clientRules = VECTORS.clientRules.map((r, i) => A._ruleFromJson(r, i));
 const clientResults = A.evaluate(clientRules, clientPayload(VECTORS)).rules;
 
+/* A case with a `tool` is judged on a run that tool recorded (contracts/page-words.md): report.js loaded with that
+   tool's words, as the template hands a k6 run's page k6's, with its own live client results beside it. */
+const onTool = {};
+function mirrorFor(tool) {
+    if (!onTool[tool]) {
+        const W = loadReportJs(undefined, { tool: tool });
+        const rules = VECTORS.clientRules.map((r, i) => W.asserts._ruleFromJson(r, i));
+        onTool[tool] = { SK: W.serverKpis, clientResults: W.asserts.evaluate(rules, clientPayload(VECTORS)).rules };
+    }
+    return onTool[tool];
+}
+let toolCases = 0;
+
 /** The block a case is judged under: the file's, plus that case's own overrides. */
-function configFor(c) {
+function configFor(c, sk) {
     const block = {
         collection: {
             coverageFloor: VECTORS.block.coverageFloor,
@@ -104,7 +117,7 @@ function configFor(c) {
         if (c.config.coverageFloor !== undefined) block.collection.coverageFloor = c.config.coverageFloor;
         if (c.config.requiresLoad !== undefined) block.requiresLoad = c.config.requiresLoad;
     }
-    return SK.configFromDocument(block);
+    return (sk || SK).configFromDocument(block);
 }
 
 /** The block's declared components — the file's, with a case's own merged over them by id. The
@@ -134,8 +147,10 @@ for (const c of VECTORS.cases) {
     ran++;
     const label = c.kpi.id || c.name;
     try {
-        const kpi = parseKpi(c.kpi, c);
-        const result = SK.evaluate([kpi], configFor(c), VECTORS.payload, clientResults)[0];
+        const m = c.tool ? mirrorFor(c.tool) : { SK: SK, clientResults: clientResults };
+        if (c.tool) toolCases++;
+        const kpi = m.SK.kpisFromDocument({ components: componentsFor(c), asserts: [c.kpi] })[0];
+        const result = m.SK.evaluate([kpi], configFor(c, m.SK), VECTORS.payload, m.clientResults)[0];
         checkResult(result, c.expect);
         console.log('  ok   ' + label);
     } catch (e) {
@@ -523,6 +538,7 @@ try {
     assert.ok(gates >= 3, `only ${gates} gate cases ran`);
     assert.ok(documents >= 4, `only ${documents} document cases ran`);
     assert.ok(blocks >= 8, `only ${blocks} block cases ran`);
+    assert.ok(toolCases >= 1, `only ${toolCases} cases ran on another tool's run`);
     console.log('  ok   the vector file still carries its cases');
 } catch (e) {
     failed++;

@@ -507,6 +507,67 @@ class GateEvaluationTest {
         assertTrue(messages.get(0).contains("Swapped values?"), messages.toString());
     }
 
+    /** A run k6 recorded: the same run, with the tool named as k6's run data names it (spec 001). */
+    private static ReportData k6(ReportData data) {
+        data.getMetadata().setToolName("k6");
+        return data;
+    }
+
+    private static final String WRONG_SCOPE_AND_RETIRED_KEY = "{\"assertions\":["
+            + "{\"id\":\"login-threads\",\"target\":{\"sampler\":\"Login\"},\"metric\":\"maxThreads\","
+            + "\"fail\":{\"gt\":10}},"
+            + "{\"id\":\"login-missing\",\"target\":{\"sampler\":\"Login\"},\"metric\":\"p95\","
+            + "\"fail\":{\"gt\":500},\"onMissing\":\"fail\"}]}";
+
+    private static final String ON_MISSING = "\"onMissing\" is no longer a rule modifier. A target that matches "
+            + "nothing is now NOT_JUDGED / NO_MATCH and never fails the run on its own, because a plan running a "
+            + "subset is legitimate — so a rule relying on \"onMissing\": \"fail\" would pass where it used to "
+            + "fail. Delete the key; if a missing %s must stop the build, assert on it in the pipeline.";
+
+    private static String detailOf(GateEvaluation gate, String id) {
+        for (RuleResult r : gate.gate().ruleResults()) {
+            if (r.rule().id().equals(id)) {
+                return r.notJudgedDetail();
+            }
+        }
+        throw new AssertionError("no result for " + id);
+    }
+
+    /**
+     * The judge's sentences that name a sampler say the run's word for it (contracts/page-words.md, "Not changed
+     * yet", done 2026-11-26): "request" on a k6 run, as every other k6 surface says, into the CI/CD JSON and JUnit
+     * through the rule's detail and the findings. A JMeter run's sentences are today's, character for character.
+     */
+    @Test
+    void aK6RunsRefusalsNameARequestWhereAJMeterRunsNameASampler() throws Exception {
+        GateEvaluation onK6 = GateEvaluation.of(k6(run(stat("Login", 100, 300, 0))),
+                annotations(WRONG_SCOPE_AND_RETIRED_KEY));
+        assertEquals("metric 'maxThreads' is not available per request", detailOf(onK6, "login-threads"));
+        assertEquals(String.format(ON_MISSING, "request"), detailOf(onK6, "login-missing"));
+        assertTrue(onK6.findings().stream().anyMatch(f -> f.message().equals(String.format(ON_MISSING, "request"))),
+                onK6.findings().toString());
+
+        GateEvaluation onJMeter = GateEvaluation.of(run(stat("Login", 100, 300, 0)),
+                annotations(WRONG_SCOPE_AND_RETIRED_KEY));
+        assertEquals("metric 'maxThreads' is not available per sampler", detailOf(onJMeter, "login-threads"));
+        assertEquals(String.format(ON_MISSING, "sampler"), detailOf(onJMeter, "login-missing"));
+    }
+
+    /** The validator's list of what the run contained, when it contained nothing: in the run's own word. */
+    @Test
+    void aRunWithNothingInItSaysSoInItsOwnWord() throws Exception {
+        String rule = "{\"assertions\":[{\"id\":\"login-p95\",\"target\":{\"sampler\":\"Login\"},"
+                + "\"metric\":\"p95\",\"fail\":{\"gt\":500}}]}";
+
+        GateEvaluation onK6 = GateEvaluation.of(k6(run()), annotations(rule));
+        assertTrue(onK6.findings().stream().anyMatch(
+                f -> f.message().endsWith("This run contained: (no requests at all)")), onK6.findings().toString());
+
+        GateEvaluation onJMeter = GateEvaluation.of(run(), annotations(rule));
+        assertTrue(onJMeter.findings().stream().anyMatch(
+                f -> f.message().endsWith("This run contained: (no samplers at all)")), onJMeter.findings().toString());
+    }
+
     @Test
     void theShippedSchemaIsOnTheClasspathWhereTheJarGuardAllowsIt() {
         // ALLOWED_JAR_ROOTS only permits com/jmeterwebinsightreport/, static/, templates/ and

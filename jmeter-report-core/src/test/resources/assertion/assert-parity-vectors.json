@@ -16,7 +16,13 @@
     "the fail threshold, the fraction consumed and whether the fail band fired - or null where the",
     "question does not apply (no fail band, a rule that decided nothing, a divisor of zero). Java",
     "had AttainmentTest and the page nothing but one fixture's bar colour; AssertionParityTest,",
-    "asserts-parity.test.js and asserts-parity.spec.ts now hold both to these."
+    "asserts-parity.test.js and asserts-parity.spec.ts now hold both to these.",
+    "",
+    "A case with a `tool` is judged on a run that tool recorded (spec 001, contracts/page-words.md):",
+    "the sentences that name a sampler say the tool's word from the page-words table - 'request' on a",
+    "k6 run. Java hands the evaluator and the mapper that column (SamplerWords), node loads report.js",
+    "with it, and the browser spec runs the case on a k6 report (K1). A case without one is a JMeter",
+    "run's, whose sentences are today's."
   ],
   "samplers": [
     { "name": "GET /api/products", "sampleCount": 1500, "errorCount": 0,  "errorRate": 0.0,
@@ -320,6 +326,14 @@
                 "metric": "maxThreads", "fail": { "gt": 10 } },
       "expect": { "status": "NOT_JUDGED", "notJudged": "INVALID_RULE", "matched": 0,
                   "reason": "is not available per sampler" }
+    },
+    {
+      "name": "on a k6 run the same refusal says request, k6's word for a sampler",
+      "tool": "k6",
+      "rule": { "id": "request-threads", "target": { "sampler": "GET /api/products" },
+                "metric": "maxThreads", "fail": { "gt": 10 } },
+      "expect": { "status": "NOT_JUDGED", "notJudged": "INVALID_RULE", "matched": 0,
+                  "reason": "metric 'maxThreads' is not available per request" }
     },
     {
       "name": "an arbitrary percentile is exempt from the scope check — valid in both",
@@ -1298,6 +1312,12 @@
       "expect": { "detail": "metric 'totalSamples' is not available per sampler" }
     },
     {
+      "name": "on a k6 run a metric asked in the wrong scope is not available per request",
+      "tool": "k6",
+      "rule": { "id": "wrong-scope-k6", "target": { "sampler": "GET /api/products" }, "metric": "TotalSamples", "fail": { "gt": 1 } },
+      "expect": { "detail": "metric 'totalSamples' is not available per request" }
+    },
+    {
       "_why": [
         "RB14 (2): Usability's sentence for a name that is no metric, with MetricRef.nearestName's",
         "suggestion. The page said \"metric 'thruughput' is not available per sampler\": parseMetric",
@@ -1361,6 +1381,17 @@
       "name": "a name nothing is near is unknown, with no suggestion",
       "rule": { "id": "unknown-far", "target": { "sampler": "GET /api/products" }, "metric": "xyz", "fail": { "gt": 1 } },
       "expect": { "detail": "unknown metric 'xyz'" }
+    },
+    {
+      "name": "the retired onMissing key is refused in AssertionRuleMapper's words",
+      "rule": { "id": "retired-on-missing", "target": { "sampler": "GET /api/products" }, "metric": "p95", "fail": { "gt": 1 }, "onMissing": "fail" },
+      "expect": { "detail": "\"onMissing\" is no longer a rule modifier. A target that matches nothing is now NOT_JUDGED / NO_MATCH and never fails the run on its own, because a plan running a subset is legitimate — so a rule relying on \"onMissing\": \"fail\" would pass where it used to fail. Delete the key; if a missing sampler must stop the build, assert on it in the pipeline." }
+    },
+    {
+      "name": "on a k6 run the retired onMissing key's sentence says a missing request",
+      "tool": "k6",
+      "rule": { "id": "retired-on-missing-k6", "target": { "sampler": "GET /api/products" }, "metric": "p95", "fail": { "gt": 1 }, "onMissing": "fail" },
+      "expect": { "detail": "\"onMissing\" is no longer a rule modifier. A target that matches nothing is now NOT_JUDGED / NO_MATCH and never fails the run on its own, because a plan running a subset is legitimate — so a rule relying on \"onMissing\": \"fail\" would pass where it used to fail. Delete the key; if a missing request must stop the build, assert on it in the pipeline." }
     }
   ],
 

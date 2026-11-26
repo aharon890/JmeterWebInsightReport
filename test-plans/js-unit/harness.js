@@ -87,11 +87,14 @@ function stubDocument() {
  * back to inside this context, as a browser set to that language would give it. Without it the
  * context has this process's, which on every machine this runs on is English — so a formatter that
  * took the reader's locale passed every test here and wrote "fail > 3,6 s" in Germany.
+ *
+ * `options.tool` is the tool that recorded the run (a parity vector's `tool`): the page's words are that tool's
+ * column, as the template hands a k6 run's page k6's. JMeter's when absent.
  */
 function loadReportJs(globalChartData, options) {
     const source = fs.readFileSync(REPORT_JS, 'utf8');
     const sandbox = {
-        window: { WIR_WORDS: pageWords() },
+        window: { WIR_WORDS: pageWords(options && options.tool) },
         document: stubDocument(),
         navigator: { userAgent: 'node' },
         console,

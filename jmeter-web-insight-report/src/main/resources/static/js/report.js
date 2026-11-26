@@ -11135,8 +11135,10 @@ WIR.asserts = (function () {
                    it — a rule built by hand rather than read through ruleFromJson included
                    (asserts-format.test.js, S3). */
                 var named = metricRef(rule.metric);
+                /* "per request" on a k6 run: Usability's sentence in the run's word for a sampler, from the same
+                   column of the words table (contracts/page-words.md, SamplerWords). */
                 return "metric '" + (named ? named.name : rule.metric) + "' is not available "
-                    + (overallScope ? 'for the whole run' : 'per sampler');
+                    + (overallScope ? 'for the whole run' : 'per ' + W('sampler'));
             }
         }
 
@@ -14071,7 +14073,8 @@ WIR.asserts = (function () {
      *
      * Mirrors AssertionRuleMapper.RETIRED_RULE_KEYS, including its narrowness: a key belongs
      * here only when ignoring it inverts the rule. `tags` is deliberately absent — dropping it
-     * runs every rule rather than a subset, which is more checking, never less.
+     * runs every rule rather than a subset, which is more checking, never less. In the run's word
+     * for a sampler, as the mapper writes it: "a missing request" on a k6 run (SamplerWords).
      */
     var RETIRED_RULE_KEYS = {
         observe: '"observe" is no longer a rule modifier. It meant "report this and never '
@@ -14081,7 +14084,7 @@ WIR.asserts = (function () {
         onMissing: '"onMissing" is no longer a rule modifier. A target that matches nothing is '
             + 'now NOT_JUDGED / NO_MATCH and never fails the run on its own, because a plan '
             + 'running a subset is legitimate — so a rule relying on "onMissing": "fail" would '
-            + 'pass where it used to fail. Delete the key; if a missing sampler must stop the '
+            + 'pass where it used to fail. Delete the key; if a missing ' + W('sampler') + ' must stop the '
             + 'build, assert on it in the pipeline.'
     };
 
@@ -23660,9 +23663,10 @@ WIR.serverKpis = (function () {
                 + 'achieve (load:throughput)');
         }
         if (!failBlocks && load.matched > 1) {
+            /* In the run's word for a sampler, as ServerKpiEvaluator writes it: "requests" on a k6 run. */
             return notJudged(kpi, 'INVALID_RULE', field + " names '" + ref + "', which matched "
-                + load.matched + ' samplers - a ratio needs one measured load, so name a rule '
-                + 'with a single target ("scope": "overall", or one sampler)');
+                + load.matched + ' ' + W('samplers') + ' - a ratio needs one measured load, so name a rule '
+                + 'with a single target ("scope": "overall", or one ' + W('sampler') + ')');
         }
         if (load.status === 'NOT_JUDGED') {
             /* Nothing was missed, so the sentence must not say a target was: it says the load
