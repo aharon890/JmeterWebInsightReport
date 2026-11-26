@@ -22,7 +22,12 @@
       "errorRate": 0.0,
       "throughput": 8.3,
       "apdex": 1.0,
-      "assertStatus": "FAIL"
+      "assertStatus": "FAIL",
+      "errorCount": 0,
+      "min": 8.0,
+      "median": 119.0,
+      "p90": 170.0,
+      "max": 292.0
     },
     {
       "name": "GET /api/search",
@@ -33,7 +38,12 @@
       "errorRate": 2.0,
       "throughput": 8.28,
       "apdex": 0.979,
-      "assertStatus": "WARN"
+      "assertStatus": "WARN",
+      "errorCount": 8,
+      "min": 1.0,
+      "median": 215.0,
+      "p90": 325.0,
+      "max": 538.0
     },
     {
       "name": "POST /api/checkout",
@@ -44,9 +54,27 @@
       "errorRate": 4.25,
       "throughput": 8.26,
       "apdex": 0.866,
-      "assertStatus": "FAIL"
+      "assertStatus": "FAIL",
+      "errorCount": 17,
+      "min": 8.0,
+      "median": 377.0,
+      "p90": 557.0,
+      "max": 703.0
     }
   ],
+  "total": {
+    "sampleCount": 1200,
+    "errorCount": 25,
+    "errorRate": 2.08,
+    "mean": 234.91,
+    "min": 1.0,
+    "median": 198.0,
+    "p90": 448.0,
+    "p95": 528.0,
+    "p99": 633.0,
+    "max": 703.0,
+    "throughput": 24.76
+  },
   "assertViolations": [
     {
       "sampler": "GET /api/products",

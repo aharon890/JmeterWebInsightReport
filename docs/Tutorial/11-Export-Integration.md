@@ -69,7 +69,12 @@ described in their own section.
       "errorRate": 0.0,
       "throughput": 600.0,
       "apdex": 0.97,
-      "assertStatus": "PASS"
+      "assertStatus": "PASS",
+      "errorCount": 0,
+      "min": 18.0,
+      "median": 96.0,
+      "p90": 301.0,
+      "max": 1204.0
     },
     {
       "name": "POST /checkout",
@@ -80,9 +85,27 @@ described in their own section.
       "errorRate": 0.8,
       "throughput": 564.85,
       "apdex": 0.72,
-      "assertStatus": "FAIL"
+      "assertStatus": "FAIL",
+      "errorCount": 339,
+      "min": 41.0,
+      "median": 702.0,
+      "p90": 1812.0,
+      "max": 6110.0
     }
   ],
+  "total": {
+    "sampleCount": 87364,
+    "errorCount": 339,
+    "errorRate": 0.39,
+    "mean": 494.07,
+    "min": 18.0,
+    "median": 241.0,
+    "p90": 1260.0,
+    "p95": 1890.0,
+    "p99": 3410.0,
+    "max": 6110.0,
+    "throughput": 1164.85
+  },
   "assertViolations": [
     { "sampler": "POST /checkout", "status": "FAIL" },
     { "sampler": "Whole run", "scope": "overall", "status": "WARN" }
@@ -154,6 +177,15 @@ is a percentage — `0.39` is 0.39%, not 39%. `totalSamples` and `totalErrors` c
 samplers only (a transaction's children are not counted again), so they match the report's header
 cards. Every number the JSON writes as a double keeps its decimal point: an integral `891` is
 written `891.0`.
+
+**From 4.7.0, the whole Aggregate Report table.** Each `samplers[]` entry ends with `errorCount`,
+`min`, `median`, `p90` and `max`, after every key an older release wrote, so a pipeline that read
+4.6 keys finds them where they were. A top-level `total` follows `samplers`: the whole run's row,
+the same one as the report's Σ Total row and the TOTAL row of JMeter's Aggregate Report (its
+`sampleCount`, `errorCount` and `errorRate` are `totalSamples`, `totalErrors` and `errorRate`).
+Times are in milliseconds, percentiles are a time some request really had (the Aggregate Report's
+rule), and `throughput` is per second. A value the run's tool does not measure is `null`, never 0.
+An older file has neither, which is how a consumer tells the releases apart.
 
 **Every rule is the same kind of rule.** A `loadValidity` block is folded into `assertions[]` at
 load as an ordinary rule, so there is one kind of rule, one place it lives, and nothing to

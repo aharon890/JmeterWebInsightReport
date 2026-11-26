@@ -913,8 +913,11 @@ Every report generation produces a `web-insight-report.json` alongside the web r
   "errorRate": 0.12,
   "samplers": [
     { "name": "POST /checkout", "sampleCount": 42364, "mean": 891, "p95": 2340,
-      "p99": 3980, "errorRate": 0.8, "throughput": 564.9, "apdex": 0.82, "assertStatus": "FAIL" }
+      "p99": 3980, "errorRate": 0.8, "throughput": 564.9, "apdex": 0.82, "assertStatus": "FAIL",
+      "errorCount": 339, "min": 41, "median": 702, "p90": 1812, "max": 6110 }
   ],
+  "total": { "sampleCount": 847293, "errorCount": 1017, "errorRate": 0.12, "mean": 212.4, "min": 3,
+             "median": 96, "p90": 512, "p95": 905, "p99": 2210, "max": 9020, "throughput": 11297.24 },
   "assertViolations": [
     { "sampler": "POST /checkout", "status": "FAIL" },
     { "sampler": "Whole run", "scope": "overall", "status": "WARN" }
@@ -949,6 +952,10 @@ Every report generation produces a `web-insight-report.json` alongside the web r
   }
 }
 ```
+
+From 4.7.0 each `samplers[]` entry also carries `errorCount`, `min`, `median`, `p90` and `max` (after
+its older keys), and `total` is the whole run's row, the report's Σ Total row: together they are the
+whole Aggregate Report table.
 
 `gate`, `assertions` and `assertViolations` appear only when a client rule was declared, and
 `findings` only when there is something to report — but `findings` appears even with no `gate`

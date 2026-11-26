@@ -24,7 +24,12 @@
       "p99": 84.0,
       "errorRate": 0.0,
       "throughput": 0.26,
-      "apdex": 1.0
+      "apdex": 1.0,
+      "errorCount": 0,
+      "min": 15.0,
+      "median": 17.0,
+      "p90": 18.0,
+      "max": 84.0
     },
     {
       "name": "Admin Login (cleanup)",
@@ -34,7 +39,12 @@
       "p99": 105.0,
       "errorRate": 0.0,
       "throughput": 9.52,
-      "apdex": 1.0
+      "apdex": 1.0,
+      "errorCount": 0,
+      "min": 105.0,
+      "median": 105.0,
+      "p90": 105.0,
+      "max": 105.0
     },
     {
       "name": "Browse Pets",
@@ -44,7 +54,12 @@
       "p99": 20.0,
       "errorRate": 0.0,
       "throughput": 0.25,
-      "apdex": 1.0
+      "apdex": 1.0,
+      "errorCount": 0,
+      "min": 14.0,
+      "median": 15.0,
+      "p90": 17.0,
+      "max": 20.0
     },
     {
       "name": "Check Stock",
@@ -54,7 +69,12 @@
       "p99": 10.0,
       "errorRate": 0.0,
       "throughput": 0.26,
-      "apdex": 1.0
+      "apdex": 1.0,
+      "errorCount": 0,
+      "min": 7.0,
+      "median": 8.0,
+      "p90": 9.0,
+      "max": 10.0
     },
     {
       "name": "Checkout",
@@ -64,7 +84,12 @@
       "p99": 738.0,
       "errorRate": 0.0,
       "throughput": 0.25,
-      "apdex": 0.917
+      "apdex": 0.917,
+      "errorCount": 0,
+      "min": 14.0,
+      "median": 15.0,
+      "p90": 19.0,
+      "max": 738.0
     },
     {
       "name": "Complete Checkout Flow",
@@ -74,7 +99,12 @@
       "p99": 2563.0,
       "errorRate": 0.0,
       "throughput": 0.17,
-      "apdex": 0.833
+      "apdex": 0.833,
+      "errorCount": 0,
+      "min": 98.0,
+      "median": 109.0,
+      "p90": 205.0,
+      "max": 2563.0
     },
     {
       "name": "Complete Order",
@@ -84,7 +114,12 @@
       "p99": 608.0,
       "errorRate": 0.0,
       "throughput": 0.26,
-      "apdex": 0.917
+      "apdex": 0.917,
+      "errorCount": 0,
+      "min": 10.0,
+      "median": 10.0,
+      "p90": 18.0,
+      "max": 608.0
     },
     {
       "name": "Delete Order (cleanup)",
@@ -94,7 +129,12 @@
       "p99": 16.0,
       "errorRate": 0.0,
       "throughput": 0.26,
-      "apdex": 1.0
+      "apdex": 1.0,
+      "errorCount": 0,
+      "min": 8.0,
+      "median": 8.0,
+      "p90": 16.0,
+      "max": 16.0
     },
     {
       "name": "Login",
@@ -104,7 +144,12 @@
       "p99": 1032.0,
       "errorRate": 0.0,
       "throughput": 0.25,
-      "apdex": 0.917
+      "apdex": 0.917,
+      "errorCount": 0,
+      "min": 8.0,
+      "median": 11.0,
+      "p90": 24.0,
+      "max": 1032.0
     },
     {
       "name": "Read Stock Before Run (setup)",
@@ -114,7 +159,12 @@
       "p99": 344.0,
       "errorRate": 0.0,
       "throughput": 2.91,
-      "apdex": 1.0
+      "apdex": 1.0,
+      "errorCount": 0,
+      "min": 344.0,
+      "median": 344.0,
+      "p90": 344.0,
+      "max": 344.0
     },
     {
       "name": "Restore Stock (cleanup)",
@@ -124,7 +174,12 @@
       "p99": 533.0,
       "errorRate": 0.0,
       "throughput": 1.88,
-      "apdex": 0.5
+      "apdex": 0.5,
+      "errorCount": 0,
+      "min": 533.0,
+      "median": 533.0,
+      "p90": 533.0,
+      "max": 533.0
     },
     {
       "name": "Verify Order",
@@ -134,7 +189,12 @@
       "p99": 97.0,
       "errorRate": 0.0,
       "throughput": 0.26,
-      "apdex": 1.0
+      "apdex": 1.0,
+      "errorCount": 0,
+      "min": 8.0,
+      "median": 10.0,
+      "p90": 45.0,
+      "max": 97.0
     },
     {
       "name": "View Pet Detail",
@@ -144,9 +204,27 @@
       "p99": 14.0,
       "errorRate": 0.0,
       "throughput": 0.26,
-      "apdex": 1.0
+      "apdex": 1.0,
+      "errorCount": 0,
+      "min": 7.0,
+      "median": 8.0,
+      "p90": 9.0,
+      "max": 14.0
     }
   ],
+  "total": {
+    "sampleCount": 9,
+    "errorCount": 0,
+    "errorRate": 0.0,
+    "mean": 464.56,
+    "min": 98.0,
+    "median": 123.0,
+    "p90": 533.0,
+    "p95": 2563.0,
+    "p99": 2563.0,
+    "max": 2563.0,
+    "throughput": 0.25
+  },
   "artifacts": {
     "outputDirectory": "<outputDir>",
     "html": {
