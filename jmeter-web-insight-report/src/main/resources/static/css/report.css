@@ -3673,11 +3673,16 @@ body.dark-mode .wir-table-columns-menu { box-shadow: 0 6px 18px rgba(0, 0, 0, 0.
     color: var(--color-text-secondary);
 }
 
-/* The client filter bar does nothing to a server series (D4). */
+/* The client filter bar does nothing to a server series (D4). It shows on the k6 tab, whose sections it narrows
+   (spec 002, FR-030). */
 body.wir-on-server-tab #filterBar,
-body.wir-on-server-tab .filter-bar-toggle-wrapper,
-body.wir-on-tool-tab #filterBar,
-body.wir-on-tool-tab .filter-bar-toggle-wrapper {
+body.wir-on-server-tab .filter-bar-toggle-wrapper {
+    display: none;
+}
+
+/* On the k6 tab only the bar's request ticks do anything: its chart controls and time range narrow no k6 number */
+body.wir-on-tool-tab #filterRow1,
+body.wir-on-tool-tab #filterRow2 {
     display: none;
 }
 

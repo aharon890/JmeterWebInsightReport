@@ -315,3 +315,116 @@ test.describe('The Server board on the table toolkit [E26]', () => {
     await expect(page.locator('#serverSearch'), 'the box keeps its focus').toBeFocused();
   });
 });
+
+/*
+ * Stage 8: the filter bar's request ticks narrow every table, as they narrow the charts (US4, FR-030, FR-067). A row tied
+ * to no single request stays: the Σ Total row, a whole-run threshold or rule, the counters. The ticks are the page's
+ * one choice: set on one tab, they hold on the next. The bar shows on the k6 tab.
+ */
+async function tick(page: Page, name: string) {
+  // the name: the label's middle can be its colour dot, which opens the colour picker instead
+  await page.locator(`#samplerFilterList label[data-sampler-name="${name.toLowerCase()}"] .sampler-name`).click();
+  await page.waitForTimeout(400);   // the bar's refresh is debounced
+}
+
+async function shownNames(page: Page, rows: string): Promise<string[]> {
+  return page.locator(rows).evaluateAll((trs: HTMLElement[]) => trs
+    .filter(tr => tr.offsetParent !== null).map(tr => tr.getAttribute('data-sampler') || ''));
+}
+
+test.describe('The filter bar\'s ticks narrow every table [E02, CMP, E25, K2]', () => {
+  test('a request unticked leaves Requests and both Errors tables; the Σ Total row stays', async ({ page }) => {
+    await loadClean(page, 'E02');
+    await switchTab(page, 'errors');
+    const name = await page.evaluate(() => {
+      const child = (window as any).transactionChildNames;
+      const rows = Array.from(document.querySelectorAll('#errorSummaryTable tbody tr[data-sampler]'));
+      const top = rows.map(r => r.getAttribute('data-sampler')!).filter(n => !child[n]);
+      return top[0];
+    });
+    expect(name, 'E02 has an error on a top-level request').toBeTruthy();
+    await switchTab(page, 'samplers');
+    await page.locator('#samplerFilterList label[data-sampler-name="σ total"]').click();
+    await expect(page.locator('#samplerTable tr.total-sampler-row')).toBeVisible();
+    expect(await shownNames(page, '#samplerTable tbody tr[data-sampler]')).toContain(name);
+
+    await tick(page, name);
+    expect(await shownNames(page, '#samplerTable tbody tr[data-sampler]')).not.toContain(name);
+    await expect(page.locator('#samplerTable tr.total-sampler-row'), 'the whole run is no request').toBeVisible();
+    await switchTab(page, 'errors');
+    expect(await shownNames(page, '#errorSummaryTable tbody tr[data-sampler]')).not.toContain(name);
+    expect(await shownNames(page, '#errorDetailsTable tbody tr[data-sampler]')).not.toContain(name);
+    expect((await shownNames(page, '#errorSummaryTable tbody tr[data-sampler]')).length).toBeGreaterThan(0);
+
+    await switchTab(page, 'samplers');
+    await tick(page, name);
+    expect(await shownNames(page, '#samplerTable tbody tr[data-sampler]')).toContain(name);
+  });
+
+  test('Compare narrows too, and keeps its Σ Total row', async ({ page }) => {
+    await loadClean(page, 'CMP');
+    await switchTab(page, 'compare');
+    const compared = () => page.locator('#comparisonTable tbody tr td[data-col-id="name"]').allTextContents();
+    const before = await compared();
+    const name = before.find(n => !/Σ Total/.test(n))!;
+    await switchTab(page, 'samplers');
+    await tick(page, name);
+    await switchTab(page, 'compare');
+    const after = await compared();
+    expect(after).not.toContain(name);
+    expect(after.length).toBe(before.length - 1);
+  });
+
+  test('Asserts narrows its one-request rules; a whole-run rule stays', async ({ page }) => {
+    await loadClean(page, 'E25');
+    const rules = await page.evaluate(() => (window as any).WIR.asserts._state.rules.map((r: any) => ({
+      id: r.id, kind: r.target && r.target.kind, sampler: r.target && r.target.sampler })));
+    const on = rules.filter(r => r.kind === 'sampler' && r.sampler === 'Slow API').map(r => r.id);
+    const overall = rules.filter(r => r.kind === 'overall').map(r => r.id);
+    expect(on.length, 'E25 has rules on Slow API').toBeGreaterThan(0);
+    expect(overall.length, 'and whole-run rules').toBeGreaterThan(0);
+    await switchTab(page, 'samplers');
+    await tick(page, 'Slow API');
+    await switchTab(page, 'asserts');
+    const shown = await page.locator('#assertsTable tr[data-rule-id]').evaluateAll((trs: HTMLElement[]) =>
+      trs.map(t => t.getAttribute('data-rule-id')));
+    on.forEach(id => expect(shown, `${id} judges an unticked request`).not.toContain(id));
+    overall.forEach(id => expect(shown, `${id} is the whole run's`).toContain(id));
+  });
+
+  test('on a k6 run the bar shows on the k6 tab, its ticks narrow every section and hold on the Requests tab', async ({ page }) => {
+    await loadClean(page, 'K2');
+    await switchTab(page, 'tool');
+    await expect(page.locator('#filterBar')).toBeVisible();
+    await page.check('#transactionChildrenCheckbox');                  // Login sits in a group: its own tick
+    await page.evaluate(() => (window as any).selectAllSamplers(false));
+    await page.waitForTimeout(400);
+    await tick(page, 'Login');
+    // the requests of the thresholds the filters leave, folded or not (the passed ones fold into "N more")
+    const thresholds: (string | null)[] = await page.evaluate(() => (window as any).WIR.table.table('toolThresholds').last.kept
+      .map((r: any) => r.request || null));
+    thresholds.forEach(r => expect(['Login', null], 'a threshold on another request').toContain(r));
+    expect(thresholds, 'Login\'s own threshold').toContain('Login');
+    expect(thresholds.some(r => !r), 'a whole-run threshold stays').toBe(true);
+    await expect(page.locator('#toolCounters')).toBeVisible();
+
+    await switchTab(page, 'samplers');
+    const requests = await shownNames(page, '#samplerTable tbody tr[data-sampler]');
+    expect(requests).toContain('Login');
+    expect(requests.filter(n => n !== 'Login' && n !== 'Complete Checkout Flow'), 'only Login, under its group').toEqual([]);
+  });
+
+  test('a request the page unticks by default to keep the charts readable stays in the tables, as JMeter lists it', async ({ page }) => {
+    await loadClean(page, 'E02');
+    await switchTab(page, 'samplers');
+    const name = (await page.locator('#samplerTable tbody tr[data-sampler]:not(.transaction-child)').first().getAttribute('data-sampler'))!;
+    await page.evaluate((n) => {
+      const w = window as any;
+      w.globalChartData.hiddenSamplers = [n];
+      w.resetToDefaults();                          // the bar's Default: unticks the default-hidden ones
+    }, name);
+    await page.waitForTimeout(400);
+    await expect(page.locator(`#samplerFilterList label[data-sampler-name="${name.toLowerCase()}"] input`)).not.toBeChecked();
+    expect(await shownNames(page, '#samplerTable tbody tr[data-sampler]')).toContain(name);
+  });
+});

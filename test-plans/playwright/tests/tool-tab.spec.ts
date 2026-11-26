@@ -226,7 +226,10 @@ test.describe('The k6 tab, organised and interactive [K2]', () => {
   });
 
   test('the first screen names the failed threshold, what k6 measured and how far past its limit', async ({ page }) => {
-    await expect(page.locator('#toolStrip')).toHaveText('Thresholds: 1 of 50 failed: Login p(95)<=600 · Checks: none ran');
+    // SC-001 on the strip itself: the failed threshold, what k6 measured and how far past its limit (spec 002, stage 8:
+    // the filter bar shows on this tab too, and the strip keeps the answer on the first screen whatever its height)
+    await expect(page.locator('#toolStrip')).toHaveText(
+      'Thresholds: 1 of 50 failed: Login p(95)<=600 (p(95) = 779.72 ms, 179.72 ms over (30%)) · Checks: none ran');
     await expect(page.locator('#toolThresholdsHost h2')).toHaveText('Thresholds (49 of 50 passed)');
     const chips = page.locator('.wir-table-toolbar[data-table="toolThresholds"] .wir-status-chip');
     await expect(chips).toHaveText(['failed 1', 'passed 49']);
@@ -241,8 +244,9 @@ test.describe('The k6 tab, organised and interactive [K2]', () => {
     await expect(login).toContainText('p(95)<=600');
     await expect(login).toContainText('p(95) = 779.72 ms');
     await expect(login).toContainText('179.72 ms over (30%)');
-    // SC-001: no scrolling
-    const box = await login.boundingBox();
+    // SC-001: no scrolling, the filter bar shown above it
+    await expect(page.locator('#filterBar')).toBeVisible();
+    const box = await page.locator('#toolStrip').boundingBox();
     expect(box!.y + box!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
     // what k6 measured is k6's own number (SC-006)
     expect(k2Summary().metrics['http_req_duration{name:Login}'].values['p(95)'].toFixed(2)).toBe('779.72');

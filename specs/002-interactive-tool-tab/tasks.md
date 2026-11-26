@@ -147,7 +147,7 @@ fixture.
 - [X] T065 [P] `PW/csv-export.spec.ts`, `errors-tab.spec.ts`, `error-details-grouping.spec.ts`, `compare-tab.spec.ts`
   move with the controls; `whole-run-totals.spec.ts` skips `tr.wir-group-row`.
 - [X] T066 [P] Docs: `05-Errors-Tab.md`, `06-Compare-Tab.md`.
-- [ ] T067 Commit; the gate is pull request 2's, after stage 7.
+- [X] T067 Commit; the gate is pull request 2's, after stage 7.
 
 ## Stage 6: Requests (US6, FR-064, FR-069, FR-070, FR-071 defect 1)
 
@@ -185,17 +185,28 @@ fixture.
   (FR-062), which retires U6's "the counts follow the other filters" and the "All N" chip.
 - [X] T082 [P] `PW/server-board.spec.ts` SF40 and SF41 move (and server-tab, server-identity, keyboard-focus,
   client-fixes, xss-escaping, asserts-filter-sort, whose chips are scoped to their tab now); docs `13-Server-Tab.md`.
-- [ ] T083 Pull request 2 (stages 5-7): the full regression, push, PR, merge.
+- [X] T083 Pull request 2 (stages 5-7): the full regression, push, PR, merge. PR #50, merged 2026-11-26 as 9d32714:
+  regression 8/8 with 1260 browser tests in 12m29s; CI, CodeQL and the cross-OS smoke green; no open alerts.
 
 ## Stage 8: The filter bar's ticks on every table (US4, FR-030, FR-067)
 
-- [ ] T090 [US4] Red: unticking a request removes its rows from Requests, Errors, Compare, Asserts and every k6
+- [X] T090 [US4] Red: unticking a request removes its rows from Requests, Errors, Compare, Asserts and every k6
   section; the Σ Total row, whole-run thresholds and counters stay; ticks set on one tab apply on the next; the bar
   shows on the k6 tab.
-- [ ] T091 [US4] One reader, `getVisibleSamplerNames`, feeds every table's filter; the CSS rule hiding the bar on the k6
+- [X] T091 [US4] One reader, `getVisibleSamplerNames`, feeds every table's filter; the CSS rule hiding the bar on the k6
   tab goes.
-- [ ] T092 [P] `PW/filter-controls.spec.ts:394` and `csv-export.spec.ts` change with it; docs `08-Filter-Bar.md`.
-- [ ] T093 Commit; the gate is pull request 3's.
+  Done 2026-11-26. `tableRequestFilter` reads `getVisibleSamplerNames` through the Errors charts' own rule
+  (`errorsShownFor`: a request inside a transaction follows its transaction while the switch is off), and
+  `WIR.table.setNameFilter` hands the one test to every table after each chart refresh. Three technical calls:
+  (1) a sampler the bar unticks by default (`hiddenSamplers`: utility samplers, no samples) stays in the tables,
+  because JMeter's Aggregate Report lists every sampler (the workspace rule: JMeter's answer decides); a name the
+  bar does not list (a REMOVED Compare row) stays too. (2) On the k6 tab only the bar's Samplers row shows: its chart
+  controls and time range narrow no k6 number. (3) The bar took the failed threshold's row off a 720 px first
+  screen, so the strip (FR-023) now names each failed threshold with what k6 measured and how far past its limit,
+  and SC-001 is held on the strip.
+- [X] T092 [P] `PW/filter-controls.spec.ts:394` and `csv-export.spec.ts` change with it; docs `08-Filter-Bar.md`
+  (and 01, 05, 17).
+- [X] T093 Commit; the gate is pull request 3's.
 
 ## Stage 9: Over time (US5, P3, FR-040, FR-041)
 

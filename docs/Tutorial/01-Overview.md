@@ -166,8 +166,8 @@ A persistent bar below the tabs with 3 collapsible rows:
 - **Row 2:** Time range display (wall-clock/elapsed toggle), Presets (save/load/delete)
 - **Row 3:** Sampler checkboxes (select/deselect individual samplers, All/None buttons, color dots)
 
-The filter settings apply to the charts on every tab; the bar is hidden on the Server tab, whose
-charts it does not affect. Palette, line thickness, custom colours and row visibility persist in
+The filter settings apply to the charts and the tables on every tab; the bar is hidden on the Server tab,
+whose charts it does not affect. Palette, line thickness, custom colours and row visibility persist in
 browser localStorage; save a preset to keep the rest.
 
 ## Output Files

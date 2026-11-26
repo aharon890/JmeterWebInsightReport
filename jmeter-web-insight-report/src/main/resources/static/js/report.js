@@ -1368,6 +1368,38 @@ function refreshAllCharts() {
 
     connectCharts();
     updateTotalRow();
+    applyTicksToTables();
+}
+
+/**
+ * The requests the filter bar's ticks leave on the page's tables (spec 002, FR-067), as a test on a row's request name,
+ * or null when they leave every one. The rule the Errors charts read (errorsShownFor): a request inside a transaction
+ * follows that transaction while "Show transaction details" is off, as its row stands for it there. Two kinds of name
+ * always stay: one the bar does not list (a request only the baseline ran), and one the page unticks by default to keep
+ * the charts readable (hiddenSamplers: a Debug, JSR223 or BeanShell sampler, or one with no samples), which JMeter's
+ * Aggregate Report lists like any other. The Σ Total tick is the Σ Total row's own.
+ */
+function tableRequestFilter() {
+    var visible = Object.create(null);
+    getVisibleSamplerNames().forEach(function (n) { visible[n] = true; });
+    var byDefault = Object.create(null);
+    ((globalChartData && globalChartData.hiddenSamplers) || []).forEach(function (n) { byDefault[n] = true; });
+    var keeps = function (name) {
+        return name === TOTAL_SAMPLER_NAME || !Object.prototype.hasOwnProperty.call(samplerVisibility, name)
+            || byDefault[name] === true || errorsShownFor(name, visible);
+    };
+    return Object.keys(samplerVisibility).every(keeps) ? null : keeps;
+}
+
+/* Every table narrowed to the ticks, redrawn only when what they leave changed */
+var appliedTicks = '';
+
+function applyTicksToTables() {
+    var keeps = tableRequestFilter();
+    var key = keeps ? Object.keys(samplerVisibility).filter(keeps).sort().join('\u0000') + '\u0001' : '';
+    if (key === appliedTicks) return;
+    appliedTicks = key;
+    WIR.table.setNameFilter(keeps);
 }
 
 /* The Σ Total row's figures (B1). JMeter's Aggregate Report computes its TOTAL row with a
@@ -7822,8 +7854,7 @@ WIR.table = (function () {
         state = state || {};
         var q = String(state.q || '').trim().toLowerCase();
         var statuses = state.statuses || [];
-        var names = state.names ? Object.create(null) : null;
-        if (names) state.names.forEach(function (n) { names[n] = true; });
+        var names = typeof state.names === 'function' ? state.names : null;
         var hiddenKeys = Object.create(null);
         (state.hidden || []).forEach(function (k) { hiddenKeys[k] = true; });
         var open = state.open || {};
@@ -7848,7 +7879,7 @@ WIR.table = (function () {
             if (statuses.length && (!spec.status || statuses.indexOf(spec.status(r)) === -1)) return false;
             if (names && spec.nameOf) {
                 var n = spec.nameOf(r);
-                if (n !== null && n !== undefined && !names[n]) return false;
+                if (n !== null && n !== undefined && !names(n)) return false;
             }
             if (q && String(spec.search ? spec.search(r) : '').toLowerCase().indexOf(q) === -1) return false;
             return true;
@@ -8047,7 +8078,7 @@ WIR.table = (function () {
     }
 
     function register(id, spec) {
-        var s = { q: '', statuses: [], names: null, group: spec.defaultGroup || '', sort: spec.defaultSort || null,
+        var s = { q: '', statuses: [], group: spec.defaultGroup || '', sort: spec.defaultSort || null,
             hidden: [], hiddenCols: (spec.defaultHiddenColumns || []).slice(), open: {}, unfold: {},
             extra: {} };
         var saved = savedViews()[id];
@@ -8079,7 +8110,7 @@ WIR.table = (function () {
     function compute(id, records) {
         var t = tables[id];
         var s = t.state;
-        t.last = view(records, t.spec, { q: s.q, statuses: s.statuses, names: s.names, group: s.group, sort: s.sort,
+        t.last = view(records, t.spec, { q: s.q, statuses: s.statuses, names: nameFilter, group: s.group, sort: s.sort,
             hidden: s.hidden, open: s.open, unfold: s.unfold });
         t.records = Object.create(null);
         (records || []).forEach(function (r) { t.records[String(t.spec.key(r))] = r; });
@@ -8087,8 +8118,19 @@ WIR.table = (function () {
     }
 
     function changed(t, what) {
-        if (what !== 'query' && what !== 'status' && what !== 'menu') remember(t);
+        if (what !== 'query' && what !== 'status' && what !== 'menu' && what !== 'names') remember(t);
         if (t.spec.render) t.spec.render(what);
+    }
+
+    /* The filter bar's ticks (FR-067), one for every table: a test on a row's request name (spec.nameOf), or null for
+       every row. A row whose nameOf is null — the whole run, a counter — stays whatever it says. */
+    var nameFilter = null;
+
+    function setNameFilter(keeps) {
+        nameFilter = typeof keeps === 'function' ? keeps : null;
+        Object.keys(tables).forEach(function (id) {
+            if (tables[id].spec.nameOf) changed(tables[id], 'names');
+        });
     }
 
     function setQuery(id, value) {
@@ -8597,6 +8639,7 @@ WIR.table = (function () {
         csvRows: csvRows,
         filtersActive: filtersActive,
         resetFilters: resetFilters,
+        setNameFilter: setNameFilter,
         setQuery: setQuery,
         toggleStatus: toggleStatus,
         setGroup: setGroup,
@@ -9079,7 +9122,11 @@ WIR.toolTab = (function () {
         if (data.thresholds.length) {
             parts.push(esc(W('toolThresholds')) + ': ' + failed.length + ' of ' + data.thresholds.length + ' ' + esc(W('toolFailed')) +
                 (failed.length ? ': ' + failed.slice(0, 3).map(function (t) {
-                    return '<code>' + esc((t.request || t.base) + ' ' + t.expression) + '</code>';
+                    /* SC-001: the measured value and the distance, as the threshold's row writes them */
+                    var how = isNum(t.measured)
+                        ? ' (' + esc((t.statistic || '') + ' = ' + formatMeasured(t)) + (distanceText(t) ? ', ' + esc(distanceText(t)) : '') + ')'
+                        : '';
+                    return '<code>' + esc((t.request || t.base) + ' ' + t.expression) + '</code>' + how;
                 }).join(', ') + (failed.length > 3 ? ' and ' + (failed.length - 3) + ' more' : '') : ''));
         }
         var checksFailed = data.checks.filter(function (c) { return c.fails > 0; });
@@ -12017,6 +12064,7 @@ WIR.asserts = (function () {
             tie: function (a, b) { return WIR.table.compareValues(String(a.id), String(b.id)); },
             search: haystack,
             filter: advancedMatch,
+            nameOf: function (r) { return r.target && r.target.kind === 'sampler' ? r.target.sampler : null; },
             status: displayStatus,
             statusOrder: STATUS_ORDER,
             groupings: { status: { label: 'Status', of: function (r) {
