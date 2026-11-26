@@ -173,6 +173,8 @@ The detail panel has **3 chart slots** by default:
 | 2 | Response Time Over Time | Line chart for this sampler only |
 | 3 | Bytes (Recv / Sent) | Received and sent bytes over time |
 
+On a k6 run the third slot is **HTTP Timing Parts Over Time** instead: k6 measures no bytes per request.
+
 ### Chart Slot Controls
 
 - **Dropdown selector** on each slot — change the chart type:
@@ -183,6 +185,12 @@ The detail panel has **3 chart slots** by default:
   - Error Rate Over Time
   - Connect Time & Latency
   - Percentiles Over Time (P50/P90/P95/P99)
+  - HTTP Timing Parts Over Time, on a run another tool recorded with its timing parts (k6): blocked, connecting,
+    TLS, sending, waiting and receiving, each the mean over the requests that ended in that second, at the
+    report's own time buckets (spec 002)
+- A k6 threshold on the request's duration (`p(95)<=600` on Login) is a dashed line at its limit on the
+  Response Time and Percentiles charts, labelled `k6 threshold: p(95)<=600`. It is k6's, judged by k6: not an
+  assert, and not draggable
 - **"+ Add Chart"** button in the table toolbar, shown while a row is expanded — adds a 4th slot,
   starting as Throughput Over Time (max 4)
 - **"× Remove Chart"** button, shown while there are 4 slots — removes the 4th (min 3)

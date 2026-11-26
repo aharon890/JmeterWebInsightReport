@@ -93,6 +93,10 @@ Every section is a table with the report's one toolbar (search, status chips, Gr
 Columns, × and "Show N hidden", CSV), as every table of the report has. One search narrows every section at once. The
 grouping, the statistic and the rest of the view are remembered for the report in this browser.
 
+A request's detail panel on the Requests tab charts its six timing parts over the run, at the report's time buckets,
+and draws each k6 threshold on its duration as a line at the limit on its response time and percentiles charts,
+labelled as k6's (`k6 threshold: p(95)<=600`), never draggable: it is not an assert.
+
 The filter bar's request checkboxes show above the tab, its Samplers row only (its chart controls and time range
 narrow no k6 number). Untick a request and its thresholds, timing, check and group rows leave the tab, as its rows
 leave the Requests and Errors tabs; the whole-run thresholds, the "every request" row and the counters stay. The

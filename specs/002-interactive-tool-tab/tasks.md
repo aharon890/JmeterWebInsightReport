@@ -210,13 +210,21 @@ fixture.
 
 ## Stage 9: Over time (US5, P3, FR-040, FR-041)
 
-- [ ] T100 [US5] Measure first: the payload the six parts add per one-second bucket on the 134,406-request run. If it
+- [X] T100 [US5] Measure first: the payload the six parts add per one-second bucket on the 134,406-request run. If it
   pushes a typical k6 run over `externalDataThreshold`, record that and move US5 to a later phase.
-- [ ] T101 [US5] Red: K2's Login detail panel charts the six parts over time; the `p(95)<=600` limit is a line on the
+  Measured 2026-11-26: K2 repeated to an hour (2,358 copies, 24 at a time: 127,335 requests, 3,686 one-second
+  buckets, 12 requests with parts). The payload is 4,399,306 bytes today; the six parts at two decimals add
+  1,139,434 (+25.9%), 5,538,740 in all, under the 10,000,000 threshold. A typical run (K2, 36 s) adds a few KB.
+  US5 stays in this phase.
+- [X] T101 [US5] Red: K2's Login detail panel charts the six parts over time; the `p(95)<=600` limit is a line on the
   percentiles chart, labelled as k6's threshold, not draggable.
-- [ ] T102 [US5] The parts per bucket in `perSamplerSeries` for a tool run only; a detail renderer; a k6 mark-line
+- [X] T102 [US5] The parts per bucket in `perSamplerSeries` for a tool run only; a detail renderer; a k6 mark-line
   source apart from `WIR.asserts`; rule 5 holds.
-- [ ] T103 Commit; the gate is pull request 3's.
+  Done 2026-11-26: `ToolMeasures.meanPart` keys each request's parts by the second it ended (`endOf`), as the time
+  buckets key a sample; the k6 detail panel's third slot is the parts chart (k6 measures no bytes per request).
+  FR-041 says the response time chart and T101 the percentiles chart: the limit is drawn on both, by one function
+  (`toolDurationLimits`), silent, so no tooltip and no drag.
+- [X] T103 Commit; the gate is pull request 3's.
 
 ## Stage 10: Close
 

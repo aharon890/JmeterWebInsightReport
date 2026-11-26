@@ -809,7 +809,7 @@ function aggOptsForMetric(metric, counts) {
      * errorRate especially: one sample failing in a quiet second must not carry the
      * same weight as a thousand clean samples in a busy one. */
     if (metric === 'responseTime' || metric === 'errorRate' || metric === 'connectTime'
-            || metric === 'latency' || /^p\d+$/.test(metric)) {
+            || metric === 'latency' || /^p\d+$/.test(metric) || TIMING_PARTS.indexOf(metric) !== -1) {
         return { mode: 'wavg', counts: counts };
     }
     return null; // plain average
@@ -4377,9 +4377,50 @@ var DETAIL_CHART_TYPES = [
     { key: 'throughput', label: 'Throughput Over Time' },
     { key: 'errorRate', label: 'Error Rate Over Time' },
     { key: 'connectLatency', label: 'Connect Time & Latency' },
-    { key: 'percentiles', label: 'Percentiles Over Time' }
+    { key: 'percentiles', label: 'Percentiles Over Time' },
+    /* a run another tool recorded with its HTTP timing parts (spec 002, FR-040): k6's six, over time */
+    { key: 'timingParts', label: 'HTTP Timing Parts Over Time', when: hasTimingParts }
 ];
 var DEFAULT_DETAIL_CHARTS = ['histogram', 'responseTime', 'bytes'];
+/* A k6 run measures no bytes per request (they read "not measured"), and its parts are its own answer */
+var DEFAULT_TOOL_DETAIL_CHARTS = ['histogram', 'responseTime', 'timingParts'];
+
+/* k6's six HTTP timing parts and its request duration, as its summary names them: the k6 tab's columns and the
+   detail panel's lines read this one copy. */
+var TIMING_PARTS = ['blocked', 'connecting', 'tlsHandshaking', 'sending', 'waiting', 'receiving'];
+var TIMING_PART_LABEL = { blocked: 'Blocked', connecting: 'Connecting', tlsHandshaking: 'TLS', sending: 'Sending',
+    waiting: 'Waiting', receiving: 'Receiving', duration: 'Duration' };
+
+/** Whether this run's requests carry their timing parts over time: a run another tool recorded, with them. */
+function hasTimingParts() {
+    var s = globalChartData && globalChartData.perSamplerSeries;
+    if (!s) return false;
+    for (var name in s) {
+        if (Object.prototype.hasOwnProperty.call(s, name) && s[name] && s[name].waiting) return true;
+    }
+    return false;
+}
+
+/** The chart types this run can draw: the timing parts only where the run carries them. */
+function detailChartTypes() {
+    return DETAIL_CHART_TYPES.filter(function (ct) { return !ct.when || ct.when(); });
+}
+
+/**
+ * The tool's limits on a request's duration (spec 002, FR-041): each k6 threshold on that request's
+ * http_req_duration with a limit, as {y, text}, the line its response time and percentiles charts draw. They are k6's,
+ * judged by k6: never an assert, never draggable, and the report's verdict is not theirs.
+ */
+function toolDurationLimits(samplerName) {
+    var tool = globalChartData && globalChartData.tool;
+    if (!tool || !tool.thresholds) return [];
+    return tool.thresholds.filter(function (th) {
+        return th.request === samplerName && th.base === 'http_req_duration' && typeof th.limit === 'number'
+            && isFinite(th.limit) && !th.alwaysTrue;
+    }).map(function (th) {
+        return { y: th.limit, text: (tool.name || 'Tool') + ' threshold: ' + th.expression };
+    });
+}
 var LS_DETAIL_CHARTS = 'wir_detailCharts';
 
 function getDetailChartConfig() {
@@ -4390,7 +4431,7 @@ function getDetailChartConfig() {
             if (Array.isArray(parsed) && parsed.length >= 1 && parsed.length <= 4) return parsed;
         }
     } catch (e) { /* ignore */ }
-    return DEFAULT_DETAIL_CHARTS.slice();
+    return (hasTimingParts() ? DEFAULT_TOOL_DETAIL_CHARTS : DEFAULT_DETAIL_CHARTS).slice();
 }
 
 function saveDetailChartConfig(keys) {
@@ -4596,7 +4637,7 @@ function buildDetailSlot(grid, slotIndex, chartKey, samplerName) {
 
     var select = document.createElement('select');
     select.className = 'detail-chart-select';
-    DETAIL_CHART_TYPES.forEach(function (ct) {
+    detailChartTypes().forEach(function (ct) {
         var opt = document.createElement('option');
         opt.value = ct.key;
         opt.textContent = ct.label;
@@ -4630,7 +4671,7 @@ function buildDetailSlot(grid, slotIndex, chartKey, samplerName) {
  * Adding a new chart type = adding one entry here. */
 var DETAIL_CHART_RENDERERS = {
     /* Single-metric time series charts */
-    responseTime: { metrics: [{ key: 'responseTime' }], noDataMsg: 'No response time data', useSamplerColor: true, areaOpacity: 0.15 },
+    responseTime: { metrics: [{ key: 'responseTime' }], noDataMsg: 'No response time data', useSamplerColor: true, areaOpacity: 0.15, toolLimits: true },
     throughput:    { metrics: [{ key: 'throughput' }], noDataMsg: 'No throughput data', useSamplerColor: true, areaOpacity: 0.15, yAxisName: 'req/s' },
     errorRate:     { metrics: [{ key: 'errorRate', name: 'Error Rate', color: '#ef4444' }], noDataMsg: 'No error rate data', areaOpacity: 0.15, yAxisName: '%' },
 
@@ -4650,7 +4691,19 @@ var DETAIL_CHART_RENDERERS = {
             { key: 'p95', name: 'P95', color: '#f97316' },
             { key: 'p99', name: 'P99', color: '#ef4444' }
         ],
-        noDataMsg: 'No percentile data', showLegend: true, yAxisName: 'ms'
+        noDataMsg: 'No percentile data', showLegend: true, yAxisName: 'ms', toolLimits: true
+    },
+    /* The six parts at the report's buckets, each the mean over the requests that ended in that second (FR-040) */
+    timingParts: {
+        metrics: [
+            { key: 'blocked', name: TIMING_PART_LABEL.blocked, color: '#94a3b8' },
+            { key: 'connecting', name: TIMING_PART_LABEL.connecting, color: '#f59e0b' },
+            { key: 'tlsHandshaking', name: TIMING_PART_LABEL.tlsHandshaking, color: '#a855f7' },
+            { key: 'sending', name: TIMING_PART_LABEL.sending, color: '#22c55e' },
+            { key: 'waiting', name: TIMING_PART_LABEL.waiting, color: '#3b82f6' },
+            { key: 'receiving', name: TIMING_PART_LABEL.receiving, color: '#14b8a6' }
+        ],
+        noDataMsg: 'No timing parts', showLegend: true, yAxisName: 'ms'
     }
 };
 
@@ -4694,6 +4747,17 @@ function renderDetailTimeSeries(samplerName, containerId, def) {
         series.push(s);
     });
 
+    /* the tool's own limit on this request's duration, a line at its limit (FR-041): silent, so no tooltip and no drag */
+    var limits = def.toolLimits ? toolDurationLimits(samplerName) : [];
+    if (limits.length && series.length) {
+        series[0].markLine = {
+            silent: true, symbol: 'none',
+            lineStyle: { type: 'dashed', color: '#ef4444', width: 1 },
+            label: { formatter: '{b}', position: 'insideEndTop', fontSize: 9 },
+            data: limits.map(function (l) { return { yAxis: l.y, name: l.text }; })
+        };
+    }
+
     var isMsChart = !def.yAxisName || def.yAxisName === 'ms';
     var yAxisOpt;
     if (isMsChart) {
@@ -4703,6 +4767,11 @@ function renderDetailTimeSeries(samplerName, containerId, def) {
     } else {
         yAxisOpt = { type: 'value', axisLabel: { fontSize: 9 }, min: 0 };
         if (def.yAxisName) { yAxisOpt.name = def.yAxisName; yAxisOpt.nameTextStyle = { fontSize: 9 }; }
+    }
+    /* a limit above every point still shows */
+    if (limits.length) {
+        var top = Math.max.apply(null, limits.map(function (l) { return l.y; }));
+        yAxisOpt.max = function (v) { return Math.max(v.max, top * 1.05); };
     }
 
     var opt = {
@@ -8679,8 +8748,7 @@ WIR.toolTab = (function () {
     var T_GROUPS = 'toolGroupDurations';
     var TABLES = [T_THRESHOLDS, T_TIMINGS, T_CHECKS, T_GROUPS];
     var PARTS = ['blocked', 'connecting', 'tlsHandshaking', 'sending', 'waiting', 'receiving', 'duration'];
-    var PART_LABEL = { blocked: 'Blocked', connecting: 'Connecting', tlsHandshaking: 'TLS', sending: 'Sending',
-        waiting: 'Waiting', receiving: 'Receiving', duration: 'Duration' };
+    var PART_LABEL = TIMING_PART_LABEL;
     var data = null;
     var hierarchy = {};
     var expanded = Object.create(null);
