@@ -513,12 +513,17 @@ label.checked .sampler-checkbox-box {
 }
 
 /* The sampler column holds the only free-text values in the table, so it gets a
-   wider cap than the shared 320px above and — more importantly — a floor. Every
-   other column is `white-space: nowrap`, which leaves this as the only column
-   the auto table layout is able to shrink, and the name span is `flex: 1` with
-   `min-width: 0`, so its min-content contribution is zero. An engine that sizes
-   the column from that contribution collapses it to just the assert badge and the
-   names render as "GET /api/...". The floor below makes that impossible.
+   wider cap than the shared 320px above and — more importantly — a floor. The
+   name span is `flex: 1` with `min-width: 0`, but a nowrap text's min-content is
+   its whole width all the same, so a long name used to set the column's smallest
+   width and push the table past its card: K1's 395 px name, Apdex behind a
+   sideways scroll. `contain: inline-size` makes the name add no width of its own;
+   the floor below sets the column, and a longer name ends in an ellipsis with
+   the whole name in the cell's tooltip, as Grafana's tables do. Without the
+   floor an engine collapses the column to the assert badge and the names render
+   as "GET /api/...". The column tool's double-click still fits the whole name:
+   measureCellContent reads each child's scrollWidth, which containment leaves
+   alone.
    Scoped by id and class rather than :first-child so both rules follow the
    sampler column after a drag-reorder instead of sticking to whichever column
    happens to be physically first. */
@@ -528,6 +533,22 @@ label.checked .sampler-checkbox-box {
 
 #samplerTable:not(.cols-frozen) .sampler-name-cell {
     min-width: 260px;
+}
+
+#samplerTable .sampler-name-cell .sampler-name-text {
+    contain: inline-size;
+}
+
+/* Fifteen columns in a 1286 px card: a header label longer than its numbers
+   ("Median (ms)" over "1171") sets its column's width, so a label may take two
+   lines when the table is short of room, and only then. */
+#samplerTable thead th,
+#samplerTable thead th .wir-sort-btn {
+    white-space: normal;
+}
+
+#samplerTable thead th {
+    vertical-align: bottom;
 }
 
 .sampler-name-cell {
@@ -2594,6 +2615,24 @@ body.dark-mode .wir-preview { background: var(--color-bg-deep); }
 .wir-seed-btn:focus {
     opacity: 1;
     color: var(--color-primary);
+}
+
+/* On a Requests number cell the ⊕ sits in the cell's right padding, out of the
+   line, so a column is as wide as its number: in the line, 19 px of button in each
+   of 13 columns put Apdex behind a sideways scroll (run 78 of the perf hub, a k6
+   run: 1330 px in a 1286 px card). The padding is the button's width, so it never
+   covers the number. */
+#samplerTable tbody td[data-assert-cell] {
+    position: relative;
+    padding-right: 20px;
+}
+
+#samplerTable tbody td[data-assert-cell] .wir-seed-btn {
+    position: absolute;
+    right: 3px;
+    top: 50%;
+    transform: translateY(-50%);
+    padding: 0;
 }
 
 /* The verdict on a metric cell — see refreshCellVerdicts.
