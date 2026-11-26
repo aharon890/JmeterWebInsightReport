@@ -43,14 +43,16 @@ const RESULTS_DIR = path.join(PROJECT_ROOT, 'test-results');
  * missing from this list is simply unchecked, not an error.
  */
 export const REQUIRED_FIXTURES = [
-  'E02', 'E05', 'E06', 'E07', 'E08', 'E09', 'E10', 'E11', 'E12', 'E19', 'E25', 'E26', 'E27', 'E28', 'E29', 'E31', 'CMP', 'CMP31', 'K1', 'K2',
+  'E02', 'E05', 'E06', 'E07', 'E08', 'E09', 'E10', 'E11', 'E12', 'E19', 'E25', 'E26', 'E27', 'E28', 'E29', 'E31', 'CMP', 'CMP31', 'CMPK', 'CMPX', 'K1', 'K2',
 ];
 
 const REGENERATE_HINT = [
   '  ./scripts/build-and-deploy.sh                  # first, when a fixture names its JAR',
-  '  ./test-plans/scripts/run-all-tests.sh          # every fixture above except CMP and CMP31',
+  '  ./test-plans/scripts/run-all-tests.sh          # every fixture above except the four CMP ones',
   '  ./test-plans/scripts/generate-cmp-fixture.sh   # CMP (not covered by the above)',
   '  CMP_ID=CMP31 ./test-plans/scripts/generate-cmp-fixture.sh   # CMP31, E31\'s plan compared with itself',
+  '  CMP_ID=CMPK ./test-plans/scripts/generate-cmp-fixture.sh    # CMPK, K2 against its own run data (k6 and k6)',
+  '  CMP_ID=CMPX ./test-plans/scripts/generate-cmp-fixture.sh    # CMPX, K2 against E02\'s plan (JMeter and k6)',
 ].join('\n');
 
 export default function globalSetup(): void {

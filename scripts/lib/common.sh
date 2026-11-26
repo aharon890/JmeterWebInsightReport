@@ -871,7 +871,7 @@ _several_plugin_jars_sentence() {
 # much JMeter work an automated cycle has to do — every other scenario in
 # run-all-tests.sh validates only "a report was produced" and is manual-tier.
 # Keep in step with REQUIRED_FIXTURES in test-plans/playwright/global-setup.ts.
-FIXTURE_IDS="E02 E05 E06 E07 E08 E09 E10 E11 E12 E19 E25 E26 E27 E28 E29 E31 CMP CMP31 K1 K2"
+FIXTURE_IDS="E02 E05 E06 E07 E08 E09 E10 E11 E12 E19 E25 E26 E27 E28 E29 E31 CMP CMP31 CMPK CMPX K1 K2"
 
 # Every tracked .sh and git hook must be committed 100755.
 #
@@ -1473,6 +1473,21 @@ run_counts_against_jmeter() {
                     "$RESULTS_DIR/$id/in-test-plan.jtl" || fail=1
                 _check "$id-baseline" "$RESULTS_DIR/$id/baseline.json" "$RESULTS_DIR/$id/baseline.jtl" \
                     "$RESULTS_DIR/$id/baseline-in-test-plan.jtl" || fail=1 ;;
+            CMPK|CMPX)
+                # A comparison whose run is K2's k6 run (spec 004): held as K2 is, by the run data beside it. Its
+                # baseline is K2's own run data (CMPK), held the same way, or a JMeter run of E02's plan held to its
+                # own files (CMPX)
+                _check "$id" "$RESULTS_DIR/$id/$id-report.json" "$TEST_PLANS/run-data/K2/results.jtl" \
+                    "$TEST_PLANS/run-data/K2/in-test-plan.jtl" "" "$RESULTS_DIR/$id/$id-report-run-data.jsonl.gz" \
+                    || fail=1
+                if [[ "$id" == "CMPK" ]]; then
+                    _check "$id-baseline" "$RESULTS_DIR/$id/baseline.json" "$TEST_PLANS/run-data/K2/results.jtl" \
+                        "$TEST_PLANS/run-data/K2/in-test-plan.jtl" "" "$RESULTS_DIR/$id/baseline-run-data.jsonl.gz" \
+                        || fail=1
+                else
+                    _check "$id-baseline" "$RESULTS_DIR/$id/baseline.json" "$RESULTS_DIR/$id/baseline.jtl" \
+                        "$RESULTS_DIR/$id/baseline-in-test-plan.jtl" || fail=1
+                fi ;;
             E31)
                 # The run report's title, which runId hashes: without it -g names the run otherwise
                 local title

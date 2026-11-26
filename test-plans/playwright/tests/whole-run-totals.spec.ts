@@ -227,8 +227,13 @@ for (const id of REQUIRED_FIXTURES) {
       const compared = await page.evaluate(() => {
         const table = document.getElementById('comparisonTable') as HTMLTableElement;
         const heads = Array.from(table.tHead!.rows[0].cells).map(c => (c.textContent || '').trim());
-        // A cell is the current value with the change after it in a <sup>
-        const current = (c: HTMLTableCellElement | undefined) => (c && c.childNodes[0] ? c.childNodes[0].textContent || '' : '').trim();
+        // A cell is the current value with the change after it in a <sup>; on a pair of two tools (spec 004) it is
+        // "baseline → current" with the difference under it, and this run's number is its .cmp-current
+        const current = (c: HTMLTableCellElement | undefined) => {
+          const pair = c ? c.querySelector('.cmp-current') : null;
+          if (pair) return (pair.textContent || '').trim();
+          return (c && c.childNodes[0] ? c.childNodes[0].textContent || '' : '').trim();
+        };
         return Array.from(table.tBodies[0].rows).map(r => ({
           name: r.cells[heads.indexOf((window as any).WIR_WORDS.Sampler)].getAttribute('title') || '',
           samples: current(r.cells[heads.indexOf('Samples')]),
@@ -409,9 +414,10 @@ const COMPARED = ['Samples', 'Errors', 'Error %', 'Mean (ms)', 'Median (ms)', 'P
  * shows the two runs' Σ Total rows. Each run's whole run is read off that run's own page, its Samplers
  * Σ Total row, which R07 and the tests above hold to JMeter: this run's from this page, the baseline's
  * from the baseline report the same fixture wrote (baseline.html). CMP31 is E31's plan compared with
- * itself: a transaction run alone and inside another, so adding the rows up is not the whole run.
+ * itself: a transaction run alone and inside another, so adding the rows up is not the whole run. CMPK is a
+ * k6 run compared with k6 (spec 004): judged as a JMeter pair, with "not measured" where k6 measures nothing.
  */
-for (const id of ['CMP', 'CMP31']) {
+for (const id of ['CMP', 'CMP31', 'CMPK']) {
   test.describe(`${id}: the comparison reads each run's whole run`, () => {
     test('the Compare tab\'s Σ Total row is this run\'s whole run, its change the baseline\'s', async ({ page, browser }) => {
       const basePage = await browser.newPage();
@@ -466,7 +472,53 @@ for (const id of ['CMP', 'CMP31']) {
       if (regression) expect(row.status, `P95 ${p95Up.toFixed(1)}%, error rate ${errorsUp.toFixed(2)} points`).toBe('REGRESSION');
       if (clear) expect(row.status, `P95 ${p95Up.toFixed(1)}%, error rate ${errorsUp.toFixed(2)} points`).toBe('OK');
     });
+  });
+}
 
+/*
+ * CMPX is a k6 run compared with a JMeter run (spec 004): a pair of two tools, so each cell of the Σ Total row reads
+ * "baseline → current" and nothing is judged. Each side is still that run's own Σ Total row: the baseline's from the
+ * baseline.html the fixture's JMeter run wrote, this run's from its own Samplers table.
+ */
+test.describe('CMPX: a pair of two tools reads each run\'s whole run on each side', () => {
+  test('the Compare tab\'s Σ Total row is the baseline\'s whole run → this run\'s, not judged', async ({ page, browser }) => {
+    const basePage = await browser.newPage();
+    await loadFileClean(basePage, getReportPath('CMPX').replace(/[^\\/]+$/, 'baseline.html'));
+    const baseline = await sigmaTotalRow(basePage);
+    await basePage.close();
+
+    await loadClean(page, 'CMPX');
+    const current = await sigmaTotalRow(page);
+    await switchTab(page, 'compare');
+    const row = await page.evaluate(() => {
+      const table = document.getElementById('comparisonTable') as HTMLTableElement;
+      const heads = Array.from(table.tHead!.rows[0].cells).map(c => (c.textContent || '').trim());
+      const first = table.tBodies[0].rows[0];
+      const out: Record<string, { base: string; now: string; change: string }> = {};
+      if (!first) return { total: false, cells: out, badges: 0 };
+      Array.from(first.cells).forEach((c, i) => {
+        const part = (sel: string) => (c.querySelector(sel)?.textContent || '').trim();
+        out[heads[i]] = { base: part('.cmp-base'), now: part('.cmp-current'), change: part('.cmp-pair-delta') };
+      });
+      return { total: first.classList.contains('comparison-total-row'), cells: out,
+        badges: first.querySelectorAll('.status-badge').length };
+    });
+    expect(row.total, 'with Σ Total on, the Compare table\'s first row is the whole run').toBe(true);
+    expect(row.badges, 'a pair of two tools is not judged').toBe(0);
+    for (const column of COMPARED) {
+      expect(row.cells[column]?.base, `the Compare Σ Total row's ${column}: the baseline's Samplers Σ Total`).toBe(baseline[column]);
+      expect(row.cells[column]?.now, `the Compare Σ Total row's ${column}: this run's Samplers Σ Total`).toBe(current[column]);
+    }
+    for (const column of ['Samples', 'Errors']) {
+      expect(numberIn(row.cells[column].change), `the difference under ${column}`)
+        .toBe(numberIn(current[column]) - numberIn(baseline[column]));
+    }
+  });
+});
+
+/* The Notes tab's What Changed box, on every comparison fixture: each run's Σ Total row, as that run's own page has it */
+for (const id of ['CMP', 'CMP31', 'CMPK', 'CMPX']) {
+  test.describe(`${id}: What Changed reads each run's whole run`, () => {
     test('the Notes tab\'s What Changed box shows the two runs\' Σ Total rows', async ({ page, browser }) => {
       const basePage = await browser.newPage();
       await loadFileClean(basePage, getReportPath(id).replace(/[^\\/]+$/, 'baseline.html'));

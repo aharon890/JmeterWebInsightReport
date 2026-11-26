@@ -12,8 +12,8 @@
 #                       smoke (E24, E30). run-release.sh runs it beside the regression, so
 #                       the two never write one scenario's directory at once.
 #
-#  fixtures is FIXTURE_IDS minus CMP and CMP31, which no scenario here produces —
-#  generate-cmp-fixture.sh owns them. Do not "fix" the count by adding them.
+#  fixtures is FIXTURE_IDS minus CMP, CMP31, CMPK and CMPX, which no scenario here
+#  produces — generate-cmp-fixture.sh owns them. Do not "fix" the count by adding them.
 #
 #  --only E26,E27 narrows the suite to the ids listed, to regenerate just the
 #  fixtures a targeted spec opens while developing. The others stay stale, so
@@ -79,7 +79,7 @@ case "$SUITE" in
 esac
 
 # Which scenario IDs each suite runs. FIXTURE_IDS comes from common.sh and also
-# contains CMP, which this script does not produce — generate-cmp-fixture.sh does.
+# contains the four CMP fixtures, which this script does not produce — generate-cmp-fixture.sh does.
 SMOKE_IDS="E24 E30"
 
 in_suite() {
@@ -92,8 +92,9 @@ in_suite() {
 }
 
 ONLY_IDS="${ONLY_IDS//,/ }"
-if [[ " $ONLY_IDS " == *" CMP "* || " $ONLY_IDS " == *" CMP31 "* ]]; then
-    echo "ERROR: --only CMP / CMP31 — no scenario here produces them; run generate-cmp-fixture.sh (CMP_ID=CMP31 for CMP31)" >&2
+if [[ " $ONLY_IDS " == *" CMP "* || " $ONLY_IDS " == *" CMP31 "* || " $ONLY_IDS " == *" CMPK "* \
+        || " $ONLY_IDS " == *" CMPX "* ]]; then
+    echo "ERROR: --only CMP / CMP31 / CMPK / CMPX — no scenario here produces them; run generate-cmp-fixture.sh (CMP_ID=CMP31, CMPK or CMPX for the others)" >&2
     exit 2
 fi
 ONLY_RAN=""

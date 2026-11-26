@@ -1460,13 +1460,15 @@ function twoDecimalsText(v) {
    each cell as the rows below it are, never in the reader's language (it took the browser's: a German
    reader saw 7.225 and 218,56 above rows reading 2766 and 219). The Compare tab's Σ Total row and the
    Notes tab's What Changed rows write a whole run through this too, so it reads the same wherever it is
-   shown. */
-function sigmaTotalCellTexts(t) {
+   shown. `notMeasured` is whose fields read "not measured": this run's (isNotMeasured) unless given, and the
+   baseline's (baselineNotMeasured) for the baseline's whole run, which another tool may have recorded (spec 004). */
+function sigmaTotalCellTexts(t, notMeasured) {
+    var unmeasured = notMeasured || isNotMeasured;
     return [wholeNumberText(t.samples), wholeNumberText(t.errors), twoDecimalsText(t.errorPct) + '%',
         wholeNumberText(t.mean), wholeNumberText(t.median), wholeNumberText(t.p90), wholeNumberText(t.p95),
         wholeNumberText(t.p99), wholeNumberText(t.min), wholeNumberText(t.max), formatRate(t.throughput),
-        isNotMeasured('bytes') ? W('notMeasured') : twoDecimalsText(t.receivedKBs),
-        isNotMeasured('sentBytes') ? W('notMeasured') : twoDecimalsText(t.sentKBs)];
+        unmeasured('bytes') ? W('notMeasured') : twoDecimalsText(t.receivedKBs),
+        unmeasured('sentBytes') ? W('notMeasured') : twoDecimalsText(t.sentKBs)];
 }
 
 /**
@@ -5126,7 +5128,48 @@ function initErrorTables() {
 
 /* ---- Compare: its rows are drawn from the comparison, so Apply, a column drag and the Σ Total chip keep the view ---- */
 
+/* Whether the comparison is a pair of two tools (JMeter against k6, spec 004): it is compared without judging, as perf
+   hub's Compare reads it. A pair of one tool (JMeter and JMeter, k6 and k6) is judged as it always was, and so is a
+   payload that names no pair. */
+function comparisonTwoTools(data) {
+    data = data || globalChartData;
+    return !!(data && data.hasComparison && data.sameTool === false);
+}
+
+/* A word of the pair's, from the words table: {baseline} and {current} are the two runs' tools, as the payload names
+   them, and `fill` puts in the rest of the sentence's numbers or names. */
+function pairWords(key, fill) {
+    var d = globalChartData || {};
+    var out = String(W(key)).split('{baseline}').join(d.baselineTool || 'Baseline')
+        .split('{current}').join(d.currentTool || W('tool'));
+    Object.keys(fill || {}).forEach(function (k) { out = out.split('{' + k + '}').join(String(fill[k])); });
+    return out;
+}
+
+/* Whether the baseline's tool records this sample field, isNotMeasured's twin for the baseline (spec 004): a k6
+   baseline records no bytes, a JMeter one records them all (its payload names none). */
+function baselineNotMeasured(field) {
+    var nm = globalChartData && globalChartData.baselineNotMeasured;
+    return !!nm && nm.indexOf(field) >= 0;
+}
+
+/* The connection-time line of a pair of JMeter and k6 (spec 004, FR-005): JMeter's times include opening a connection
+   and k6's do not. Said only of that pair, whichever is the baseline: of another tool the page does not know how it
+   times a connection, so it claims nothing. */
+function comparisonConnectionNote(data) {
+    var tools = [String(data.baselineTool || ''), String(data.currentTool || '')];
+    var lower = tools.map(function (t) { return t.toLowerCase(); });
+    var j = lower.indexOf('jmeter');
+    var k = lower.indexOf('k6');
+    if (j < 0 || k < 0) return '';
+    return pairWords('compareConnectionNote', { includes: tools[j], excludes: tools[k] });
+}
+
 function comparisonStatus(d) {
+    if (comparisonTwoTools()) {
+        /* Two tools: nothing is judged. A request only one run has says which; one both runs have says nothing. */
+        return d.removed ? W('compareOnlyInBaseline') : d.isNew ? W('compareOnlyInThisRun') : null;
+    }
     return d.removed ? 'REMOVED' : d.isNew ? 'NEW' : d.regression ? 'REGRESSION' : 'OK';
 }
 
@@ -5158,8 +5201,39 @@ function comparisonFigures(d) {
         p95: wholeNumberText(d.currP95), p99: wholeNumberText(d.currP99), min: wholeNumberText(d.currMin),
         max: wholeNumberText(d.currMax),
         throughput: d.currThroughput != null ? formatRate(d.currThroughput) : '—',
-        recv: d.currRecvKBs != null ? twoDecimalsText(d.currRecvKBs) : '—'
+        /* a tool that records no bytes (k6) reads "not measured", never 0 (spec 001, FR-008; spec 004, US1) */
+        recv: isNotMeasured('bytes') ? W('notMeasured') : d.currRecvKBs != null ? twoDecimalsText(d.currRecvKBs) : '—'
     };
+}
+
+/* The baseline's side of a compared row, as the baseline's own Samplers table writes it: on a pair of two tools every
+   cell shows both numbers (spec 004). The Σ Total row's is the baseline's whole run, as What Changed writes it. */
+function comparisonBaseFigures(d) {
+    if (d.total) {
+        var texts = sigmaTotalCellTexts(totalRowFigures({ overall: d.baselineOverall || {}, samplers: [] },
+            function () { return false; }), baselineNotMeasured).slice(0, 12);
+        var out = {};
+        CMP_FIGURES.forEach(function (c, i) { out[c] = texts[i]; });
+        return out;
+    }
+    if (d.isNew) return {};
+    return {
+        samples: wholeNumberText(d.baseSamples),
+        errors: wholeNumberText(d.baseErrors || 0),
+        errorPct: twoDecimalsText(d.baseSamples > 0 ? (d.baseErrors || 0) * 100 / d.baseSamples : 0) + '%',
+        mean: wholeNumberText(d.baseMean), median: wholeNumberText(d.baseMedian), p90: wholeNumberText(d.baseP90),
+        p95: wholeNumberText(d.baseP95), p99: wholeNumberText(d.baseP99), min: wholeNumberText(d.baseMin),
+        max: wholeNumberText(d.baseMax),
+        throughput: d.baseThroughput != null ? formatRate(d.baseThroughput) : '—',
+        recv: baselineNotMeasured('bytes') ? W('notMeasured') : d.baseRecvKBs != null ? twoDecimalsText(d.baseRecvKBs) : '—'
+    };
+}
+
+/* A cell of a pair of two tools as text, "baseline → current", a side the run did not have a dash (spec 004). */
+function comparisonPairText(d, c) {
+    var base = comparisonBaseFigures(d)[c];
+    var curr = comparisonFigures(d)[c];
+    return (base === undefined ? '—' : base) + ' → ' + (curr === undefined ? '—' : curr);
 }
 
 var CMP_VALUE = {
@@ -5172,36 +5246,55 @@ function comparisonColumns() {
         p90: 'P90 (ms)', p95: 'P95 (ms)', p99: 'P99 (ms)', min: 'Min (ms)', max: 'Max (ms)', throughput: 'Throughput',
         recv: 'Recv KB/s' };
     return [{ id: 'name', label: W('Sampler'), hideable: false, value: function (d) { return d.name; }, text: function (d) { return d.name; } },
-        { id: 'status', label: 'Status', value: function (d) { return comparisonStatus(d); }, text: comparisonStatus }]
+        { id: 'status', label: 'Status', value: function (d) { return comparisonStatus(d); },
+            text: function (d) { return comparisonStatus(d) || ''; } }]
         .concat(CMP_FIGURES.map(function (c) {
             return { id: c, label: labels[c], firstDir: 'desc',
                 value: function (d) {
                     if (d.removed) return null;
+                    if (c === 'recv' && isNotMeasured('bytes')) return null;
                     if (c === 'errorPct') return d.currSamples > 0 ? (d.currErrors || 0) / d.currSamples : null;
                     var v = d[CMP_VALUE[c]];
                     return typeof v === 'number' ? v : null;
                 },
-                text: function (d) { var f = comparisonFigures(d)[c]; return f === undefined ? '—' : f; } };
+                text: function (d) {
+                    if (comparisonTwoTools()) return comparisonPairText(d, c);
+                    var f = comparisonFigures(d)[c];
+                    return f === undefined ? '—' : f;
+                } };
         }));
 }
 
 function initComparisonTable() {
+    /* A pair of two tools judges nothing: its only statuses say which run a one-sided request was in, and there is
+       nothing to group by (spec 004). */
+    var twoTools = comparisonTwoTools();
+    var order = twoTools ? [W('compareOnlyInBaseline'), W('compareOnlyInThisRun')] : ['REGRESSION', 'NEW', 'REMOVED', 'OK'];
     WIR.table.mountRows('comparisonTable', {
         key: function (d) { return d.total ? 'Σ' : d.name; },
         columns: comparisonColumns(),
         search: function (d) { return d.name; },
         status: comparisonStatus,
-        statusOrder: ['REGRESSION', 'NEW', 'REMOVED', 'OK'],
+        statusOrder: order,
+        statusLabel: twoTools ? function (s) { return s; } : undefined,
         nameOf: function (d) { return d.total ? null : d.name; },
         pinned: function (d) { return d.total ? 'first' : null; },
-        groupings: { status: { label: 'Status', of: comparisonStatus,
-            order: function (a, b) { return ['REGRESSION', 'NEW', 'REMOVED', 'OK'].indexOf(a.key) - ['REGRESSION', 'NEW', 'REMOVED', 'OK'].indexOf(b.key); } } },
+        groupings: twoTools ? {} : { status: { label: 'Status', of: comparisonStatus,
+            order: function (a, b) { return order.indexOf(a.key) - order.indexOf(b.key); } } },
         csvName: 'comparison.csv',
         toolbar: { searchId: 'comparisonTable-search', placeholder: 'Filter ' + W('samplers') + '…', label: 'Filter the comparison',
             noun: W('samplers') },
         render: renderComparison
     });
     renderComparison();
+}
+
+/* A cell of a pair of two tools (spec 004): the baseline's number → this run's, the difference in grey under them. A side
+   the run did not have is a dash, and a field either tool did not measure has no difference. */
+function comparisonPairCellHtml(c, base, curr, delta) {
+    return '<td data-col-id="' + c + '"><span class="cmp-pair"><span class="cmp-base">' + escapeHtml(base) + '</span> → ' +
+        '<span class="cmp-current">' + escapeHtml(curr) + '</span></span>' +
+        (delta == null ? '' : '<span class="cmp-pair-delta">' + escapeHtml(delta) + '</span>') + '</td>';
 }
 
 function comparisonRowHtml(d, order) {
@@ -5211,14 +5304,28 @@ function comparisonRowHtml(d, order) {
         mean: [d.deltaMean, ' ms'], median: [d.deltaMedian, ' ms'], p90: [d.deltaP90, ' ms'], p95: [d.deltaP95, ' ms'],
         p99: [d.deltaP99, ' ms'], min: [d.deltaMin, ' ms'], max: [d.deltaMax, ' ms'],
         throughput: [d.deltaThroughput, '/s', true], recv: [d.deltaRecvKBs, '', true] };
+    var twoTools = comparisonTwoTools();
     var cells = {
         name: '<td data-col-id="name" title="' + escapeHtml(d.name) + '">' + escapeHtml(d.name) + '</td>',
-        status: '<td data-col-id="status"><span class="status-badge cmp-' + status.toLowerCase() +
-            '" style="font-size:0.65rem;padding:2px 8px;">' + status + '</span></td>'
+        status: twoTools
+            ? '<td data-col-id="status">' + (status ? '<span class="cmp-side">' + escapeHtml(status) + '</span>' : '') + '</td>'
+            : '<td data-col-id="status"><span class="status-badge cmp-' + status.toLowerCase() +
+                '" style="font-size:0.65rem;padding:2px 8px;">' + status + '</span></td>'
     };
+    var base = twoTools ? comparisonBaseFigures(d) : null;
     CMP_FIGURES.forEach(function (c) {
+        if (twoTools) {
+            var oneSided = d.removed || d.isNew;
+            var unmeasured = c === 'recv' && (isNotMeasured('bytes') || baselineNotMeasured('bytes'));
+            var delta = oneSided || unmeasured || deltas[c][0] == null ? null : (deltaText(deltas[c][0], deltas[c][1]) || '0');
+            cells[c] = comparisonPairCellHtml(c, base[c] === undefined ? '—' : base[c],
+                figures[c] === undefined ? '—' : figures[c], delta);
+            return;
+        }
+        var notMeasuredHere = c === 'recv' && isNotMeasured('bytes');
         cells[c] = d.removed ? '<td data-col-id="' + c + '">—</td>'
-            : '<td data-col-id="' + c + '">' + escapeHtml(figures[c]) + inlineDelta(deltas[c][0], deltas[c][1], deltas[c][2]) + '</td>';
+            : '<td data-col-id="' + c + '">' + escapeHtml(figures[c]) +
+                (notMeasuredHere ? '' : inlineDelta(deltas[c][0], deltas[c][1], deltas[c][2])) + '</td>';
     });
     var key = d.total ? 'Σ' : d.name;
     /* A removed sampler ran in the baseline but not in this run, so it has no current-side figures: dashes. */
@@ -7045,9 +7152,30 @@ function initComparisonTab(data) {
     var tabBtn = document.getElementById('compareTabBtn');
     if (tabBtn) tabBtn.style.display = '';
 
+    /* A pair of two tools (spec 004): titled by its tools ("JMeter against k6"), a legend saying what a cell holds,
+       and the connection-time line under the table. It is not judged, so it has no thresholds to set (its payload
+       carries none). */
+    if (comparisonTwoTools(data)) {
+        var pairTable = document.getElementById('comparisonTable');
+        if (pairTable) pairTable.classList.add('cmp-two-tools');
+        var title = document.getElementById('comparisonTableTitle');
+        if (title) title.textContent = pairWords('compareTitle');
+        var legend = document.getElementById('comparisonLegend');
+        if (legend) {
+            legend.textContent = pairWords('compareLegend');
+            legend.style.display = '';
+        }
+        var notes = document.getElementById('comparisonNotes');
+        var connection = comparisonConnectionNote(data);
+        if (notes && connection) {
+            notes.innerHTML = '<p class="cmp-connection-note">' + escapeHtml(connection) + '</p>';
+            notes.style.display = '';
+        }
+    }
+
     /* Initialize threshold controls from chartData */
     var thSection = document.getElementById('comparison-thresholds-section');
-    if (thSection && data.comparisonThresholds) {
+    if (thSection && data.comparisonThresholds && !comparisonTwoTools(data)) {
         thSection.style.display = '';
         var th = data.comparisonThresholds;
         document.getElementById('thP95').value = th.p95PctChange != null ? th.p95PctChange : 10;
@@ -7078,7 +7206,8 @@ function comparisonPctIncrease(curr, delta) {
 }
 
 function applyComparisonThresholds() {
-    if (!globalChartData || !globalChartData.comparisonDiffs) return;
+    /* a pair of two tools is never judged (spec 004, FR-004) */
+    if (!globalChartData || !globalChartData.comparisonDiffs || comparisonTwoTools()) return;
 
     var p95Th = parseFloat(document.getElementById('thP95').value);
     var errTh = parseFloat(document.getElementById('thErrorRate').value);
@@ -7139,6 +7268,11 @@ function zipElapsed(timestamps, values, startTs) {
 /** Build per-sampler comparison series (current=solid, baseline=dashed) */
 function buildComparisonSeries(data, metric) {
     var series = [];
+    /* Each series names its run: Current and Baseline on a pair of one tool, the tools on a pair of two ("Login (k6)",
+       "Login (JMeter baseline)", spec 004) */
+    var twoTools = comparisonTwoTools(data);
+    var currentSuffix = twoTools ? ' (' + (data.currentTool || W('tool')) + ')' : ' (Current)';
+    var baselineSuffix = twoTools ? ' (' + pairWords('compareBaselineSeries') + ')' : ' (Baseline)';
     var visibleNames = getVisibleSamplerNames();
     var samplerNames = data.samplers ? data.samplers.map(function (s) { return s.name; }) : [];
     var currStart = data.timestamps[0];
@@ -7155,7 +7289,7 @@ function buildComparisonSeries(data, metric) {
         /* Current run — solid */
         if (currPerSampler[name] && currPerSampler[name][metric]) {
             series.push({
-                name: name + ' (Current)',
+                name: name + currentSuffix,
                 type: 'line',
                 data: zipElapsed(data.timestamps, currPerSampler[name][metric], currStart),
                 smooth: true,
@@ -7168,7 +7302,7 @@ function buildComparisonSeries(data, metric) {
         /* Baseline run — dashed, dimmed */
         if (basePerSampler[name] && basePerSampler[name][metric]) {
             series.push({
-                name: name + ' (Baseline)',
+                name: name + baselineSuffix,
                 type: 'line',
                 data: zipElapsed(data.baseline.timestamps, basePerSampler[name][metric], baseStart),
                 smooth: true,
@@ -7189,7 +7323,7 @@ function buildComparisonSeries(data, metric) {
 
         if (currGlobal) {
             series.push({
-                name: TOTAL_SAMPLER_NAME + ' (Current)',
+                name: TOTAL_SAMPLER_NAME + currentSuffix,
                 type: 'line',
                 data: zipElapsed(data.timestamps, currGlobal, currStart),
                 smooth: true, symbol: 'none',
@@ -7199,7 +7333,7 @@ function buildComparisonSeries(data, metric) {
         }
         if (baseGlobal) {
             series.push({
-                name: TOTAL_SAMPLER_NAME + ' (Baseline)',
+                name: TOTAL_SAMPLER_NAME + baselineSuffix,
                 type: 'line',
                 data: zipElapsed(data.baseline.timestamps, baseGlobal, baseStart),
                 smooth: true, symbol: 'none',
@@ -7308,7 +7442,9 @@ function initCompareTPChart(data) {
 
 
 
-function inlineDelta(val, suffix, invertColor) {
+/* A change as the Compare table writes it beside a figure, signed: "" for none. One rule for both readings of a pair,
+   the coloured superscript of a pair of one tool and the grey difference of a pair of two (spec 004). */
+function deltaText(val, suffix) {
     if (val == null || val === 0) return '';
     var text;
     if (suffix === ' ms') {
@@ -7324,6 +7460,12 @@ function inlineDelta(val, suffix, invertColor) {
     if (typeof text === 'number' || !String(text).match(/^[-]/)) {
         text = (val > 0 ? '+' : '') + text;
     }
+    return String(text);
+}
+
+function inlineDelta(val, suffix, invertColor) {
+    if (val == null || val === 0) return '';
+    var text = deltaText(val, suffix);
     /* invertColor: true when lower is worse (throughput), 'neutral' when neither direction is —
        more samples is a longer or busier run, not a regression, and coloured it red. */
     var bad = invertColor ? (val < 0) : (val > 0);
@@ -7335,6 +7477,27 @@ function inlineDelta(val, suffix, invertColor) {
 /* ============================================================
  *  What Changed (vs Baseline) — auto-generated summary
  * ============================================================ */
+
+/* One request's change on a pair of two tools (spec 004), in the words table's sentence: the mean and the P95, each
+   "baseline → this run" with the difference; or which run a one-sided request was in, with its samples and mean. */
+function whatChangedRequestText(d) {
+    var oneSided = function (samples, mean) {
+        var n = wholeNumberText(samples);
+        return pairWords(n === '1' ? 'compareOneSidedOne' : 'compareOneSided', { samples: n, mean: wholeNumberText(mean) });
+    };
+    if (d.removed) {
+        return W('compareOnlyInBaseline') + ' (' + oneSided(d.baseSamples, d.baseMean) + ')';
+    }
+    if (d.isNew) {
+        return W('compareOnlyInThisRun') + ' (' + oneSided(d.currSamples, d.currMean) + ')';
+    }
+    return pairWords('compareRequestChange', {
+        meanBase: wholeNumberText(d.baseMean), meanCurrent: wholeNumberText(d.currMean),
+        meanChange: deltaText(d.deltaMean, ' ms') || '0',
+        p95Base: wholeNumberText(d.baseP95), p95Current: wholeNumberText(d.currP95),
+        p95Change: deltaText(d.deltaP95, ' ms') || '0'
+    });
+}
 
 function initWhatChanged(data) {
     var section = document.getElementById('whatChangedSection');
@@ -7397,21 +7560,40 @@ function initWhatChanged(data) {
        whole run went 5.83% -> 2.55%). Each row is written as that run's own Samplers Σ Total row is:
        this run's from chartData.overall, the baseline's from the same block of its whole run. */
     var total = data.comparisonTotal;
+    var twoTools = comparisonTwoTools(data);
     if (total && total.baselineOverall) {
         var heads = ['', 'Samples', 'Errors', 'Error %', 'Mean (ms)', 'Median (ms)', 'P90 (ms)', 'P95 (ms)',
             'P99 (ms)', 'Min (ms)', 'Max (ms)', 'Throughput', 'Recv KB/s'];
-        var runRow = function (run, label, figures) {
+        /* each run's whole run with its own tool's "not measured": the baseline's tool may not be this run's (spec 004) */
+        var runRow = function (run, label, figures, notMeasured) {
             return '<tr data-run="' + run + '"><td>' + escapeHtml(label) + '</td>' +
-                sigmaTotalCellTexts(figures).slice(0, 12).map(function (t) { return '<td>' + escapeHtml(t) + '</td>'; }).join('') +
+                sigmaTotalCellTexts(figures, notMeasured).slice(0, 12).map(function (t) { return '<td>' + escapeHtml(t) + '</td>'; }).join('') +
                 '</tr>';
         };
+        /* on a pair of two tools, each row names its run's tool */
+        var baseTool = twoTools ? ' (' + (data.baselineTool || '') + ')' : '';
+        var currTool = twoTools ? ' (' + (data.currentTool || '') + ')' : '';
         html += '<div class="what-changed-line"><strong>Overall:</strong> the two runs\' ' + escapeHtml(TOTAL_SAMPLER_NAME) + ' rows</div>';
         html += '<div class="table-wrapper"><table class="stats-table what-changed-totals"><thead><tr>' +
             heads.map(function (h) { return '<th>' + escapeHtml(h) + '</th>'; }).join('') + '</tr></thead><tbody>' +
-            runRow('baseline', 'Baseline ' + TOTAL_SAMPLER_NAME,
-                totalRowFigures({ overall: total.baselineOverall, samplers: [] }, function () { return false; })) +
-            runRow('current', 'This run ' + TOTAL_SAMPLER_NAME, totalRowFigures(data, isTransactionChild)) +
+            runRow('baseline', 'Baseline ' + TOTAL_SAMPLER_NAME + baseTool,
+                totalRowFigures({ overall: total.baselineOverall, samplers: [] }, function () { return false; }),
+                baselineNotMeasured) +
+            runRow('current', 'This run ' + TOTAL_SAMPLER_NAME + currTool, totalRowFigures(data, isTransactionChild)) +
             '</tbody></table></div>';
+    }
+
+    /* A pair of two tools (spec 004): each request's change, both numbers, nothing judged: no regressed or improved
+       list, and a request only one run has says which run it was in, with its samples and mean. */
+    if (twoTools) {
+        html += '<div class="what-changed-line"><strong>' + escapeHtml(pairWords('whatChangedEach')) + '</strong></div>';
+        diffs.forEach(function (d) {
+            html += '<div class="what-changed-line what-changed-request" data-request="' + escapeHtml(d.name) + '">' +
+                escapeHtml(d.name) + ': ' + escapeHtml(whatChangedRequestText(d)) + '</div>';
+        });
+        contentDiv.innerHTML = html;
+        section.style.display = '';
+        return;
     }
 
     /* Regressions */

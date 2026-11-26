@@ -668,6 +668,34 @@ body.dark-mode sup.delta-good { color: #4ade80; }
 /* A count that is neither better nor worse for being larger (Samples). */
 sup.delta-neutral { color: var(--color-text-secondary); }
 
+/* A pair of two tools (spec 004), read like perf hub's Compare: each cell is "baseline → current" with the
+   difference in grey under it, whichever way it went; a request only one run has says which, in grey too. */
+.cmp-pair { white-space: nowrap; }
+/* Both numbers do not fit the fixed columns of a pair of one tool: the table takes its cells' widths, and the
+   wrapper scrolls sideways when it is wider than the page, as perf hub's table does. */
+#comparisonTable.cmp-two-tools { table-layout: auto; }
+#comparisonTable.cmp-two-tools td:first-child { max-width: 320px; }
+.cmp-pair-delta {
+    display: block;
+    font-size: 0.75em;
+    color: var(--color-text-secondary);
+}
+.cmp-side {
+    font-size: 0.75rem;
+    color: var(--color-text-secondary);
+    white-space: nowrap;
+}
+.cmp-legend {
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+}
+.cmp-notes {
+    margin-top: 8px;
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+}
+.cmp-notes p { margin: 4px 0; }
+
 /* Error tables — auto layout so columns redistribute on hide.
    Long text columns get max-width to prevent table overflow. */
 .error-table td:first-child,
