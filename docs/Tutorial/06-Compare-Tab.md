@@ -114,9 +114,10 @@ own unit:
 - **Red** (or orange in colorblind mode) — regression: the opposite direction on those columns
 - **Neutral** (no colour) — Samples: more samples means a longer or busier run, not a better or
   worse one
-- Format: "+120" or "-1.2s" on a time column, "+0.5%" on Error % (percentage points), "-3.4/s" on
-  Throughput. No delta is shown only when the change is exactly zero; a change smaller than the
-  column's precision still shows, as "+0" or "+0.0/s"
+- Format: "+120" or "-1.2s" on a time column, "+0.5%" on Error % (percentage points), and on
+  Throughput one decimal in the unit the larger of the two rates is written in, per second, minute
+  or hour: "-3.4/s", or "+0.6/min" for 13.2/min → 13.8/min. No delta is shown only when the change
+  is exactly zero; a change smaller than the column's precision still shows, as "+0" or "+0.0/s"
 
 ### Status Badges
 

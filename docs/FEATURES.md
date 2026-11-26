@@ -854,7 +854,8 @@ Regression detection thresholds are configurable. Default: P95 increase >10% or 
 ### Sampler Comparison Table
 - All sampler statistics columns: Samples, Errors, Error %, Mean, Median, P90, P95, P99, Min, Max, Throughput, Recv KB/s
 - Current values with inline superscript deltas (red/green, or blue/orange in colorblind mode), each
-  written as the Samplers table writes it
+  written as the Samplers table writes it; a throughput's delta is in the unit of the larger of its two
+  rates, per second, minute or hour (13.2/min → 13.8/min is `+0.6/min`)
 - A Σ Total row first when Σ Total is ticked (see Virtual "Σ Total" Sampler)
 - Sortable columns, drag-to-reorder, column toggle, row hide, search filter
 - Status badges, outlined so they read as a comparison rather than an assert verdict: OK, REGRESSION
@@ -889,9 +890,9 @@ The same report, numbers, asserts and Server tab for a run of any load tool, bui
 - **The tool's tab**: on a k6 run, a k6 tab after Server with k6's thresholds and checks (as k6 judged them, never the
   verdict), group durations, the six HTTP timing parts, iterations, dropped iterations and `vus_max`, in k6's summary
   columns. Another tool's run gets a tab named after it when it carries its own records. A strip at the top names each
-  failed threshold with what k6 measured and how far past its limit; each section is a table with the report's one
-  toolbar (thresholds grouped by metric, timings under their group, the statistic chosen), and the filter bar's
-  request checkboxes narrow every section.
+  failed threshold with what k6 measured and how far past its limit (a rate's in points: `17.18 points over`); each
+  section is a table with the report's one toolbar (thresholds grouped by metric, timings under their group, the
+  statistic chosen), and the filter bar's request checkboxes narrow every section.
 - **Over time**: a k6 request's detail panel on the Requests tab charts its six timing parts at the report's time
   buckets, and a k6 threshold on its duration is a dashed line at the limit on its response time and percentiles
   charts, labelled as k6's and never draggable.

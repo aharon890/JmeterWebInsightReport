@@ -51,8 +51,23 @@ test('a value the run data does not have reads "not recorded", never 0', () => {
 test('a failed upper limit: how far over, in the unit and as a share of the limit', () => {
     assert.strictEqual(tab.distanceText(t({ passed: false, measured: 779.71796, operator: '<=', limit: 600,
         statistic: 'p(95)', metricType: 'trend', metricContains: 'time' })), '179.72 ms over (30%)');
+});
+
+/* A rate's limit and value are percentages already, so how far past is a difference of two percentages: points, with
+   no share of the limit. K1's http_req_failed rate<0.01 read "rate = 18.18%, 17.18% over (1718%)", two percentages
+   side by side that read like a contradiction (owner, 2026-11-27: "Fix the 2 report wordings"). */
+test('a failed rate threshold: how far past in points, with no share of the limit', () => {
     assert.strictEqual(tab.distanceText(t({ passed: false, measured: 0.18181818181818182, operator: '<', limit: 0.01,
-        statistic: 'rate', metricType: 'rate' })), '17.18% over (1718%)');
+        statistic: 'rate', metricType: 'rate' })), '17.18 points over');
+    assert.strictEqual(tab.distanceText(t({ passed: false, measured: 0.9, operator: '>=', limit: 0.95,
+        statistic: 'rate', metricType: 'rate' })), '5.00 points under');
+    assert.strictEqual(tab.distanceText(t({ passed: false, measured: 0.02, operator: '==', limit: 0,
+        statistic: 'rate', metricType: 'rate' })), '2.00 points off');
+});
+
+test('a counter\'s rate per second is no percentage: its distance keeps the unit and the share', () => {
+    assert.strictEqual(tab.distanceText(t({ passed: false, measured: 0.5, operator: '<', limit: 0.4,
+        statistic: 'rate', metricType: 'counter' })), '0.10/s over (25%)');
 });
 
 test('a failed lower limit is under, an equality is off, and a limit of 0 has no share', () => {

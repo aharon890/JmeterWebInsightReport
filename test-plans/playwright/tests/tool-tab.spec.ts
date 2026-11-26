@@ -101,6 +101,20 @@ test.describe('The tool\'s tab: k6\'s own measures [K1]', () => {
     await expect(page.locator('header .wir-asserts-chip')).toHaveText('ASSERTS PASS');
   });
 
+  test('a failed rate threshold says how far past in points, on the strip and its row, with no share of the limit', async ({ page }) => {
+    // A rate's limit and value are percentages already: "17.18% over (1718%)" read as two percentages that contradict
+    // each other (owner, 2026-11-27: "Fix the 2 report wordings")
+    await switchTab(page, 'tool');
+    const failed = summary().metrics['http_req_failed'];
+    expect(failed.thresholds['rate<0.01'].ok).toBe(false);
+    expect((failed.values.rate * 100).toFixed(2)).toBe('18.18');
+    await expect(page.locator('#toolStrip')).toContainText('http_req_failed rate<0.01 (rate = 18.18%, 17.18 points over)');
+    const row = page.locator('#toolThresholds tr.wir-tool-row[data-metric="http_req_failed"][data-expression="rate<0.01"]');
+    await expect(row.locator('td[data-col-id="measured"]')).toHaveText('rate = 18.18%');
+    await expect(row.locator('td.wir-tool-distance')).toHaveText('17.18 points over');
+    for (const where of [page.locator('#toolStrip'), row]) await expect(where).not.toContainText('1718');
+  });
+
   test('checks are summary.json\'s passes and fails, under their group, failed first', async ({ page }) => {
     await switchTab(page, 'tool');
     const want: string[] = [];
