@@ -123,7 +123,7 @@ on its end, as the listener's SampleResult ends it, so a transaction's windows r
 `whole-run-totals.spec.ts` closes the other half: it reads each tab as displayed (Summary tiles, Σ
 Total row, Timeline Σ lines, every Samplers row, the Errors tab) and holds it to that JSON, over every
 fixture in `REQUIRED_FIXTURES` (exported from `global-setup.ts` for it), so a tab that one day stops
-reading the shared count fails even though every unit test of the count still passes. On the two
+reading the shared count fails even though every unit test of the count still passes. On the four
 comparison fixtures it holds the Compare tab's Σ Total row and the Notes tab's What Changed rows to each
 run's own Samplers Σ Total row (the baseline's read off the `baseline.html` the fixture wrote).
 `every-reader-same-page.spec.ts` opens every fixture as an English reader in Jerusalem and a German
@@ -131,7 +131,9 @@ reader in New York and fails on any difference in what they are shown: every tab
 tooltip, copy and download. JMeter's HTML report reads the same in every browser, and so must this one.
 
 The suites cover the JMeter scenarios Playwright actually opens (E02, E05-E12, E19, E25-E29, E31)
-plus CMP and CMP31 (E31's plan compared with itself, `CMP_ID=CMP31 generate-cmp-fixture.sh`) and K1 and K2, k6 runs'
+plus CMP and CMP31 (E31's plan compared with itself, `CMP_ID=CMP31 generate-cmp-fixture.sh`), CMPK and CMPX (spec 004:
+K2 against its own run data, a k6 pair judged as a JMeter pair; K2 against E02's plan, JMeter and k6 compared without
+judging) and K1 and K2, k6 runs'
 reports built by `build-report --from k6` with no JMeter run (`tool-words.spec.ts`, `tool-tab.spec.ts`) — the same
 list as `FIXTURE_IDS` in `common.sh`, which is where to check rather than
 here. E19 is easy to forget: `external-data.spec.ts` opens it to assert the payload was written
@@ -248,6 +250,8 @@ node node_modules/@playwright/test/cli.js test -g "a dragged width survives"
 # whole-run-totals.spec.ts
 ./test-plans/scripts/generate-cmp-fixture.sh
 CMP_ID=CMP31 ./test-plans/scripts/generate-cmp-fixture.sh
+CMP_ID=CMPK ./test-plans/scripts/generate-cmp-fixture.sh
+CMP_ID=CMPX ./test-plans/scripts/generate-cmp-fixture.sh
 ```
 
 `npx playwright test` does **not** work under Git Bash — npx fails to resolve the

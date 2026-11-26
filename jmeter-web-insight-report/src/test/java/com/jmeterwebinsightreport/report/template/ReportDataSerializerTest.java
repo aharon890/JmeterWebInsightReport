@@ -1045,4 +1045,66 @@ class ReportDataSerializerTest {
         assertFalse(removed.has("currSamples"), "there are no current-side figures to report");
         assertEquals(300, removed.get("baseSamples").asLong());
     }
+
+    // --- Spec 004: the payload names the pair's tools ---
+
+    private JsonNode comparedChartData(ReportData baseline, ReportData current) throws Exception {
+        com.jmeterwebinsightreport.core.comparison.ComparisonResult comparison =
+                new com.jmeterwebinsightreport.core.comparison.ComparisonResult(baseline, current,
+                        new com.jmeterwebinsightreport.core.comparison.ComparisonThresholds());
+        return objectMapper.readTree(serializer.serializeChartData(current, null, comparison,
+                com.jmeterwebinsightreport.report.gate.GateEvaluation.none(), null, null));
+    }
+
+    private static ReportData recordedBy(String tool, java.util.List<String> notMeasured, ReportData d) {
+        d.getMetadata().setToolName(tool);
+        d.getMetadata().setNotMeasured(notMeasured);
+        return d;
+    }
+
+    @Test
+    void aPairOfTwoToolsIsNamedByItsToolsAndCarriesBothSidesWithoutThresholds() throws Exception {
+        ReportData jmeter = createFullReportData();
+        ReportData k6 = recordedBy("k6", java.util.List.of("bytes", "sentBytes"), createFullReportData());
+
+        JsonNode root = comparedChartData(jmeter, k6);
+
+        assertEquals("JMeter", root.path("baselineTool").asText(), "the tool, as the words table names it");
+        assertEquals("k6", root.path("currentTool").asText());
+        assertFalse(root.path("sameTool").asBoolean(true));
+        assertFalse(root.has("comparisonThresholds"), "a pair of two tools is not judged: no thresholds to set");
+        assertTrue(root.path("baselineNotMeasured").isArray());
+        assertEquals(0, root.path("baselineNotMeasured").size(), "JMeter measured every field");
+        // Both numbers in every cell: the baseline's figures beside this run's, on every row both runs have
+        for (JsonNode d : root.get("comparisonDiffs")) {
+            assertFalse(d.path("regression").asBoolean(true), d.path("name").asText());
+            assertTrue(d.has("baseSamples") && d.has("baseMean") && d.has("baseP95") && d.has("baseThroughput"),
+                    d.path("name").asText() + " carries the baseline's figures");
+            assertTrue(d.has("currSamples"), d.path("name").asText() + " carries this run's");
+        }
+        // k6 against JMeter: the baseline's unmeasured fields travel with it
+        JsonNode back = comparedChartData(k6, jmeter);
+        assertEquals("k6", back.path("baselineTool").asText());
+        assertEquals("JMeter", back.path("currentTool").asText());
+        assertEquals("[\"bytes\",\"sentBytes\"]", back.path("baselineNotMeasured").toString());
+    }
+
+    @Test
+    void aPairOfOneToolKeepsItsPayloadWithTheToolNamed() throws Exception {
+        JsonNode root = comparedChartData(createFullReportData(), createFullReportData());
+        assertEquals("JMeter", root.path("baselineTool").asText());
+        assertEquals("JMeter", root.path("currentTool").asText());
+        assertTrue(root.path("sameTool").asBoolean(false));
+        assertTrue(root.has("comparisonThresholds"), "a pair of one tool is judged, with its thresholds");
+        for (JsonNode d : root.get("comparisonDiffs")) {
+            assertFalse(d.has("baseSamples"), "a row both runs have is as it was: this run's figures and the change");
+        }
+
+        ReportData before = recordedBy("k6", java.util.List.of("bytes"), createFullReportData());
+        ReportData after = recordedBy("k6", java.util.List.of("bytes"), createFullReportData());
+        JsonNode k6 = comparedChartData(before, after);
+        assertEquals("k6", k6.path("baselineTool").asText());
+        assertTrue(k6.path("sameTool").asBoolean(false));
+        assertTrue(k6.has("comparisonThresholds"));
+    }
 }

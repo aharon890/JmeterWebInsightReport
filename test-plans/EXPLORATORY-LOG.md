@@ -337,6 +337,14 @@ retrospectively because these are exactly the findings the log is for.
 |---|---|---|---|
 | 4 | A run that declared no asserts rendered `ALL PASSED` in green. `overallAssertStatus` is null in exactly the cases worth catching — a typo'd annotations path, an unparseable file, a tag selection that matched nothing — so all of them came out green on the surface an executive reads. | verified | **Fixed and pinned.** Badge now reads `NO ASSERTS DECLARED` on the neutral ramp. Spec: `header-global.spec.ts` — asserts `ALL PASSED` is *absent* and `badge-pass` is not on the element, because the regression that matters is the green one coming back. |
 
+## 2026-11-26 · K1, K2 · spec 002 SC-005, the five questions from the k6 tab alone (T113)
+
+| # | Finding | Confidence | Outcome |
+|---|---|---|---|
+| 1 | All five answers sit in one place each and equal k6's summary: the strip (failed threshold, by how much), the timing table's Waiting column, the grouped Checks table, the counters (dropped iterations), the Login row's parts. | verified | Not a defect. T113 closed (owner: "I check it, you accept"). |
+| 3 | Spec 004's two-tool Compare wrote a throughput change at one decimal per second, so "13.2/min → 13.8/min" changed by "+0.0/s" (perf hub runs #82 and #83, built into one report with PR #59's JAR). It now takes the unit of the larger of the two rates: "+0.6/min". The one-tool Compare's superscript has the same "/s" rule and is left as it was (spec 004, SC-003). | verified | Spec: js-unit/compare-pair-throughput.test.js (red on the old cell). The one-tool superscript: **Not automated.** Reported to the owner. |
+| 2 | A rate threshold's distance reads "rate = 18.18%, 17.18% over (1718%)" (K1, `http_req_failed rate<0.01`): two percentages side by side, one in points and one relative, which a reader can take for a contradiction. | verified | **Not automated.** A wording choice for the owner, reported with PR #59; no change made. |
+
 ---
 
 <!-- Append new sessions above this line, newest first. Format:

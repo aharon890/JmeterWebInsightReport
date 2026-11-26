@@ -25,6 +25,26 @@ This is useful when the baseline JTL is stored in a different location (e.g., a 
 
 When a baseline is loaded, the **Compare** tab button becomes visible in the tab navigation (it is hidden by default when no baseline exists).
 
+### What a baseline can be
+
+A baseline is either of two files, and the report tells them apart by what is in them, never by the file's name:
+
+- **A JMeter results file** (a JTL in JMeter's CSV format), read as it always was.
+- **Run data** of any load tool (`.jsonl` or `.jsonl.gz`, [the common format](18-Run-Data.md)): a JMeter run writes
+  it with `-Jwebinsight.report.rundata=true`, a k6 run with `build-report --from k6 ... --write-run-data`.
+
+A file that is neither gets no Compare tab, and one WARNING line in the log names it and says what a baseline is. A
+baseline works on a report of any tool: `jmeter -g`, the listener, and `build-report --baseline FILE`
+([k6 and other load tools](17-Other-Load-Tools.md)).
+
+### Two runs of one tool, two runs of two tools
+
+- **One tool** (JMeter against JMeter, k6 against k6): the Compare tab below, judged by the regression thresholds, in
+  that tool's words. On a k6 run Recv KB/s reads "not measured" on both sides, since k6 records no bytes per request.
+- **Two tools** (JMeter against k6, either way round): the two tools time a request differently, so their numbers are
+  two readings, not faster or slower. The tab compares them without judging: see
+  [A pair of two tools](#a-pair-of-two-tools).
+
 ![Compare Overview](images/18-compare-overview.png)
 
 ## Comparison Charts
@@ -194,3 +214,30 @@ Auto-generated in the **Notes tab** when baseline comparison exists:
 - New samplers not in baseline
 
 Rebuilt each time you press **Apply** on the Compare tab's threshold controls.
+
+On a pair of two tools the regressed, improved and new lists are left out: see below.
+
+## A pair of two tools
+
+A JMeter run and a k6 run (or a k6 run and a JMeter baseline) are compared as perf hub's Compare page compares them:
+both numbers in every cell, and nothing judged.
+
+- **The title** is the pair's tools, the baseline's first: **JMeter against k6**. Beside it: "Each cell: JMeter → k6,
+  with the difference under it".
+- **Each cell** reads `baseline → this run`, each number written as that run's own Samplers table writes it, with the
+  difference (this run minus the baseline, in the column's unit) in grey under it. A column a tool does not measure
+  reads "not measured" on that tool's side, with no difference (k6's Recv KB/s).
+- **Nothing is judged**: no OK, REGRESSION, NEW or REMOVED badge, no green or red, and no Regression Thresholds
+  controls.
+- **A request only one run has** reads "only in the baseline" or "only in this run" in the Status column, with that
+  run's numbers and a dash on the other side. The status chips filter by them. Request names must match between the
+  JMeter plan and the k6 script for a request to be compared; a name that differs is "only in" one run.
+- **Connection time**: one line under the table says "Connection time: JMeter's times include opening a connection and
+  k6's do not, so a request that opens one (often the first of each session) reads lower under k6."
+- **The charts** overlay both runs as on any pair, the baseline dashed, each series named by its tool: "Login (k6)",
+  "Login (JMeter baseline)".
+- **What Changed** on the Notes tab shows the two runs' Σ Total rows, each named by its tool, then each request's
+  change: its mean and P95, baseline → this run with the difference, or which run it was only in, with its samples
+  and mean.
+
+The comparison is in neither the CI/CD JSON nor the JUnit XML, on any pair.

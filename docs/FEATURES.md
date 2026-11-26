@@ -802,6 +802,18 @@ anywhere:
 ### Setup
 Place a previous run's JTL as `baseline.jtl` in the output directory. The plugin auto-detects it on the next run. Or point `-Jwebinsight.report.baseline` at a JTL anywhere — the way to give `jmeter -g … -o` a baseline, since `-o` takes an empty directory. The Compare tab appears only when a baseline was loaded.
 
+A baseline is a JMeter results file or run data of any tool (`.jsonl` / `.jsonl.gz`), told apart by its content, never
+by its name; a file that is neither gets no Compare tab and one WARNING line. It works on a run of any tool, including
+`build-report --baseline` ([Compare](Tutorial/06-Compare-Tab.md#what-a-baseline-can-be)).
+
+### Two tools
+A pair of two tools (JMeter against k6, either way round) is compared without judging, as perf hub's Compare reads it:
+the table is titled "JMeter against k6", each cell reads "baseline → this run" with the difference in grey under it, a
+request only one run has reads "only in the baseline" or "only in this run", and one line says JMeter's times include
+opening a connection and k6's do not. No badge, no green or red, no threshold controls; the chart series are named by
+their tool; What Changed lists each request's change with no regressed or improved list. A pair of one tool (k6
+against k6) is the Compare tab below, in that tool's words.
+
 ### Comparison Charts
 - **Response Time Comparison** — per-sampler current (solid) vs baseline (dashed) lines, aligned by elapsed time starting at 0. Respects sampler filter and metric selector (Mean/P50/P90/P95/P99/Max).
 - **Throughput Comparison** — same per-sampler current vs baseline layout for throughput.
@@ -885,6 +897,9 @@ The same report, numbers, asserts and Server tab for a run of any load tool, bui
   charts, labelled as k6's and never draggable.
 - **Not measured**: a measure the tool does not record (k6: bytes, latency and connect time per request) reads "not
   measured", never 0, and can't be asserted on.
+- **Compare**: a run of any tool takes a baseline, a JMeter results file or run data of any tool. A k6 run against a
+  k6 run is judged as a JMeter pair is; a JMeter run and a k6 run are compared without judging (see Run Comparison,
+  Two tools).
 
 ## Smart Defaults
 

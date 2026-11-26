@@ -29,7 +29,7 @@ java -jar jmeter-web-insight-report-<v>.jar build-report
 | `--out DIR` | The output folder. It is created if missing. Today's outputs go there: the page, its data file for large runs, the CI/CD JSON, and JUnit when `webinsight.report.junit=true`. |
 | `--annotations FILE` | The test's asserts. Otherwise it is auto-detected in `--out` as on `-g` today. |
 | `--servermetrics FILE` | A server payload, or a CSV collected in-process, exactly as `webinsight.report.servermetrics` on `-g`. |
-| `--baseline FILE` | The Compare tab's baseline, as today (a JTL), on JMeter runs. On any other tool a baseline, given or found in `--out`, is refused with a sentence naming decision 6 (Compare across tools comes later), and the report is built without Compare. |
+| `--baseline FILE` | The Compare tab's baseline, as today (a JTL), on JMeter runs. On any other tool a baseline, given or found in `--out`, is refused with a sentence naming decision 6 (Compare across tools comes later), and the report is built without Compare. *Note, 2026-11-26: spec 004 replaced this: a baseline is a JMeter results file or run data of any tool, read by its content, on a run of any tool.* |
 | `--property key=value`, `--properties FILE` | Any `webinsight.*` setting. `--property` wins over the file, and the file over the defaults. |
 | `--write-run-data` | With `--from k6`, also write the run data beside the report (`<report name>-run-data.jsonl.gz`). |
 

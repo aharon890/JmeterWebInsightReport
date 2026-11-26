@@ -106,7 +106,7 @@ fi
 # So the steps that need no fixture run beside it, and the steps that do run beside each other:
 #
 #   phase 1 (after R01):  R04 fixtures  |  R02 unit tests  |  R03 static checks  |  R06 goldens
-#                         (inside R04: the fixture suite | CMP | CMP31 | the live smoke)
+#                         (inside R04: the fixture suite | CMP | CMP31 | CMPK | CMPX | the live smoke)
 #   phase 2 (after R04):  R07 counts against JMeter  |  R08 run data conformance
 #   phase 3:              R05 browser tests, alone
 #
@@ -216,7 +216,7 @@ step_fixtures() {
     # ${WIR_JOBS:-4}-up), the two comparison fixtures, and the smoke suite (E24, and E30's live
     # server-data flow). The fixture suite holds neither smoke scenario, so a regeneration alone
     # would never run the live flow on exactly the change that needed it.
-    local p_fixtures p_cmp p_cmp31 p_smoke fixture_fail=0 smoke_fail=0 causes=""
+    local p_fixtures p_cmp p_cmp31 p_cmpk p_cmpx p_smoke fixture_fail=0 smoke_fail=0 causes=""
     SKIP_BUILD=1 bash "$TEST_PLANS/scripts/run-all-tests.sh" --suite fixtures \
         > "$STEP_LOGS/R04-fixture-suite.log" 2>&1 &
     p_fixtures=$!
@@ -224,11 +224,18 @@ step_fixtures() {
     p_cmp=$!
     CMP_ID=CMP31 SKIP_BUILD=1 bash "$TEST_PLANS/scripts/generate-cmp-fixture.sh" > "$STEP_LOGS/R04-cmp31.log" 2>&1 &
     p_cmp31=$!
+    # Spec 004: K2 against its own run data (k6 and k6), and K2 against E02's plan (JMeter and k6)
+    CMP_ID=CMPK SKIP_BUILD=1 bash "$TEST_PLANS/scripts/generate-cmp-fixture.sh" > "$STEP_LOGS/R04-cmpk.log" 2>&1 &
+    p_cmpk=$!
+    CMP_ID=CMPX SKIP_BUILD=1 bash "$TEST_PLANS/scripts/generate-cmp-fixture.sh" > "$STEP_LOGS/R04-cmpx.log" 2>&1 &
+    p_cmpx=$!
     run_live_smoke > "$STEP_LOGS/R04-smoke.log" 2>&1 &
     p_smoke=$!
     wait "$p_fixtures" || fixture_fail=1
     wait "$p_cmp"      || fixture_fail=1
     wait "$p_cmp31"    || fixture_fail=1
+    wait "$p_cmpk"     || fixture_fail=1
+    wait "$p_cmpx"     || fixture_fail=1
     wait "$p_smoke"    || smoke_fail=1
 
     # Both are judged, and every cause present is named: a failed smoke used to be the whole R04

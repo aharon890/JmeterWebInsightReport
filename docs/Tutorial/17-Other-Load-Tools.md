@@ -25,7 +25,7 @@ java -jar jmeter-web-insight-report-<version>.jar build-report --from k6 \
 | `--out FOLDER` | Where the report goes; created if missing |
 | `--annotations FILE` | The test's asserts (else `report-annotations.json` in `--out`, as on `jmeter -g`) |
 | `--servermetrics FILE` | Server data: a payload `wir-collect` wrote, or a CSV read in-process |
-| `--baseline FILE` | The Compare tab's baseline, on JMeter runs only |
+| `--baseline FILE` | The Compare tab's baseline: a JMeter results file, or run data of any tool |
 | `--property KEY=VALUE` | Any `webinsight.*` setting; repeatable; wins over `--properties` |
 | `--properties FILE` | A properties file of `webinsight.*` settings |
 
@@ -41,7 +41,16 @@ The outputs and the exit codes are those of `jmeter -g`:
 - With `--run-data`, the file's own test name is the title, and a different `webinsight.report.title` is refused.
 - With `--from k6`, `webinsight.report.title` names the run (else the default title).
 
-**Compare** for runs of other tools, and across tools, comes later. A baseline on a k6 run is left out with a sentence.
+**Compare** works on a run of any tool, and across tools. The baseline is a JMeter results file or run data of any tool
+(keep a k6 run's with `--write-run-data`), told apart by what is in the file. A k6 run against an earlier k6 run gets
+the normal Compare tab, judged, in k6's words. A k6 run against a JMeter run (or the other way round) is compared
+without judging: titled "JMeter against k6", both numbers in every cell, and a line on connection time, since JMeter's
+times include opening a connection and k6's do not. See [Compare](06-Compare-Tab.md#a-pair-of-two-tools).
+
+```bash
+java -jar jmeter-web-insight-report-<version>.jar build-report --from k6 --k6-results results.csv.gz \
+     --k6-summary summary.json --out report/ --baseline previous/web-insight-report-run-data.jsonl.gz
+```
 
 ### With no JMeter installed
 

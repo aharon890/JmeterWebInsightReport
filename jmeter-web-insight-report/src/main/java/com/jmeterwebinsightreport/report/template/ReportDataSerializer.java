@@ -332,8 +332,12 @@ public class ReportDataSerializer {
         return overall;
     }
 
-    /** One compared row's figures, as the Compare table and the Notes tab read them. */
-    private static Map<String, Object> diffOf(ComparisonResult.SamplerDiff diff) {
+    /**
+     * One compared row's figures, as the Compare table and the Notes tab read them. {@code bothSides}: a row of a pair
+     * of two tools carries the baseline's figures beside this run's, since each of its cells shows both numbers (spec
+     * 004); a pair of one tool's row is as it always was, this run's figures and the change.
+     */
+    private static Map<String, Object> diffOf(ComparisonResult.SamplerDiff diff, boolean bothSides) {
         Map<String, Object> d = new LinkedHashMap<>();
         d.put("name", diff.getSamplerName());
         d.put("isNew", diff.isNew());
@@ -379,6 +383,9 @@ public class ReportDataSerializer {
             d.put("deltaRecvKBs", round2((curr.getReceivedBytesPerSec() - base.getReceivedBytesPerSec()) / 1024.0));
             d.put("meanPctChange", round2(diff.getMeanPctChange()));
             d.put("p95PctChange", round2(diff.getP95PctChange()));
+            if (bothSides) {
+                putBaseline(d, base);
+            }
         }
         return d;
     }
@@ -431,25 +438,38 @@ public class ReportDataSerializer {
         // Add sampler diffs
         List<ComparisonResult.SamplerDiff> samplerDiffs = comparison.getSamplerDiffs();
         List<Map<String, Object>> diffs = new ArrayList<>(samplerDiffs.size());
+        boolean twoTools = !comparison.isSameTool();
         for (ComparisonResult.SamplerDiff diff : samplerDiffs) {
-            diffs.add(diffOf(diff));
+            diffs.add(diffOf(diff, twoTools));
         }
         chartData.put("comparisonDiffs", diffs);
         chartData.put("hasComparison", true);
+        // The pair's tools, as the words table names them (spec 004): a pair of one tool is judged as it always was,
+        // a pair of two tools is compared without judging. Beside any run another tool recorded, the fields the
+        // baseline's tool does not record, which read "not measured" on its side.
+        chartData.put("baselineTool", PageWords.forTool(comparison.getBaselineTool()).get("tool"));
+        chartData.put("currentTool", PageWords.forTool(comparison.getCurrentTool()).get("tool"));
+        chartData.put("sameTool", comparison.isSameTool());
+        if (comparison.getBaselineTool() != null || comparison.getCurrentTool() != null) {
+            com.jmeterwebinsightreport.core.model.TestMetadata baseMeta = comparison.getBaseline().getMetadata();
+            chartData.put("baselineNotMeasured", baseMeta == null || baseMeta.getToolName() == null
+                    || baseMeta.getNotMeasured() == null ? new ArrayList<String>() : baseMeta.getNotMeasured());
+        }
         // The two whole runs compared, by the same rule as every row (the Compare tab's Sigma Total
         // row), with the baseline's whole run beside it as its own page carries it, chartData.overall's
         // shape (the Notes tab's What Changed box): what a JMeter user reads off two Aggregate Reports'
         // TOTAL rows (plan v2 items 3-4). This run's is chartData.overall itself.
         ComparisonResult.SamplerDiff wholeRun = comparison.getWholeRunDiff();
         if (wholeRun != null) {
-            Map<String, Object> total = diffOf(wholeRun);
+            Map<String, Object> total = diffOf(wholeRun, twoTools);
             total.put("baselineOverall", overallMapOf(OverallMetrics.of(comparison.getBaseline())));
             chartData.put("comparisonTotal", total);
         }
 
-        // Serialize thresholds for frontend live adjustment
+        // Serialize thresholds for frontend live adjustment: a pair of one tool only, since a pair of two tools is not
+        // judged (spec 004, FR-004)
         ComparisonThresholds th = comparison.getThresholds();
-        if (th != null) {
+        if (th != null && !twoTools) {
             Map<String, Object> thMap = new LinkedHashMap<>();
             thMap.put("p95PctChange", th.getP95PctChangeThreshold());
             thMap.put("errorRateChange", th.getErrorRateChangeThreshold());

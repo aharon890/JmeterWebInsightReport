@@ -735,7 +735,9 @@
 
             <section class="report-section">
                 <div class="table-section-header">
-                    <h2 th:text="|${words['Sampler']} Comparison|">Sampler Comparison</h2>
+                    <!-- A pair of two tools is titled by its tools, with a legend saying what a cell holds (spec 004) -->
+                    <h2 id="comparisonTableTitle" th:text="|${words['Sampler']} Comparison|">Sampler Comparison</h2>
+                    <span class="cmp-legend" id="comparisonLegend" style="display:none;"></span>
                 </div>
                 <!-- The table toolkit's toolbar (spec 002): search, Group by, Columns, Show N hidden, CSV -->
                 <div class="wir-table-toolbar-host" id="comparisonTable-toolbar"></div>
@@ -765,6 +767,8 @@
                         </tbody>
                     </table>
                 </div>
+                <!-- A pair of two tools: how the two tools time a request (spec 004) -->
+                <div class="cmp-notes" id="comparisonNotes" style="display:none;"></div>
             </section>
         </div>
 

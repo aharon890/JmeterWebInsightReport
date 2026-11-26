@@ -245,6 +245,56 @@
       "jmeter": "Statistic",
       "k6": "Statistic",
       "other": "Statistic"
+    },
+    "compareTitle": {
+      "jmeter": "{baseline} against {current}",
+      "k6": "{baseline} against {current}",
+      "other": "{baseline} against {current}"
+    },
+    "compareLegend": {
+      "jmeter": "Each cell: {baseline} → {current}, with the difference under it",
+      "k6": "Each cell: {baseline} → {current}, with the difference under it",
+      "other": "Each cell: {baseline} → {current}, with the difference under it"
+    },
+    "compareConnectionNote": {
+      "jmeter": "Connection time: {includes}'s times include opening a connection and {excludes}'s do not, so a request that opens one (often the first of each session) reads lower under {excludes}.",
+      "k6": "Connection time: {includes}'s times include opening a connection and {excludes}'s do not, so a request that opens one (often the first of each session) reads lower under {excludes}.",
+      "other": "Connection time: {includes}'s times include opening a connection and {excludes}'s do not, so a request that opens one (often the first of each session) reads lower under {excludes}."
+    },
+    "compareOnlyInBaseline": {
+      "jmeter": "only in the baseline",
+      "k6": "only in the baseline",
+      "other": "only in the baseline"
+    },
+    "compareOnlyInThisRun": {
+      "jmeter": "only in this run",
+      "k6": "only in this run",
+      "other": "only in this run"
+    },
+    "compareOneSided": {
+      "jmeter": "{samples} samples, mean {mean} ms",
+      "k6": "{samples} samples, mean {mean} ms",
+      "other": "{samples} samples, mean {mean} ms"
+    },
+    "compareOneSidedOne": {
+      "jmeter": "1 sample, mean {mean} ms",
+      "k6": "1 sample, mean {mean} ms",
+      "other": "1 sample, mean {mean} ms"
+    },
+    "compareRequestChange": {
+      "jmeter": "mean {meanBase} → {meanCurrent} ms ({meanChange}), P95 {p95Base} → {p95Current} ms ({p95Change})",
+      "k6": "mean {meanBase} → {meanCurrent} ms ({meanChange}), P95 {p95Base} → {p95Current} ms ({p95Change})",
+      "other": "mean {meanBase} → {meanCurrent} ms ({meanChange}), P95 {p95Base} → {p95Current} ms ({p95Change})"
+    },
+    "compareBaselineSeries": {
+      "jmeter": "{baseline} baseline",
+      "k6": "{baseline} baseline",
+      "other": "{baseline} baseline"
+    },
+    "whatChangedEach": {
+      "jmeter": "Each sampler, {baseline} → {current}:",
+      "k6": "Each request, {baseline} → {current}:",
+      "other": "Each request, {baseline} → {current}:"
     }
   }
 }

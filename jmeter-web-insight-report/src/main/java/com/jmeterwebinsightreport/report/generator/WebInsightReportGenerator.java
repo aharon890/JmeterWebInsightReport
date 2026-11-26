@@ -1,9 +1,9 @@
 package com.jmeterwebinsightreport.report.generator;
 
+import com.jmeterwebinsightreport.core.comparison.BaselineReader;
 import com.jmeterwebinsightreport.core.comparison.ComparisonResult;
 import com.jmeterwebinsightreport.core.comparison.ComparisonThresholds;
 import com.jmeterwebinsightreport.core.model.ReportData;
-import com.jmeterwebinsightreport.core.parser.JtlParser;
 import com.jmeterwebinsightreport.core.util.ArtifactPublication;
 import com.jmeterwebinsightreport.core.util.PublishLock;
 import com.jmeterwebinsightreport.core.assertion.SamplerVerdicts;
@@ -191,14 +191,17 @@ public class WebInsightReportGenerator {
                     configuration.getBaselineJtlFile().getAbsolutePath());
         }
         if (configuration.getBaselineJtlFile() != null && configuration.getBaselineJtlFile().exists()) {
+            // A JMeter results file or run data of any tool, read by what its first bytes are (spec 004)
             try {
-                JtlParser parser = new JtlParser();
-                ReportData baselineData = parser.parse(configuration.getBaselineJtlFile(), "Baseline");
+                ReportData baselineData = BaselineReader.read(configuration.getBaselineJtlFile());
                 ComparisonThresholds thresholds = buildComparisonThresholds(annotations);
                 comparison = new ComparisonResult(baselineData, reportData, thresholds);
                 log.info("Baseline comparison loaded from: {}", configuration.getBaselineJtlFile());
+            } catch (BaselineReader.NotABaseline e) {
+                log.warn("Baseline not read, comparison skipped: {}", e.getMessage());
             } catch (Exception e) {
-                log.warn("Failed to load baseline JTL: {}", e.getMessage());
+                log.warn("Failed to load baseline {}: {}", configuration.getBaselineJtlFile().getName(),
+                        e.getMessage());
             }
         }
 
