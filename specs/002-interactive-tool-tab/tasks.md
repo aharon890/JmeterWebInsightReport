@@ -245,7 +245,14 @@ fixture.
   the Summary cards, the Notes tab and every row of the Samplers, Error Summary, Error Details, Compare, Asserts and
   Server board tables identical, and the rows shown in the same order. One table is gone, as US6 says: the Errors
   tab's grouped view (now Error Details' Group by). Goldens, R07 and PreChangeBaselineTest green in the gates.
-- [ ] T113 SC-005: the owner's walk-through on K1, K2 and E02.
+- [X] T113 SC-005: the owner's walk-through on K1, K2 and E02.
+  Closed 2026-11-26: the owner chose "I check it, you accept". Claude answered the five questions from the k6 tab alone
+  (K1, K2 built with the released 4.7.0 JAR; the tab's text read in Chromium), each from one place, each equal to k6's
+  own summary: the failed threshold and by how much (K2 strip: Login p(95)<=600, 779.72 ms, 179.72 ms over (30%));
+  the request that waits longest (K2 timing table, Waiting: Restore Stock (cleanup) 532.87 ms; of the repeated ones,
+  Login 182.63); the failed check and its group (K1 Checks, grouped: "server error is 200" in Complete Checkout Flow,
+  0 of 12); dropped iterations (K2 counters: 0); Login connecting or waiting (K2 Login row: waiting 182.63 of 182.78
+  ms, connecting 3.01). One finding logged in EXPLORATORY-LOG.md (a rate threshold's "17.18% over (1718%)").
   Waiting for the owner (2026-11-26): five questions from the k6 tab alone, on 4.6.0.
 - [X] T114 Release 4.6.0 with the release tier (`./test-plans/scripts/run-release.sh`).
   Released 2026-11-26: https://github.com/aharon890/JmeterWebInsightReport/releases/tag/v4.6.0 (tag on 48ce3d2, PR #53).
