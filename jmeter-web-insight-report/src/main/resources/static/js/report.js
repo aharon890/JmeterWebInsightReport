@@ -4707,6 +4707,18 @@ var DETAIL_CHART_RENDERERS = {
     }
 };
 
+/**
+ * A point with no neighbour drawn as a dot: the line breaks across idle seconds (C23), and a line with no symbol draws
+ * nothing for a point that stands alone. A request seen a few times in a short run (K2's Login: 6 in 36 s) had an
+ * empty response time and timing parts chart. A stretch of joined points stays a plain line.
+ */
+function markLonePoints(points) {
+    var has = function (i) { return i >= 0 && i < points.length && points[i] && points[i][1] != null; };
+    return points.map(function (p, i) {
+        return has(i) && !has(i - 1) && !has(i + 1) ? { value: p, symbol: 'circle', symbolSize: 5 } : p;
+    });
+}
+
 /** Generic renderer for registry-based detail charts */
 function renderDetailTimeSeries(samplerName, containerId, def) {
     var chartDom = document.getElementById(containerId);
@@ -4737,7 +4749,7 @@ function renderDetailTimeSeries(samplerName, containerId, def) {
         var s = {
             name: m.name || samplerName,
             type: 'line',
-            data: zipTimeSeries(ts, vals, aggOptsForMetric(m.key, sd.samples)),
+            data: markLonePoints(zipTimeSeries(ts, vals, aggOptsForMetric(m.key, sd.samples))),
             smooth: true,
             symbol: 'none',
             lineStyle: { width: lineThickness },

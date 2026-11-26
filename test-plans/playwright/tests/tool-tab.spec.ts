@@ -350,6 +350,8 @@ async function slotOption(page: Page, key: string) {
       lines: (o.series || []).flatMap((s: any) => ((s.markLine && s.markLine.data) || []).map((d: any) => ({
         y: d.yAxis, label: (d.label && d.label.formatter) || d.name }))),
       graphics: JSON.stringify(o.graphic || []),
+      // the points drawn as a dot: a second with a request and none on either side
+      dots: (o.series || []).map((s: any) => (s.data || []).filter((d: any) => d && !Array.isArray(d) && d.symbol === 'circle').length),
     };
   }, key);
 }
@@ -363,6 +365,9 @@ test.describe('Over time: the timing parts and k6\'s limits [K2, E02]', () => {
     expect(keys, 'a k6 run opens the parts by default').toContain('timingParts');
     const parts = await slotOption(page, 'timingParts');
     expect(parts!.series).toEqual(['Blocked', 'Connecting', 'TLS', 'Sending', 'Waiting', 'Receiving']);
+    // Login ran 6 times in 36 s, each second alone: a line with no symbol drew nothing, so each is a dot
+    expect(parts!.dots[4], "Waiting's lone seconds are dots").toBeGreaterThan(0);
+    expect((await slotOption(page, 'responseTime'))!.dots[0], "and the response time's").toBeGreaterThan(0);
     // at the report's own time buckets: one value per second, as every other series
     const aligned = await page.evaluate(() => {
       const s = (window as any).globalChartData.perSamplerSeries.Login;
