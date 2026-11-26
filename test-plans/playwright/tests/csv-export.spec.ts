@@ -112,31 +112,23 @@ test.describe('CSV Export — Sampler Statistics Table', () => {
     expect(rowsAfter).toBe(rowsBefore - 1);
   });
 
-  test('[C/R] CSV includes data even after deselecting sampler in filter', async ({ page }) => {
+  test('[C/R] a request unticked in the filter bar is left out of the CSV (FR-066, FR-067)', async ({ page }) => {
     await loadClean(page, 'E02');
     await switchTab(page, 'samplers');
 
-    // Download CSV before filtering
     const csvBtn = page.locator('#samplerTable-csv');
     const contentBefore = await downloadCsv(page, csvBtn);
     const rowsBefore = parseCsv(contentBefore).slice(1).length;
 
-    // Deselect first sampler
-    const labels = page.locator('#samplerFilterList label');
-    if (await labels.count() > 0) {
-      await labels.first().click();
-      await page.waitForTimeout(300);
-    }
+    // Untick the first request (the first label is the Σ Total, the whole run's own)
+    const name = (await page.locator('#samplerTable tbody tr[data-sampler]:not(.transaction-child):not(.transaction-parent)')
+      .first().getAttribute('data-sampler'))!;
+    await page.locator(`#samplerFilterList label[data-sampler-name="${name.toLowerCase()}"] .sampler-name`).click();
+    await page.waitForTimeout(400);
 
-    // Download CSV — deselected sampler should STILL be in export
     const contentAfter = await downloadCsv(page, csvBtn);
-    const rowsAfter = parseCsv(contentAfter).slice(1).length;
-    expect(rowsAfter).toBe(rowsBefore);
-
-    // Re-check sampler
-    if (await labels.count() > 0) {
-      await labels.first().click();
-    }
+    expect(parseCsv(contentAfter).slice(1).length).toBe(rowsBefore - 1);
+    expect(contentAfter).not.toContain(`"${name}"`);
   });
 
   test('[R] CSV data values are non-empty (not all zeros)', async ({ page }) => {

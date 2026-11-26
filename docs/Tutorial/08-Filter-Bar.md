@@ -1,7 +1,9 @@
 # Filter Bar
 
-A persistent control bar below the tabs that affects the charts on every tab. It is hidden on the
-Server tab, whose charts it does not affect.
+A persistent control bar below the tabs that affects the charts and the tables on every tab. It is hidden
+on the Server tab, whose charts and board it does not affect. On a k6 run's k6 tab only its Samplers row
+shows: the request ticks narrow that tab's sections, and the chart controls and time range narrow no k6
+number.
 
 ![Filter Bar](images/06-filter-bar.png)
 
@@ -139,8 +141,18 @@ Presets are stored in localStorage under the key `wir_filterPresets`.
 - **Uncheck** a sampler → its data disappears from:
   - The charts on the Summary, Timeline and Compare tabs (line removed), along with the
     threshold lines of the rules about it
-  - Error tab charts (errors hidden; the two error tables keep every row)
-- The Samplers table and the header cards are not filtered: they always show every sampler
+  - Error tab charts (errors hidden)
+  - Every table (spec 002): its rows leave the Samplers table, both Errors tables, the Compare table, the
+    Asserts tab's rules on that one sampler, and the k6 tab's thresholds, timings, checks and groups.
+    The CSV of a table leaves them out too
+- What belongs to no single sampler stays: the Σ Total row, a whole-run rule or threshold, the header
+  cards and the k6 counters
+- While **Show transaction details** is off, a request inside a transaction follows its transaction's
+  checkbox, as its row stands for it there (the Errors charts' rule)
+- A sampler the bar unchecks **by default** (a utility sampler, or one with no samples) still shows in the
+  tables, as JMeter's Aggregate Report lists every sampler; unchecking it keeps it off the charts
+- A sampler only the baseline ran (a REMOVED row on the Compare tab) has no checkbox, so it stays
+- The checkboxes are one choice for the page: set on one tab, they hold on the next
 - **Re-check** → everything restored
 
 ### All / None Buttons

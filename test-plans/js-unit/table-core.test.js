@@ -76,7 +76,7 @@ test('a table\'s own filters AND with the search and the chips (the Asserts tab\
 test('the filter bar ticks narrow the rows, and a row tied to no request stays', () => {
     const withWholeRun = rows.concat([{ name: null, status: 'PASS', group: 'http_req_failed' }]);
     const s = Object.assign({}, spec, { key: (r) => r.name || 'whole run' });
-    const v = T.view(withWholeRun, s, { names: ['Login', 'Pay'] });
+    const v = T.view(withWholeRun, s, { names: (n) => n === 'Login' || n === 'Pay' });
     assert.deepStrictEqual(names(v), ['Login', 'Pay', null]);
 });
 

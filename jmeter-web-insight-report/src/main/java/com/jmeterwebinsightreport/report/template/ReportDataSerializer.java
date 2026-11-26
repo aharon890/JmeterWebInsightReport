@@ -224,7 +224,16 @@ public class ReportDataSerializer {
         return v;
     }
 
-    private Map<String, Map<String, List<Object>>> buildPerSamplerSeries(List<TimeSeriesBucket> timeSeries) {
+    /** A run another tool recorded, with its own measures: its timing parts go over time (spec 002, FR-040). Null for a
+     *  JMeter run, whose chart data does not move. */
+    private static com.jmeterwebinsightreport.core.model.ToolMeasures toolRunMeasures(ReportData reportData) {
+        com.jmeterwebinsightreport.core.model.TestMetadata meta = reportData.getMetadata();
+        com.jmeterwebinsightreport.core.model.ToolMeasures m = reportData.getToolMeasures();
+        return meta != null && meta.getToolName() != null && m != null && !m.isEmpty() ? m : null;
+    }
+
+    private Map<String, Map<String, List<Object>>> buildPerSamplerSeries(List<TimeSeriesBucket> timeSeries,
+            com.jmeterwebinsightreport.core.model.ToolMeasures tool) {
         Set<String> allSamplerNames = new LinkedHashSet<>();
         for (TimeSeriesBucket bucket : timeSeries) {
             allSamplerNames.addAll(bucket.getPerSamplerData().keySet());
@@ -256,6 +265,18 @@ public class ReportDataSerializer {
             Map<String, List<Object>> series = new LinkedHashMap<>(numMetrics);
             for (int m = 0; m < numMetrics; m++) {
                 series.put(metricKeys[m], Arrays.asList(arrays[m]));
+            }
+            /* the six timing parts at the same buckets, each the mean over the requests that ended in that second */
+            if (tool != null && tool.hasPartsFor(name)) {
+                List<String> parts = com.jmeterwebinsightreport.core.model.ToolMeasures.TIMING_PARTS;
+                for (int p = 0; p < parts.size(); p++) {
+                    Object[] values = new Object[numBuckets];
+                    for (int b = 0; b < numBuckets; b++) {
+                        Double mean = tool.meanPart(name, p, timeSeries.get(b).getTimestamp().toEpochMilli());
+                        values[b] = mean == null ? null : round2(mean);
+                    }
+                    series.put(parts.get(p), Arrays.asList(values));
+                }
             }
             result.put(name, series);
         }
@@ -402,7 +423,7 @@ public class ReportDataSerializer {
             baselineChart.put("meanResponseTimes", baseMeanRT);
             baselineChart.put("throughputs", baseThroughputs);
             baselineChart.put("errorRates", baseErrorRates);
-            baselineChart.put("perSamplerSeries", buildPerSamplerSeries(baseTs));
+            baselineChart.put("perSamplerSeries", buildPerSamplerSeries(baseTs, null));   // a baseline draws no parts
             baselineChart.put("totalSeries", buildTotalSeries(baseTs));
             chartData.put("baseline", baselineChart);
         }
@@ -624,7 +645,7 @@ public class ReportDataSerializer {
         chartData.put("apdexThreshold", reportData.getApdexThreshold());
 
         // Per-sampler time-series for individual chart lines
-        chartData.put("perSamplerSeries", buildPerSamplerSeries(timeSeries));
+        chartData.put("perSamplerSeries", buildPerSamplerSeries(timeSeries, toolRunMeasures(reportData)));
 
         // Collect sampler names for histogram
         Set<String> allSamplerNames = new LinkedHashSet<>();

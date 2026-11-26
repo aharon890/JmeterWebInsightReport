@@ -321,4 +321,27 @@ class ToolMeasuresTest {
         }
         return n;
     }
+
+    @Test
+    void eachRequestsPartsAreAveragedPerSecondItEndedAsTheReportsTimeBucketsKeyASample() {
+        // FR-040: the parts over time at the report's own buckets, a second each, keyed by the second a request
+        // ended (start + elapsed, LiveStatisticsEngine.endOf), so its point sits where its response time does
+        ToolMeasures m = new ToolMeasures(new ToolRecords());
+        RunSample a = request("Login", 2.0, 100.0);           // starts 359.384 s, ends 359.484: second 359
+        RunSample b = request("Login", 4.0, 200.0);           // the same start, ends 359.584: second 359
+        RunSample c = request("Login", 6.0, 900.0);           // ends 360.284: second 360
+        m.add(a);
+        m.add(b);
+        m.add(c);
+        long second = 1_795_452_359_000L;
+        int blocked = ToolMeasures.TIMING_PARTS.indexOf("blocked");
+        int waiting = ToolMeasures.TIMING_PARTS.indexOf("waiting");
+        assertEquals(3.0, m.meanPart("Login", blocked, second), 1e-9);
+        assertEquals(150.0, m.meanPart("Login", waiting, second), 1e-9);
+        assertEquals(900.0, m.meanPart("Login", waiting, second + 1000), 1e-9);
+        assertNull(m.meanPart("Login", waiting, second + 2000), "a second with no request has no point");
+        assertNull(m.meanPart("Browse", waiting, second), "a name with no parts has none");
+        assertTrue(m.hasPartsFor("Login"));
+        assertFalse(m.hasPartsFor("Browse"));
+    }
 }

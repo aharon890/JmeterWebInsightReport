@@ -1,11 +1,13 @@
 package com.jmeterwebinsightreport.core.model;
 
 import com.jmeterwebinsightreport.core.rundata.RunSample;
+import com.jmeterwebinsightreport.core.stats.LiveStatisticsEngine;
 import com.jmeterwebinsightreport.core.rundata.ToolRecords;
 import com.jmeterwebinsightreport.core.stats.ResponseTimeDistribution;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -89,6 +91,13 @@ public final class ToolMeasures {
     private final Map<String, Map<String, Trend>> timingsByRequest = new LinkedHashMap<>();
     private final Map<String, Trend> durationsByRequest = new LinkedHashMap<>();
 
+    /**
+     * Each request name's timing parts per second (spec 002, FR-040): for the second a request ended, as the report's
+     * time buckets key a sample (LiveStatisticsEngine.endOf), each part's sum in hundredths of a ms and its count, two
+     * longs a part in TIMING_PARTS' order.
+     */
+    private final Map<String, Map<Long, long[]>> partsBySecond = new LinkedHashMap<>();
+
     public ToolMeasures(ToolRecords records) {
         this.records = records == null ? new ToolRecords() : records;
     }
@@ -109,10 +118,16 @@ public final class ToolMeasures {
             return;
         }
         Map<String, Trend> parts = timingsByRequest.computeIfAbsent(s.name, k -> new LinkedHashMap<>());
-        for (String part : TIMING_PARTS) {
-            Double v = s.timings.get(part);
+        long second = Math.floorDiv(LiveStatisticsEngine.endOf(s.start, s.elapsed == null ? 0 : s.elapsed), 1000L) * 1000L;
+        long[] inSecond = partsBySecond.computeIfAbsent(s.name, k -> new HashMap<>())
+                .computeIfAbsent(second, k -> new long[TIMING_PARTS.size() * 2]);
+        for (int i = 0; i < TIMING_PARTS.size(); i++) {
+            Double v = s.timings.get(TIMING_PARTS.get(i));
             if (v != null) {
-                parts.computeIfAbsent(part, k -> new Trend()).add(RunSample.hundredths(v));
+                long h = RunSample.hundredths(v);
+                parts.computeIfAbsent(TIMING_PARTS.get(i), k -> new Trend()).add(h);
+                inSecond[2 * i] += h;
+                inSecond[2 * i + 1]++;
             }
         }
         // k6's request duration, as its tracer defines it: sending + waiting + receiving (spec 002, FR-010)
@@ -127,6 +142,24 @@ public final class ToolMeasures {
 
     public ToolRecords records() {
         return records;
+    }
+
+    /** Whether a request name carries timing parts over time. */
+    public boolean hasPartsFor(String name) {
+        return partsBySecond.containsKey(name);
+    }
+
+    /**
+     * A request's mean timing part, in ms, over the requests that ended in the second starting at {@code second} (ms
+     * since the epoch, a whole second), or null when none did. {@code part} is an index into {@link #TIMING_PARTS}.
+     */
+    public Double meanPart(String name, int part, long second) {
+        Map<Long, long[]> seconds = partsBySecond.get(name);
+        long[] in = seconds == null ? null : seconds.get(second);
+        if (in == null || in[2 * part + 1] == 0) {
+            return null;
+        }
+        return in[2 * part] / (double) in[2 * part + 1] / 100.0;
     }
 
     /** Each group's wall time over its passes, by group name, in the order first seen. */

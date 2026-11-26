@@ -226,7 +226,10 @@ test.describe('The k6 tab, organised and interactive [K2]', () => {
   });
 
   test('the first screen names the failed threshold, what k6 measured and how far past its limit', async ({ page }) => {
-    await expect(page.locator('#toolStrip')).toHaveText('Thresholds: 1 of 50 failed: Login p(95)<=600 · Checks: none ran');
+    // SC-001 on the strip itself: the failed threshold, what k6 measured and how far past its limit (spec 002, stage 8:
+    // the filter bar shows on this tab too, and the strip keeps the answer on the first screen whatever its height)
+    await expect(page.locator('#toolStrip')).toHaveText(
+      'Thresholds: 1 of 50 failed: Login p(95)<=600 (p(95) = 779.72 ms, 179.72 ms over (30%)) · Checks: none ran');
     await expect(page.locator('#toolThresholdsHost h2')).toHaveText('Thresholds (49 of 50 passed)');
     const chips = page.locator('.wir-table-toolbar[data-table="toolThresholds"] .wir-status-chip');
     await expect(chips).toHaveText(['failed 1', 'passed 49']);
@@ -241,8 +244,9 @@ test.describe('The k6 tab, organised and interactive [K2]', () => {
     await expect(login).toContainText('p(95)<=600');
     await expect(login).toContainText('p(95) = 779.72 ms');
     await expect(login).toContainText('179.72 ms over (30%)');
-    // SC-001: no scrolling
-    const box = await login.boundingBox();
+    // SC-001: no scrolling, the filter bar shown above it
+    await expect(page.locator('#filterBar')).toBeVisible();
+    const box = await page.locator('#toolStrip').boundingBox();
     expect(box!.y + box!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
     // what k6 measured is k6's own number (SC-006)
     expect(k2Summary().metrics['http_req_duration{name:Login}'].values['p(95)'].toFixed(2)).toBe('779.72');
@@ -321,3 +325,75 @@ for (const id of REQUIRED_FIXTURES.filter((f) => !['K1', 'K2'].includes(f))) {
     await expect(page.locator('#tab-tool')).toHaveCount(0);
   });
 }
+
+/*
+ * Stage 9 (US5, FR-040, FR-041): a k6 request's detail panel charts its six timing parts over time, at the report's
+ * time buckets, and a k6 threshold on that request's duration is a line at its limit on its response time chart (and
+ * its percentiles chart), labelled as k6's threshold: not an assert, and not draggable. A JMeter run carries nothing new.
+ */
+async function openDetail(page: Page, name: string) {
+  await switchTab(page, 'samplers');
+  await page.click('#samplerTable-expand-all');
+  await page.locator(`#samplerTable tbody tr[data-sampler="${name}"] .sampler-name-text`).click();
+  await expect(page.locator('#samplerTable tr.sampler-detail-row')).toHaveCount(1);
+  await page.waitForTimeout(300);   // the slots' charts are drawn after the row
+}
+
+async function slotOption(page: Page, key: string) {
+  return page.evaluate((k) => {
+    const slot = document.querySelector(`.sampler-detail-row .detail-chart-slot[data-chart-key="${k}"] .detail-chart-container`);
+    const chart = slot ? (window as any).echarts.getInstanceByDom(slot) : null;
+    if (!chart) return null;
+    const o = chart.getOption();
+    return {
+      series: (o.series || []).map((s: any) => s.name),
+      lines: (o.series || []).flatMap((s: any) => ((s.markLine && s.markLine.data) || []).map((d: any) => ({
+        y: d.yAxis, label: (d.label && d.label.formatter) || d.name }))),
+      graphics: JSON.stringify(o.graphic || []),
+    };
+  }, key);
+}
+
+test.describe('Over time: the timing parts and k6\'s limits [K2, E02]', () => {
+  test('Login\'s detail panel charts the six timing parts over time', async ({ page }) => {
+    await loadClean(page, 'K2');
+    await openDetail(page, 'Login');
+    const keys = await page.locator('.sampler-detail-row .detail-chart-slot').evaluateAll((s: HTMLElement[]) =>
+      s.map(e => e.getAttribute('data-chart-key')));
+    expect(keys, 'a k6 run opens the parts by default').toContain('timingParts');
+    const parts = await slotOption(page, 'timingParts');
+    expect(parts!.series).toEqual(['Blocked', 'Connecting', 'TLS', 'Sending', 'Waiting', 'Receiving']);
+    // at the report's own time buckets: one value per second, as every other series
+    const aligned = await page.evaluate(() => {
+      const s = (window as any).globalChartData.perSamplerSeries.Login;
+      return s.waiting.length === s.responseTime.length && s.waiting.some((v: any) => typeof v === 'number');
+    });
+    expect(aligned).toBe(true);
+  });
+
+  test('k6\'s p(95)<=600 on Login is a line at 600 on its response time and percentiles charts, k6\'s and not draggable', async ({ page }) => {
+    await loadClean(page, 'K2');
+    await openDetail(page, 'Login');
+    const rt = await slotOption(page, 'responseTime');
+    expect(rt!.lines).toEqual([{ y: 600, label: 'k6 threshold: p(95)<=600' }]);
+    expect(rt!.graphics, 'no drag handle: the file\'s threshold is k6\'s').not.toContain('wir-handle');
+    await page.locator('.sampler-detail-row .detail-chart-slot').nth(0).locator('select.detail-chart-select')
+      .selectOption('percentiles');
+    await page.waitForTimeout(300);
+    expect((await slotOption(page, 'percentiles'))!.lines).toEqual([{ y: 600, label: 'k6 threshold: p(95)<=600' }]);
+  });
+
+  test('a JMeter run carries no timing parts and offers no parts chart', async ({ page }) => {
+    await loadClean(page, 'E02');
+    const keys = await page.evaluate(() => {
+      const s = (window as any).globalChartData.perSamplerSeries;
+      return Object.keys(s[Object.keys(s)[0]]);
+    });
+    expect(keys).not.toContain('waiting');
+    const name = await page.locator('#samplerTable tbody tr[data-sampler]:not(.transaction-child)').first().getAttribute('data-sampler');
+    await openDetail(page, name!);
+    const options = await page.locator('.sampler-detail-row select.detail-chart-select').first()
+      .locator('option').evaluateAll((os: HTMLOptionElement[]) => os.map(o => o.value));
+    expect(options).not.toContain('timingParts');
+  });
+});

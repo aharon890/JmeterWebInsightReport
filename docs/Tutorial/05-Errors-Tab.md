@@ -186,8 +186,10 @@ group open. A row's expanded detail goes with its row when the search or a close
 
 The error charts respect the sampler filter:
 - **Uncheck a sampler** → its errors disappear from all 3 charts (from the breakdown charts only
-  when the run kept every error's details — see [the first 500 errors](#error-timeline-scatter-plot))
-- While **Σ Total** is checked the filter does not apply: all 3 charts show every sampler's errors
+  when the run kept every error's details — see [the first 500 errors](#error-timeline-scatter-plot)),
+  and its rows leave both error tables (spec 002)
+- While **Σ Total** is checked the filter does not apply to the charts: all 3 show every sampler's errors.
+  The tables still follow the checkboxes
 - **Re-check** → errors reappear
 - This allows focusing on specific request types when investigating failures
 

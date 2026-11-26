@@ -82,7 +82,7 @@ first screen answers "did k6 see a problem, and where":
 
 | Section | What it holds |
 |---|---|
-| Strip | One line: how many thresholds and checks failed out of how many, naming the failed ones (`Thresholds: 1 of 50 failed: Login p(95)<=600`). |
+| Strip | One line: how many thresholds and checks failed out of how many, naming the failed ones with what k6 measured and how far past the limit (`Thresholds: 1 of 50 failed: Login p(95)<=600 (p(95) = 779.72 ms, 179.72 ms over (30%))`). |
 | Counters | `iterations`, `dropped_iterations` (0 when k6 dropped none: k6 writes it only when it drops one) and `vus_max` (the VUs k6 allocated) from `summary.json`; "not measured" without it. Max VUs on the Summary tab is the most VUs active at once, k6's `vus`. |
 | Thresholds | Every threshold as k6 judged it, grouped by metric as k6's summary groups them (or by request, condition or result). Each row gives the metric with its tags, the expression, the value k6 measured for the statistic the expression names, in k6's units (`p(95) = 779.72 ms`, a rate as a percentage), and, when it failed, how far past its limit (`179.72 ms over (30%)`). A group holding a failure opens; the others show their counts. Thresholds that hold for any run (`max>=0`, `count>=0`, `rate>=0`, `value>=0`, which some tests add only so that k6 keeps a request's numbers) fold into one line per group, still counted; a failed one never folds. A request's name opens its row on the Requests tab, with its detail panel. |
 | HTTP timings | One row per request, under its group as on the Requests tab, with an "every request" row first: the six parts (blocked, connecting, TLS, sending, waiting, receiving) and k6's request duration (sending + waiting + receiving), at the statistic chosen (avg by default; min, med, max, p(90), p(95), and p(99) when the run's summary lists it), and a bar of the average request from start to end: blocked, with connecting and TLS inside it on a new connection, then sending, waiting and receiving. A row opens to every statistic of every part. |
@@ -92,6 +92,15 @@ first screen answers "did k6 see a problem, and where":
 Every section is a table with the report's one toolbar (search, status chips, Group by, Expand all and Collapse all,
 Columns, × and "Show N hidden", CSV), as every table of the report has. One search narrows every section at once. The
 grouping, the statistic and the rest of the view are remembered for the report in this browser.
+
+A request's detail panel on the Requests tab charts its six timing parts over the run, at the report's time buckets,
+and draws each k6 threshold on its duration as a line at the limit on its response time and percentiles charts,
+labelled as k6's (`k6 threshold: p(95)<=600`), never draggable: it is not an assert.
+
+The filter bar's request checkboxes show above the tab, its Samplers row only (its chart controls and time range
+narrow no k6 number). Untick a request and its thresholds, timing, check and group rows leave the tab, as its rows
+leave the Requests and Errors tabs; the whole-run thresholds, the "every request" row and the counters stay. The
+checkboxes are one choice for the report: set here, they hold on every tab. See [the Filter Bar](08-Filter-Bar.md).
 
 A percentile is computed the Aggregate Report's way, the value some request really had, where k6's own summary
 interpolates between two values, so the two can differ by less than one step. A threshold's measured value is k6's own,

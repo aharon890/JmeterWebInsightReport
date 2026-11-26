@@ -391,7 +391,7 @@ test.describe('Sampler Filter CRUD', () => {
     expect(errors).toEqual([]);
   });
 
-  test('[U] Uncheck sampler: Samplers tab row hidden via search filter', async ({ page }) => {
+  test('[U] Uncheck sampler: its Samplers tab row leaves the table, and comes back when ticked (FR-067)', async ({ page }) => {
     await loadClean(page, 'E02');
 
     // Get the name of the first non-Total sampler via the label's sampler-name span
@@ -413,14 +413,15 @@ test.describe('Sampler Filter CRUD', () => {
     const row = page.locator(`#samplerTable tbody tr[data-sampler="${firstSamplerName}"]`);
     await expect(row).toBeVisible();
 
-    // Use the search to filter (this tests search filtering, since sampler filter only affects charts)
-    await page.fill('#samplerSearch', 'ZZZNOTFOUND');
-    await page.waitForTimeout(300);
+    // The filter bar's tick narrows the table as it narrows the charts (spec 002, FR-067)
+    const chip = page.locator(`#samplerFilterList label[data-sampler-name="${firstSamplerName!.toLowerCase()}"] .sampler-name`);
+    await chip.click();
+    await page.waitForTimeout(400);
     await expect(row).toBeHidden();
 
-    // Clear search to restore
-    await page.fill('#samplerSearch', '');
-    await page.waitForTimeout(300);
+    // Ticked again, it is back
+    await chip.click();
+    await page.waitForTimeout(400);
     await expect(row).toBeVisible();
   });
 });
