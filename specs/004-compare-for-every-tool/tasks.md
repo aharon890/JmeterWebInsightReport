@@ -110,3 +110,9 @@ code before the change (red), then passing after it (green). A deviation from th
    its cell now (`pairRateDelta`, `js-unit/compare-pair-throughput.test.js`, red first).
 7. On a two-tool pair the table's columns take their cells' widths (`table-layout: auto`) and the wrapper scrolls
    sideways, as perf hub's table does: "baseline → current" did not fit the fixed columns of a one-tool table.
+
+## SC-004 on perf hub (2026-11-27)
+
+Released in 4.8.0 (PR #60) and checked on perf hub once its spec 012 let a run name an earlier run as its baseline
+(perf hub PRs #41 and #42), petstore-checkout SMOKE at the default light load: k6 run #85 with `previous` (k6 #83)
+got a k6-against-k6 Compare tab, and k6 run #87 with `run:86` (JMeter #86) got "JMeter against k6". SC-004 holds.
