@@ -7,6 +7,7 @@ import com.jmeterwebinsightreport.core.assertion.GateSummary;
 import com.jmeterwebinsightreport.core.assertion.NotJudged;
 import com.jmeterwebinsightreport.core.assertion.Predicate;
 import com.jmeterwebinsightreport.core.assertion.RuleResult;
+import com.jmeterwebinsightreport.core.assertion.SamplerWords;
 import com.jmeterwebinsightreport.core.servermetrics.collect.Coverage;
 import com.jmeterwebinsightreport.core.servermetrics.collect.ServerMetricsPayload;
 
@@ -81,6 +82,19 @@ public final class ServerKpiEvaluator {
 
     /** The metric a {@code requiresLoad} / {@code divideBy} rule must be about. */
     static final String LOAD_METRIC = "throughput";
+
+    /** The run's word for a sampler, in the one refusal here that names one (contracts/page-words.md). */
+    private final SamplerWords words;
+
+    /** An evaluator whose sentences say "sampler", as a JMeter run's do. */
+    public ServerKpiEvaluator() {
+        this(SamplerWords.JMETER);
+    }
+
+    /** An evaluator whose sentences name a sampler in the run's own word: "request" on a k6 run. */
+    public ServerKpiEvaluator(SamplerWords words) {
+        this.words = words == null ? SamplerWords.JMETER : words;
+    }
 
     /** Evaluate every KPI against the payload. An absent payload judges nothing and returns an empty list. */
     public List<KpiResult> evaluate(ServerMetricsConfig config, ServerMetricsPayload payload,
@@ -218,8 +232,8 @@ public final class ServerKpiEvaluator {
      * first reason either stops this KPI, or {@code null}. One method for {@link #evaluate} and
      * {@link #referenceRefusals}, so step 1 and step 3 cannot ask the question differently.
      */
-    private static KpiResult loadReferences(ServerKpi kpi, ServerMetricsConfig config,
-                                            Map<String, RuleResult> clientRules) {
+    private KpiResult loadReferences(ServerKpi kpi, ServerMetricsConfig config,
+                                     Map<String, RuleResult> clientRules) {
         String loadRef = kpi.requiresLoad() != null ? kpi.requiresLoad() : config.requiresLoad();
         if (loadRef != null) {
             KpiResult blocked = loadRuleBlocks(kpi, "requiresLoad", loadRef, clientRules, true);
@@ -243,8 +257,8 @@ public final class ServerKpiEvaluator {
      *                   verdict), false for {@code divideBy} (a FAIL still measured something to
      *                   divide by; only a rule that decided nothing has no number)
      */
-    private static KpiResult loadRuleBlocks(ServerKpi kpi, String field, String ref,
-                                            Map<String, RuleResult> clientRules, boolean failBlocks) {
+    private KpiResult loadRuleBlocks(ServerKpi kpi, String field, String ref,
+                                     Map<String, RuleResult> clientRules, boolean failBlocks) {
         RuleResult load = clientRules.get(ref);
         if (load == null) {
             return KpiResult.notJudged(kpi, NotJudged.INVALID_RULE, field + " names '" + ref
@@ -265,9 +279,9 @@ public final class ServerKpiEvaluator {
             // the load furthest past its band, which is not "the run's load" either. Refuse rather
             // than choose.
             return KpiResult.notJudged(kpi, NotJudged.INVALID_RULE, field + " names '" + ref
-                    + "', which matched " + load.matches().size() + " samplers - a ratio needs one "
+                    + "', which matched " + load.matches().size() + " " + words.many() + " - a ratio needs one "
                     + "measured load, so name a rule with a single target (\"scope\": \"overall\", "
-                    + "or one sampler)");
+                    + "or one " + words.one() + ")");
         }
         if (load.status() == AssertionStatus.NOT_JUDGED) {
             // The load rule decided nothing, so nothing was missed: say it was not judged and why,

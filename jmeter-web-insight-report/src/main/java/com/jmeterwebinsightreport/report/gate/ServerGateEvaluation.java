@@ -15,6 +15,7 @@ import com.jmeterwebinsightreport.core.servermetrics.collect.ServerMetricsPayloa
 import com.jmeterwebinsightreport.report.annotation.ReportAnnotations;
 import com.jmeterwebinsightreport.report.annotation.ServerMetricsMapper;
 import com.jmeterwebinsightreport.report.servermetrics.ServerMetricsPayloadLoader;
+import com.jmeterwebinsightreport.report.template.PageWords;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -227,6 +228,18 @@ public final class ServerGateEvaluation {
     }
 
     /**
+     * As {@link #of(ReportAnnotations, ServerMetricsPayload, GateSummary)}, over the run: the payload's ramp-up is
+     * checked against the report's own, and a sentence that names a sampler says the run's word for one ("request"
+     * on a k6 run; contracts/page-words.md).
+     *
+     * @param run this run, or null
+     */
+    public static ServerGateEvaluation of(ReportAnnotations annotations, ServerMetricsPayload payload,
+                                          GateSummary clientGate, ReportData run) {
+        return of(annotations, payload, null, clientGate, run);
+    }
+
+    /**
      * The generator's entry point: the loader's whole answer rather than its payload alone, so a
      * payload that was configured and refused is told apart from one that was never given — the
      * page has to say which — and the run, so the payload's ramp-up can be checked against the
@@ -247,6 +260,9 @@ public final class ServerGateEvaluation {
             return notDeclared(collected);
         }
         ServerMetricsMapper.Result mapped = new ServerMetricsMapper().map(annotations.getServerMetrics());
+        // The run's word for a sampler, in the one refusal the evaluator writes that names one: a divideBy rule that
+        // matched several ("requests" on a k6 run; contracts/page-words.md).
+        ServerKpiEvaluator evaluator = new ServerKpiEvaluator(PageWords.samplerWords(run));
         ServerMetricsConfig config = mapped.config();
         List<AssertionValidator.Finding> findings = new ArrayList<>(mapped.findings());
         // What the mapper does not say at load time — a missing query, no bands, a dead warn
@@ -274,7 +290,7 @@ public final class ServerGateEvaluation {
                 // requiresLoad or divideBy that names no client rule (or a non-throughput one) is
                 // wrong in the FILE, and the client gate is right here. Asked through the same
                 // arms the evaluator runs at step 3, so the two steps agree about the file.
-                unrunnable = new ServerKpiEvaluator().referenceRefusals(config, clientGate);
+                unrunnable = evaluator.referenceRefusals(config, clientGate);
                 appendRuntimeRefusals(findings, unrunnable);
                 // "Server: REFUSED" or "Server: NOT COLLECTED" — the header chip's word for the
                 // state (SF47), and the console verdictLine's: one run, one word on every surface.
@@ -296,7 +312,7 @@ public final class ServerGateEvaluation {
                     unrunnable, collected);
         }
 
-        List<KpiResult> results = new ServerKpiEvaluator().evaluate(config, payload, clientGate);
+        List<KpiResult> results = evaluator.evaluate(config, payload, clientGate);
         // Not every INVALID_RULE is knowable from the KPI alone, so not every one comes from
         // KpiUsability: a divideBy naming no client rule, a requiresLoad naming a non-throughput
         // rule, a query the payload never collected are all decided in the evaluator, against

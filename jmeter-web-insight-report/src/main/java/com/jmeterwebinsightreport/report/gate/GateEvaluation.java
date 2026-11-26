@@ -8,10 +8,12 @@ import com.jmeterwebinsightreport.core.assertion.AssertionValidator;
 import com.jmeterwebinsightreport.core.assertion.GateSummary;
 import com.jmeterwebinsightreport.core.assertion.NotJudged;
 import com.jmeterwebinsightreport.core.assertion.SamplerVerdicts;
+import com.jmeterwebinsightreport.core.assertion.SamplerWords;
 import com.jmeterwebinsightreport.core.model.ReportData;
 import com.jmeterwebinsightreport.report.annotation.AssertionRuleMapper;
 import com.jmeterwebinsightreport.report.annotation.LoadValidityMigration;
 import com.jmeterwebinsightreport.report.annotation.ReportAnnotations;
+import com.jmeterwebinsightreport.report.template.PageWords;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -87,6 +89,9 @@ public final class GateEvaluation {
                                     String loadProblem) {
         List<AssertionRule> rules = new ArrayList<>();
         List<AssertionValidator.Finding> findings = new ArrayList<>();
+        // The run's word for a sampler, where a sentence below names one: "request" on a k6 run, as the page says it
+        // (contracts/page-words.md). The mapper, the validator and the evaluator all write in it.
+        SamplerWords words = PageWords.samplerWords(data);
         if (loadProblem != null) {
             findings.add(AssertionValidator.finding(
                     AssertionValidator.Severity.ERROR, "annotations", loadProblem));
@@ -112,7 +117,7 @@ public final class GateEvaluation {
             }
 
             AssertionRuleMapper.Result mapped =
-                    new AssertionRuleMapper().map(annotations.getAssertions());
+                    new AssertionRuleMapper(words).map(annotations.getAssertions());
             rules.addAll(mapped.rules());
             findings.addAll(mapped.findings());
         }
@@ -131,10 +136,10 @@ public final class GateEvaluation {
             return findings.isEmpty() ? none() : noneWith(findings);
         }
 
-        findings.addAll(new AssertionValidator().validate(rules, data));
+        findings.addAll(new AssertionValidator(words).validate(rules, data));
         logFindings(findings);
 
-        GateSummary gate = new AssertionEvaluator().evaluate(rules, data);
+        GateSummary gate = new AssertionEvaluator(words).evaluate(rules, data);
         SamplerVerdicts verdicts = SamplerVerdicts.from(gate);
         logSummary(gate);
         return new GateEvaluation(rules, gate, verdicts, findings);

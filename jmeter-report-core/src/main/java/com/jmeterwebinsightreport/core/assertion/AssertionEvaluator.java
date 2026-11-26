@@ -38,6 +38,19 @@ import java.util.regex.PatternSyntaxException;
  */
 public final class AssertionEvaluator {
 
+    /** The run's word for a sampler, in the one refusal here that names one (contracts/page-words.md). */
+    private final SamplerWords words;
+
+    /** An evaluator whose sentences say "sampler", as a JMeter run's do. */
+    public AssertionEvaluator() {
+        this(SamplerWords.JMETER);
+    }
+
+    /** An evaluator whose sentences name a sampler in the run's own word: "request" on a k6 run. */
+    public AssertionEvaluator(SamplerWords words) {
+        this.words = words == null ? SamplerWords.JMETER : words;
+    }
+
     /**
      * A matched sampler with no samples is not judged.
      *
@@ -188,7 +201,7 @@ public final class AssertionEvaluator {
      * finding beside it said, in those words, that it would.
      */
     private String whyUnusable(AssertionRule rule) {
-        Usability refusal = Usability.refusal(rule);
+        Usability refusal = Usability.refusal(rule, words);
         return refusal == null ? null : refusal.reasonText();
     }
 

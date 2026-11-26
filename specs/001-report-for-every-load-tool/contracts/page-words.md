@@ -55,7 +55,14 @@ Kept on every run:
 - **Compare and What Changed** are JMeter only (a baseline is refused on another tool's run), so their words are not
   shown on a k6 run.
 
-Not changed yet: four sentences the Java judge writes into the JSON and JUnit, which the page mirrors word for word (held
-by the parity vectors). They appear only for a rule the file makes unusable: "metric 'X' is not available per sampler"
-(`Usability`), the `divideBy` ratio's "matched N samplers" (`ServerKpiEvaluator`), the retired `onMissing` key's
-"missing sampler" (`AssertionRuleMapper`), and the validator's "(no samplers at all)".
+Done 2026-11-26 (until then "Not changed yet"): four sentences the Java judge writes into the JSON and JUnit, which the
+page mirrors word for word (held by the parity vectors), say the run's word for a sampler, this table's `sampler` and
+`samplers`. They appear only for a rule the file makes unusable. The judge reads the run's column through
+`SamplerWords` (`PageWords.samplerWords`), the page through `W()`, and the vectors carry k6 cases (`"tool": "k6"`).
+
+| Where | JMeter run (unchanged) | k6 run |
+|---|---|---|
+| A metric asked per sampler that has none (`Usability`) | metric 'X' is not available per sampler | metric 'X' is not available per request |
+| A `divideBy` naming a rule that matched several (`ServerKpiEvaluator`) | ...which matched N samplers - ... (..., or one sampler) | ...which matched N requests - ... (..., or one request) |
+| The retired `onMissing` key (`AssertionRuleMapper`) | ...if a missing sampler must stop the build... | ...if a missing request must stop the build... |
+| A target that matched nothing, on a run with none (`AssertionValidator`) | This run contained: (no samplers at all) | This run contained: (no requests at all) |

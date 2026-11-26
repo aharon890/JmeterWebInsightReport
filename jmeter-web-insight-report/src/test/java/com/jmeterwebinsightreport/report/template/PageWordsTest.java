@@ -1,5 +1,6 @@
 package com.jmeterwebinsightreport.report.template;
 
+import com.jmeterwebinsightreport.core.assertion.SamplerWords;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -71,6 +72,22 @@ class PageWordsTest {
         assertEquals("Requests", w.get("Samplers"));
         assertTrue(w.get("bytesNotMeasured").startsWith("demo "), w.get("bytesNotMeasured"));
         w.values().forEach(v -> assertFalse(v.contains("{tool}"), v));
+    }
+
+    /**
+     * The judge's word for a sampler is this table's (contracts/page-words.md, done 2026-11-26): core's default is the
+     * jmeter column's, so a JMeter run's sentences cannot drift from the page, and every other tool reads its own.
+     */
+    @Test
+    void theJudgesWordForASamplerIsTheTables() {
+        SamplerWords jmeter = PageWords.samplerWords((String) null);
+        assertEquals(SamplerWords.JMETER.one(), PageWords.column("jmeter").get(SamplerWords.ONE_KEY));
+        assertEquals(SamplerWords.JMETER.many(), PageWords.column("jmeter").get(SamplerWords.MANY_KEY));
+        assertEquals("sampler/samplers", jmeter.toString());
+        assertEquals("request/requests", PageWords.samplerWords("k6").toString());
+        assertEquals("request/requests", PageWords.samplerWords("gatling").toString());
+        assertEquals("sampler/samplers", PageWords.samplerWords((com.jmeterwebinsightreport.core.model.ReportData) null)
+                .toString(), "no run in hand is JMeter's");
     }
 
     @Test

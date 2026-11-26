@@ -37,6 +37,18 @@ interface Vectors {
 const vectors: Vectors = JSON.parse(fs.readFileSync(VECTORS, 'utf-8'));
 
 /**
+ * The report a case is run in: a JMeter run's (E25), or for a case with a `tool` a run that tool recorded, whose
+ * page reads that tool's words (contracts/page-words.md) - K1 for k6. A tool with no fixture fails, never skips.
+ */
+const TOOL_FIXTURES: Record<string, string> = { k6: 'K1' };
+function fixtureFor(c: any): string {
+  if (!c.tool) return 'E25';
+  const fixture = TOOL_FIXTURES[c.tool];
+  if (!fixture) throw new Error(`no fixture is a run ${c.tool} recorded: add one to TOOL_FIXTURES`);
+  return fixture;
+}
+
+/**
  * The vector file speaks the engine's language: SamplerStatistics fields and the JSON rule
  * shape. The browser reads the report payload. This is the same translation
  * `GatePayloadBuilder` performs, done here so the vectors stay the single source of truth
@@ -141,7 +153,7 @@ test.describe('Client evaluator parity with the Java engine', () => {
   ];
   for (const { cases, run, prefix } of runs) for (const c of cases) {
     test(`case — ${prefix}${c.name}`, async ({ page }) => {
-      await loadClean(page, 'E25');
+      await loadClean(page, fixtureFor(c));
 
       // The Budget column's attainment is taken over the evaluated rule in the same page call:
       // Attainment.of in AssertionParityTest, attainmentFor here (AF5b).
@@ -294,13 +306,20 @@ test.describe('Client evaluator parity with the Java engine', () => {
     // Infinity after JSON.parse, and page.evaluate hands it over as the number it is.
     const cases = (vectors as any).detailCases as any[];
     expect(cases.length, 'the detail cases are gone').toBeGreaterThanOrEqual(18);
-    await loadClean(page, 'E25');
-    const read = await page.evaluate((cs) => cs.map((c: any) => {
-      const A = (window as any).WIR.asserts;
-      const rule = A._ruleFromJson(c.rule, c.index || 0);
-      const result = A.evaluate([rule], (window as any).globalChartData).rules[0];
-      return { why: A._whyUnusable(rule), reason: result.notJudged, detail: result.notJudgedDetail };
-    }), cases);
+    // Each case in its run's report: a case with a `tool` on a run that tool recorded (K1 for k6), in its words.
+    const read: any[] = new Array(cases.length);
+    for (const fixture of Array.from(new Set(cases.map(fixtureFor)))) {
+      const mine = cases.map((c, i) => ({ c, i })).filter(({ c }) => fixtureFor(c) === fixture);
+      await loadClean(page, fixture);
+      const got = await page.evaluate((cs) => cs.map((c: any) => {
+        const A = (window as any).WIR.asserts;
+        const rule = A._ruleFromJson(c.rule, c.index || 0);
+        const result = A.evaluate([rule], (window as any).globalChartData).rules[0];
+        return { why: A._whyUnusable(rule), reason: result.notJudged, detail: result.notJudgedDetail };
+      }), mine.map(({ c }) => c));
+      mine.forEach(({ i }, j) => { read[i] = got[j]; });
+    }
+    expect(cases.filter((c) => c.tool).length, "the detail cases on another tool's run are gone").toBeGreaterThanOrEqual(2);
     cases.forEach((c, i) => {
       expect(read[i].why, `whyUnusable for "${c.name}"`).toBe(c.expect.detail);
       expect(read[i].reason, `refused: "${c.name}"`).toBe('INVALID_RULE');

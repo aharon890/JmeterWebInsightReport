@@ -153,6 +153,47 @@ class ServerGateEvaluationTest {
         assertEquals(0, evaluate(fine, null, run()).fatalConfigErrors());
     }
 
+    /**
+     * A {@code divideBy} naming a rule that matched several samplers is refused in the run's own word for one
+     * (contracts/page-words.md, "Not changed yet", done 2026-11-26): "requests" on a k6 run, on the interim report as
+     * at step 3, and today's sentence on a JMeter run.
+     */
+    @Test
+    void aDivideByOverSeveralRequestsIsRefusedInTheRunsOwnWord() throws Exception {
+        String doc = block(null, raw("per-both", "server",
+                "\"reduce\":{\"kind\":\"max\"},\"fail\":{\"gt\":1},\"divideBy\":\"load:both\""))
+                .replaceFirst("\\{", "{\"assertions\":[{\"id\":\"load:both\",\"target\":{\"match\":\"*\"},"
+                        + "\"metric\":\"throughput\",\"fail\":{\"lt\":0.001}}],");
+        String sentence = "divideBy names 'load:both', which matched 2 %ss - a ratio needs one measured load, so "
+                + "name a rule with a single target (\"scope\": \"overall\", or one %s)";
+
+        com.jmeterwebinsightreport.core.model.ReportData k6 = twoSamplers();
+        k6.getMetadata().setToolName("k6");
+        assertTrue(evaluateRefused(doc, k6).findings().stream().anyMatch(f -> f.ruleId().equals("per-both")
+                && f.message().equals(String.format(sentence, "request", "request"))),
+                "the k6 run's interim report: " + evaluateRefused(doc, k6).findings());
+        com.jmeterwebinsightreport.report.annotation.ReportAnnotations a = ServerFixtures.annotations(doc);
+        ServerGateEvaluation step3 = ServerGateEvaluation.of(a, ServerFixtures.payload(payloadJson("r", ok("lag", 1))),
+                GateEvaluation.of(k6, a).gate(), k6);
+        assertEquals(String.format(sentence, "request", "request"), step3.results().get(0).notJudgedDetail(),
+                "the k6 run at step 3");
+
+        assertTrue(evaluateRefused(doc, twoSamplers()).findings().stream().anyMatch(f -> f.ruleId().equals("per-both")
+                && f.message().equals(String.format(sentence, "sampler", "sampler"))),
+                "the JMeter run's interim report: " + evaluateRefused(doc, twoSamplers()).findings());
+    }
+
+    /** {@link ServerFixtures#run()} with a second sampler, so a {@code match: "*"} rule matches two. */
+    private static com.jmeterwebinsightreport.core.model.ReportData twoSamplers() {
+        com.jmeterwebinsightreport.core.model.ReportData data = run();
+        com.jmeterwebinsightreport.core.model.SamplerStatistics b = new com.jmeterwebinsightreport.core.model.SamplerStatistics();
+        b.setSamplerName("GET /b");
+        b.setSampleCount(100);
+        b.setThroughput(5);
+        data.getSamplerStatistics().add(b);
+        return data;
+    }
+
     @Test
     void anOrphanThatIsMerelyDisabledIsNotACountedConfigError() throws Exception {
         String doc = block(THREE,
