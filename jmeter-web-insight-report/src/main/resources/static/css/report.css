@@ -495,16 +495,6 @@ label.checked .sampler-checkbox-box {
     background: var(--color-bg-thead-hover);
 }
 
-.stats-table thead th[data-sort="asc"]::after {
-    content: " \25B2";
-    font-size: 0.7em;
-}
-
-.stats-table thead th[data-sort="desc"]::after {
-    content: " \25BC";
-    font-size: 0.7em;
-}
-
 .stats-table tbody td {
     padding: 6px 8px;
     border-bottom: 1px solid var(--color-border);
@@ -2999,15 +2989,15 @@ body.dark-mode .wir-preview { background: var(--color-bg-deep); }
 
 .wir-sort-glyph {
     font-size: 0.7em;
-    margin-left: 4px;
-    color: var(--color-ramp-badge-text);
+    color: var(--color-primary);
 }
 
-/* The sort glyph is drawn here, from the header's aria-sort, so a header's text is its label alone (spec 002) */
-.wir-sort-glyph::after { content: '\2195'; }
+/* The sort glyph is drawn here, from the header's aria-sort, so a header's text is its label alone (spec 002).
+   On the sorted column only, as JMeter's Aggregate Report table draws it: an arrow on every header made the
+   Requests table's 15 columns 8 px wider each, and pushed Apdex behind a sideways scroll at 1400 px. */
+th[aria-sort] .wir-sort-glyph { margin-left: 4px; }
 th[aria-sort="ascending"] .wir-sort-glyph::after { content: '\25B2'; }
 th[aria-sort="descending"] .wir-sort-glyph::after { content: '\25BC'; }
-th[aria-sort] .wir-sort-glyph { color: var(--color-primary); }
 
 /* ---- The table toolkit (WIR.table, spec 002): one toolbar row, sortable header buttons, group and fold
    rows, x on a row, the Columns menu. Every table of the report draws these. */

@@ -48,7 +48,7 @@ The time-series charts support:
 - **Smart Y-axis units** — response time axes auto-adapt: ms for fast responses, sec/min/hr for slow ones. Unit determined by the max value in the chart. Tooltips also show human-readable durations (e.g., `5m 50s` instead of `350000 ms`).
 - **PNG export** — download button (the download icon in the chart's toolbox) on each chart
 - **SVG export** — download button next to PNG for vector graphics
-- **CSV export** — download button on every data table (see [Table CSV Export](#table-csv-export))
+- **CSV export** — every data table downloads the rows and columns it shows (see [Table CSV Export](#table-csv-export))
 - **Fullscreen** — expand any chart to full viewport
 - **Ramp-up marking** — semi-transparent overlay on the ramp-up period (when configured)
 
@@ -87,9 +87,10 @@ The time-series charts support:
 
 ## Sampler Filtering
 
-A persistent **filter bar** appears below the tabs on every tab but Server, whose charts it does not affect:
+A persistent **filter bar** appears below the tabs on every tab but Server, whose charts and board it does not affect.
+On a k6 run's k6 tab it shows its Samplers row only: the chart controls and time range narrow no k6 number.
 
-- **Sampler checkboxes** — toggle each sampler on/off; affects the charts on every tab the bar is shown on
+- **Sampler checkboxes** — toggle each sampler on/off; affects the charts and the tables on every tab (spec 002)
 - **All / None** — quick toggle buttons
 - **Deselected samplers** appear dimmed (45% opacity) with hidden checkmark
 - **Auto-hide utility samplers** — JSR223, Debug, BeanShell, and JMeter internal samplers (\_\_*) are unchecked by default
@@ -99,9 +100,14 @@ A persistent **filter bar** appears below the tabs on every tab but Server, whos
 When samplers are deselected:
 - Their lines disappear from all time-series charts
 - Their errors disappear from the error charts (see [Error Deep-Dive](#error-deep-dive)) — unless
-  Σ Total is ticked, in which case the error charts count every sampler's errors; the two error
-  tables keep every row
-- The Summary tab's response time chart follows; the header and summary cards and the Samplers table always cover every sampler
+  Σ Total is ticked, in which case the error charts count every sampler's errors
+- Their rows leave every table: Samplers, both error tables, Compare, the Asserts rules on that one
+  sampler, and the k6 tab's thresholds, timings, checks and groups; a table's CSV follows. What belongs to
+  no single sampler stays: the Σ Total row, whole-run rules and thresholds, the k6 counters
+- A sampler the bar unchecks by default (utility, or no samples) still shows in the tables, as JMeter's
+  Aggregate Report lists every sampler; a sampler only the baseline ran has no checkbox and stays
+- While "Show transaction details" is off, a request inside a transaction follows its transaction's checkbox
+- The Summary tab's response time chart follows; the header and summary cards always cover every sampler
 
 ### Filter Presets
 Save and load filter configurations:
@@ -210,17 +216,39 @@ All standard chart features: drag-to-reorder, hide/show, fullscreen, PNG/SVG exp
 
 ---
 
+## Tables: one toolbar for every table
+
+Every table of the report (Samplers, Error Summary, Error Details, Compare, Asserts, the Server board and the k6
+tab's four) has the same toolbar row and does the same things (spec 002):
+
+- **Search** — narrows the rows as you type
+- **Status chips** with counts — press several at once; each counts every row, whatever else is selected
+- **Group by** — the groupings that table has (Samplers: transaction, assert status, Apdex rating; Errors: error
+  class, response code, sampler and type of error; Compare: REGRESSION / NEW / REMOVED / OK; Asserts and the Server
+  board: status; the Server board's cards are Group by component), with **Expand all / Collapse all** while grouped.
+  A group's header counts its rows; it never sums or averages their numbers
+- **Sort** — every header is a button, from the keyboard too; it sorts by the column's value, never its text, and the
+  sorted column carries ▲ or ▼
+- **×** on a row and **Show N hidden**; **Columns** to hide a column, even after a drag
+- **CSV** — the rows and columns shown, in the shown order and format
+- **Remembered** — each table's sort, grouping, open groups and hidden rows and columns, for that report in that
+  browser; the search and the chips start empty
+
 ## Samplers Tab
 
 ### Statistics Table
 Full table with columns: Sampler, Samples, Errors, Error %, Mean, Median, P90, P95, P99, Min, Max, Throughput, Recv KB/s, Sent KB/s, Apdex (JMeter's Aggregate Report columns, plus Apdex).
 
-- **Sortable** — click any column header (ascending/descending)
-- **Searchable** — text filter box above the table
-- **Column visibility** — "Columns" dropdown to show/hide any column
+- **The toolbar every table has** — search, status chips (the assert verdicts), Group by (Transaction, the tree and
+  the default; Assert status; Apdex rating), Expand all / Collapse all, Columns, Show N hidden and CSV (see
+  [Tables](#tables-one-toolbar-for-every-table))
+- **Sortable by value** — a header sorts by the run's own number, so 20.7/min sorts below 8.3/s; within a transaction
+  its requests stay under it
+- **A transaction's ▸** — opens that one transaction in the table; Expand all / Collapse all are the filter bar's
+  "Show transaction details" switch
 - **Drag-and-drop column reorder** — drag column headers to rearrange; order persisted in localStorage
 - **Column resize** — drag the divider on the right edge of any column header. Double-click a divider to fit the column to its widest value. Widths persist in localStorage and are keyed to the column, so they survive a reorder or a hide/show. Once any column has been resized a "Reset Widths" button appears in the toolbar to return every column to its automatic width. Also available on the error tables and the Compare table.
-- **Row hiding** — click the X button on any row to hide it; "Show N Hidden Rows" button to restore
+- **Row hiding** — × on a row hides it and whatever is open under it; "Show N hidden" brings it back
 - **Assert badges** — PASS/WARN/FAIL text badge next to each sampler name, the worst verdict of
   the rules judging that sampler. Click it to list every rule that judged the row, with the
   number and the limit.
@@ -847,7 +875,13 @@ The same report, numbers, asserts and Server tab for a run of any load tool, bui
   tool's uses neutral words and its own name. A JMeter run's report is word for word as before.
 - **The tool's tab**: on a k6 run, a k6 tab after Server with k6's thresholds and checks (as k6 judged them, never the
   verdict), group durations, the six HTTP timing parts, iterations, dropped iterations and `vus_max`, in k6's summary
-  columns. Another tool's run gets a tab named after it when it carries its own records.
+  columns. Another tool's run gets a tab named after it when it carries its own records. A strip at the top names each
+  failed threshold with what k6 measured and how far past its limit; each section is a table with the report's one
+  toolbar (thresholds grouped by metric, timings under their group, the statistic chosen), and the filter bar's
+  request checkboxes narrow every section.
+- **Over time**: a k6 request's detail panel on the Requests tab charts its six timing parts at the report's time
+  buckets, and a k6 threshold on its duration is a dashed line at the limit on its response time and percentiles
+  charts, labelled as k6's and never draggable.
 - **Not measured**: a measure the tool does not record (k6: bytes, latency and connect time per request) reads "not
   measured", never 0, and can't be asserted on.
 
@@ -1133,18 +1167,23 @@ Works with Jenkins, GitHub Actions, Azure DevOps, GitLab CI, and any tool that c
 
 ### Table CSV Export
 
-Every data table in the report has a **CSV download icon** (↓) in the top-right corner of its section header, matching the chart toolbox icon pattern:
+Every data table has a **CSV** button in its toolbar (the Top 5 its ↓ icon):
 
 | Table | Tab | CSV Filename |
 |-------|-----|-------------|
 | Top 5 Slowest Samplers (by P95) | Summary | `top5-slowest-samplers.csv` |
-| Sampler Statistics | Samplers | `sampler-statistics.csv` |
+| Sampler Statistics | Samplers | `sampler-statistics.csv` (`request-statistics.csv` on a k6 run) |
 | Error Summary | Errors | `error-summary.csv` |
 | Error Details | Errors | `error-details.csv` |
 | Sampler Comparison | Compare | `comparison.csv` |
+| Assertion Rules | Asserts | `asserts.csv` |
+| Thresholds, HTTP timings, checks, group duration | k6 | `k6-thresholds.csv`, `k6-http-timings.csv`, `k6-checks.csv`, `k6-group-duration.csv` |
 
 **Key behavior:**
-- Exports **all data** from the underlying data model — hidden rows, hidden columns, filtered samplers, and collapsed children are all included
+- Exports **the rows and columns shown** (spec 002, FR-066): what the search, the chips, the filter bar's checkboxes
+  and × left, the visible columns, in the shown order and the table's own number format. Until 4.6.0 the Samplers
+  export carried every sampler and four columns the table does not show; the CI/CD JSON still carries every sampler's
+  numbers
 - CSV files include UTF-8 BOM for correct Excel handling
 - Hover tooltip: "Download as CSV"
 - Icon styled for both light and dark modes

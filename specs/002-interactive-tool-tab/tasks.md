@@ -228,9 +228,23 @@ fixture.
 
 ## Stage 10: Close
 
-- [ ] T110 Docs: `docs/FEATURES.md`, and every page above with screenshots from `docs/Tutorial/take-screenshots.js`.
-- [ ] T111 SC-004 and SC-010 timed in the browser (the 134,406-request run, and T022's run).
-- [ ] T112 SC-007: spec 001's four-report comparison, under its new definition.
+- [X] T110 Docs: `docs/FEATURES.md`, and every page above with screenshots from `docs/Tutorial/take-screenshots.js`.
+  Done 2026-11-26: FEATURES.md (one toolbar for every table, the ticks, the k6 tab, CSV of what is shown); 59 shots
+  retaken, three new k6 ones (71-73). Two finds on the way, fixed with a test: the sort arrow on every header made the
+  Requests table 1388 px in a 1286 px card at 1400 px (4.5.1: 1292), so the arrow is on the sorted column only, as
+  JMeter's Aggregate Report draws it; and a detail chart drew nothing for a second with one request (K2's Login), so a
+  lone point is a dot.
+- [X] T111 SC-004 and SC-010 timed in the browser (the 134,406-request run, and T022's run).
+  Timed 2026-11-26, PC quiet (CPU 14%), Chromium over file://, each control from the call to the painted frame (two
+  animation frames, so 33 ms is the floor), median of three: SC-004 on K2 repeated to an hour (127,335 requests),
+  every tab opens and every control on every k6 table and the Requests table answers in 35 ms at worst; SC-010 on
+  gen-many-names.js's run (320 names, 1,280 thresholds), 84 ms at worst (the k6 tab's first open). Both under 500 ms.
+- [X] T112 SC-007: spec 001's four-report comparison, under its new definition.
+  Done 2026-11-26: E02, E31, an E26-shaped report (plain.jtl's run with E26's annotations and CSV) and a Compare
+  report, each built from the same run data by the 4.5.1 release and by this build, every tab opened: the header,
+  the Summary cards, the Notes tab and every row of the Samplers, Error Summary, Error Details, Compare, Asserts and
+  Server board tables identical, and the rows shown in the same order. One table is gone, as US6 says: the Errors
+  tab's grouped view (now Error Details' Group by). Goldens, R07 and PreChangeBaselineTest green in the gates.
 - [ ] T113 SC-005: the owner's walk-through on K1, K2 and E02.
 - [ ] T114 Release 4.6.0 with the release tier (`./test-plans/scripts/run-release.sh`).
 

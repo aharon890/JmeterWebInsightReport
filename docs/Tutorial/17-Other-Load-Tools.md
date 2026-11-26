@@ -80,6 +80,8 @@ reads exactly as before.
 **The k6 tab** comes after Server, on k6 runs only. It shows what k6's own end-of-test summary shows, organised so the
 first screen answers "did k6 see a problem, and where":
 
+![The k6 tab: the strip, the counters and the thresholds](images/71-k6-tab.png)
+
 | Section | What it holds |
 |---|---|
 | Strip | One line: how many thresholds and checks failed out of how many, naming the failed ones with what k6 measured and how far past the limit (`Thresholds: 1 of 50 failed: Login p(95)<=600 (p(95) = 779.72 ms, 179.72 ms over (30%))`). |
@@ -89,13 +91,18 @@ first screen answers "did k6 see a problem, and where":
 | Checks | Under their group path, failed first, with passes, fails and a pass-rate bar. |
 | Group duration | Each group's passes on their wall time, think time included (`group_duration`), under its parent group. |
 
+![HTTP timings, under their group](images/72-k6-timings.png)
+
 Every section is a table with the report's one toolbar (search, status chips, Group by, Expand all and Collapse all,
 Columns, × and "Show N hidden", CSV), as every table of the report has. One search narrows every section at once. The
 grouping, the statistic and the rest of the view are remembered for the report in this browser.
 
 A request's detail panel on the Requests tab charts its six timing parts over the run, at the report's time buckets,
 and draws each k6 threshold on its duration as a line at the limit on its response time and percentiles charts,
-labelled as k6's (`k6 threshold: p(95)<=600`), never draggable: it is not an assert.
+labelled as k6's (`k6 threshold: p(95)<=600`), never draggable: it is not an assert. A second with one request is a
+dot, as a line between seconds would join requests that never ran together.
+
+![Login's detail panel: its timing parts over time and k6's limit](images/73-k6-timing-parts.png)
 
 The filter bar's request checkboxes show above the tab, its Samplers row only (its chart controls and time range
 narrow no k6 number). Untick a request and its thresholds, timing, check and group rows leave the tab, as its rows

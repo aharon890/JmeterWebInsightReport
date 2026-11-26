@@ -467,6 +467,27 @@ async function main() {
   await shot(page, '70-server-generate-review');
   await c.close();
 
+  if (!serverOnly) {
+    // The k6 tab (spec 002): its first screen, the HTTP timings, and Login's timing parts over time with k6's limit
+    c = await ctx();
+    page = await c.newPage();
+    await loadClean(page, 'K2');
+    await tab(page, 'tool');
+    await shot(page, '71-k6-tab');
+    await shotEl(page, '#toolTimingsHost', '72-k6-timings');
+    await c.close();
+    // wider: the panel spans the Requests table, wider than 1400 px on a k6 run, and an element shot stops at the window
+    c = await browser.newContext({ viewport: { width: 1800, height: 900 } });
+    page = await c.newPage();
+    await loadClean(page, 'K2');
+    await tab(page, 'samplers');
+    await page.click('#samplerTable-expand-all');
+    await page.locator('#samplerTable tbody tr[data-sampler="Login"] .sampler-name-text').click();
+    await page.waitForTimeout(800);
+    await shotEl(page, '#samplerTable tr.sampler-detail-row', '73-k6-timing-parts');
+    await c.close();
+  }
+
   await browser.close();
   console.log(`\nDone: ${taken} screenshots taken, ${skipped.length} skipped`
     + (skipped.length ? ` (${skipped.join(', ')})` : '') + `, in ${IMG}`);

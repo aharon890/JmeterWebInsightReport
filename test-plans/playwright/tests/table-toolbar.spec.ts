@@ -428,3 +428,23 @@ test.describe('The filter bar\'s ticks narrow every table [E02, CMP, E25, K2]', 
     expect(await shownNames(page, '#samplerTable tbody tr[data-sampler]')).toContain(name);
   });
 });
+
+test.describe('The Requests table keeps 4.5.1\'s width [E02]', () => {
+  test('at 1400 px every column fits the card: a sort arrow is drawn on the sorted column only', async ({ page }) => {
+    // An arrow on every header made each of the 15 columns 8 px wider: 1388 px in a 1286 px card, Apdex behind a
+    // sideways scroll (4.5.1's table was 1292 px). JMeter's Aggregate Report draws the arrow on the sorted column only.
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await loadClean(page, 'E02');
+    await switchTab(page, 'samplers');
+    const fit = async () => page.evaluate(() => {
+      const t = document.getElementById('samplerTable')!;
+      return { table: t.getBoundingClientRect().width, card: t.closest('.table-wrapper')!.getBoundingClientRect().width };
+    });
+    let w = await fit();
+    expect(w.table, `table ${w.table} px in a ${w.card} px card`).toBeLessThanOrEqual(w.card + 8);
+    await page.locator('#samplerTable thead th', { hasText: 'Throughput' }).locator('button').click();
+    await expect(page.locator('#samplerTable thead th[aria-sort]')).toHaveCount(1);
+    w = await fit();
+    expect(w.table, 'sorted, one arrow (about 17 px; fifteen made it 100 px over)').toBeLessThanOrEqual(w.card + 24);
+  });
+});
