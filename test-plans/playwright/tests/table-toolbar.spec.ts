@@ -448,3 +448,41 @@ test.describe('The Requests table keeps 4.5.1\'s width [E02]', () => {
     expect(w.table, 'sorted, one arrow (about 17 px; fifteen made it 100 px over)').toBeLessThanOrEqual(w.card + 24);
   });
 });
+
+test.describe('The Requests table fits a laptop screen: each ⊕ sits in its cell\'s padding [E02, K1]', () => {
+  for (const id of ['E02', 'K1']) {
+    test(`${id}: at 1366 px the table fits its card, and no ⊕ covers its number`, async ({ page }) => {
+      // Each of the 13 number columns carried its ⊕ in the line, 19 px of button beside the number: run 78 of the
+      // perf hub (a k6 run) was 1330 px in a 1286 px card at 1440 px, Apdex behind a sideways scroll. The ⊕ now sits
+      // in the cell's right padding, out of the line, so a column is as wide as its number.
+      await page.setViewportSize({ width: 1366, height: 900 });
+      await loadClean(page, id);
+      await switchTab(page, 'samplers');
+      const m = await page.evaluate(() => {
+        const t = document.getElementById('samplerTable')!;
+        const card = t.closest('.table-wrapper')!;
+        const covered: string[] = [];
+        t.querySelectorAll('tbody tr[data-sampler] td[data-assert-cell]').forEach((td) => {
+          const btn = td.querySelector('.wir-seed-btn');
+          if (!btn) return;
+          // the cell's own text: every text node before the first element child (the verdict mark, the ⊕)
+          let textRight = -Infinity;
+          td.childNodes.forEach((n) => {
+            if (n.nodeType !== Node.TEXT_NODE || !(n.textContent || '').trim()) return;
+            const r = document.createRange();
+            r.selectNodeContents(n);
+            textRight = Math.max(textRight, r.getBoundingClientRect().right);
+          });
+          td.querySelectorAll('.wir-cell-verdict').forEach((v) => {
+            textRight = Math.max(textRight, v.getBoundingClientRect().right);
+          });
+          const b = btn.getBoundingClientRect();
+          if (b.left < textRight - 0.5) covered.push(`${td.getAttribute('data-assert-sampler')} ${td.getAttribute('data-assert-cell')}`);
+        });
+        return { table: t.scrollWidth, card: card.clientWidth, covered };
+      });
+      expect(m.table, `table ${m.table} px in a ${m.card} px card`).toBeLessThanOrEqual(m.card);
+      expect(m.covered, 'a ⊕ drawn over its own number').toEqual([]);
+    });
+  }
+});

@@ -279,7 +279,8 @@ the filter bar (it is unticked by default):
 
 ### Click-to-Expand Detail View
 - **Expand indicator** — chevron (▼) on each row hints at expandable detail; flips ▲ and turns blue when expanded
-- **Long name truncation** — the sampler column is capped at 520px (with a 260px floor), and a longer name ends in an ellipsis; hover tooltip shows full name
+- **Long name truncation** — the sampler column is about its 260px floor wide, and a longer name ends in an ellipsis rather than pushing the table past its card; hover tooltip shows full name, and a double-click on the column's divider fits the whole name
+- **Fits its card** — the table fits the page's card from a 1366px screen: each ⊕ sits in its cell's right padding, and a header label takes two lines when the table is short of room (4.6.1)
 - **Compact name cell** — expand icon, sampler name, and hide button merged into a single cell
 
 Click any sampler row to expand an inline detail panel with **configurable mini-charts**:

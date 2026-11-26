@@ -25,6 +25,10 @@ Detailed per-sampler statistics table with sorting, filtering, column control, a
 | **Recv KB/s** | Received kilobytes per second | Two decimals (e.g., "0.60") |
 | **Apdex** | Application Performance Index | 0 to 1 with three decimals, as JMeter's HTML report writes it (e.g., "0.948", "1.000"), coloured as on the [Apdex card](02-Summary-Tab.md#apdex-card) |
 
+The table fits the page from a 1366 px wide screen, with no sideways scroll. When it is short of room, a header
+label takes two lines ("Median" over "(ms)"), and a long sampler name ends in an ellipsis: hover it for the whole
+name, or double-click the column's right edge to widen the column to fit it.
+
 ![Table Header](images/10b-table-header.png)
 
 ### Σ Total Row
@@ -71,7 +75,8 @@ and high-contrast palettes precisely because hue is not a channel this audience 
 
 ### Asserting a number you are looking at
 
-Every metric cell — all thirteen columns after Sampler — has a faint **⊕**. Click it and the
+Every metric cell — all thirteen columns after Sampler — has a faint **⊕** at its right edge, in the
+cell's padding, so it never widens a column or covers a number. Click it and the
 Asserts tab opens with the assert editor targeting that sampler and metric, bands already seeded
 from the observed value: fail at +20 % rounded to a number a person would pick, warn at 80 % of
 fail or 16 % above today's value, whichever is higher. For throughput, Recv KB/s and apdex the
