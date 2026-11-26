@@ -246,7 +246,10 @@ fixture.
   Server board tables identical, and the rows shown in the same order. One table is gone, as US6 says: the Errors
   tab's grouped view (now Error Details' Group by). Goldens, R07 and PreChangeBaselineTest green in the gates.
 - [ ] T113 SC-005: the owner's walk-through on K1, K2 and E02.
-- [ ] T114 Release 4.6.0 with the release tier (`./test-plans/scripts/run-release.sh`).
+  Waiting for the owner (2026-11-26): five questions from the k6 tab alone, on 4.6.0.
+- [X] T114 Release 4.6.0 with the release tier (`./test-plans/scripts/run-release.sh`).
+  Released 2026-11-26: https://github.com/aharon890/JmeterWebInsightReport/releases/tag/v4.6.0 (tag on 48ce3d2, PR #53).
+  Release tier 14/14 in 14m06s, 1269 browser tests; seven assets, as `_perf_release` lists them.
 
 ## Analysis (2026-11-25, before building)
 
