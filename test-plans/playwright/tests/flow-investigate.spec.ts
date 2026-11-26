@@ -124,8 +124,9 @@ test.describe('Flow: Investigate a Slow Sampler', () => {
     await errorSearch.fill(slowestName);
     await page.waitForTimeout(300);
 
-    // Check visible rows contain the sampler name
-    const visibleRows = errorTable.locator('tbody tr:visible');
+    // Check visible rows contain the sampler name. The Total row stays visible under a search ("0 of 15 rows") and
+    // names no sampler, so it is not one of them: a slowest sampler with no errors left only that row (release 4.8.0).
+    const visibleRows = errorTable.locator('tbody tr:visible:not(.error-summary-total)');
     const visibleCount = await visibleRows.count();
     // Some rows may be filtered out; verify at least one visible row contains the name
     // (If the sampler has no errors, visibleCount could be 0 — that's also valid)

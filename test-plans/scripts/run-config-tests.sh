@@ -2269,7 +2269,8 @@ if stage_on C44; then
 #      JMETER_HOME unset and no jmeter on PATH. build-report must write a k6 run's report from run data, and
 #      -verbose:class must show no org.apache.jmeter class loaded, so properties, the generator and the
 #      launcher all run without JMeter. A baseline is given too: the comparison thresholds are read on that
-#      path only (WebInsightReportGenerator), and on a k6 run it must be left out with its sentence.
+#      path only (WebInsightReportGenerator). Since spec 004 a JMeter baseline on a k6 run is compared, as a
+#      pair of two tools (sameTool false), and no longer left out.
 # -----------------------------------------------------------------------------
 echo "[C44] build-report with no JMeter..."
 C44_DIR="$RESULTS/C44"
@@ -2307,8 +2308,12 @@ else
         C44_NOTES="a JMeter class was loaded: $(grep -m1 'org\.apache\.jmeter' "$C44_DIR/build-report.log")"
     elif ! grep -q '"name" *: *"k6"' "$C44_DIR/report/web-insight-report.json"; then
         C44_NOTES="the CI/CD JSON does not name the tool k6"
-    elif ! grep -q 'Compare baseline plain.jtl is left out' "$C44_DIR/build-report.log"; then
-        C44_NOTES="the baseline on a k6 run was not left out with its sentence"
+    elif grep -q 'is left out' "$C44_DIR/build-report.log"; then
+        C44_NOTES="the baseline on a k6 run was left out (spec 004 compares it): $(grep -m1 'is left out' "$C44_DIR/build-report.log")"
+    elif ! grep -q 'Baseline comparison loaded from:' "$C44_DIR/build-report.log"; then
+        C44_NOTES="the JMeter baseline on a k6 run was not loaded (spec 004)"
+    elif ! grep -q '\\"sameTool\\":false' "$C44_DIR/report/web-insight-report.html"; then
+        C44_NOTES="the k6 run and its JMeter baseline were not compared as a pair of two tools (spec 004)"
     fi
 fi
 if [[ -z "$C44_NOTES" ]]; then
