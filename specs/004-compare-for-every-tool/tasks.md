@@ -72,7 +72,17 @@ code before the change (red), then passing after it (green). A deviation from th
 
 ## Stage 5: regression, PR
 
-- [ ] T013 `./test-plans/scripts/run-regression.sh` green; push; PR (base main). No merge, no version bump, no release.
+- [X] T013 `./test-plans/scripts/run-regression.sh` on the merged tree (with PR #58), 2026-11-26.
+  - Run 1 (every fixture regenerated, steps 2-8 in 13m19s): R01-R04, R06, R07 and R08 PASS; R05 1292 passed, 3
+    failed of 1295. Two were a test that lists the k6 fixtures by hand (`tool-tab.spec.ts`, "a JMeter run has no tool
+    tab", held CMPK and CMPX to having no k6 tab): fixed in the test. The third (`error-details-grouping.spec.ts`, E02)
+    timed out opening its page under load (`browserContext.newPage`, 30 s) and passed alone; the two spec files
+    together, alone: 46 passed.
+  - Run 2, on the committed fix (fixtures current, steps 2-8 in 10m09s): **all 8 tiers PASS**, R05 1293 of 1293. R06:
+    12 artifact sets unchanged. R07: 27 fixture sides, 0 failures (CMPK, CMPK-baseline, CMPX and CMPX-baseline 184
+    checks each). R08 PASS.
+  - Pushed and opened as a PR (base main). No merge, no version bump, no release (the owner decides the release; #58
+    ships with this in 4.8.0).
 
 ## Deviations from the plan
 
