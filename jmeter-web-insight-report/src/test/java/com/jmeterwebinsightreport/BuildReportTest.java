@@ -138,22 +138,25 @@ class BuildReportTest {
     }
 
     @Test
-    void aBaselineOnAnotherToolsRunIsLeftOut() throws Exception {
-        // Compare for runs of other tools, and across tools, is later (decision 6, FR-017)
+    void aBaselineOnAnotherToolsRunIsCompared() throws Exception {
+        // Spec 004 lifts spec 001's decision 6 (FR-017): a k6 run against a JMeter results file is compared,
+        // without judging (two tools), where it used to be left out with a sentence
         File out = tmp.resolve("b").toFile();
         assertEquals(0, run("--run-data", k6RunData().getPath(), "--out", out.getPath(), "--baseline",
                 PLAIN.getPath()), err());
-        assertTrue(err().contains("Compare baseline plain.jtl is left out"), err());
+        assertFalse(err().contains("is left out"), err());
         String html = Files.readString(new File(out, "web-insight-report.html").toPath(), StandardCharsets.UTF_8);
-        assertFalse(compared(html), "no comparison was built");
+        assertTrue(compared(html), "the k6 run is compared with the JMeter baseline");
+        assertTrue(html.replace("\\\"", "\"").contains("\"sameTool\":false"), "as a pair of two tools");
 
-        // and on a JMeter run the same baseline is compared, as on jmeter -g (the control for the line above)
+        // and on a JMeter run the same baseline is compared, as on jmeter -g, as one tool
         File jmeter = tmp.resolve("j").toFile();
         assertEquals(0, run("--run-data", jmeterRunData("plain").getPath(), "--out", jmeter.getPath(), "--baseline",
                 PLAIN.getPath()), err());
         String compared = Files.readString(new File(jmeter, "web-insight-report.html").toPath(),
                 StandardCharsets.UTF_8);
         assertTrue(compared(compared), "a JMeter run's baseline is compared");
+        assertTrue(compared.replace("\\\"", "\"").contains("\"sameTool\":true"), "as a pair of one tool");
     }
 
     @Test

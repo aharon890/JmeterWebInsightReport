@@ -336,4 +336,58 @@ class ComparisonResultTest {
         d.setSamplerStatistics(new ArrayList<>(Arrays.asList(stats)));
         return d;
     }
+
+    /** A run recorded by {@code tool}: null is JMeter, whose runs name no tool. */
+    private static ReportData recordedBy(String tool, ReportData d) {
+        com.jmeterwebinsightreport.core.model.TestMetadata m = new com.jmeterwebinsightreport.core.model.TestMetadata();
+        m.setToolName(tool);
+        d.setMetadata(m);
+        return d;
+    }
+
+    // --- Spec 004: a pair of one tool is judged as before; a pair of two tools is compared without judging ---
+
+    @Test
+    void aPairOfTwoToolsIsComparedWithoutJudging() {
+        // P95 up 100%, the error rate up 9 points, a request only the baseline ran: each a regression on one tool
+        ReportData jmeter = recordedBy(null, reportWith(sampler("Login", 80, 100), sampler("Checkout", 300, 500)));
+        ReportData k6 = recordedBy("k6", reportWith(sampler("Login", 160, 200)));
+        k6.getSamplerStatistics().get(0).setErrorRate(10);
+
+        ComparisonResult pair = new ComparisonResult(jmeter, k6, new ComparisonThresholds());
+
+        assertFalse(pair.isSameTool(), "JMeter against k6");
+        assertNull(pair.getBaselineTool(), "a JMeter run names no tool");
+        assertEquals("k6", pair.getCurrentTool());
+        assertFalse(pair.hasRegressions(), "two tools' numbers are two readings, never a regression");
+        for (ComparisonResult.SamplerDiff d : pair.getSamplerDiffs()) {
+            assertFalse(d.isRegression(), d.getSamplerName() + " is not judged");
+        }
+        assertFalse(pair.getWholeRunDiff().isRegression(), "nor is the whole run");
+        // The figures are compared as ever: the change is still there to read
+        ComparisonResult.SamplerDiff login = pair.getSamplerDiffs().get(0);
+        assertEquals(100.0, login.getDeltaP95(), 1e-9);
+        assertTrue(pair.getSamplerDiffs().get(1).isRemoved(), "Checkout ran only in the baseline");
+
+        // The other way round too: k6 against JMeter
+        assertFalse(new ComparisonResult(k6, jmeter, new ComparisonThresholds()).hasRegressions());
+    }
+
+    @Test
+    void aPairOfOneToolIsJudgedAsBefore() {
+        // k6 against k6 is judged as JMeter against JMeter always was, in k6's words on the page
+        ReportData before = recordedBy("k6", reportWith(sampler("Login", 80, 100)));
+        ReportData after = recordedBy("K6", reportWith(sampler("Login", 90, 120)));
+        ComparisonResult k6Pair = new ComparisonResult(before, after, new ComparisonThresholds());
+        assertTrue(k6Pair.isSameTool(), "the tool's name, whatever its case");
+        assertTrue(k6Pair.hasRegressions(), "P95 up 20%, past the default 10%");
+
+        // A JMeter pair: no tool on either side, the same tool
+        ComparisonResult jmeterPair = new ComparisonResult(reportWith(sampler("Login", 80, 100)),
+                recordedBy(null, reportWith(sampler("Login", 90, 120))), new ComparisonThresholds());
+        assertTrue(jmeterPair.isSameTool());
+        assertNull(jmeterPair.getBaselineTool());
+        assertNull(jmeterPair.getCurrentTool());
+        assertTrue(jmeterPair.hasRegressions());
+    }
 }

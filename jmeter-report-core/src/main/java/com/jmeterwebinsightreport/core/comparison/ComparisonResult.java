@@ -9,6 +9,10 @@ import java.util.*;
 /**
  * Holds comparison data between a baseline and current test run.
  * Computes per-sampler deltas and flags regressions.
+ *
+ * <p>A pair of one tool (JMeter against JMeter, k6 against k6) is judged by the thresholds. A pair of two tools
+ * (JMeter against k6) is compared without judging (spec 004, FR-004): the two tools time a request differently, so
+ * their numbers are two readings, and no row, the whole run included, is flagged.
  */
 public class ComparisonResult {
 
@@ -17,6 +21,8 @@ public class ComparisonResult {
     private final List<SamplerDiff> samplerDiffs;
     private final SamplerDiff wholeRunDiff;
     private final ComparisonThresholds thresholds;
+    /** Whether both runs were recorded by one tool: only then is a change judged. */
+    private final boolean sameTool;
 
     public ComparisonResult(ReportData baseline, ReportData current) {
         this(baseline, current, new ComparisonThresholds());
@@ -26,13 +32,25 @@ public class ComparisonResult {
         this.baseline = baseline;
         this.current = current;
         this.thresholds = thresholds != null ? thresholds : new ComparisonThresholds();
+        this.sameTool = toolKey(toolOf(baseline)).equals(toolKey(toolOf(current)));
         this.samplerDiffs = computeDiffs();
         // The two runs' whole runs, compared as every row is compared: a JMeter user reads two
         // Aggregate Reports' TOTAL rows side by side, and those are counted per sample over each run,
         // never added up from the rows (plan v2 item 3). Each is OverallMetrics, the one definition of
         // the run as a whole that the run's own tiles, Sigma Total row, CI/CD JSON and asserts read, so
         // the comparison's figures are the ones each run's own page shows.
-        this.wholeRunDiff = new SamplerDiff(WHOLE_RUN, wholeRunOf(baseline), wholeRunOf(current), this.thresholds);
+        this.wholeRunDiff = new SamplerDiff(WHOLE_RUN, wholeRunOf(baseline), wholeRunOf(current), this.thresholds,
+                sameTool);
+    }
+
+    /** The tool that recorded a run: null for JMeter, whose runs name none. */
+    private static String toolOf(ReportData data) {
+        return data == null || data.getMetadata() == null ? null : data.getMetadata().getToolName();
+    }
+
+    /** A tool's name as one key: JMeter for none, and case does not matter (as the page's words table reads it). */
+    private static String toolKey(String tool) {
+        return tool == null || tool.trim().isEmpty() ? "jmeter" : tool.trim().toLowerCase(Locale.ROOT);
     }
 
     /** A run's whole run (OverallMetrics) as the statistics a compared row is made of. */
@@ -66,6 +84,12 @@ public class ComparisonResult {
      *  thresholds as every row. */
     public SamplerDiff getWholeRunDiff() { return wholeRunDiff; }
     public ComparisonThresholds getThresholds() { return thresholds; }
+    /** Whether both runs were recorded by one tool: a pair of two tools is compared without judging (spec 004). */
+    public boolean isSameTool() { return sameTool; }
+    /** The tool that recorded the baseline: null for JMeter. */
+    public String getBaselineTool() { return toolOf(baseline); }
+    /** The tool that recorded this run: null for JMeter. */
+    public String getCurrentTool() { return toolOf(current); }
 
     public boolean hasRegressions() {
         return samplerDiffs.stream().anyMatch(SamplerDiff::isRegression);
@@ -84,7 +108,7 @@ public class ComparisonResult {
         if (current.getSamplerStatistics() != null) {
             for (SamplerStatistics curr : current.getSamplerStatistics()) {
                 SamplerStatistics base = baseMap.get(curr.getSamplerName());
-                diffs.add(new SamplerDiff(curr.getSamplerName(), base, curr, thresholds));
+                diffs.add(new SamplerDiff(curr.getSamplerName(), base, curr, thresholds, sameTool));
                 seen.add(curr.getSamplerName());
             }
         }
@@ -95,7 +119,7 @@ public class ComparisonResult {
         // hasRegressions() to notice that a whole endpoint stopped being exercised.
         for (Map.Entry<String, SamplerStatistics> entry : baseMap.entrySet()) {
             if (!seen.contains(entry.getKey())) {
-                diffs.add(new SamplerDiff(entry.getKey(), entry.getValue(), null, thresholds));
+                diffs.add(new SamplerDiff(entry.getKey(), entry.getValue(), null, thresholds, sameTool));
             }
         }
         return diffs;
@@ -122,6 +146,12 @@ public class ComparisonResult {
 
         public SamplerDiff(String samplerName, SamplerStatistics baseline, SamplerStatistics current,
                            ComparisonThresholds thresholds) {
+            this(samplerName, baseline, current, thresholds, true);
+        }
+
+        /** {@code judged} false: a row of a pair of two tools, never a regression (spec 004, FR-004). */
+        public SamplerDiff(String samplerName, SamplerStatistics baseline, SamplerStatistics current,
+                           ComparisonThresholds thresholds, boolean judged) {
             this.samplerName = samplerName;
             this.baseline = baseline;
             this.current = current;
@@ -166,7 +196,7 @@ public class ComparisonResult {
                             : 0;
                     if (tpPctChange > thresholds.getThroughputPctChangeThreshold()) regressed = true;
                 }
-                this.regression = regressed;
+                this.regression = judged && regressed;
             } else {
                 // New (no baseline) or removed (no current): no deltas to compute. A removed
                 // sampler counts as a regression — an endpoint that stopped being exercised
@@ -176,7 +206,7 @@ public class ComparisonResult {
                 this.deltaP99 = null;
                 this.deltaErrorRate = null;
                 this.deltaThroughput = null;
-                this.regression = (current == null);
+                this.regression = judged && (current == null);
             }
         }
 

@@ -398,7 +398,6 @@ public final class ReportRebuild {
                                           Function<String, String> props, PrintStream out, PrintStream err,
                                           Map<String, String> env, Route route) {
         autoDetectCompanionFiles(config, outputDir);
-        refuseCrossToolBaseline(config, parsed, err);
         collectServerCsvIfGiven(config, jtl, parsed, props, out, err, env, route);
     }
 
@@ -457,28 +456,9 @@ public final class ReportRebuild {
     }
 
     /**
-     * Auto-detect report-annotations.json and baseline.jtl in the output directory.
+     * Auto-detect report-annotations.json and baseline.jtl in the output directory. A baseline, found or given, is a
+     * JMeter results file or run data of any tool, on a run of any tool (spec 004, which lifted spec 001's decision 6).
      */
-    /**
-     * A baseline is a JMeter results file, so on another tool's run it would compare two tools: Compare for those runs,
-     * and across tools, is later (spec 001, decision 6, FR-017). It is refused with a sentence, and the report is
-     * built without Compare.
-     */
-    static void refuseCrossToolBaseline(ReportConfiguration config, ReportData parsed, PrintStream err) {
-        if (config.getBaselineJtlFile() == null || parsed == null || parsed.getMetadata() == null
-                || parsed.getMetadata().getToolName() == null) {
-            return;
-        }
-        String line = "WARNING the Compare baseline " + config.getBaselineJtlFile().getName() + " is left out: this run is "
-                + parsed.getMetadata().getToolName() + "'s, and Compare for runs of other tools than JMeter, and across"
-                + " tools, comes later (spec 001, decision 6). The report is built without the Compare tab";
-        log.warn(line);
-        if (err != null) {
-            err.println(line);
-        }
-        config.setBaselineJtlFile(null);
-    }
-
     private static void autoDetectCompanionFiles(ReportConfiguration config, File outputDir) {
         if (config.getAnnotationsFile() == null) {
             File autoAnnotations = new File(outputDir, "report-annotations.json");
