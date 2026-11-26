@@ -68,7 +68,7 @@ fixture.
   `scripts/lib/common.sh`, `REQUIRED_FIXTURES` in `test-plans/playwright/global-setup.ts`, and an R07 case beside K1's.
 - [X] T010 [P] Docs: the run data page and `specs/001-.../contracts/run-data-format.md` say what 1.1 adds; the
   `test-plans/run-data/README.md` names K2 as a fixture.
-- [ ] T011 Stage 1 commit (6389fd5); its gate is pull request 1's, after stage 4.
+- [X] T011 Stage 1 commit (6389fd5); its gate is pull request 1's, after stage 4. Done: PR #49 (5830da6).
 
 ## Stage 2: The toolkit's pure core (US6, FR-060, FR-063, FR-064)
 
@@ -96,7 +96,7 @@ fixture.
   `wir_assertsSort` (global) moves into the per-report record. `JSU/dead-code.test.js` stays green.
 - [X] T034 `verify_report_js_rules` rule 1 matches `WIR.table` too.
 - [X] T035 [P] Docs: `docs/Tutorial/12-Asserts-Tab.md`, and its screenshots.
-- [ ] T036 Commit; the gate is pull request 1's, after stage 4.
+- [X] T036 Commit; the gate is pull request 1's, after stage 4. Done: PR #49 (5830da6).
 
 ## Stage 4: The k6 tab (US1, US2, US3, FR-001 to FR-013, FR-020 to FR-023, FR-031 to FR-034)
 
@@ -128,7 +128,8 @@ fixture.
 - [X] T049 `verify_report_js_rules`: rule 1 matches `WIR.toolTab`; rule 3 lists the k6 tables.
 - [X] T050 [P] Spec text corrected (plan "Spec text corrected"): US3's dropped iterations, SC-002, SC-006.
 - [X] T051 [P] Docs: the k6 page, with screenshots of K2's tab.
-- [ ] T052 Pull request 1 (stages 1-4): the full regression within 15 minutes, push, PR, merge.
+- [X] T052 Pull request 1 (stages 1-4): the full regression within 15 minutes, push, PR, merge. Done: PR #49,
+  merged (5830da6), released in 4.6.0 (PR #53).
 
 ## Stage 5: Compare and the Errors tables (US6, FR-060 to FR-066, FR-071 defects 2-5)
 
